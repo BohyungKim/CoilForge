@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CoilForge Phase 2A Local MVP</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>CoilForge Phase 2A</h1>
+        <p>DX Header 1 / EZC-0001 local review-aid MVP</p>
+      </div>
+      <span class="release-boundary">REVIEW AID - NOT FOR MANUFACTURING</span>
+    </header>
+
+    <main class="app-grid">
+      <section class="panel parameter-panel">
+        <div class="panel-heading">
+          <h2>Parameter Editor</h2>
+          <button id="load-default" type="button">Load Default</button>
+        </div>
+        <form id="parameter-form" class="parameter-form" aria-label="DX Header 1 parameters"></form>
+      </section>
+
+      <section class="panel validation-panel">
+        <div class="panel-heading">
+          <h2>Validation Panel</h2>
+          <button id="run-validation" type="button">Validate</button>
+        </div>
+        <div id="validation-output" class="validation-output">Validation has not run.</div>
+      </section>
+
+      <section class="panel svg-panel">
+        <div class="panel-heading">
+          <h2>SVG Preview</h2>
+          <button id="render-svg" type="button">Render SVG</button>
+        </div>
+        <div id="svg-preview" class="svg-preview">SVG preview has not run.</div>
+      </section>
+
+      <section class="panel snapshot-panel">
+        <div class="panel-heading">
+          <h2>Snapshot / Metadata</h2>
+          <button id="generate-snapshot" type="button">Generate Snapshot</button>
+        </div>
+        <pre id="snapshot-output">Snapshot has not run.</pre>
+      </section>
+    </main>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
