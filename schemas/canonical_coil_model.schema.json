@@ -1,0 +1,1054 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coilforge.local/schemas/canonical_coil_model.schema.json",
+  "title": "CoilForge Canonical Coil Model Draft",
+  "description": "Phase 1B draft canonical model for CoilForge. This is a design contract only and does not implement drawing generation or selection calculations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "model_kind",
+    "case_identity",
+    "project_context",
+    "coil_category",
+    "product_family",
+    "performance_inputs",
+    "airside_inputs",
+    "fluidside_or_refrigerant_inputs",
+    "physical_geometry",
+    "casing",
+    "headers",
+    "connections",
+    "distributors",
+    "hgbp_or_special_features",
+    "handing_and_airflow",
+    "drawing_dimensions",
+    "validation_state",
+    "source_traceability"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0-phase1b-draft"
+    },
+    "model_kind": {
+      "const": "canonical_coil_model"
+    },
+    "case_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coilforge_case_id",
+        "source_case_id",
+        "coil_name",
+        "model_number",
+        "item_number",
+        "reference_status"
+      ],
+      "properties": {
+        "coilforge_case_id": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "source_case_id": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "coil_name": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "model_number": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "item_number": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "reference_status": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "project_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_name",
+        "customer_name",
+        "quote_or_job_number",
+        "quantity",
+        "coils_per_bank",
+        "total_coils",
+        "workflow_stage"
+      ],
+      "properties": {
+        "project_name": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "customer_name": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "quote_or_job_number": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "quantity": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "coils_per_bank": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "total_coils": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "workflow_stage": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "coil_category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "normalized_roadmap_bucket",
+        "classification_basis",
+        "classification_confidence"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Expected values include DX, HGRH, CWC, HWC, UNKNOWN."
+        },
+        "normalized_roadmap_bucket": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Example: DX / Header 1, HGRH / Header 2, DX / HGBP."
+        },
+        "classification_basis": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Source evidence, John review, or future engineering review basis."
+        },
+        "classification_confidence": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "product_family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_product_code",
+        "normalized_family",
+        "application_mode",
+        "coil_style"
+      ],
+      "properties": {
+        "source_product_code": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Raw family or product code such as CDXC-1, RHHGRC-1, PHWC-1, CCWC-1, or HHWC-1."
+        },
+        "normalized_family": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "application_mode": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Heating, cooling, heat reclaim, reheat, or future approved category."
+        },
+        "coil_style": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "performance_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "desired_capacity",
+        "system_capacity",
+        "maximum_airside_pressure_drop",
+        "maximum_fluid_pressure_drop",
+        "capacity_ratio",
+        "fan_rpm"
+      ],
+      "properties": {
+        "desired_capacity": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "system_capacity": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "maximum_airside_pressure_drop": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "maximum_fluid_pressure_drop": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "capacity_ratio": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fan_rpm": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "airside_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "standard_cfm",
+        "actual_cfm",
+        "altitude",
+        "entering_air_dry_bulb",
+        "entering_air_wet_bulb",
+        "leaving_air_dry_bulb",
+        "leaving_air_wet_bulb"
+      ],
+      "properties": {
+        "standard_cfm": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "actual_cfm": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "altitude": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "entering_air_dry_bulb": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "entering_air_wet_bulb": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "leaving_air_dry_bulb": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "leaving_air_wet_bulb": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "fluidside_or_refrigerant_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fluid_type",
+        "refrigerant",
+        "entering_fluid_temp",
+        "leaving_fluid_temp",
+        "glycol_mass_percent",
+        "gpm",
+        "sgpm",
+        "evaporating_temp",
+        "condensing_temp",
+        "entering_superheat",
+        "leaving_superheat",
+        "leaving_subcooling",
+        "leaving_quality",
+        "refrigerant_liquid_temp",
+        "fluidside_fouling_factor"
+      ],
+      "properties": {
+        "fluid_type": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "refrigerant": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "entering_fluid_temp": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "leaving_fluid_temp": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "glycol_mass_percent": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "gpm": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "sgpm": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "evaporating_temp": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "condensing_temp": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "entering_superheat": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "leaving_superheat": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "leaving_subcooling": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "leaving_quality": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "refrigerant_liquid_temp": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fluidside_fouling_factor": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "physical_geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rows",
+        "fin_height",
+        "fin_length",
+        "fin_density_fpi",
+        "fin_id",
+        "fin_material",
+        "fin_thickness",
+        "tube_geometry",
+        "tube_type",
+        "tube_material",
+        "tube_wall_thickness",
+        "circuits",
+        "feeds",
+        "slabs",
+        "multi_circuit_feeds",
+        "multi_circuit_passes",
+        "coil_weight",
+        "internal_volume"
+      ],
+      "properties": {
+        "rows": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fin_height": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "FH in EZ Coil Geometry where available."
+        },
+        "fin_length": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "FL in EZ Coil Geometry where available."
+        },
+        "fin_density_fpi": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fin_id": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fin_material": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fin_thickness": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "tube_geometry": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "tube_type": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "tube_material": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "tube_wall_thickness": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "circuits": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "feeds": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "slabs": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "multi_circuit_feeds": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "multi_circuit_passes": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "coil_weight": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "internal_volume": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "casing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "material",
+        "gauge",
+        "thickness",
+        "type",
+        "coating",
+        "stacking_flanges",
+        "collared_holes",
+        "mounting_holes",
+        "fasteners",
+        "recessed_vent_drain",
+        "notes"
+      ],
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "gauge": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "thickness": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "type": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "coating": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "stacking_flanges": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "collared_holes": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "mounting_holes": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "fasteners": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "recessed_vent_drain": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "notes": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "header_type",
+        "feed_type",
+        "header_count",
+        "items"
+      ],
+      "properties": {
+        "header_type": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Header 1, Header 2, Header 3, Header 4, UNKNOWN, or NOT_APPLICABLE. Keep separate from feed_type."
+        },
+        "feed_type": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Single Feed, Non-Single Feed, UNKNOWN, or NOT_APPLICABLE. Single Feed is not Single Connection."
+        },
+        "header_count": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/header_item"
+          }
+        }
+      }
+    },
+    "connections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connection_summary",
+        "items"
+      ],
+      "properties": {
+        "connection_summary": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/connection_item"
+          }
+        }
+      }
+    },
+    "distributors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applies",
+        "distributor_count",
+        "items"
+      ],
+      "properties": {
+        "applies": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "distributor_count": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/distributor_item"
+          }
+        }
+      }
+    },
+    "hgbp_or_special_features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalized_special_feature",
+        "source_feature",
+        "hgbp_required",
+        "asc_present",
+        "special_options",
+        "engineering_review_notes"
+      ],
+      "properties": {
+        "normalized_special_feature": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Example: HGBP for EZC-0013 after John review."
+        },
+        "source_feature": {
+          "$ref": "#/$defs/traceable_field",
+          "description": "Example: ASC source evidence for EZC-0013. Preserve separately from normalized_special_feature."
+        },
+        "hgbp_required": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "asc_present": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "special_options": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "engineering_review_notes": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "handing_and_airflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coil_hand",
+        "airflow_direction",
+        "connection_end",
+        "opposite_end_connections",
+        "coil_orientation",
+        "heat_pump_heating_mode"
+      ],
+      "properties": {
+        "coil_hand": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "airflow_direction": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "connection_end": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "opposite_end_connections": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "coil_orientation": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "heat_pump_heating_mode": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "drawing_dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "FH",
+        "FL",
+        "CH",
+        "CL",
+        "CD",
+        "HD",
+        "SL",
+        "S",
+        "R",
+        "I",
+        "O",
+        "RB",
+        "TSP",
+        "BSP",
+        "REP",
+        "LEP",
+        "OAL",
+        "secondary_dimensions",
+        "other_labels"
+      ],
+      "properties": {
+        "FH": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "FL": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "CH": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "CL": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "CD": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "HD": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "SL": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "S": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "R": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "I": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "O": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "RB": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "TSP": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "BSP": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "REP": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "LEP": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "OAL": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "secondary_dimensions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/traceable_field"
+          },
+          "description": "Container for label variants such as FH2, FL2, HD2, SL2, R2, S2, I2, O2, CH2, CL2, OAL2, CD2."
+        },
+        "other_labels": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/traceable_field"
+          },
+          "description": "Future drawing labels discovered by Phase 1A or Phase 1C."
+        }
+      }
+    },
+    "validation_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overall_status",
+        "schema_status",
+        "engineering_review_status",
+        "drawing_release_status",
+        "missing_required_fields",
+        "warnings",
+        "open_questions"
+      ],
+      "properties": {
+        "overall_status": {
+          "enum": [
+            "draft",
+            "needs_review",
+            "validated",
+            "blocked",
+            "future"
+          ]
+        },
+        "schema_status": {
+          "enum": [
+            "draft",
+            "reviewed",
+            "approved",
+            "deprecated"
+          ]
+        },
+        "engineering_review_status": {
+          "enum": [
+            "not_started",
+            "needs_john_review",
+            "needs_engineering_review",
+            "reviewed",
+            "approved_for_review_aid_only"
+          ]
+        },
+        "drawing_release_status": {
+          "const": "not_released_manufacturing_drawing"
+        },
+        "missing_required_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source_traceability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_documents",
+        "field_trace_policy",
+        "normalization_notes",
+        "unresolved_dependencies"
+      ],
+      "properties": {
+        "source_documents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_document"
+          }
+        },
+        "field_trace_policy": {
+          "type": "string"
+        },
+        "normalization_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unresolved_dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "traceable_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "field_role",
+        "review_status",
+        "source_trace"
+      ],
+      "properties": {
+        "value": {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "field_role": {
+          "enum": [
+            "required",
+            "optional",
+            "derived",
+            "future"
+          ]
+        },
+        "review_status": {
+          "enum": [
+            "source_observed",
+            "ai_inferred",
+            "john_confirmed",
+            "engineering_review_required",
+            "validated",
+            "not_applicable",
+            "missing",
+            "future"
+          ]
+        },
+        "source_trace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_trace"
+          }
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "source_trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "source_path",
+        "source_field",
+        "evidence_status"
+      ],
+      "properties": {
+        "source_type": {
+          "enum": [
+            "ez_coil_json",
+            "coilmaster_json",
+            "case_pdf",
+            "rendered_drawing",
+            "phase0_report",
+            "phase1a_mapping",
+            "checklist",
+            "submittal_pdf",
+            "john_review",
+            "engineering_review",
+            "derived_rule",
+            "future_source",
+            "unknown"
+          ]
+        },
+        "source_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_field": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_value": {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "object",
+            "null"
+          ]
+        },
+        "evidence_status": {
+          "enum": [
+            "observed",
+            "inferred",
+            "john_confirmed",
+            "conflicting",
+            "missing",
+            "not_applicable",
+            "future"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "source_document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "path",
+        "role"
+      ],
+      "properties": {
+        "source_type": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "header_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "header_id",
+        "role",
+        "diameter",
+        "material",
+        "number_of_connections",
+        "connection_type",
+        "connection_size",
+        "is_distributor",
+        "is_asc",
+        "header_dimension_hd",
+        "header_dimension_sl",
+        "vent_drain_location",
+        "rotation",
+        "location"
+      ],
+      "properties": {
+        "header_id": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "role": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "diameter": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "material": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "number_of_connections": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "connection_type": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "connection_size": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "is_distributor": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "is_asc": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "header_dimension_hd": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "header_dimension_sl": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "vent_drain_location": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "rotation": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "location": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "connection_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connection_id",
+        "role",
+        "size",
+        "type",
+        "material",
+        "quantity",
+        "rotation_angle",
+        "location"
+      ],
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "role": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "size": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "type": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "material": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "quantity": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "rotation_angle": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "location": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    },
+    "distributor_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "distributor_id",
+        "model_number",
+        "nozzle_family",
+        "is_asc",
+        "orientation",
+        "extension",
+        "feed_tubes",
+        "target_header_id"
+      ],
+      "properties": {
+        "distributor_id": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "model_number": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "nozzle_family": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "is_asc": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "orientation": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "extension": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "feed_tubes": {
+          "$ref": "#/$defs/traceable_field"
+        },
+        "target_header_id": {
+          "$ref": "#/$defs/traceable_field"
+        }
+      }
+    }
+  }
+}

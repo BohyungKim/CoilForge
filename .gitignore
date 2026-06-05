@@ -1,0 +1,38 @@
+# Raw / proprietary source data
+Case/
+data/raw/
+raw/
+*.pdf
+*.xlsx
+*.xlsm
+
+# Raw JSON-like exports unless explicitly sanitized
+*.raw.json
+*_raw.json
+*.source.json
+
+# Raw text-like exports unless explicitly sanitized
+*.raw.txt
+*_raw.txt
+*.source.txt
+
+# Rendered source pages / generated visual evidence
+outputs/**/rendered_pages/
+*.png
+*.jpg
+*.jpeg
+
+# Local/cache/build artifacts
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.log
