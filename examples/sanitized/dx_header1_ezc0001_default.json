@@ -1,0 +1,29 @@
+{
+  "fixture_name": "sanitized_dx_header1_ezc0001_default",
+  "fixture_status": "sanitized_example",
+  "coil_name": "SAMPLE_DX_HEADER1",
+  "model_number": "DX-SAMPLE-HEADER1",
+  "source_case_id": "EZC-0001",
+  "coil_category": "DX",
+  "header_type": "Header 1",
+  "rows": 4,
+  "fin_height": 12.0,
+  "fin_length": 15.0,
+  "fin_density_fpi": 13.0,
+  "casing_height": 13.25,
+  "casing_length": 18.0,
+  "casing_depth": 5.5,
+  "top_flange": 0.63,
+  "bottom_flange": 0.63,
+  "return_bend_allowance": 1.75,
+  "coil_hand": "Left",
+  "airflow_direction": "left_to_right",
+  "return_connection_size": 0.625,
+  "circuiting_display": "2 Feed / 24 Pass",
+  "notes": [
+    "Sanitized fixture for Phase 2A local web MVP.",
+    "Review aid only. Not for manufacturing."
+  ],
+  "release_status": "review_aid_only",
+  "drawing_status": "not_generated"
+}
