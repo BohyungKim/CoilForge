@@ -82,6 +82,31 @@
               <h3>Direct Coil Input Groups</h3>
               <span id="draft-id" class="subtle-label">Loading draft</span>
             </div>
+            <section class="driver-editor" aria-label="Drawing drivers">
+              <label>
+                <span>Coil name</span>
+                <input id="edit-coil-name" type="text" autocomplete="off" />
+              </label>
+              <label>
+                <span>Finned height</span>
+                <input id="edit-finned-height" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                <span>Finned length</span>
+                <input id="edit-finned-length" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                <span>Airflow</span>
+                <select id="edit-airflow-direction">
+                  <option value="left_to_right">left_to_right</option>
+                  <option value="right_to_left">right_to_left</option>
+                </select>
+              </label>
+              <label class="manual-toggle">
+                <input id="manual-drawing-mode" type="checkbox" />
+                <span>Manual drawing parameters</span>
+              </label>
+            </section>
             <div id="direct-coil-groups" class="field-groups"></div>
           </div>
 
@@ -116,6 +141,11 @@
             <section class="inspector-card">
               <h3>Validation</h3>
               <div id="validation-summary" class="validation-list"></div>
+            </section>
+
+            <section class="inspector-card">
+              <h3>Blocked Fields</h3>
+              <div id="blocked-fields" class="blocked-list"></div>
             </section>
           </aside>
         </section>

@@ -25,6 +25,11 @@ input {
   min-height: 34px;
 }
 
+input,
+select {
+  font-size: 13px;
+}
+
 button {
   border: 0;
   border-radius: 6px;
@@ -255,6 +260,47 @@ h4 {
   margin-top: 14px;
 }
 
+.driver-editor {
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 1.2fr) repeat(3, minmax(120px, 0.72fr)) minmax(160px, 0.82fr);
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.driver-editor label {
+  display: grid;
+  gap: 5px;
+}
+
+.driver-editor span {
+  color: #536477;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.driver-editor input,
+.driver-editor select {
+  border: 1px solid #c9d3df;
+  border-radius: 6px;
+  color: #172033;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.manual-toggle {
+  align-items: center;
+  grid-template-columns: auto 1fr;
+}
+
+.manual-toggle input {
+  height: 16px;
+  min-height: 16px;
+  width: 16px;
+}
+
 .field-group {
   border-top: 1px solid #e1e7ef;
   display: grid;
@@ -425,6 +471,19 @@ h4 {
   font-size: 15px;
 }
 
+.parameter-item input {
+  border: 1px solid #c9d3df;
+  border-radius: 5px;
+  min-height: 30px;
+  padding: 4px 6px;
+  width: 100%;
+}
+
+.parameter-item input:disabled {
+  background: #edf2f7;
+  color: #6b7888;
+}
+
 .validation-list {
   display: grid;
   gap: 8px;
@@ -434,6 +493,41 @@ h4 {
 .validation-list div {
   display: flex;
   justify-content: space-between;
+}
+
+.blocked-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.blocked-row {
+  border: 1px solid #e7c7c7;
+  border-left: 4px solid #b84b4b;
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: 58px 1fr;
+  min-height: 56px;
+  padding: 8px;
+}
+
+.blocked-row strong {
+  color: #9d3333;
+  font-size: 13px;
+}
+
+.blocked-row span {
+  color: #26364b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.blocked-row em {
+  color: #6b7888;
+  font-size: 12px;
+  font-style: normal;
+  grid-column: 1 / -1;
 }
 
 .action-bar {
@@ -474,6 +568,10 @@ h4 {
     align-items: stretch;
     flex-direction: column;
   }
+
+  .driver-editor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -493,6 +591,10 @@ h4 {
   }
 
   .draft-field {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-editor {
     grid-template-columns: 1fr;
   }
 
