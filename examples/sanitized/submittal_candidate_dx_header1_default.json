@@ -1,0 +1,503 @@
+{
+  "candidate_id": "SCC-SANITIZED-DX-H1-001",
+  "tag": {
+    "value": "COIL-TAG-001",
+    "unit": null,
+    "source_evidence": [
+      {
+        "evidence_id": "EV-TAG-001",
+        "source_type": "submittal_pdf_candidate",
+        "source_id": "SANITIZED-SOURCE-DOC-001",
+        "source_location": "sanitized-page-1-schedule-row-1",
+        "source_page": 1,
+        "source_section": "sanitized_schedule",
+        "source_table": "coil_schedule",
+        "source_key": "coil_tag",
+        "source_value": "COIL-TAG-001",
+        "normalized_value": "COIL-TAG-001",
+        "unit": null,
+        "confidence": "confirmed",
+        "review_status": "unreviewed",
+        "evidence_status": "candidate",
+        "notes": []
+      }
+    ],
+    "confidence": "confirmed",
+    "status": "review_required",
+    "review_required": true,
+    "blocked_reason": null,
+    "manual_override": false,
+    "notes": []
+  },
+  "product_type": {
+    "value": "DX",
+    "unit": null,
+    "source_evidence": [
+      {
+        "evidence_id": "EV-PRODUCT-001",
+        "source_type": "submittal_pdf_candidate",
+        "source_id": "SANITIZED-SOURCE-DOC-001",
+        "source_location": "sanitized-page-1-schedule-row-1",
+        "source_page": 1,
+        "source_section": "sanitized_schedule",
+        "source_table": "coil_schedule",
+        "source_key": "product_type",
+        "source_value": "DX",
+        "normalized_value": "DX",
+        "unit": null,
+        "confidence": "inferred",
+        "review_status": "unreviewed",
+        "evidence_status": "candidate",
+        "notes": [
+          "Product type is a candidate until reviewed."
+        ]
+      }
+    ],
+    "confidence": "inferred",
+    "status": "review_required",
+    "review_required": true,
+    "blocked_reason": null,
+    "manual_override": false,
+    "notes": []
+  },
+  "coil_type": {
+    "value": "DX_HEADER1_WORKFLOW_CANDIDATE",
+    "unit": null,
+    "source_evidence": [
+      {
+        "evidence_id": "EV-COIL-TYPE-001",
+        "source_type": "submittal_pdf_candidate",
+        "source_id": "SANITIZED-SOURCE-DOC-001",
+        "source_location": "sanitized-page-1-schedule-row-1",
+        "source_page": 1,
+        "source_section": "sanitized_schedule",
+        "source_table": "coil_schedule",
+        "source_key": "coil_type",
+        "source_value": "DX_HEADER1_WORKFLOW_CANDIDATE",
+        "normalized_value": "DX_HEADER1_WORKFLOW_CANDIDATE",
+        "unit": null,
+        "confidence": "inferred",
+        "review_status": "unreviewed",
+        "evidence_status": "candidate",
+        "notes": [
+          "Coil type is not final engineering classification."
+        ]
+      }
+    ],
+    "confidence": "inferred",
+    "status": "review_required",
+    "review_required": true,
+    "blocked_reason": null,
+    "manual_override": false,
+    "notes": []
+  },
+  "header_type": {
+    "value": "Header 1",
+    "unit": null,
+    "source_evidence": [
+      {
+        "evidence_id": "EV-HEADER-001",
+        "source_type": "submittal_pdf_candidate",
+        "source_id": "SANITIZED-SOURCE-DOC-001",
+        "source_location": "sanitized-page-1-schedule-row-1",
+        "source_page": 1,
+        "source_section": "sanitized_schedule",
+        "source_table": "coil_schedule",
+        "source_key": "header_type",
+        "source_value": "Header 1",
+        "normalized_value": "Header 1",
+        "unit": null,
+        "confidence": "inferred",
+        "review_status": "unreviewed",
+        "evidence_status": "candidate",
+        "notes": [
+          "Supported header remains review-required until confirmed."
+        ]
+      }
+    ],
+    "confidence": "inferred",
+    "status": "review_required",
+    "review_required": true,
+    "blocked_reason": null,
+    "manual_override": false,
+    "notes": []
+  },
+  "geometry": {
+    "rows_deep": {
+      "value": 4,
+      "unit": "rows",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-ROWS-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "rows_deep",
+          "source_value": 4,
+          "normalized_value": 4,
+          "unit": "rows",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    },
+    "fins_per_inch": {
+      "value": 13.0,
+      "unit": "fpi",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-FPI-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "fins_per_inch",
+          "source_value": 13.0,
+          "normalized_value": 13.0,
+          "unit": "fpi",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    },
+    "finned_height": {
+      "value": 12.0,
+      "unit": "in",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-FH-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "finned_height",
+          "source_value": 12.0,
+          "normalized_value": 12.0,
+          "unit": "in",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    },
+    "finned_length": {
+      "value": 15.0,
+      "unit": "in",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-FL-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "finned_length",
+          "source_value": 15.0,
+          "normalized_value": 15.0,
+          "unit": "in",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    },
+    "airflow_direction": {
+      "value": "left_to_right",
+      "unit": null,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-AIRFLOW-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-airflow-marker",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "airflow_direction",
+          "source_value": "left_to_right",
+          "normalized_value": "left_to_right",
+          "unit": null,
+          "confidence": "inferred",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "inferred",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": [
+        "Airflow direction must be confirmed before draft use."
+      ]
+    }
+  },
+  "airside_conditions": {
+    "total_air_flow_cfm": {
+      "value": 1200,
+      "unit": "cfm",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-AIR-CFM-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "total_air_flow_cfm",
+          "source_value": 1200,
+          "normalized_value": 1200,
+          "unit": "cfm",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    },
+    "entering_dry_bulb_f": {
+      "value": 78.0,
+      "unit": "degF",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-AIR-EDB-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "entering_dry_bulb_f",
+          "source_value": 78.0,
+          "normalized_value": 78.0,
+          "unit": "degF",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    }
+  },
+  "refrigerant_conditions": {
+    "refrigerant": {
+      "value": "R410A",
+      "unit": null,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-REF-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "refrigerant",
+          "source_value": "R410A",
+          "normalized_value": "R410A",
+          "unit": null,
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "confirmed",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    }
+  },
+  "materials_construction": {},
+  "connections": {
+    "coil_hand": {
+      "value": "Left",
+      "unit": null,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-CONN-HAND-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-connection-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "connections",
+          "source_key": "coil_hand",
+          "source_value": "Left",
+          "normalized_value": "Left",
+          "unit": null,
+          "confidence": "inferred",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ],
+      "confidence": "inferred",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    },
+    "return_connection_size": {
+      "value": 0.625,
+      "unit": "in",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-CONN-RETURN-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-connection-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "connections",
+          "source_key": "return_connection_size",
+          "source_value": 0.625,
+          "normalized_value": 0.625,
+          "unit": "in",
+          "confidence": "ambiguous",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": [
+            "Connection role needs review."
+          ]
+        }
+      ],
+      "confidence": "ambiguous",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": [
+        "Representative review-required field."
+      ]
+    }
+  },
+  "performance": {
+    "total_capacity_mbh": {
+      "value": 36.0,
+      "unit": "MBH",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-PERF-CAPACITY-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "total_capacity_mbh",
+          "source_value": 36.0,
+          "normalized_value": 36.0,
+          "unit": "MBH",
+          "confidence": "ambiguous",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": [
+            "Capacity basis requires review."
+          ]
+        }
+      ],
+      "confidence": "ambiguous",
+      "status": "review_required",
+      "review_required": true,
+      "blocked_reason": null,
+      "manual_override": false,
+      "notes": []
+    }
+  },
+  "drawing_parameters": {},
+  "source_evidence": [],
+  "review_required_fields": [
+    "product_type",
+    "coil_type",
+    "header_type",
+    "connections.return_connection_size"
+  ],
+  "blocked_fields": [],
+  "unmapped_fields": [
+    {
+      "source_key": "sanitized_extra_schedule_note",
+      "source_value": "SANITIZED_NOTE_REQUIRES_REVIEW",
+      "reason": "No approved canonical field or Direct Coil field mapping in Phase 2B.3A.",
+      "source_evidence": [
+        {
+          "evidence_id": "EV-UNMAPPED-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-note-column",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "notes",
+          "source_key": "sanitized_extra_schedule_note",
+          "source_value": "SANITIZED_NOTE_REQUIRES_REVIEW",
+          "normalized_value": null,
+          "unit": null,
+          "confidence": "ambiguous",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Sanitized demo candidate only.",
+    "Review aid only. Not for manufacturing."
+  ],
+  "review_status": "unreviewed"
+}
