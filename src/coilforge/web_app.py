@@ -4,6 +4,7 @@ from fastapi import Body
 
 from coilforge.phase2a.app import app
 from coilforge.phase2a.fixtures import load_default_dx_header1_fixture
+from coilforge.phase2a.ui_state import build_phase2b_default_ui_state
 from coilforge.phase2a.renderer import DEFAULT_VIEWBOX, REVIEW_WATERMARK
 from coilforge.workflows import (
     build_default_demo_workflow_input,
@@ -23,6 +24,11 @@ __all__ = ["DEFAULT_VIEWBOX", "REVIEW_WATERMARK", "app", "load_default_state"]
 @app.get("/api/workflow/default-demo")
 async def workflow_default_demo():
     return build_default_demo_workflow_input()
+
+
+@app.get("/api/ui/default")
+async def ui_default_state():
+    return build_phase2b_default_ui_state()
 
 
 @app.post("/api/workflow/submittal-to-direct-draft")

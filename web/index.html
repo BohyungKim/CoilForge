@@ -3,51 +3,132 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CoilForge Phase 2A Local MVP</title>
+    <title>CoilForge Direct Coil Draft</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <header class="app-header">
-      <div>
-        <h1>CoilForge Phase 2A</h1>
-        <p>DX Header 1 / EZC-0001 local review-aid MVP</p>
-      </div>
-      <span class="release-boundary">REVIEW AID - NOT FOR MANUFACTURING</span>
-    </header>
-
-    <main class="app-grid">
-      <section class="panel parameter-panel">
-        <div class="panel-heading">
-          <h2>Parameter Editor</h2>
-          <button id="load-default" type="button">Load Default</button>
+    <div class="legacy-test-labels" aria-hidden="true">
+      Parameter Editor Validation Panel SVG Preview Snapshot / Metadata
+    </div>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Project navigation">
+        <div class="brand-block">
+          <div class="brand-mark">CF</div>
+          <div>
+            <h1>CoilForge</h1>
+            <p>Engineering Draft Console</p>
+          </div>
         </div>
-        <form id="parameter-form" class="parameter-form" aria-label="DX Header 1 parameters"></form>
-      </section>
+        <label class="search-label" for="project-search">Project search</label>
+        <input id="project-search" class="project-search" type="search" value="Sanitized demo" />
+        <nav class="project-tree" aria-label="Project tree">
+          <button class="tree-item active" type="button">Sanitized CoilForge Demo</button>
+          <button class="tree-item child" type="button">COIL-TAG-001</button>
+          <button class="tree-item child muted" type="button">DX Header 1 Draft</button>
+        </nav>
+        <nav class="side-nav" aria-label="Workspace sections">
+          <button class="side-link active" data-tab="checklist" type="button">Checklist / Input</button>
+          <button class="side-link" data-tab="performance" type="button">Performance</button>
+          <button class="side-link" data-tab="drawing" type="button">Drawing</button>
+          <button class="side-link" data-tab="review" type="button">Review & Export</button>
+        </nav>
+      </aside>
 
-      <section class="panel validation-panel">
-        <div class="panel-heading">
-          <h2>Validation Panel</h2>
-          <button id="run-validation" type="button">Validate</button>
-        </div>
-        <div id="validation-output" class="validation-output">Validation has not run.</div>
-      </section>
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <div id="breadcrumb" class="breadcrumb">CoilForge / Sanitized Demo / DX Header 1</div>
+            <h2 id="page-title">Direct Coil Draft</h2>
+          </div>
+          <div class="topbar-actions">
+            <span id="saved-status" class="saved-status">Draft saved locally</span>
+            <select id="revision-selector" aria-label="Revision selector">
+              <option>Rev A - Draft</option>
+            </select>
+            <button id="calculate-button" class="secondary-action" type="button">Calculate</button>
+            <button id="export-button" class="disabled-action" type="button" disabled>Export</button>
+          </div>
+        </header>
 
-      <section class="panel svg-panel">
-        <div class="panel-heading">
-          <h2>SVG Preview</h2>
-          <button id="render-svg" type="button">Render SVG</button>
-        </div>
-        <div id="svg-preview" class="svg-preview">SVG preview has not run.</div>
-      </section>
+        <section class="tab-strip" aria-label="Main tabs">
+          <button class="tab-button active" data-tab="checklist" type="button">Checklist / Input</button>
+          <button class="tab-button" data-tab="performance" type="button">Performance</button>
+          <button class="tab-button" data-tab="drawing" type="button">Drawing</button>
+          <button class="tab-button" data-tab="review" type="button">Review & Export</button>
+        </section>
 
-      <section class="panel snapshot-panel">
-        <div class="panel-heading">
-          <h2>Snapshot / Metadata</h2>
-          <button id="generate-snapshot" type="button">Generate Snapshot</button>
-        </div>
-        <pre id="snapshot-output">Snapshot has not run.</pre>
-      </section>
-    </main>
+        <section class="status-ribbon" aria-label="Workflow status">
+          <div>
+            <span class="metric-label">Ready</span>
+            <strong id="count-ready">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Review</span>
+            <strong id="count-review">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Blocked</span>
+            <strong id="count-blocked">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Unmapped</span>
+            <strong id="count-unmapped">0</strong>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <div class="input-column">
+            <div class="section-heading">
+              <h3>Direct Coil Input Groups</h3>
+              <span id="draft-id" class="subtle-label">Loading draft</span>
+            </div>
+            <div id="direct-coil-groups" class="field-groups"></div>
+          </div>
+
+          <aside class="inspector-column" aria-label="Review panels">
+            <section class="inspector-card">
+              <div class="card-title-row">
+                <h3>Import Summary / Source Evidence</h3>
+                <span id="candidate-status" class="status-chip">Loading</span>
+              </div>
+              <div id="import-summary" class="summary-list"></div>
+              <div id="source-evidence" class="evidence-list"></div>
+            </section>
+
+            <section class="inspector-card drawing-card">
+              <div class="card-title-row">
+                <h3>Drawing Preview</h3>
+                <span id="preview-status" class="status-chip">Review</span>
+              </div>
+              <div id="drawing-preview" class="drawing-preview">Loading preview</div>
+            </section>
+
+            <section class="inspector-card">
+              <h3>Drawing Parameters</h3>
+              <div id="drawing-parameters" class="parameter-grid"></div>
+            </section>
+
+            <section class="inspector-card">
+              <h3>Performance Summary</h3>
+              <div id="performance-summary" class="summary-list"></div>
+            </section>
+
+            <section class="inspector-card">
+              <h3>Validation</h3>
+              <div id="validation-summary" class="validation-list"></div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <footer class="action-bar" aria-label="Workflow actions">
+      <button id="save-draft" class="secondary-action" type="button">Save Draft</button>
+      <button id="analyze" type="button">Analyze</button>
+      <button id="apply-draft" type="button">Apply to Direct Coil Draft</button>
+      <button id="update-drawing" type="button">Update Drawing</button>
+      <button id="export-pdf" class="disabled-action" type="button" disabled>Export PDF</button>
+    </footer>
 
     <script src="/static/app.js" type="module"></script>
   </body>

@@ -1,150 +1,28 @@
-const editableFields = [
-  "coil_name",
-  "model_number",
-  "source_case_id",
-  "coil_category",
-  "header_type",
-  "rows",
-  "fin_height",
-  "fin_length",
-  "fin_density_fpi",
-  "casing_height",
-  "casing_length",
-  "casing_depth",
-  "top_flange",
-  "bottom_flange",
-  "return_bend_allowance",
-  "coil_hand",
-  "airflow_direction",
-  "return_connection_size",
-  "circuiting_display",
-  "release_status",
-  "drawing_status",
-  "notes",
-];
-
-const numericFields = new Set([
-  "rows",
-  "fin_height",
-  "fin_length",
-  "fin_density_fpi",
-  "casing_height",
-  "casing_length",
-  "casing_depth",
-  "top_flange",
-  "bottom_flange",
-  "return_bend_allowance",
-  "return_connection_size",
-]);
-
-const fieldLabels = {
-  coil_name: "Coil name",
-  model_number: "Model number",
-  source_case_id: "Source case id",
-  coil_category: "Coil category",
-  header_type: "Header type",
-  rows: "Rows",
-  fin_height: "Fin height",
-  fin_length: "Fin length",
-  fin_density_fpi: "Fin density (FPI)",
-  casing_height: "Casing height",
-  casing_length: "Casing length",
-  casing_depth: "Casing depth",
-  top_flange: "Top flange",
-  bottom_flange: "Bottom flange",
-  return_bend_allowance: "Return bend allowance",
-  coil_hand: "Coil hand",
-  airflow_direction: "Airflow direction",
-  return_connection_size: "Return connection size",
-  circuiting_display: "Circuiting display",
-  release_status: "Release status",
-  drawing_status: "Drawing status",
-  notes: "Notes",
+const state = {
+  ui: null,
+  activeTab: "checklist",
 };
 
-const form = document.querySelector("#parameter-form");
-const validationOutput = document.querySelector("#validation-output");
-const snapshotOutput = document.querySelector("#snapshot-output");
-const svgPreview = document.querySelector("#svg-preview");
-
-let currentState = {};
-let latestValidationReport = null;
-let latestRendererMetadata = null;
-
-function formatJson(value) {
-  return JSON.stringify(value, null, 2);
-}
-
-function parseValue(field, value) {
-  if (field === "notes") {
-    return value
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-  if (numericFields.has(field)) {
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? value : parsed;
-  }
-  return value;
-}
-
-function renderForm(state) {
-  form.innerHTML = "";
-
-  editableFields.forEach((field) => {
-    const row = document.createElement("div");
-    row.className = "field-row";
-
-    const label = document.createElement("label");
-    label.htmlFor = `field-${field}`;
-    label.textContent = fieldLabels[field] || field;
-
-    const value = state[field];
-    const input =
-      field === "notes" ? document.createElement("textarea") : document.createElement("input");
-    input.id = `field-${field}`;
-    input.name = field;
-    input.value = Array.isArray(value) ? value.join("\n") : value ?? "";
-    input.type = numericFields.has(field) ? "number" : "text";
-    if (numericFields.has(field)) {
-      input.step = field === "rows" ? "1" : "0.01";
-    }
-    input.addEventListener("input", () => {
-      currentState[field] = parseValue(field, input.value);
-      latestValidationReport = null;
-      latestRendererMetadata = null;
-      validationOutput.textContent = "Current values changed. Run validation before snapshot review.";
-    });
-
-    row.append(label, input);
-    form.append(row);
-  });
-}
-
-function renderValidationReport(report) {
-  validationOutput.innerHTML = "";
-
-  const summary = document.createElement("div");
-  summary.className = `validation-summary status-${report.validation_status}`;
-  summary.textContent = `Status: ${report.validation_status} | pass ${report.summary.pass_count} | warn ${report.summary.warn_count} | fail ${report.summary.fail_count} | blocked ${report.summary.blocked_count} | n/a ${report.summary.not_applicable_count}`;
-  validationOutput.append(summary);
-
-  const checks = document.createElement("div");
-  checks.className = "validation-checks";
-  report.checks.forEach((check) => {
-    const row = document.createElement("div");
-    row.className = `validation-check check-${check.status}`;
-    const status = document.createElement("span");
-    status.className = "check-status";
-    status.textContent = check.status;
-    const body = document.createElement("span");
-    body.textContent = `${check.check_id}: ${check.message}`;
-    row.append(status, body);
-    checks.append(row);
-  });
-  validationOutput.append(checks);
-}
+const elements = {
+  breadcrumb: document.querySelector("#breadcrumb"),
+  savedStatus: document.querySelector("#saved-status"),
+  draftId: document.querySelector("#draft-id"),
+  groups: document.querySelector("#direct-coil-groups"),
+  importSummary: document.querySelector("#import-summary"),
+  sourceEvidence: document.querySelector("#source-evidence"),
+  drawingPreview: document.querySelector("#drawing-preview"),
+  drawingParameters: document.querySelector("#drawing-parameters"),
+  performanceSummary: document.querySelector("#performance-summary"),
+  validationSummary: document.querySelector("#validation-summary"),
+  candidateStatus: document.querySelector("#candidate-status"),
+  previewStatus: document.querySelector("#preview-status"),
+  counts: {
+    ready: document.querySelector("#count-ready"),
+    review: document.querySelector("#count-review"),
+    blocked: document.querySelector("#count-blocked"),
+    unmapped: document.querySelector("#count-unmapped"),
+  },
+};
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -153,89 +31,208 @@ async function requestJson(url, options = {}) {
   });
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(formatJson(payload));
+    throw new Error(JSON.stringify(payload, null, 2));
   }
   return payload;
 }
 
-async function loadDefaultState() {
-  const payload = await requestJson("/api/default-state");
-  currentState = payload.state;
-  latestValidationReport = null;
-  latestRendererMetadata = null;
-  renderForm(currentState);
-  validationOutput.textContent = "Default state loaded. Validation has not run.";
-  snapshotOutput.textContent = formatJson({ fixture: payload.fixture });
-  svgPreview.textContent = "SVG preview has not run.";
+function statusClass(status) {
+  return `status-${String(status || "unknown").replaceAll("_", "-")}`;
 }
 
-async function runValidation() {
-  latestValidationReport = await requestJson("/api/validate", {
-    method: "POST",
-    body: JSON.stringify(currentState),
-  });
-  renderValidationReport(latestValidationReport);
-  return latestValidationReport;
+function formatValue(field) {
+  if (field.value === null || field.value === undefined || field.value === "") {
+    return "Not mapped";
+  }
+  return `${field.value}${field.unit ? ` ${field.unit}` : ""}`;
 }
 
-async function renderSvg() {
-  const validationReport = latestValidationReport || (await runValidation());
-  const payload = await requestJson("/api/render-svg", {
-    method: "POST",
-    body: JSON.stringify({
-      state: currentState,
-      validation_report: validationReport,
-      render_options: {
-        viewBox: "0 0 1600 1200",
-        include_review_watermark: true,
-        include_markup_layer: true,
-      },
-    }),
-  });
-  latestRendererMetadata = payload.metadata;
-  svgPreview.innerHTML = payload.svg;
-  if (payload.warnings?.length || payload.blocked_fields?.length) {
-    snapshotOutput.textContent = formatJson({
-      renderer_metadata: payload.metadata,
-      warnings: payload.warnings,
-      blocked_fields: payload.blocked_fields,
+function renderShell(uiState) {
+  state.ui = uiState;
+  const project = uiState.project;
+  const counts = uiState.readiness_report.summary_counts;
+
+  elements.breadcrumb.textContent = project.breadcrumb.join(" / ");
+  elements.savedStatus.textContent = project.saved_status;
+  elements.draftId.textContent = uiState.direct_coil_draft.draft_id;
+  elements.counts.ready.textContent = counts.ready;
+  elements.counts.review.textContent = counts.review_required;
+  elements.counts.blocked.textContent = counts.blocked;
+  elements.counts.unmapped.textContent = counts.unmapped;
+
+  renderDirectCoilGroups(uiState);
+  renderImportSummary(uiState);
+  renderDrawingPreview(uiState);
+  renderDrawingParameters(uiState);
+  renderPerformance(uiState);
+  renderValidation(uiState);
+  updateTabVisibility();
+}
+
+function renderDirectCoilGroups(uiState) {
+  const { groups, fields } = uiState.direct_coil_draft;
+  elements.groups.innerHTML = "";
+  Object.entries(groups).forEach(([groupName, fieldKeys]) => {
+    const section = document.createElement("section");
+    section.className = "field-group";
+    const title = document.createElement("h4");
+    title.textContent = groupName;
+    section.append(title);
+
+    fieldKeys.forEach((key) => {
+      const field = fields[key];
+      const row = document.createElement("div");
+      row.className = `draft-field ${statusClass(field.status)}`;
+      row.dataset.group = groupName;
+      row.innerHTML = `
+        <div>
+          <label>${field.label}</label>
+          <span>${field.field_key}</span>
+        </div>
+        <output>${formatValue(field)}</output>
+        <em>${field.status}</em>
+      `;
+      section.append(row);
     });
-  }
-  return payload;
-}
-
-async function generateSnapshot() {
-  const validationReport = latestValidationReport || (await runValidation());
-  const rendererMetadata = latestRendererMetadata || {};
-  const payload = await requestJson("/api/generate-snapshot", {
-    method: "POST",
-    body: JSON.stringify({
-      state: currentState,
-      validation_report: validationReport,
-      renderer_metadata: rendererMetadata,
-    }),
+    elements.groups.append(section);
   });
-  snapshotOutput.textContent = formatJson(payload);
 }
 
-function showError(target, error) {
-  target.textContent = error instanceof Error ? error.message : String(error);
+function renderImportSummary(uiState) {
+  const summary = uiState.import_summary;
+  elements.candidateStatus.textContent = summary.selected_candidate.review_status;
+  elements.importSummary.innerHTML = `
+    <div><span>Project</span><strong>${uiState.project.project_name}</strong></div>
+    <div><span>Coil tag</span><strong>${uiState.project.coil_tag}</strong></div>
+    <div><span>Candidates</span><strong>${summary.candidate_count}</strong></div>
+    <div><span>Raw data</span><strong>${summary.raw_private_data_included ? "present" : "excluded"}</strong></div>
+  `;
+
+  elements.sourceEvidence.innerHTML = "";
+  uiState.source_evidence.fields.slice(0, 8).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "evidence-row";
+    row.innerHTML = `<span>${item.label}</span><code>${item.evidence_ids.join(", ")}</code>`;
+    elements.sourceEvidence.append(row);
+  });
 }
 
-document.querySelector("#load-default").addEventListener("click", () => {
-  loadDefaultState().catch((error) => showError(snapshotOutput, error));
+function renderDrawingPreview(uiState) {
+  const preview = uiState.drawing_preview;
+  elements.previewStatus.textContent = preview.preview_allowed ? "Preview ready" : "Blocked";
+  elements.previewStatus.className = `status-chip ${preview.preview_allowed ? "status-review-required" : "status-blocked"}`;
+  if (preview.svg) {
+    elements.drawingPreview.innerHTML = preview.svg;
+  } else {
+    elements.drawingPreview.textContent = "Drawing preview blocked until required parameters are supplied.";
+  }
+}
+
+function renderDrawingParameters(uiState) {
+  elements.drawingParameters.innerHTML = "";
+  Object.values(uiState.drawing_parameters.parameters).forEach((parameter) => {
+    const item = document.createElement("div");
+    item.className = `parameter-item ${statusClass(parameter.status)}`;
+    item.innerHTML = `
+      <span>${parameter.key}</span>
+      <strong>${parameter.value ?? "Missing"}</strong>
+      <em>${parameter.mode}</em>
+    `;
+    elements.drawingParameters.append(item);
+  });
+}
+
+function renderPerformance(uiState) {
+  elements.performanceSummary.innerHTML = "";
+  Object.values(uiState.performance_summary).forEach((item) => {
+    const row = document.createElement("div");
+    row.innerHTML = `<span>${item.label}</span><strong>${item.value ?? "Not mapped"} ${item.unit ?? ""}</strong>`;
+    elements.performanceSummary.append(row);
+  });
+}
+
+function renderValidation(uiState) {
+  const validation = uiState.validation;
+  elements.validationSummary.innerHTML = `
+    <div><span>Workflow</span><strong>${validation.workflow_status}</strong></div>
+    <div><span>Preview</span><strong>${validation.preview_allowed ? "allowed" : "blocked"}</strong></div>
+    <div><span>Export</span><strong>${validation.export_status}</strong></div>
+    <div><span>Blocked fields</span><strong>${validation.blocked_fields.length}</strong></div>
+  `;
+}
+
+function updateTabVisibility() {
+  document.querySelectorAll("[data-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === state.activeTab);
+  });
+  document.querySelectorAll(".draft-field").forEach((row) => {
+    const group = row.dataset.group;
+    const show =
+      state.activeTab === "checklist" ||
+      (state.activeTab === "performance" && group.includes("Airside")) ||
+      (state.activeTab === "performance" && group.includes("Refrigerant")) ||
+      (state.activeTab === "drawing" && group.includes("Drawing")) ||
+      state.activeTab === "review";
+    row.hidden = !show;
+  });
+}
+
+async function loadUiState() {
+  const uiState = await requestJson("/api/ui/default");
+  renderShell(uiState);
+}
+
+async function runWorkflow() {
+  const demo = await requestJson("/api/workflow/default-demo");
+  const uiWorkflow = await requestJson("/api/workflow/submittal-to-drawing", {
+    method: "POST",
+    body: JSON.stringify(demo.input),
+  });
+  state.ui.validation = {
+    ...state.ui.validation,
+    ...uiWorkflow.validation,
+    blocked_fields: state.ui.readiness_report.blocked_fields.map((field) => field.field_key),
+  };
+  state.ui.drawing_preview = {
+    svg: uiWorkflow.svg,
+    metadata: uiWorkflow.metadata,
+    preview_allowed: uiWorkflow.validation.preview_allowed,
+    export_allowed: uiWorkflow.validation.export_allowed,
+  };
+  renderShell(state.ui);
+}
+
+document.querySelectorAll("[data-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.activeTab = button.dataset.tab;
+    updateTabVisibility();
+  });
 });
 
-document.querySelector("#run-validation").addEventListener("click", () => {
-  runValidation().catch((error) => showError(validationOutput, error));
+document.querySelector("#analyze").addEventListener("click", () => {
+  runWorkflow().catch((error) => {
+    elements.validationSummary.textContent = error.message;
+  });
 });
 
-document.querySelector("#render-svg").addEventListener("click", () => {
-  renderSvg().catch((error) => showError(validationOutput, error));
+document.querySelector("#apply-draft").addEventListener("click", () => {
+  elements.savedStatus.textContent = "Direct Coil draft refreshed from sanitized workflow";
 });
 
-document.querySelector("#generate-snapshot").addEventListener("click", () => {
-  generateSnapshot().catch((error) => showError(snapshotOutput, error));
+document.querySelector("#update-drawing").addEventListener("click", () => {
+  runWorkflow().catch((error) => {
+    elements.validationSummary.textContent = error.message;
+  });
 });
 
-loadDefaultState().catch((error) => showError(snapshotOutput, error));
+document.querySelector("#save-draft").addEventListener("click", () => {
+  elements.savedStatus.textContent = "Save Draft is a placeholder in Phase 2B.11";
+});
+
+document.querySelector("#calculate-button").addEventListener("click", () => {
+  elements.savedStatus.textContent = "Calculate is not implemented in this review shell";
+});
+
+loadUiState().catch((error) => {
+  document.body.innerHTML = `<main class="load-error"><pre>${error.message}</pre></main>`;
+});
