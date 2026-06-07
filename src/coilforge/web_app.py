@@ -7,6 +7,8 @@ from fastapi.encoders import jsonable_encoder
 from coilforge.adapters import load_sanitized_ez_json
 from coilforge.compatibility import (
     build_compatibility_diff_review_packet,
+    build_decision_matrix_review_surface,
+    build_field_decision_matrix,
     build_mapping_rule_registry,
     build_reconciliation_plan,
     compare_submittal_and_ez,
@@ -16,6 +18,7 @@ from coilforge.phase2a.fixtures import load_default_dx_header1_fixture
 from coilforge.phase2a.ui_state import build_phase2b_default_ui_state
 from coilforge.phase2a.renderer import DEFAULT_VIEWBOX, REVIEW_WATERMARK
 from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate_fixture
+from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
     run_submittal_to_direct_draft_workflow,
@@ -49,6 +52,32 @@ async def compatibility_default_review():
 @app.get("/api/compatibility/default-demo")
 async def compatibility_default_demo():
     return jsonable_encoder(_build_compatibility_payload(include_packet=True))
+
+
+@app.get("/api/compatibility/decision-matrix")
+async def compatibility_decision_matrix():
+    payload = _build_compatibility_payload()
+    matrix = build_field_decision_matrix(
+        payload["report"],
+        payload["registry"],
+        payload["reconciliation_plan"],
+    )
+    return jsonable_encoder(matrix.to_dict())
+
+
+@app.get("/api/compatibility/decision-review")
+async def compatibility_decision_review():
+    payload = _build_compatibility_payload()
+    matrix = build_field_decision_matrix(
+        payload["report"],
+        payload["registry"],
+        payload["reconciliation_plan"],
+    )
+    review = build_decision_matrix_review_surface(
+        matrix,
+        build_po_logic_intake_summary(),
+    )
+    return jsonable_encoder(review.to_dict())
 
 
 @app.post("/api/compatibility/compare")
