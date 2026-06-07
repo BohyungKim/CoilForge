@@ -6,6 +6,12 @@ from coilforge.compatibility.mapping_rules import (
     SourceMappingRule,
     build_mapping_rule_registry,
 )
+from coilforge.compatibility.reconciliation import (
+    ReconciliationDecision,
+    ReconciliationPlan,
+    ReconciliationSummary,
+    build_reconciliation_plan,
+)
 from coilforge.compatibility.regression import (
     CompatibilityComparison,
     CompatibilityRegressionReport,
@@ -20,8 +26,12 @@ __all__ = [
     "CompatibilitySourceSummary",
     "MappingRuleRegistry",
     "MappingRuleRegistrySummary",
+    "ReconciliationDecision",
+    "ReconciliationPlan",
+    "ReconciliationSummary",
     "SourceMappingRule",
     "build_mapping_rule_registry",
     "build_compatibility_diff_review_packet",
+    "build_reconciliation_plan",
     "compare_submittal_and_ez",
 ]
