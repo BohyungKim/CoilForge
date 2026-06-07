@@ -21,6 +21,8 @@ const elements = {
   compatibilityStatus: document.querySelector("#compatibility-status"),
   compatibilitySummary: document.querySelector("#compatibility-summary"),
   compatibilityDecisions: document.querySelector("#compatibility-decisions"),
+  decisionCaptureSummary: document.querySelector("#decision-capture-summary"),
+  decisionCaptureItems: document.querySelector("#decision-capture-items"),
   performanceSummary: document.querySelector("#performance-summary"),
   validationSummary: document.querySelector("#validation-summary"),
   blockedFields: document.querySelector("#blocked-fields"),
@@ -81,6 +83,7 @@ function renderShell(uiState) {
   renderDrawingPreview(uiState);
   renderDrawingParameters(uiState);
   renderCompatibilityReview(uiState);
+  renderDecisionCapture(uiState);
   renderPerformance(uiState);
   renderValidation(uiState);
   renderBlockedFields(uiState);
@@ -294,6 +297,39 @@ function compatibilityRowClass(decision, comparison) {
   return "status-unmapped";
 }
 
+function renderDecisionCapture(uiState) {
+  const capture = uiState.decision_capture;
+  if (!capture || !elements.decisionCaptureSummary || !elements.decisionCaptureItems) {
+    return;
+  }
+  const summary = capture.summary || {};
+  const baseline = capture.cd_bf_tf_ch_status || {};
+  elements.decisionCaptureSummary.innerHTML = `
+    <div><span>Packet</span><strong>${summary.decision_packet_status}</strong></div>
+    <div><span>Drawing fields</span><strong>${summary.drawing_impacting ?? 0}</strong></div>
+    <div><span>POs supported</span><strong>${summary.pos_supported ?? 0}</strong></div>
+    <div><span>POs review</span><strong>${summary.pos_needs_john_review ?? 0}</strong></div>
+    <div><span>CD/BF/TF/CH</span><strong>${Object.keys(baseline).join(", ")}</strong></div>
+    <div><span>Export after decision</span><strong>${capture.export_allowed ? "allowed" : "disabled"}</strong></div>
+  `;
+  elements.decisionCaptureItems.innerHTML = "";
+  (capture.items || []).slice(0, 12).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = `decision-capture-row ${item.drawing_impact ? "status-review-required" : "status-unmapped"}`;
+    row.innerHTML = `
+      <div>
+        <strong>${item.field_key}</strong>
+        <span>${item.comparison_category} / ${item.current_approval_state}</span>
+      </div>
+      <select disabled aria-label="${item.field_key} proposed decision">
+        <option>${item.proposed_decision}</option>
+      </select>
+      <em>${item.proposed_decision_status}</em>
+    `;
+    elements.decisionCaptureItems.append(row);
+  });
+}
+
 function renderPerformance(uiState) {
   elements.performanceSummary.innerHTML = "";
   Object.values(uiState.performance_summary).forEach((item) => {
@@ -442,16 +478,18 @@ function sourceEvidenceFields(readiness) {
 }
 
 async function loadDefaultDemoWorkflow() {
-  const [uiState, demo, compatibilityReview] = await Promise.all([
+  const [uiState, demo, compatibilityReview, decisionCapture] = await Promise.all([
     requestJson("/api/ui/default"),
     requestJson("/api/workflow/default-demo"),
     requestJson("/api/compatibility/default-demo"),
+    requestJson("/api/compatibility/decision-capture"),
   ]);
   state.defaultInput = structuredClone(demo.input);
   state.manualDrawingMode = false;
   renderShell({
     ...uiState,
     compatibility_review: compatibilityReview,
+    decision_capture: decisionCapture,
   });
 }
 

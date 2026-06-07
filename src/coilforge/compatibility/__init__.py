@@ -16,6 +16,13 @@ from coilforge.compatibility.decision_review import (
     DecisionReviewItem,
     build_decision_matrix_review_surface,
 )
+from coilforge.compatibility.decision_capture import (
+    DecisionCaptureItem,
+    DecisionCapturePacket,
+    DecisionCaptureSection,
+    build_decision_capture_template,
+    build_john_decision_capture_packet,
+)
 from coilforge.compatibility.reconciliation import (
     ReconciliationDecision,
     ReconciliationPlan,
@@ -40,6 +47,9 @@ __all__ = [
     "FieldDecisionMatrix",
     "DecisionMatrixReviewSurface",
     "DecisionReviewItem",
+    "DecisionCaptureItem",
+    "DecisionCapturePacket",
+    "DecisionCaptureSection",
     "MappingRuleRegistry",
     "MappingRuleRegistrySummary",
     "ReconciliationDecision",
@@ -49,6 +59,8 @@ __all__ = [
     "build_mapping_rule_registry",
     "build_field_decision_matrix",
     "build_decision_matrix_review_surface",
+    "build_decision_capture_template",
+    "build_john_decision_capture_packet",
     "build_compatibility_diff_review_packet",
     "build_reconciliation_plan",
     "compare_submittal_and_ez",

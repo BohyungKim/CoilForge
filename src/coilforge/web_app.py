@@ -7,8 +7,10 @@ from fastapi.encoders import jsonable_encoder
 from coilforge.adapters import load_sanitized_ez_json
 from coilforge.compatibility import (
     build_compatibility_diff_review_packet,
+    build_decision_capture_template,
     build_decision_matrix_review_surface,
     build_field_decision_matrix,
+    build_john_decision_capture_packet,
     build_mapping_rule_registry,
     build_reconciliation_plan,
     compare_submittal_and_ez,
@@ -67,6 +69,23 @@ async def compatibility_decision_matrix():
 
 @app.get("/api/compatibility/decision-review")
 async def compatibility_decision_review():
+    return jsonable_encoder(_build_decision_review_surface().to_dict())
+
+
+@app.get("/api/compatibility/decision-capture")
+async def compatibility_decision_capture():
+    review = _build_decision_review_surface()
+    capture = build_john_decision_capture_packet(review)
+    return jsonable_encoder(capture.to_dict())
+
+
+@app.get("/api/compatibility/decision-capture/template")
+async def compatibility_decision_capture_template():
+    review = _build_decision_review_surface()
+    return jsonable_encoder(build_decision_capture_template(review))
+
+
+def _build_decision_review_surface():
     payload = _build_compatibility_payload()
     matrix = build_field_decision_matrix(
         payload["report"],
@@ -77,7 +96,7 @@ async def compatibility_decision_review():
         matrix,
         build_po_logic_intake_summary(),
     )
-    return jsonable_encoder(review.to_dict())
+    return review
 
 
 @app.post("/api/compatibility/compare")
