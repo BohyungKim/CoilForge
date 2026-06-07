@@ -3,7 +3,11 @@ const state = {
   defaultInput: null,
   activeTab: "checklist",
   manualDrawingMode: false,
+  compatibilityFilter: "all",
 };
+
+const LEGACY_COMPATIBILITY_ENDPOINT = "/api/compatibility/default-review";
+const MATCHED_REVIEW_ACTION = "use_matched_candidate_for_review";
 
 const elements = {
   breadcrumb: document.querySelector("#breadcrumb"),
@@ -14,6 +18,9 @@ const elements = {
   sourceEvidence: document.querySelector("#source-evidence"),
   drawingPreview: document.querySelector("#drawing-preview"),
   drawingParameters: document.querySelector("#drawing-parameters"),
+  compatibilityStatus: document.querySelector("#compatibility-status"),
+  compatibilitySummary: document.querySelector("#compatibility-summary"),
+  compatibilityDecisions: document.querySelector("#compatibility-decisions"),
   performanceSummary: document.querySelector("#performance-summary"),
   validationSummary: document.querySelector("#validation-summary"),
   blockedFields: document.querySelector("#blocked-fields"),
@@ -73,6 +80,7 @@ function renderShell(uiState) {
   renderImportSummary(uiState);
   renderDrawingPreview(uiState);
   renderDrawingParameters(uiState);
+  renderCompatibilityReview(uiState);
   renderPerformance(uiState);
   renderValidation(uiState);
   renderBlockedFields(uiState);
@@ -188,6 +196,104 @@ function renderDrawingParameters(uiState) {
   });
 }
 
+function renderCompatibilityReview(uiState) {
+  const review = uiState.compatibility_review;
+  if (!review) {
+    elements.compatibilityStatus.textContent = "Unavailable";
+    elements.compatibilityDecisions.textContent = "Compatibility review data not loaded.";
+    return;
+  }
+  const report = review.report;
+  const registry = review.registry;
+  const plan = review.reconciliation_plan;
+  const safeSummary = review.safe_summary || {};
+  elements.compatibilityStatus.textContent = plan.policy_status;
+  elements.compatibilityStatus.className = "status-chip status-review-required";
+  elements.compatibilitySummary.innerHTML = `
+    <div><span>Case</span><strong>${report.case_id}</strong></div>
+    <div><span>Exact matches</span><strong>${report.category_counts.exact_match}</strong></div>
+    <div><span>Submittal only</span><strong>${report.category_counts.submittal_only}</strong></div>
+    <div><span>EZ only</span><strong>${report.category_counts.ez_only}</strong></div>
+    <div><span>Value mismatches</span><strong>${report.category_counts.value_mismatch}</strong></div>
+    <div><span>Unit mismatches</span><strong>${report.category_counts.unit_mismatch}</strong></div>
+    <div><span>Status mismatches</span><strong>${report.category_counts.status_mismatch}</strong></div>
+    <div><span>Blocked mismatches</span><strong>${report.category_counts.blocked_mismatch}</strong></div>
+    <div><span>Required issues</span><strong>${safeSummary.required_field_issues?.length ?? 0}</strong></div>
+    <div><span>Drawing issues</span><strong>${safeSummary.drawing_impacting_issues?.length ?? 0}</strong></div>
+    <div><span>Both-source rules</span><strong>${registry.summary.both_sources}</strong></div>
+    <div><span>Export</span><strong>${plan.export_allowed ? "allowed" : "disabled"}</strong></div>
+  `;
+  elements.compatibilityDecisions.innerHTML = "";
+  const decisionsByField = Object.fromEntries(plan.decisions.map((decision) => [decision.field_key, decision]));
+  filteredCompatibilityComparisons(report.comparisons).slice(0, 30).forEach((comparison) => {
+    const decision = decisionsByField[comparison.field_key] || {};
+    const row = document.createElement("div");
+    row.className = `compatibility-row ${compatibilityRowClass(decision, comparison)}`;
+    row.dataset.action = decision.action || "";
+    row.dataset.category = comparison.category;
+    row.innerHTML = `
+      <div>
+        <strong>${comparison.field_key}</strong>
+        <span>${comparison.canonical_path}</span>
+      </div>
+      <output>${compatibilityDisplayValue(comparison, decision)}</output>
+      <em>${comparison.category} / ${decision.result_status || "review_required"}</em>
+    `;
+    elements.compatibilityDecisions.append(row);
+  });
+}
+
+function filteredCompatibilityComparisons(comparisons) {
+  if (state.compatibilityFilter === "matched") {
+    return comparisons.filter((comparison) => comparison.status === "match");
+  }
+  if (state.compatibilityFilter === "exact_match") {
+    return comparisons.filter((comparison) => comparison.category === "exact_match");
+  }
+  if (state.compatibilityFilter === "source_only") {
+    return comparisons.filter((comparison) =>
+      ["submittal_only", "ez_only"].includes(comparison.category),
+    );
+  }
+  if (state.compatibilityFilter === "mismatch") {
+    return comparisons.filter((comparison) =>
+      ["value_mismatch", "unit_mismatch", "status_mismatch", "evidence_mismatch"].includes(
+        comparison.category,
+      ),
+    );
+  }
+  if (state.compatibilityFilter === "blocked") {
+    return comparisons.filter((comparison) => comparison.category === "blocked_mismatch");
+  }
+  if (state.compatibilityFilter === "held") {
+    return comparisons.filter((comparison) => comparison.category !== "exact_match");
+  }
+  if (state.compatibilityFilter === "unmapped") {
+    return comparisons.filter((comparison) => comparison.status === "missing_both");
+  }
+  return comparisons;
+}
+
+function compatibilityDisplayValue(comparison, decision) {
+  if (comparison.category === "exact_match") {
+    return `${comparison.submittal_value}${comparison.submittal_unit ? ` ${comparison.submittal_unit}` : ""}`;
+  }
+  if (decision.candidate_value !== null && decision.candidate_value !== undefined) {
+    return decision.candidate_value;
+  }
+  return "Review required";
+}
+
+function compatibilityRowClass(decision, comparison) {
+  if (comparison.category === "exact_match") {
+    return "status-review-required";
+  }
+  if ((decision.action || "").includes("block_") || comparison.category.includes("mismatch")) {
+    return "status-blocked";
+  }
+  return "status-unmapped";
+}
+
 function renderPerformance(uiState) {
   elements.performanceSummary.innerHTML = "";
   Object.values(uiState.performance_summary).forEach((item) => {
@@ -233,6 +339,7 @@ function updateTabVisibility() {
       (state.activeTab === "performance" && group.includes("Airside")) ||
       (state.activeTab === "performance" && group.includes("Refrigerant")) ||
       (state.activeTab === "drawing" && group.includes("Drawing")) ||
+      state.activeTab === "compatibility" ||
       state.activeTab === "review";
     row.hidden = !show;
   });
@@ -335,13 +442,17 @@ function sourceEvidenceFields(readiness) {
 }
 
 async function loadDefaultDemoWorkflow() {
-  const [uiState, demo] = await Promise.all([
+  const [uiState, demo, compatibilityReview] = await Promise.all([
     requestJson("/api/ui/default"),
     requestJson("/api/workflow/default-demo"),
+    requestJson("/api/compatibility/default-demo"),
   ]);
   state.defaultInput = structuredClone(demo.input);
   state.manualDrawingMode = false;
-  renderShell(uiState);
+  renderShell({
+    ...uiState,
+    compatibility_review: compatibilityReview,
+  });
 }
 
 async function runWorkflowFromCurrentState() {
@@ -411,6 +522,16 @@ document.querySelectorAll("[data-tab]").forEach((button) => {
   button.addEventListener("click", () => {
     state.activeTab = button.dataset.tab;
     updateTabVisibility();
+  });
+});
+
+document.querySelectorAll("[data-compat-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.compatibilityFilter = button.dataset.compatFilter;
+    document.querySelectorAll("[data-compat-filter]").forEach((filterButton) => {
+      filterButton.classList.toggle("active", filterButton === button);
+    });
+    renderCompatibilityReview(state.ui);
   });
 });
 

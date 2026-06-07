@@ -1,0 +1,26 @@
+{
+  "case_id": "SCC-SANITIZED-DX-H1-001__EZC-0001",
+  "category_counts": {
+    "exact_match": 8,
+    "submittal_only": 4,
+    "ez_only": 6,
+    "value_mismatch": 0,
+    "unit_mismatch": 0,
+    "status_mismatch": 34,
+    "evidence_mismatch": 0,
+    "blocked_mismatch": 0
+  },
+  "required_field_issues": ["CD", "BF", "TF", "CH"],
+  "drawing_impacting_issue_count": 14,
+  "reconciliation_summary": {
+    "total_fields": 52,
+    "matched_candidates": 8,
+    "mismatches_held": 0,
+    "source_only_held": 10,
+    "blocked_mismatches": 0,
+    "unmapped": 34,
+    "downstream_allowed": 0,
+    "review_required": 52
+  },
+  "export_allowed": false
+}

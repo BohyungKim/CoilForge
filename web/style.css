@@ -451,6 +451,90 @@ h4 {
   margin-top: 12px;
 }
 
+.compatibility-card {
+  display: grid;
+  gap: 12px;
+}
+
+.compatibility-summary {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compatibility-summary div {
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  padding: 8px;
+}
+
+.compatibility-summary span,
+.compatibility-row span,
+.compatibility-row em {
+  color: #6b7888;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.compatibility-summary strong,
+.compatibility-row strong,
+.compatibility-row output {
+  font-size: 13px;
+}
+
+.compatibility-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.compat-filter {
+  background: #dfe6ee;
+  color: #243246;
+}
+
+.compat-filter.active {
+  background: #10233a;
+  color: #ffffff;
+}
+
+.compatibility-decisions {
+  display: grid;
+  gap: 8px;
+  max-height: 440px;
+  overflow: auto;
+}
+
+.compatibility-row {
+  align-items: center;
+  border: 1px solid #d9e2ec;
+  border-left: 4px solid #9aa9bb;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr minmax(88px, auto);
+  min-height: 58px;
+  padding: 8px;
+}
+
+.compatibility-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.compatibility-row output {
+  font-weight: 800;
+  text-align: right;
+}
+
+.compatibility-row em {
+  grid-column: 1 / -1;
+}
+
 .parameter-item {
   border: 1px solid #d9e2ec;
   border-radius: 6px;
@@ -575,8 +659,32 @@ h4 {
 }
 
 @media (max-width: 720px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .workspace {
     padding: 12px 12px 100px;
+  }
+
+  .app-shell,
+  .sidebar,
+  .workspace,
+  .topbar,
+  .topbar-actions,
+  .content-grid,
+  .inspector-column,
+  .input-column {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .breadcrumb,
+  .topbar h2,
+  .saved-status {
+    overflow-wrap: anywhere;
   }
 
   .status-ribbon,
@@ -604,5 +712,14 @@ h4 {
 
   .parameter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compatibility-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .drawing-preview svg {
+    min-width: 0;
+    width: 100%;
   }
 }

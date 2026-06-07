@@ -30,6 +30,7 @@
           <button class="side-link active" data-tab="checklist" type="button">Checklist / Input</button>
           <button class="side-link" data-tab="performance" type="button">Performance</button>
           <button class="side-link" data-tab="drawing" type="button">Drawing</button>
+          <button class="side-link" data-tab="compatibility" type="button">Compatibility</button>
           <button class="side-link" data-tab="review" type="button">Review & Export</button>
         </nav>
       </aside>
@@ -54,6 +55,7 @@
           <button class="tab-button active" data-tab="checklist" type="button">Checklist / Input</button>
           <button class="tab-button" data-tab="performance" type="button">Performance</button>
           <button class="tab-button" data-tab="drawing" type="button">Drawing</button>
+          <button class="tab-button" data-tab="compatibility" type="button">Compatibility</button>
           <button class="tab-button" data-tab="review" type="button">Review & Export</button>
         </section>
 
@@ -131,6 +133,25 @@
             <section class="inspector-card">
               <h3>Drawing Parameters</h3>
               <div id="drawing-parameters" class="parameter-grid"></div>
+            </section>
+
+            <section class="inspector-card compatibility-card">
+              <div class="card-title-row">
+                <h3>Compatibility Review</h3>
+                <span id="compatibility-status" class="status-chip">Loading</span>
+              </div>
+              <div id="compatibility-summary" class="compatibility-summary"></div>
+              <div class="compatibility-filter" role="group" aria-label="Compatibility field filters">
+                <button class="compat-filter active" data-compat-filter="all" type="button">All</button>
+                <button class="compat-filter" data-compat-filter="exact_match" type="button">Exact</button>
+                <button class="compat-filter" data-compat-filter="source_only" type="button">Source only</button>
+                <button class="compat-filter" data-compat-filter="mismatch" type="button">Mismatch</button>
+                <button class="compat-filter" data-compat-filter="blocked" type="button">Blocked</button>
+                <button class="compat-filter" data-compat-filter="matched" type="button">Matched</button>
+                <button class="compat-filter" data-compat-filter="held" type="button">Held</button>
+                <button class="compat-filter" data-compat-filter="unmapped" type="button">Unmapped</button>
+              </div>
+              <div id="compatibility-decisions" class="compatibility-decisions"></div>
             </section>
 
             <section class="inspector-card">

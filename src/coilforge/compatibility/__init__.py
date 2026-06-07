@@ -13,6 +13,7 @@ from coilforge.compatibility.reconciliation import (
     build_reconciliation_plan,
 )
 from coilforge.compatibility.regression import (
+    CompatibilityCategory,
     CompatibilityComparison,
     CompatibilityRegressionReport,
     CompatibilitySourceSummary,
@@ -22,6 +23,7 @@ from coilforge.compatibility.review_packet import build_compatibility_diff_revie
 
 __all__ = [
     "CompatibilityComparison",
+    "CompatibilityCategory",
     "CompatibilityRegressionReport",
     "CompatibilitySourceSummary",
     "MappingRuleRegistry",
