@@ -37,6 +37,10 @@ from coilforge.compatibility.regression import (
     compare_submittal_and_ez,
 )
 from coilforge.compatibility.review_packet import build_compatibility_diff_review_packet
+from coilforge.compatibility.manual_review_export import (
+    build_manual_decision_capture_template,
+    build_manual_review_checklist,
+)
 
 __all__ = [
     "CompatibilityComparison",
@@ -62,6 +66,8 @@ __all__ = [
     "build_decision_capture_template",
     "build_john_decision_capture_packet",
     "build_compatibility_diff_review_packet",
+    "build_manual_decision_capture_template",
+    "build_manual_review_checklist",
     "build_reconciliation_plan",
     "compare_submittal_and_ez",
 ]
