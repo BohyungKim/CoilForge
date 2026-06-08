@@ -19,6 +19,8 @@ from coilforge.phase2a.app import app
 from coilforge.phase2a.fixtures import load_default_dx_header1_fixture
 from coilforge.phase2a.ui_state import build_phase2b_default_ui_state
 from coilforge.phase2a.renderer import DEFAULT_VIEWBOX, REVIEW_WATERMARK
+from coilforge.review import build_default_review_packet, build_review_packet
+from coilforge.submittal.po_based_intake import build_po_based_intake
 from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate_fixture
 from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
@@ -83,6 +85,29 @@ async def compatibility_decision_capture():
 async def compatibility_decision_capture_template():
     review = _build_decision_review_surface()
     return jsonable_encoder(build_decision_capture_template(review))
+
+
+@app.get("/api/review/default-packet")
+async def review_default_packet():
+    return jsonable_encoder(build_default_review_packet().to_dict())
+
+
+@app.post("/api/review/build-packet")
+async def review_build_packet(request: dict[str, Any] = Body(default_factory=dict)):
+    payload = request or {}
+    workflow_output = payload.get("workflow_output")
+    if workflow_output is None:
+        workflow_input = payload.get("workflow_input") or payload.get("input")
+        if workflow_input:
+            workflow_output = run_submittal_to_drawing_workflow(workflow_input)
+    intake_payload = payload.get("intake_input") or payload.get("workflow_input") or payload.get("input")
+    intake = build_po_based_intake(intake_payload or {})
+    return jsonable_encoder(
+        build_review_packet(
+            workflow_output,
+            intake_result=intake,
+        ).to_dict()
+    )
 
 
 def _build_decision_review_surface():
