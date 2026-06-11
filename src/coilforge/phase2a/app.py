@@ -29,6 +29,15 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
 
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def _error_response(
     code: str,
     message: str,
@@ -66,12 +75,17 @@ def _validation_error_response(exc: ValidationError) -> JSONResponse:
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     index_path = WEB_DIR / "index.html"
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+    }
     try:
-        return HTMLResponse(index_path.read_text(encoding="utf-8"))
+        return HTMLResponse(index_path.read_text(encoding="utf-8"), headers=headers)
     except FileNotFoundError:
         return HTMLResponse(
             "<h1>CoilForge Phase 2A</h1><p>Local UI is missing.</p>",
             status_code=500,
+            headers=headers,
         )
 
 

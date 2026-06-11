@@ -17,6 +17,12 @@ from coilforge.submittal.po_logic_bridge import (
     build_po_logic_intake_summary,
     default_po_logic_source_paths,
 )
+from coilforge.submittal.pdf_intake import (
+    PdfCoilIntakeResult,
+    PdfCoilIntakeSummary,
+    extract_coil_candidate_from_pdf_bytes,
+    extract_coil_lines_from_pdf_text,
+)
 
 __all__ = [
     "CandidateReviewStatus",
@@ -25,8 +31,12 @@ __all__ = [
     "UnmappedField",
     "PoLogicIntakeSummary",
     "PoLogicRuleSummary",
+    "PdfCoilIntakeResult",
+    "PdfCoilIntakeSummary",
     "build_po_logic_intake_summary",
     "default_po_logic_source_paths",
+    "extract_coil_candidate_from_pdf_bytes",
+    "extract_coil_lines_from_pdf_text",
     "extract_submittal_candidate_from_structured",
     "extract_submittal_candidates_from_text",
     "load_submittal_candidate_fixture",

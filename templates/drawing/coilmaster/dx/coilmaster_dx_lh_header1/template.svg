@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" role="img" aria-labelledby="template-title template-desc">
+  <title id="template-title">CoilMaster DX LH Header 1 review template</title>
+  <desc id="template-desc">Template-first review drawing populated through stable slot ids. Review aid only.</desc>
+  <defs>
+    <style>
+      .sheet { fill: #fff; stroke: #1f2937; stroke-width: 3; }
+      .grid { fill: none; stroke: #c6c6c6; stroke-width: 1; }
+      .geometry { fill: #fbfbfb; stroke: #bdbdbd; stroke-width: 2; }
+      .dimension { fill: #0d0877; font: 700 22px Arial, sans-serif; letter-spacing: 0; }
+      .panel-heading { fill: #111827; font: 18px Arial, sans-serif; letter-spacing: 0; }
+      .panel-text { fill: #111827; font: 14px Arial, sans-serif; letter-spacing: 0; }
+      .title-text { fill: #111827; font: 16px Arial, sans-serif; letter-spacing: 0; }
+      .callout { fill: #111827; font: 800 20px Arial, sans-serif; letter-spacing: 0; }
+      .watermark { fill: #b91c1c; font: 800 22px Arial, sans-serif; letter-spacing: 0; }
+    </style>
+  </defs>
+  <rect x="90" y="70" width="1410" height="1085" class="sheet"/>
+  <line x1="1320" y1="70" x2="1320" y2="1005" class="grid"/>
+  <line x1="90" y1="1005" x2="1500" y2="1005" class="grid"/>
+
+  <g id="zone.top_left_callouts">
+    <text id="slot.CALLOUT_1" x="98" y="100" class="callout">{{slot.CALLOUT_1}}</text>
+    <text id="slot.CALLOUT_2" x="98" y="128" class="callout">{{slot.CALLOUT_2}}</text>
+    <text id="slot.CALLOUT_3" x="98" y="156" class="callout">{{slot.CALLOUT_3}}</text>
+    <text id="slot.CALLOUT_4" x="98" y="184" class="callout">{{slot.CALLOUT_4}}</text>
+  </g>
+
+  <g id="zone.front_view">
+    <rect x="438" y="626" width="290" height="214" class="geometry"/>
+    <rect x="462" y="629" width="240" height="200" class="geometry"/>
+    <text id="slot.FL" x="560" y="540" class="dimension">{{slot.FL}} FL</text>
+    <text id="slot.OAL" x="595" y="588" class="dimension">{{slot.OAL}} OAL</text>
+    <text id="slot.RB" x="408" y="508" class="dimension">{{slot.RB}} RB</text>
+    <text id="slot.FH" x="575" y="742" class="dimension">{{slot.FH}} FH</text>
+    <text id="slot.CH" x="435" y="736" class="dimension">{{slot.CH}} CH</text>
+    <text id="slot.TF" x="588" y="670" class="dimension">{{slot.TF}} TF</text>
+    <text id="slot.BF" x="498" y="824" class="dimension">{{slot.BF}} BF</text>
+    <text id="slot.RF" x="490" y="928" class="dimension">{{slot.RF}} RF</text>
+    <text id="slot.HF" x="598" y="928" class="dimension">{{slot.HF}} HF</text>
+    <text id="slot.CL" x="538" y="968" class="dimension">{{slot.CL}} CL</text>
+  </g>
+
+  <g id="zone.header_view">
+    <rect x="462" y="386" width="255" height="56" class="geometry"/>
+    <text id="slot.HD2" x="582" y="362" class="dimension">{{slot.HD2}} HD2</text>
+    <text id="slot.CD" x="606" y="422" class="dimension">{{slot.CD}} CD</text>
+    <text id="slot.HDx1" x="574" y="454" class="dimension">{{slot.HDx1}} HDx1</text>
+    <text id="slot.SL2" x="898" y="378" class="dimension">{{slot.SL2}} SL2</text>
+    <text id="slot.S1" x="810" y="606" class="dimension">{{slot.S1}} S1</text>
+    <text id="slot.I1" x="798" y="684" class="dimension">{{slot.I1}} I1</text>
+    <text id="slot.O2" x="1040" y="846" class="dimension">{{slot.O2}} O2</text>
+    <text id="slot.R2" x="1022" y="878" class="dimension">{{slot.R2}} R2</text>
+    <text x="942" y="482" class="panel-text">AIRFLOW</text>
+  </g>
+
+  <g id="zone.right_spec_panel">
+    <text x="1330" y="91" class="panel-heading">TUBE MATERIAL</text>
+    <text id="slot.TUBE_MATERIAL" x="1330" y="118" class="panel-text">{{slot.TUBE_MATERIAL}}</text>
+    <text x="1330" y="166" class="panel-heading">FIN MATERIAL</text>
+    <text id="slot.FIN_MATERIAL" x="1330" y="196" class="panel-text">{{slot.FIN_MATERIAL}}</text>
+    <text x="1330" y="278" class="panel-heading">CASING MATERIAL</text>
+    <text id="slot.CASING_MATERIAL" x="1330" y="308" class="panel-text">{{slot.CASING_MATERIAL}}</text>
+    <text x="1330" y="356" class="panel-heading">COIL TUBE FACE</text>
+    <text id="slot.COIL_TUBE_FACE" x="1330" y="386" class="panel-text">{{slot.COIL_TUBE_FACE}}</text>
+    <text x="1330" y="416" class="panel-heading">CIRCUITING</text>
+    <text id="slot.CIRCUITING" x="1330" y="466" class="panel-text">{{slot.CIRCUITING}}</text>
+    <text x="1330" y="548" class="panel-heading">HEADER MATERIAL</text>
+    <text id="slot.HEADER_MATERIAL" x="1330" y="578" class="panel-text">{{slot.HEADER_MATERIAL}}</text>
+    <text x="1330" y="628" class="panel-heading">DISTRIBUTORS</text>
+    <text id="slot.DISTRIBUTORS" x="1330" y="656" class="panel-text">{{slot.DISTRIBUTORS}}</text>
+    <text x="1330" y="690" class="panel-heading">RETURN CONN SIZE</text>
+    <text id="slot.RETURN_CONN_SIZE" x="1330" y="718" class="panel-text">{{slot.RETURN_CONN_SIZE}}</text>
+  </g>
+
+  <g id="zone.bottom_dimension_table">
+    <text x="105" y="1028" class="title-text">ROWS</text>
+    <text id="slot.ROWS" x="105" y="1052" class="title-text">{{slot.ROWS}}</text>
+    <text id="slot.TAG" x="985" y="1085" class="title-text">Tag: {{slot.TAG}}</text>
+    <text id="slot.MODEL_NUMBER" x="1225" y="1150" class="title-text">{{slot.MODEL_NUMBER}}</text>
+    <text id="slot.NOTES" x="610" y="1085" class="title-text">NOTES: {{slot.NOTES}}</text>
+  </g>
+
+  <g id="zone.review_metadata">
+    <text x="105" y="230" class="watermark">REVIEW AID - NOT FOR MANUFACTURING</text>
+    <text x="105" y="252" class="panel-text">template_id=coilmaster_dx_lh_header1 | export_allowed=false | production_approved=false</text>
+  </g>
+</svg>

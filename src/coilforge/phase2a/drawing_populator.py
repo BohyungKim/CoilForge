@@ -23,11 +23,11 @@ def build_phase2a_state_from_drawing_intent(
         fin_length=intent.finned_length,
         fin_density_fpi=intent.fins_per_inch,
         casing_height=float(params["CH"].value),
-        casing_length=float(params.get("SL").value or intent.finned_length),
+        casing_length=float(title.get("casing_length") or intent.finned_length),
         casing_depth=float(params["CD"].value),
         top_flange=float(params["TF"].value),
         bottom_flange=float(params["BF"].value),
-        return_bend_allowance=float(params.get("R").value or 0),
+        return_bend_allowance=float(title.get("return_bend_allowance") or 0),
         coil_hand=intent.coil_hand,
         airflow_direction=intent.airflow_direction,
         return_connection_size=intent.return_connection_size,
@@ -35,6 +35,24 @@ def build_phase2a_state_from_drawing_intent(
         notes=list(intent.notes),
         release_status="review_aid_only",
         drawing_status="generated_with_warnings" if intent.preview_allowed else "generation_blocked",
+        observed_oal=title.get("observed_oal"),
+        return_header_diameter=title.get("return_header_diameter")
+        or _drawing_param_value(params, "HD"),
+        distributor_header_diameter=title.get("distributor_header_diameter")
+        or _drawing_param_value(params, "HD"),
+        return_stub_length=title.get("return_stub_length") or _drawing_param_value(params, "SL"),
+        supply_offset_i1=title.get("supply_offset_i1") or _drawing_param_value(params, "I"),
+        supply_spacing_s1=title.get("supply_spacing_s1") or _drawing_param_value(params, "S"),
+        return_offset_o2=title.get("return_offset_o2") or _drawing_param_value(params, "O"),
+        return_spacing_r2=title.get("return_spacing_r2") or _drawing_param_value(params, "R"),
+        header_face=title.get("header_face") or _drawing_param_value(params, "HF"),
+        return_face=title.get("return_face") or _drawing_param_value(params, "RF"),
+        coil_id=title.get("coil_id", ""),
+        item_number=title.get("item_number", "001"),
+        revision=title.get("revision", "A"),
+        quantity=title.get("quantity", "1"),
+        drawing_notes=title.get("drawing_notes"),
+        header_assemblies=title.get("header_assemblies"),
     )
 
 
@@ -71,3 +89,10 @@ def render_drawing_intent_preview(intent: DrawingIntent) -> DrawingPreviewResult
         warnings=list(rendered.warnings),
         blocked_fields=list(rendered.blocked_fields),
     )
+
+
+def _drawing_param_value(params, key: str):
+    parameter = params.get(key)
+    if parameter is None:
+        return None
+    return parameter.value

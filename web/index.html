@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CoilForge Direct Coil Draft</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=phase2f-phwc-hot-water-layout-20260609-004" />
   </head>
   <body>
     <div class="legacy-test-labels" aria-hidden="true">
@@ -21,9 +21,8 @@
         </div>
         <label class="search-label" for="project-search">Project search</label>
         <input id="project-search" class="project-search" type="search" value="Sanitized demo" />
-        <nav class="project-tree" aria-label="Project tree">
+        <nav id="project-tree" class="project-tree" aria-label="Project tree">
           <button class="tree-item active" type="button">Sanitized CoilForge Demo</button>
-          <button class="tree-item child" type="button">COIL-TAG-001</button>
           <button class="tree-item child muted" type="button">DX Header 1 Draft</button>
         </nav>
         <nav class="side-nav" aria-label="Workspace sections">
@@ -43,11 +42,6 @@
           </div>
           <div class="topbar-actions">
             <span id="saved-status" class="saved-status">Draft saved locally</span>
-            <select id="revision-selector" aria-label="Revision selector">
-              <option>Rev A - Draft</option>
-            </select>
-            <button id="calculate-button" class="secondary-action" type="button">Calculate</button>
-            <button id="export-button" class="disabled-action" type="button" disabled>Export</button>
           </div>
         </header>
 
@@ -76,6 +70,37 @@
             <span class="metric-label">Unmapped</span>
             <strong id="count-unmapped">0</strong>
           </div>
+        </section>
+
+        <section id="checklist-section" class="pdf-intake-panel primary-intake-panel" aria-label="PDF coil intake">
+          <div class="pdf-intake-heading">
+            <span class="intake-step">Start here</span>
+            <h3>PDF Coil Intake</h3>
+            <p>Local review-only extraction. Raw PDF is not stored or exported.</p>
+          </div>
+          <label id="pdf-drop-zone" class="pdf-drop-zone" for="pdf-intake-file">
+            <input id="pdf-intake-file" type="file" accept="application/pdf,.pdf" />
+            <span class="pdf-drop-title">Drop PDF</span>
+            <span id="pdf-file-name" class="pdf-file-name">No file selected</span>
+            <span class="pdf-browse-action">Browse PDF</span>
+          </label>
+          <label class="pdf-cover-page-input">
+            <span>Cover page for OCR</span>
+            <input id="pdf-cover-page-input" type="number" min="1" inputmode="numeric" placeholder="Page #" />
+          </label>
+          <button id="analyze-pdf" type="button">Analyze PDF</button>
+          <div id="pdf-intake-summary" class="pdf-intake-summary">No PDF analyzed.</div>
+        </section>
+
+        <section class="direct-coil-workbench" aria-label="Direct Coil software screen mirror">
+          <div class="section-heading">
+            <h3>Direct Coil Screen Mirror &mdash; Review Aid Only</h3>
+            <span class="subtle-label">Formatted for field-by-field paste review</span>
+          </div>
+          <p class="review-warning">
+            Review aid only. Not for manufacturing. Not a final Direct Coil export.
+          </p>
+          <div id="direct-coil-screen-mirror" class="direct-coil-screen-mirror"></div>
         </section>
 
         <section class="content-grid">
@@ -109,6 +134,34 @@
                 <span>Manual drawing parameters</span>
               </label>
             </section>
+            <section class="paste-ready-panel" aria-label="Paste-ready Direct Coil fields">
+              <div class="section-heading">
+                <h3>Paste-ready Direct Coil Fields &mdash; Review Aid Only</h3>
+                <span id="paste-ready-count" class="subtle-label">Loading fields</span>
+              </div>
+              <p class="review-warning">
+                Review aid only. Not for manufacturing. Not a final Direct Coil export.
+              </p>
+              <div class="paste-ready-actions" aria-label="Paste-ready copy actions">
+                <button id="copy-visible-tsv" class="secondary-action" type="button">Copy visible TSV</button>
+              </div>
+              <div class="paste-ready-table-wrap">
+                <table class="paste-ready-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Direct Coil Section</th>
+                      <th scope="col">Direct Coil Field</th>
+                      <th scope="col">Value to Copy</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Notes / Evidence</th>
+                      <th scope="col">Copy</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paste-ready-fields"></tbody>
+                </table>
+              </div>
+            </section>
             <div id="direct-coil-groups" class="field-groups"></div>
           </div>
 
@@ -122,20 +175,21 @@
               <div id="source-evidence" class="evidence-list"></div>
             </section>
 
-            <section class="inspector-card drawing-card">
+            <section id="drawing-section" class="inspector-card drawing-card">
               <div class="card-title-row">
                 <h3>Drawing Preview</h3>
                 <span id="preview-status" class="status-chip">Review</span>
               </div>
-              <div id="drawing-preview" class="drawing-preview">Loading preview</div>
+              <div id="drawing-template-status" class="drawing-template-status">Loading template status</div>
             </section>
 
             <section class="inspector-card">
               <h3>Drawing Parameters</h3>
               <div id="drawing-parameters" class="parameter-grid"></div>
+              <div id="drawing-preview" class="drawing-preview">Loading preview</div>
             </section>
 
-            <section class="inspector-card compatibility-card">
+            <section id="compatibility-section" class="inspector-card compatibility-card">
               <div class="card-title-row">
                 <h3>Compatibility Review</h3>
                 <span id="compatibility-status" class="status-chip">Loading</span>
@@ -154,7 +208,7 @@
               <div id="compatibility-decisions" class="compatibility-decisions"></div>
             </section>
 
-            <section class="inspector-card decision-capture-card">
+            <section id="review-section" class="inspector-card decision-capture-card">
               <div class="card-title-row">
                 <h3>John Decision Capture</h3>
                 <span class="status-chip">Disabled</span>
@@ -167,7 +221,7 @@
               <div id="decision-capture-items" class="decision-capture-list"></div>
             </section>
 
-            <section class="inspector-card">
+            <section id="performance-section" class="inspector-card">
               <h3>Performance Summary</h3>
               <div id="performance-summary" class="summary-list"></div>
             </section>
@@ -186,14 +240,6 @@
       </main>
     </div>
 
-    <footer class="action-bar" aria-label="Workflow actions">
-      <button id="save-draft" class="secondary-action" type="button">Save Draft</button>
-      <button id="analyze" type="button">Analyze</button>
-      <button id="apply-draft" type="button">Apply to Direct Coil Draft</button>
-      <button id="update-drawing" type="button">Update Drawing</button>
-      <button id="export-pdf" class="disabled-action" type="button" disabled>Export PDF</button>
-    </footer>
-
-    <script src="/static/app.js" type="module"></script>
+    <script src="/static/app.js?v=phase2f-phwc-hot-water-layout-20260609-004" type="module"></script>
   </body>
 </html>

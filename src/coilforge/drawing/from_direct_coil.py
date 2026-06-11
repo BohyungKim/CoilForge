@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from coilforge.direct_coil.draft import DirectCoilDraftField, DirectCoilInputDraft
 from coilforge.drawing.intent import DrawingIntent, DrawingPreviewResult
 from coilforge.drawing.parameters import DrawingParameterSet
 from coilforge.phase2a.drawing_populator import render_drawing_intent_preview
+
+
+_FRACTION_TEXT_PATTERN = re.compile(r"^\s*(?:(?P<whole>-?\d+)\s+)?(?P<num>\d+)\s*/\s*(?P<den>\d+)\s*(?:in|inch|inches|\")?\s*$", re.IGNORECASE)
 
 
 def create_drawing_intent_from_direct_coil(
@@ -103,16 +107,30 @@ def _field_text(draft: DirectCoilInputDraft, field_key: str) -> str | None:
 
 def _required_number(draft: DirectCoilInputDraft, field_key: str) -> float:
     field = draft.fields[field_key]
-    if field.value in (None, ""):
-        return 0.0
-    return float(field.value)
+    return _coerce_number(field.value)
 
 
 def _optional_int(draft: DirectCoilInputDraft, field_key: str) -> int | None:
     field = draft.fields.get(field_key)
     if field is None or field.value in (None, ""):
         return None
-    return int(field.value)
+    return int(_coerce_number(field.value))
+
+
+def _coerce_number(value: Any) -> float:
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    fraction = _FRACTION_TEXT_PATTERN.match(text)
+    if fraction is not None and int(fraction.group("den")) != 0:
+        whole = int(fraction.group("whole") or 0)
+        numerator = int(fraction.group("num"))
+        denominator = int(fraction.group("den"))
+        sign = -1 if whole < 0 else 1
+        return whole + sign * (numerator / denominator)
+    return float(text)
 
 
 def _source_evidence_summary(draft: DirectCoilInputDraft) -> dict[str, list[str]]:

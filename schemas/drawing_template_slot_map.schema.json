@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coilforge.local/schemas/drawing_template_slot_map.schema.json",
+  "title": "CoilForge Drawing Template Slot Map",
+  "type": "object",
+  "required": ["template_id", "schema_version", "source_policy", "slots"],
+  "additionalProperties": false,
+  "properties": {
+    "template_id": {"type": "string"},
+    "schema_version": {"type": "string"},
+    "source_policy": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "reviewed_canonical_value",
+          "ez_json_evidence",
+          "source_pdf_candidate",
+          "manual_reviewed_value",
+          "blocked_or_review_required"
+        ]
+      }
+    },
+    "slots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/slot"}
+    }
+  },
+  "$defs": {
+    "slot": {
+      "type": "object",
+      "required": [
+        "slot_id",
+        "label",
+        "required_for_preview",
+        "review_status",
+        "source_candidates"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slot_id": {"type": "string", "pattern": "^slot\\.[A-Za-z0-9_]+$"},
+        "label": {"type": "string"},
+        "required_for_preview": {"type": "boolean"},
+        "review_status": {"type": "string"},
+        "source_candidates": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,1241 @@
+from __future__ import annotations
+
+import sys
+from io import BytesIO
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("fastapi")
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from fastapi.testclient import TestClient
+
+from coilforge.submittal.pdf_intake import (
+    _OcrPageResult,
+    _TextPage,
+    detect_cover_page_from_pdf_pages,
+    extract_coil_candidate_from_pdf_bytes,
+    extract_coil_lines_from_pdf_text,
+)
+from coilforge.web_app import app
+from coilforge.workflows import run_pdf_to_drawing_workflow
+
+
+client = TestClient(app)
+
+
+def test_pdf_intake_extracts_tag_qty_handing_and_specs() -> None:
+    result = extract_coil_candidate_from_pdf_bytes(_sample_pdf_bytes())
+    candidate = result.candidate
+
+    assert result.summary.pdf_pages == 1
+    assert result.summary.cover_page_detected is False
+    assert result.summary.cover_page_ocr_required is True
+    assert result.summary.cover_page_user_input_required is True
+    assert result.summary.raw_private_data_returned is False
+    assert result.summary.raw_pdf_stored is False
+    assert candidate.tag is not None
+    assert candidate.tag.value == "CDXC-1"
+    assert candidate.quantity is not None
+    assert candidate.quantity.value == 2
+    assert candidate.connections["coil_hand"].value == "Left"
+    assert candidate.geometry["rows_deep"].value == 5
+    assert candidate.geometry["fins_per_inch"].value == 10
+    assert candidate.geometry["finned_height"].value == 18
+    assert candidate.geometry["finned_length"].value == 36
+    assert candidate.geometry["number_of_feeds"].value == 9
+    assert candidate.connections["return_connection_size"].value == 0.875
+    assert candidate.connections["return_connection_size"].unit == "in"
+    assert candidate.materials_construction["tube_material"].value == "Copper"
+    assert candidate.refrigerant_conditions["refrigerant"].value == "R410A"
+    assert candidate.drawing_parameters["CD"].value == 6.375
+
+
+def test_ez_dx_model_suffix_maps_left_single_circuit_for_template_gate() -> None:
+    result = extract_coil_candidate_from_pdf_bytes(
+        _make_text_pdf(
+            [
+                "Tag: CDXC-1",
+                "DX-F-S-04-13-12.00x15.00-L",
+                "HF 1.50",
+            ]
+        )
+    )
+    candidate = result.candidate
+
+    assert candidate.product_type is not None
+    assert candidate.product_type.value == "DX"
+    assert candidate.header_type is not None
+    assert candidate.header_type.value == "Header 1"
+    assert candidate.connections["coil_hand"].value == "Left"
+    assert candidate.manufacturing_options["system_type"].value == "Single-Circuit"
+    assert candidate.manufacturing_options["coil_model"].value == "DX-F-S-04-13-12.00x15.00-L"
+    assert candidate.connections["coil_hand"].status == "review_required"
+    assert candidate.manufacturing_options["system_type"].status == "review_required"
+
+
+def test_pdf_intake_surfaces_project_context_without_raw_pdf_storage() -> None:
+    result = extract_coil_candidate_from_pdf_bytes(
+        _make_text_pdf(
+            [
+                "Project Number: 2755",
+                "Project Name: Project Gumbo",
+                "Tag CDXC-1",
+                "Coil Quantity 1",
+                "Handing Right",
+            ]
+        ),
+        source_filename="9999 - Oxygen8 Submittal - Filename Project - As built.pdf",
+    )
+
+    assert result.summary.project_number == "2755"
+    assert result.summary.project_name == "Project Gumbo"
+    assert result.summary.project_context_source == "pdf_text_label"
+    assert result.summary.raw_private_data_returned is False
+    assert result.summary.raw_pdf_stored is False
+
+
+def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() -> None:
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty",
+                    "Tag",
+                    "Item",
+                    "Model",
+                    "Voltage",
+                    "Controls\nPreference",
+                    "Installation",
+                    "Duct Connection",
+                    "Handing",
+                ),
+                ("1", "DOAS-1", "AHU", "TR_C_015", "208V/1ph/60Hz", "Constant Volume", "Horizontal", "S1", "LH"),
+                ("1", "CDXC-1", "DXC Cooling", "TR_C_015", "", "", "", "", "LH"),
+                ("1", "RHHGRC-1", "HGRC Reheat", "TR_C_015", "", "", "", "", "LH"),
+            ),
+        ),
+    )
+
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+    lines = extract_coil_lines_from_pdf_text([page], cover_detection=detection)
+    values = {line.source_key: line.source_value for line in lines}
+
+    assert detection.detected is True
+    assert detection.page_number == 2
+    assert detection.detection_method == "pdfplumber_table_header"
+    assert len(detection.rows) == 2
+    assert values["COIL_TAG"] == "CDXC-1"
+    assert values["COIL_QUANTITY"] == "1"
+    assert values["COIL_TYPE"] == "DX COIL"
+    assert values["PRODUCT_TYPE"] == "DX"
+    assert values["HANDING"] == "Left"
+
+
+def test_cover_page_rows_generate_separate_pdf_coil_candidates() -> None:
+    result = extract_coil_candidate_from_pdf_bytes(_cover_page_pdf_bytes())
+
+    assert result.summary.cover_page_detected is True
+    assert result.summary.cover_page_row_count == 2
+    assert [row.tag for row in result.summary.cover_page_rows] == ["CDXC-1", "RHHGRC-1"]
+    assert [candidate.tag.value for candidate in result.cover_candidates if candidate.tag] == [
+        "CDXC-1",
+        "RHHGRC-1",
+    ]
+
+
+def test_cover_page_rows_classify_four_direct_coil_formats() -> None:
+    result = extract_coil_candidate_from_pdf_bytes(_four_format_cover_page_pdf_bytes())
+
+    assert [row.tag for row in result.summary.cover_page_rows] == [
+        "CDXC-1",
+        "RHHGRC-1",
+        "CCWC-1",
+        "PHWC-1",
+        "HHWC-1",
+    ]
+    assert [row.product_type for row in result.summary.cover_page_rows] == [
+        "DX",
+        "HGRC",
+        "CHW",
+        "HW",
+        "HW",
+    ]
+    assert [row.coil_format for row in result.summary.cover_page_rows] == [
+        "dx",
+        "condensing",
+        "cooling_chilled_water",
+        "preheat_hot_water",
+        "heating_hot_water",
+    ]
+    assert [candidate.tag.value for candidate in result.cover_candidates if candidate.tag] == [
+        "CDXC-1",
+        "RHHGRC-1",
+        "CCWC-1",
+        "PHWC-1",
+        "HHWC-1",
+    ]
+    assert [candidate.coil_type.value for candidate in result.cover_candidates if candidate.coil_type] == [
+        "DX COIL",
+        "HGRH COIL",
+        "Chilled Water Coil",
+        "Hot Water Coil",
+        "Hot Water Coil",
+    ]
+
+
+def test_cover_page_detection_handles_spaced_tags_and_continuation_pages() -> None:
+    first_page = _TextPage(
+        page_number=1,
+        text="\n".join(
+            [
+                "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+                "1 CDXC- 1 DXC Cooling A16_V_I_ERV LH",
+                "1 RHHGRC-1 HGRC Reheat A16_V_I_ERV LH",
+            ]
+        ),
+    )
+    continuation_page = _TextPage(
+        page_number=2,
+        text="\n".join(
+            [
+                "1 CDXC-2 DXC Cooling TR_C_018 LH",
+                "1 RHHGRC-2 HGRC Reheat TR_C_018 LH",
+                "Qty 1: OA Sensor - not a coil row",
+            ]
+        ),
+    )
+    detail_page = _TextPage(page_number=3, text="Cooling DX\nFin Height (in): 12")
+
+    detection = detect_cover_page_from_pdf_pages([first_page, continuation_page, detail_page])
+
+    assert detection.detected is True
+    assert detection.page_number == 1
+    assert [row.tag for row in detection.rows] == [
+        "CDXC-1",
+        "RHHGRC-1",
+        "CDXC-2",
+        "RHHGRC-2",
+    ]
+    assert [row.handing for row in detection.rows] == ["LH", "LH", "LH", "LH"]
+
+
+def test_cover_page_ordered_detail_blocks_are_merged_into_matching_coil_candidates() -> None:
+    workflow = run_pdf_to_drawing_workflow(_cover_page_with_ordered_detail_blocks_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+
+    cdx_fields = pages[0]["workflow"]["direct_coil_input_draft"]["fields"]
+    hgrh_fields = pages[1]["workflow"]["direct_coil_input_draft"]["fields"]
+
+    assert [page["tag"] for page in pages] == ["CDXC-1", "RHHGRC-1"]
+    assert pages[0]["workflow"]["candidates"][0]["coil_type"]["value"] == "DX COIL"
+    assert pages[1]["workflow"]["candidates"][0]["coil_type"]["value"] == "HGRH COIL"
+    assert cdx_fields["rows_deep"]["value"] == 5
+    assert cdx_fields["fins_per_inch"]["value"] == 10
+    assert cdx_fields["finned_height"]["value"] == 18
+    assert cdx_fields["finned_length"]["value"] == 36
+    assert hgrh_fields["rows_deep"]["value"] == 1
+    assert hgrh_fields["fins_per_inch"]["value"] == 12
+    assert hgrh_fields["finned_height"]["value"] == 9
+    assert hgrh_fields["finned_length"]["value"] == 36
+
+
+def test_oxygen8_cooling_dx_and_hgrh_sections_extract_detail_fields_until_stop_headers() -> None:
+    workflow = run_pdf_to_drawing_workflow(_oxygen8_cooling_dx_and_hgrh_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+    cdx_candidate = pages[0]["workflow"]["candidates"][0]
+    hgrh_candidate = pages[1]["workflow"]["candidates"][0]
+    cdx_fields = pages[0]["workflow"]["direct_coil_input_draft"]["fields"]
+    hgrh_fields = pages[1]["workflow"]["direct_coil_input_draft"]["fields"]
+
+    assert [page["tag"] for page in pages] == ["CDXC-1", "RHHGRC-1"]
+    assert cdx_candidate["airside_conditions"]["altitude_ft"]["value"] == 0
+    assert cdx_candidate["airside_conditions"]["total_air_flow_cfm"]["value"] == 3735
+    assert cdx_candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] == 95
+    assert cdx_candidate["airside_conditions"]["entering_wet_bulb_f"]["value"] == 78
+    assert cdx_candidate["geometry"]["rows_deep"]["value"] == 6
+    assert cdx_candidate["geometry"]["number_of_feeds"]["value"] == 18
+    assert cdx_candidate["geometry"]["face_area_sqft"]["value"] == 8
+    assert cdx_candidate["connections"]["return_connection_size"]["value"] == 1.125
+    assert cdx_candidate["connections"]["qty_connections_per_header"]["value"] == 4
+    assert cdx_candidate["materials_construction"]["tube_surface"]["value"] == "Smooth"
+    assert cdx_candidate["manufacturing_options"]["coil_model"]["value"] == "3DX-06.24. 0-11.48.0-18"
+    assert cdx_candidate["manufacturing_options"]["vrv_kit_model"]["value"] == "EKEXVA72U"
+    assert cdx_candidate["refrigerant_conditions"]["refrigerant"]["value"] == "R-32"
+    assert cdx_candidate["refrigerant_conditions"]["evaporating_temp_f"]["value"] == 43
+    assert cdx_candidate["refrigerant_conditions"]["liquid_temp_f"]["value"] == 77
+    assert cdx_candidate["refrigerant_conditions"]["superheat_f"]["value"] == 9
+    assert cdx_candidate["performance"]["nominal_cooling_capacity_mbh"]["value"] == 388.51
+    assert cdx_candidate["performance"]["total_capacity_mbh"]["value"] == 329.48
+    assert cdx_candidate["performance"]["sensible_capacity_mbh"]["value"] == 168.26
+    assert cdx_candidate["performance"]["air_pressure_drop_iwg"]["value"] == 0.38
+    assert cdx_candidate["performance"]["internal_volume_cuin"]["value"] == 741.87
+    assert cdx_candidate["performance"]["refrigerant_pressure_drop_psi"]["value"] == 7.39
+    assert cdx_fields["altitude_ft"]["value"] == 0
+    assert cdx_fields["face_velocity_fpm"]["value"] == 466.88
+    assert cdx_fields["rows_deep"]["value"] == 6
+
+    assert hgrh_candidate["geometry"]["rows_deep"]["value"] == 1
+    assert hgrh_candidate["geometry"]["number_of_feeds"]["value"] == 3
+    assert hgrh_candidate["refrigerant_conditions"]["condensing_temp_f"]["value"] == 115
+    assert hgrh_candidate["refrigerant_conditions"]["subcooling_f"]["value"] == 18
+    assert hgrh_candidate["performance"]["total_capacity_mbh"]["value"] == 60.85
+    assert hgrh_candidate["performance"]["air_pressure_drop_iwg"]["value"] == 0.03
+    assert hgrh_fields["rows_deep"]["value"] == 1
+    assert hgrh_fields["face_velocity_fpm"]["value"] == 466.88
+
+
+def test_combined_detail_header_extracts_entering_values_without_max_db_overwrite() -> None:
+    workflow = run_pdf_to_drawing_workflow(_oxygen8_combined_detail_header_pdf_bytes())
+    candidate = workflow["pdf_coil_pages"][0]["workflow"]["candidates"][0]
+
+    assert candidate["airside_conditions"]["total_air_flow_cfm"]["value"] == 2750
+    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] == 95
+    assert candidate["airside_conditions"]["entering_wet_bulb_f"]["value"] == 78
+    assert candidate["refrigerant_conditions"]["evaporating_temp_f"]["value"] == 43
+    assert candidate["refrigerant_conditions"]["liquid_temp_f"]["value"] == 77
+    assert candidate["refrigerant_conditions"]["superheat_f"]["value"] == 9
+    assert candidate["performance"]["max_dry_bulb_f"]["value"] == 49.73
+    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["performance"]["max_dry_bulb_f"]["value"]
+
+
+def test_attached_oxygen8_pdf_text_spacing_extracts_entering_and_refrigerant_values() -> None:
+    workflow = run_pdf_to_drawing_workflow(_oxygen8_attached_pdf_text_spacing_bytes())
+    candidate = workflow["pdf_coil_pages"][0]["workflow"]["candidates"][0]
+
+    assert candidate["airside_conditions"]["total_air_flow_cfm"]["value"] == 850
+    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] == 86.1
+    assert candidate["airside_conditions"]["entering_wet_bulb_f"]["value"] == 85.9
+    assert candidate["refrigerant_conditions"]["evaporating_temp_f"]["value"] == 43
+    assert candidate["refrigerant_conditions"]["liquid_temp_f"]["value"] == 77
+    assert candidate["refrigerant_conditions"]["superheat_f"]["value"] == 9
+    assert candidate["performance"]["max_dry_bulb_f"]["value"] == 49.77
+    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["performance"]["max_dry_bulb_f"]["value"]
+
+
+def test_cwc_and_hwc_cover_rows_match_cooling_cwc_and_heating_hwc_sections() -> None:
+    workflow = run_pdf_to_drawing_workflow(_cwc_and_hwc_sections_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+    cwc_candidate = pages[0]["workflow"]["candidates"][0]
+    hwc_candidate = pages[1]["workflow"]["candidates"][0]
+
+    assert [page["tag"] for page in pages] == ["CCWC-1", "HHWC-1"]
+    assert [page["coil_format"] for page in pages] == [
+        "cooling_chilled_water",
+        "heating_hot_water",
+    ]
+    assert cwc_candidate["geometry"]["finned_height"]["value"] == 16.5
+    assert cwc_candidate["geometry"]["rows_deep"]["value"] == 4
+    assert cwc_candidate["geometry"]["circuits"]["value"] == 3
+    assert cwc_candidate["connections"]["inlet_connection_size"]["value"] == 0.875
+    assert cwc_candidate["connections"]["outlet_connection_size"]["value"] == 0.875
+    assert cwc_candidate["airside_conditions"]["fluid_type"]["value"] == "Propylene Glycol"
+    assert cwc_candidate["airside_conditions"]["fluid_entering_temp_f"]["value"] == 45
+    assert cwc_candidate["airside_conditions"]["fluid_leaving_temp_f"]["value"] == 57
+    assert cwc_candidate["performance"]["total_capacity_mbh"]["value"] == 50.7
+    assert cwc_candidate["connections"]["valve_size"]["value"] == 0.75
+
+    assert hwc_candidate["geometry"]["finned_height"]["value"] == 18
+    assert hwc_candidate["geometry"]["rows_deep"]["value"] == 2
+    assert hwc_candidate["airside_conditions"]["fluid_type"]["value"] == "Water"
+    assert hwc_candidate["airside_conditions"]["fluid_entering_temp_f"]["value"] == 140
+    assert hwc_candidate["airside_conditions"]["fluid_leaving_temp_f"]["value"] == 110
+    assert hwc_candidate["performance"]["total_capacity_mbh"]["value"] == 41.9
+    assert hwc_candidate["connections"]["valve_size"]["value"] == 0.5
+
+
+def test_repeated_phwc_and_hhwc_rows_consume_next_matching_hwc_sections_in_order() -> None:
+    workflow = run_pdf_to_drawing_workflow(_repeated_preheat_and_heating_hwc_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+    candidates = [page["workflow"]["candidates"][0] for page in pages]
+
+    assert [page["tag"] for page in pages] == ["PHWC-1", "HHWC-1", "PHWC-2", "HHWC-2"]
+    assert [page["quantity"] for page in pages] == [1, 1, 2, 2]
+    assert [page["coil_format"] for page in pages] == [
+        "preheat_hot_water",
+        "heating_hot_water",
+        "preheat_hot_water",
+        "heating_hot_water",
+    ]
+    assert [candidate["geometry"]["finned_height"]["value"] for candidate in candidates] == [
+        10.5,
+        10.5,
+        12.5,
+        13.5,
+    ]
+    assert [candidate["geometry"]["rows_deep"]["value"] for candidate in candidates] == [2, 3, 4, 5]
+    assert [candidate["performance"]["total_capacity_mbh"]["value"] for candidate in candidates] == [
+        23,
+        13.1,
+        31,
+        21,
+    ]
+
+
+def test_cover_page_multi_tag_row_splits_only_when_qty_matches_tag_count() -> None:
+    page = _TextPage(
+        page_number=1,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty",
+                    "Tag",
+                    "Item",
+                    "Model",
+                    "Voltage",
+                    "Controls Preference",
+                    "Installation",
+                    "Duct Connection",
+                    "Handing",
+                ),
+                ("2", "CDXC-1, CDXC-2", "DXC Cooling", "TR_C_015", "", "", "", "", "RH"),
+            ),
+        ),
+    )
+
+    detection = detect_cover_page_from_pdf_pages([page])
+
+    assert detection.detected is True
+    assert [row.tag for row in detection.rows] == ["CDXC-1", "CDXC-2"]
+    assert [row.qty for row in detection.rows] == [1, 1]
+
+
+def test_cover_page_not_detected_requests_user_page_input_for_ocr_path() -> None:
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text="")])
+
+    assert detection.detected is False
+    assert detection.ocr_required is True
+    assert detection.user_page_input_required is True
+    assert "request user page input" in detection.review_note
+
+
+def test_cover_page_manual_hint_marks_page_for_ocr_capture() -> None:
+    detection = detect_cover_page_from_pdf_pages(
+        [_TextPage(page_number=1, text="")],
+        cover_page_hint=3,
+    )
+
+    assert detection.detected is False
+    assert detection.page_number == 3
+    assert detection.detection_method == "manual_page_input_ocr_required"
+    assert detection.ocr_required is True
+    assert detection.user_page_input_required is False
+
+
+def test_pdf_workflow_prepopulates_direct_coil_draft_and_paste_surface() -> None:
+    workflow = run_pdf_to_drawing_workflow(_sample_pdf_bytes(), source_filename="sample.pdf")
+    draft = workflow["direct_coil_input_draft"]
+    draft_fields = draft["fields"]
+    paste_rows = {
+        row["direct_coil_label"]: row for row in workflow["direct_coil_paste_ready"]["fields"]
+    }
+
+    assert workflow["pdf_intake_summary"]["source_filename"] == "sample.pdf"
+    assert workflow["pdf_intake_summary"]["project_number"] is None
+    assert workflow["pdf_intake_summary"]["project_name"] is None
+    assert workflow["pdf_intake_summary"]["raw_pdf_stored"] is False
+    assert workflow["validation"]["raw_private_data_returned"] is False
+    assert workflow["validation"]["export_status"] == "not_implemented"
+    assert workflow["validation"]["export_allowed"] is False
+    assert draft["coil_quantity"]["value"] == 2
+    assert draft_fields["coil_hand"]["value"] == "Left"
+    assert draft_fields["rows_deep"]["value"] == 5
+    assert draft_fields["finned_height"]["value"] == 18
+    assert draft_fields["finned_length"]["value"] == 36
+    assert draft_fields["fins_per_inch"]["value"] == 10
+    assert draft_fields["number_of_feeds"]["value"] == 9
+    assert draft_fields["return_connection_size"]["value"] == 0.875
+    assert paste_rows["Coil Quantity"]["display_value"] == "2"
+    assert paste_rows["Finned Height(In)"]["display_value"] == "18"
+    assert paste_rows["Finned Length(In)"]["display_value"] == "36"
+    assert paste_rows["Rows Deep"]["display_value"] == "5"
+    assert paste_rows["Fins Per Inch"]["display_value"] == "10"
+    assert paste_rows["Number Of Feeds(Total)"]["display_value"] == "9"
+    assert paste_rows["Coil Hand"]["display_value"] == "Left"
+    assert paste_rows["CD"]["display_value"] == "6.375"
+
+
+def test_pdf_workflow_uses_filename_project_context_fallback() -> None:
+    workflow = run_pdf_to_drawing_workflow(
+        _sample_pdf_bytes(),
+        source_filename="2755 - Oxygen8 Submittal - Daikin Applied Atlanta - Project Gumbo - As built.pdf",
+    )
+
+    assert workflow["pdf_intake_summary"]["project_number"] == "2755"
+    assert workflow["pdf_intake_summary"]["project_name"] == "Project Gumbo"
+    assert workflow["pdf_intake_summary"]["project_context_source"] == "source_filename"
+
+
+def test_pdf_to_drawing_api_accepts_pdf_bytes_without_enabling_export() -> None:
+    response = client.post(
+        "/api/workflow/pdf-to-drawing",
+        content=_sample_pdf_bytes(),
+        headers={
+            "content-type": "application/pdf",
+            "x-coilforge-filename": "sample.pdf",
+            "x-coilforge-source-id": "PDF-TEST-001",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pdf_intake_summary"]["source_id"] == "PDF-TEST-001"
+    assert payload["selected_candidate_summary"]["tag"] == "CDXC-1"
+    assert payload["selected_candidate_summary"]["quantity"] == 2
+    assert payload["direct_coil_input_draft"]["coil_quantity"]["value"] == 2
+    assert payload["direct_coil_input_draft"]["fields"]["coil_hand"]["value"] == "Left"
+    assert payload["validation"]["export_allowed"] is False
+    assert payload["validation"]["raw_pdf_stored"] is False
+    assert payload["validation"]["drawing_approval_claimed"] is False
+
+
+def test_pdf_to_drawing_api_accepts_cover_page_hint_for_ocr_fallback() -> None:
+    response = client.post(
+        "/api/workflow/pdf-to-drawing",
+        content=_sample_pdf_bytes(),
+        headers={
+            "content-type": "application/pdf",
+            "x-coilforge-cover-page": "3",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pdf_intake_summary"]["cover_page_detected"] is False
+    assert payload["pdf_intake_summary"]["cover_page_number"] == 3
+    assert payload["pdf_intake_summary"]["cover_page_detection_method"] == "manual_page_input_ocr_required"
+    assert payload["pdf_intake_summary"]["cover_page_ocr_required"] is True
+    assert payload["pdf_intake_summary"]["cover_page_user_input_required"] is False
+
+
+def test_pdf_intake_uses_llm_ocr_when_manual_cover_page_hint_is_supplied(monkeypatch) -> None:
+    def fake_ocr(pdf_bytes: bytes, page_number: int) -> _OcrPageResult:
+        assert pdf_bytes.startswith(b"%PDF")
+        assert page_number == 1
+        return _OcrPageResult(
+            page_number=1,
+            text="\n".join(
+                [
+                    "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+                    "1 CDXC-9 DXC Cooling TR_C_015 208V Constant Volume Horizontal S1 RH",
+                    "Rows Deep 6",
+                    "Finned Height 24 in",
+                    "Finned Length 48 in",
+                    "Total Air Flow 3100 cfm",
+                ]
+            ),
+            model="gpt-test",
+            status="completed",
+        )
+
+    monkeypatch.setattr(
+        "coilforge.submittal.pdf_intake._extract_page_text_with_llm_ocr",
+        fake_ocr,
+    )
+
+    result = extract_coil_candidate_from_pdf_bytes(
+        _make_text_pdf(["image-only placeholder"]),
+        cover_page_hint=1,
+    )
+
+    assert result.summary.extraction_engine.endswith("+llm_ocr")
+    assert result.summary.ocr_enabled is True
+    assert result.summary.ocr_attempted is True
+    assert result.summary.ocr_status == "completed"
+    assert result.summary.ocr_model == "gpt-test"
+    assert result.summary.ocr_page_number == 1
+    assert result.summary.cover_page_detected is True
+    assert result.summary.cover_page_detection_method == "text_header_signature"
+    assert result.summary.cover_page_ocr_required is False
+    assert result.summary.cover_page_row_count == 1
+    assert result.candidate.tag is not None
+    assert result.candidate.tag.value == "CDXC-9"
+    assert result.candidate.connections["coil_hand"].value == "Right"
+    assert result.candidate.geometry["rows_deep"].value == 6
+
+
+def test_pdf_intake_reports_missing_openai_key_without_returning_raw_pdf_text(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("coilforge.submittal.pdf_intake._load_dotenv_if_available", lambda: None)
+
+    result = extract_coil_candidate_from_pdf_bytes(
+        _make_text_pdf(["image-only placeholder"]),
+        cover_page_hint=1,
+    )
+
+    assert result.summary.ocr_enabled is False
+    assert result.summary.ocr_attempted is True
+    assert result.summary.ocr_status == "skipped_missing_openai_api_key"
+    assert result.summary.ocr_error == "OPENAI_API_KEY was not found in environment or .env."
+    assert result.summary.raw_private_data_returned is False
+    assert result.summary.raw_pdf_stored is False
+
+
+def test_pdf_to_drawing_api_returns_one_review_page_per_cover_coil_row() -> None:
+    response = client.post(
+        "/api/workflow/pdf-to-drawing",
+        content=_cover_page_pdf_bytes(),
+        headers={
+            "content-type": "application/pdf",
+            "x-coilforge-filename": "cover-page.pdf",
+            "x-coilforge-source-id": "PDF-COVER-001",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    pages = payload["pdf_coil_pages"]
+
+    assert payload["selected_candidate_summary"]["tag"] == "CDXC-1"
+    assert payload["pdf_intake_summary"]["cover_page_row_count"] == 2
+    assert [page["tag"] for page in pages] == ["CDXC-1", "RHHGRC-1"]
+    assert [page["quantity"] for page in pages] == [1, 1]
+    assert pages[0]["workflow"]["selected_candidate_summary"]["tag"] == "CDXC-1"
+    assert pages[1]["workflow"]["selected_candidate_summary"]["tag"] == "RHHGRC-1"
+    assert pages[0]["workflow"]["validation"]["export_allowed"] is False
+    assert pages[1]["workflow"]["validation"]["export_allowed"] is False
+
+
+def test_pdf_to_drawing_api_returns_four_format_review_pages() -> None:
+    response = client.post(
+        "/api/workflow/pdf-to-drawing",
+        content=_four_format_cover_page_pdf_bytes(),
+        headers={
+            "content-type": "application/pdf",
+            "x-coilforge-filename": "four-formats.pdf",
+            "x-coilforge-source-id": "PDF-FOUR-FORMATS-001",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    pages = payload["pdf_coil_pages"]
+
+    assert [page["tag"] for page in pages] == ["CDXC-1", "RHHGRC-1", "CCWC-1", "PHWC-1", "HHWC-1"]
+    assert [page["product_type"] for page in pages] == ["DX", "HGRC", "CHW", "HW", "HW"]
+    assert [page["coil_format"] for page in pages] == [
+        "dx",
+        "condensing",
+        "cooling_chilled_water",
+        "preheat_hot_water",
+        "heating_hot_water",
+    ]
+    assert [page["workflow"]["selected_candidate_summary"]["tag"] for page in pages] == [
+        "CDXC-1",
+        "RHHGRC-1",
+        "CCWC-1",
+        "PHWC-1",
+        "HHWC-1",
+    ]
+    assert all(page["workflow"]["validation"]["export_allowed"] is False for page in pages)
+
+
+def test_pdf_to_drawing_api_rejects_invalid_pdf_bytes() -> None:
+    response = client.post(
+        "/api/workflow/pdf-to-drawing",
+        content=b"not a pdf",
+        headers={"content-type": "application/pdf"},
+    )
+
+    assert response.status_code == 400
+    assert "Unable to extract text from PDF bytes" in response.json()["detail"]
+
+
+def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
+    index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    app_js = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(
+        encoding="utf-8"
+    )
+    style = (Path(__file__).resolve().parents[1] / "web" / "style.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'id="pdf-intake-file"' in index
+    assert 'id="pdf-drop-zone"' in index
+    assert 'id="pdf-file-name"' in index
+    assert 'id="pdf-cover-page-input"' in index
+    assert 'id="project-tree"' in index
+    assert 'id="analyze-pdf"' in index
+    assert 'id="calculate-button"' not in index
+    assert 'id="export-button"' not in index
+    assert 'id="save-draft"' not in index
+    assert 'id="apply-draft"' not in index
+    assert 'id="update-drawing"' not in index
+    assert 'id="export-pdf"' not in index
+    assert "PDF Coil Intake" in index
+    assert "COIL-TAG-001" not in index
+    assert "Start here" in index
+    assert "Drop PDF" in index
+    assert "Browse PDF" in index
+    assert index.index('class="pdf-intake-panel primary-intake-panel"') < index.index(
+        'class="direct-coil-workbench"'
+    )
+    assert index.index('class="pdf-intake-panel primary-intake-panel"') < index.index(
+        'class="content-grid"'
+    )
+    assert "runWorkflowFromPdf" in app_js
+    assert '"/api/workflow/pdf-to-drawing"' in app_js
+    assert '"Content-Type": "application/pdf"' in app_js
+    assert "formatPdfAnalysisError" in app_js
+    assert "text could not be extracted from this PDF" in app_js
+    assert "scanned/image PDF" in app_js
+    assert "payload?.detail" in app_js
+    assert "body.classList.toggle(\"is-init-stage\"" in app_js
+    assert "buildDirectCoilFieldLookup" in app_js
+    assert "addCandidateFallbackFields" in app_js
+    assert "DIRECT_COIL_STANDARD_TUBE_DIAMETER = \"3/8 1.00 x 0.866\"" in app_js
+    assert "DIRECT_COIL_TUBE_DIAMETER_OPTIONS" in app_js
+    assert "\"1/2 1.25 x 1.0825\"" in app_js
+    assert "DIRECT_COIL_TUBE_MATERIAL_OPTIONS" in app_js
+    assert "\"Copper 0.016 Plain\"" in app_js
+    assert "DIRECT_COIL_SYSTEM_TYPE_OPTIONS" in app_js
+    assert "\"Dual-Circuit Intertwined\"" in app_js
+    assert "isDxPdfCandidate" in app_js
+    assert "addDxOptionsFallbackFields" in app_js
+    assert "pdf_tube_material_to_direct_coil_tube_material" in app_js
+    assert "Galvanized Steel 16 gauge" in app_js
+    assert "Same End Only" in app_js
+    assert "pdf_qty_connections_per_header_to_direct_coil_system_type" in app_js
+    assert "candidateHasCoatingReviewSignal" in app_js
+    assert "Coating-related PDF text detected" in app_js
+    assert "Cover-page handing was mapped into Coil Hand" in app_js
+    assert "REGISTERED_DRAWING_TEMPLATE_LABEL" in app_js
+    assert "DX / Coil Hand Left / System Type Single-Circuit" in app_js
+    assert "Template not registered" in app_js
+    assert "coilmaster_dx_lh_header1" in app_js
+    assert "DIRECT_COIL_FIXED_DRAWING_VALUES" in app_js
+    assert 'connections: "0-Standard"' in app_js
+    assert 'mountingholes: "None"' in app_js
+    assert 'distributorleadareamaxx: "0"' in app_js
+    assert 'distributorleadareamaxy: "0"' in app_js
+    assert 'cyclevalveleadlength: "0"' in app_js
+    assert "applyventinganddrainingioconstraints: true" in app_js
+    assert "limitsrtostandardpositionsforeaseofmanufacture: false" in app_js
+    assert "renderDcEmbeddedDrawingPreview" in app_js
+    assert "drawingTemplateState" in app_js
+    assert 'id="drawing-template-status"' in index
+    assert index.index("<h3>Drawing Parameters</h3>") < index.index('id="drawing-preview"')
+    assert "addDxAirFallbackFields" in app_js
+    assert "pdf_entering_airflow_to_direct_coil_airflow" in app_js
+    assert "pdf_airflow_geometry_to_direct_coil_face_velocity" in app_js
+    assert "psychrometric_db_wb_to_relative_humidity" in app_js
+    assert "direct_coil_dx_capacity_review_default" in app_js
+    assert "DIRECT_COIL_DX_DIST_CAPILLARY_SIZE = \"1/4 x 0.025\"" in app_js
+    assert "DIRECT_COIL_DX_DIST_CAPILLARY_OPTIONS" in app_js
+    assert "addDxRefrigerantAndFoulingFallbackFields" in app_js
+    assert "direct_coil_dx_dist_capillary_company_rule" in app_js
+    assert "direct_coil_air_side_fouling_company_rule" in app_js
+    assert "Air Side Fouling Factor(ft² °F h/Btu)" in app_js
+    assert "calculateRelativeHumidityPct" in app_js
+    assert "Face Velocity calculated from Airflow CFM" in app_js
+    assert "sensible_capacity_airflow_to_leaving_dry_bulb" not in app_js
+    assert "Leaving DB predicted from entering DB" not in app_js
+    assert "setDcFieldAlias" in app_js
+    assert "direct_coil_company_rule" in app_js
+    assert "candidateFallbackField(candidate.tag, \"tag\")" in app_js
+    assert "candidateFallbackField(candidate.quantity, \"coil_quantity\")" in app_js
+    assert "pdf_candidate_review_fallback" in app_js
+    assert "candidate.geometry, \"finned_height\", [\"Finned Height(In)\", \"Tubes High\"]" in app_js
+    assert "candidate.geometry, \"finned_length\", [\"Finned Length(In)\"]" in app_js
+    assert "candidate.geometry, \"number_of_feeds\", [\"Number Of Feeds(Total)\", \"Number Of Feeds\"]" in app_js
+    assert "candidate.geometry, \"fins_per_inch\"" in app_js
+    assert "candidate.refrigerant_conditions, \"condensing_temp_f\"" in app_js
+    assert "candidate.airside_conditions, \"fluid_type\"" in app_js
+    assert "workflowToUiState(state.ui, workflow, null)" in app_js
+    assert "state.pdfCoilPages = workflow.pdf_coil_pages || []" in app_js
+    assert "selectPdfCoilPage" in app_js
+    assert "renderPdfCoilReviewPages" in app_js
+    assert "Detected Coil Review Pages" in app_js
+    assert "Extracted Candidate Data" in app_js
+    assert "Mapped Direct Coil Draft Fields" in app_js
+    assert "Project Number" in app_js
+    assert "Project Name" in app_js
+    assert "pdfProjectDisplayName" in app_js
+    assert 'class="pdf-review-page" ${active ? "open" : ""}' not in app_js
+    assert 'class="pdf-review-section" open' not in app_js
+    assert "scrollIntoView" in app_js
+    assert "CONDENSING COIL DATA" in app_js
+    assert "CHILLED WATER COIL DATA" in app_js
+    assert "HOT WATER COIL DATA" in app_js
+    assert "PRE HOT WATER COIL DATA" in app_js
+    assert "POST HOT WATER COIL DATA" in app_js
+    assert "directCoilMirrorFormat" in app_js
+    assert "COOLING_CHILLED_WATER" in app_js
+    assert "PREHEAT_HOT_WATER" in app_js
+    assert "HEATING_HOT_WATER" in app_js
+    assert 'typeText.includes("REHEAT")' not in app_js
+    assert "Saturated Suction Temperature" in app_js
+    assert "FLUID DATA" in app_js
+    assert "pdf_upload_candidate" in app_js
+    assert "sanitizeHeaderValue(file.name)" in app_js
+    assert "X-CoilForge-Cover-Page" in app_js
+    assert "coverPageStatus" in app_js
+    assert "setSelectedPdfFile" in app_js
+    assert "dataTransfer?.files?.[0]" in app_js
+    assert "setPdfAnalysisLoading(true)" in app_js
+    assert "setPdfAnalysisLoading(false)" in app_js
+    assert "Extracting PDF data..." in app_js
+    assert "Reading cover rows and coil sections. Raw PDF is not stored." in app_js
+    assert "aria-busy" in app_js
+    assert ".pdf-loading-indicator" in style
+    assert ".pdf-loading-spinner" in style
+    assert "@keyframes pdf-loading-spin" in style
+    assert "body.is-init-stage .direct-coil-workbench" in style
+    assert "body.is-init-stage .content-grid" in style
+    assert "body.is-init-stage .status-ribbon" in style
+
+
+def test_web_shell_disables_static_asset_caching_for_pdf_ui_updates() -> None:
+    index_response = client.get("/")
+    app_response = client.get("/static/app.js?v=phase2f-four-coil-layout-20260609-003")
+
+    assert index_response.status_code == 200
+    assert app_response.status_code == 200
+    assert index_response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
+    assert app_response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
+    assert "PDF Coil Intake" in index_response.text
+    assert "runWorkflowFromPdf" in app_response.text
+
+
+def _sample_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Tag CDXC-1",
+            "Coil Quantity 2",
+            "Handing Left",
+            "Rows Deep 5",
+            "Fins Per Inch 10",
+            "Finned Height 18 in",
+            "Finned Length 36 in",
+            "Number Of Feeds 9",
+            "Tube Material Copper",
+            "Fin Material Aluminum 0.008",
+            "Fin Surface Flat",
+            "Header Material Copper",
+            "Connection Material Copper",
+            "Connection Type Sweat",
+            'Return Connection Size 7/8"',
+            "Casing Material Galvanized Steel",
+            "Casing Style Standard",
+            "Total Air Flow 2200 cfm",
+            "Entering Dry Bulb 80 F",
+            "Refrigerant R410A",
+            "Evaporating Temperature 45 F",
+            "Liquid Temperature 105 F",
+            "Superheat 9 F",
+            "DXDistCapillarySize 1/4 x 0.025",
+            "CD 6.375",
+            "BF 0.625",
+            "TF 0.625",
+            "CH 19.25",
+        ]
+    )
+
+
+def _cover_page_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_015 LH",
+            "1 RHHGRC-1 HGRC Reheat TR_C_015 LH",
+        ]
+    )
+
+
+def _cover_page_with_ordered_detail_blocks_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_015 LH",
+            "1 RHHGRC-1 HGRH Reheat TR_C_015 LH",
+            "CONDENSING COIL DATA",
+            "Rows Deep 5",
+            "Fins Per Inch 10",
+            "Finned Height(In) 18",
+            "Finned Length(In) 36",
+            "Tube Material Copper",
+            "Refrigerant R410A",
+            "HGRH COIL DATA",
+            "Rows Deep 1",
+            "Fins Per Inch 12",
+            "Finned Height(In) 9",
+            "Finned Length(In) 36",
+            "Tube Material Copper",
+        ]
+    )
+
+
+def _oxygen8_cooling_dx_and_hgrh_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Unit Details",
+            "Altitude (ft): 0",
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_040 LH",
+            "1 RHHGRC-1 HGRH Reheat TR_C_040 LH",
+            "Cooling DX",
+            "Coil",
+            "Model: 3DX-06.24. 0-11.48.0-18",
+            "Fin Height (in): 24",
+            "Fin Length (in): 48",
+            "Face Area (sq.ft): 8",
+            "FPI: 11",
+            "Rows: 6",
+            "Total Feeds: 18",
+            "Fin Surface: Flat",
+            "Fin Material: 0.0075 Aluminium",
+            "Tube Material: 0.016 Copper",
+            "Tube Surface: Smooth",
+            "Coil Weight (lbs): 153",
+            "Suction Size (in): 1.125",
+            "Coil Style: Interlaced 4 Circuits",
+            "Qty Conn. / Header: 4",
+            "Entering",
+            "Airflow (CFM): 3735",
+            "DB (F): 95",
+            "WB (F): 78",
+            "Refrigerant: R-32",
+            "Refrig. Suction Temp (F): 43",
+            "Refrig. Liquid Temp (F): 77",
+            "Refrig. Superheat Temp (F): 9",
+            "Coil Operating Setpoint",
+            "Nominal Cooling Capacity (MBH): 388.51",
+            "DB (F): 55",
+            "Max Coil Performance",
+            "Capacity (MBH): 329.48",
+            "Capacity Sensible (MBH): 168.26",
+            "DB (F): 53.44",
+            "WB (F): 52.66",
+            "Air Vel (FPM): 466.88",
+            "Air PD (IWG): 0.38",
+            "Internal Vol (cu.in): 741.87",
+            "Refrig. PD (psi): 7.39",
+            "VRV Integration Kit",
+            "Type: AHU Integration Valve Kit",
+            "Manufacturer: Daikin",
+            "Daikin System Type: Heat Recovery System",
+            "Model: EKEXVA72U",
+            "Qty of Valves: 4",
+            "Nominal Tonnage: 6 tons x 4",
+            "Heating DX",
+            "Coil",
+            "Rows: 99",
+            "Fin Height (in): 99",
+            "Reheat Hot Gas Reheat Coil",
+            "Coil",
+            "Model: 3DC-01.24. 0-11.48.0-2",
+            "Fin Height (in): 24",
+            "Fin Length (in): 48",
+            "Face Area (sq.ft): 8",
+            "FPI: 11",
+            "Rows: 1",
+            "Total Feeds: 3",
+            "Fin Surface: Flat",
+            "Fin Material: 0.0075 Aluminium",
+            "Tube Material: 0.016 Copper",
+            "Tube Surface: Smooth",
+            "Coil Weight (lbs): 41",
+            "Suction Size (in): 0.625",
+            "Coil Style: Standard",
+            "Qty Conn. / Header: 1",
+            "Entering",
+            "Airflow (CFM): 3735",
+            "DB (F): 55",
+            "Refrigerant: R-32",
+            "Refrig. Cond. Temp (F): 115",
+            "Refrig. Subcooling Temp (F): 18",
+            "Coil Operating Setpoint",
+            "DB (F): 70",
+            "Max Coil Performance",
+            "Capacity (MBH): 60.85",
+            "DB (F): 71.29",
+            "Air Vel (FPM): 466.88",
+            "Air PD (IWG): 0.03",
+            "Internal Vol (cu.in): 123.96",
+            "Refrig. PD (psi): 3.82",
+            "Supply Fan",
+            "Model: GR40C-ZID.DG.CR",
+            "Rows: 77",
+        ]
+    )
+
+
+def _oxygen8_combined_detail_header_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Unit Details",
+            "Altitude (ft): 43",
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_009 RH",
+            "Cooling DX",
+            "Coil Entering Coil Operating Setpoint",
+            "Model: DXM08C14-24.00x39.00R",
+            "Fin Height (in): 24",
+            "Fin Length (in): 39",
+            "Face Area (sq.ft): 6.5",
+            "FPI: 14",
+            "Rows: 8",
+            "Total Feeds: 16",
+            "Fin Surface: Flat",
+            "Fin Material: 0.0075 Aluminium",
+            "Tube Material: 0.016 Copper",
+            "Tube Surface: Smooth",
+            "Coil Weight (lbs): 142.06",
+            "Suction Size (in): 1.125",
+            "Coil Style: Interlaced 3 Circuits",
+            "Qty Conn. / Header: 3",
+            "Airflow (CFM): 2750",
+            "DB (F): 95",
+            "WB (F): 78",
+            "Refrigerant: R-32",
+            "Refrig. Suction Temp (F): 43",
+            "Refrig. Liquid Temp (F): 77",
+            "Refrig. Superheat Temp (F): 9",
+            "Max Coil Performance",
+            "Capacity (MBH): 263.63",
+            "Capacity Sensible (MBH): 137.45",
+            "DB (F): 49.73",
+            "WB (F): 49.52",
+            "Air Vel (FPM): 423.08",
+            "Air PD (IWG): 0.54",
+            "Internal Vol (cu.in): 816.89",
+            "Refrig. PD (psi): 4.99",
+        ]
+    )
+
+
+def _oxygen8_attached_pdf_text_spacing_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Unit Details",
+            "Altitude (ft): 43",
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling H05_I_ERV RH",
+            "Cooling DX",
+            "Coil",
+            "Model: DXM08C14-",
+            "24.00x39.00R",
+            "Fin Height (in): 24",
+            "Fin Length (in): 39",
+            "Face Area (sq.ft): 6.5",
+            "FPI: 14",
+            "Rows: 8",
+            "Total Feeds: 16",
+            "Fin Surface: Flat",
+            "Fin Material: 0.0075 Aluminium",
+            "Tube Material: 0.016 Copper",
+            "Tube Surface: Smooth",
+            "Coil Weight (lbs) 67",
+            "Suction Size (in): 0.875",
+            "Coil Style: Interlaced 2 Circuits",
+            "Qty Conn. / Header 2Entering",
+            "Airflow (CFM): 850",
+            "DB (F): 86.1",
+            "WB (F) 85.9",
+            "Refrigerant: R-32",
+            "Refrig. Suction Temp (F): 43",
+            "Refrig. Liquid Temp (F): 77",
+            "Refrig. Superheat Temp (F): 9Coil Operating Setpoint",
+            "DB (F): 52",
+            "Max Coil Performance",
+            "Capacity (MBH): 116.23",
+            "Capacity Sensible (MBH): 34.87",
+            "DB (F): 49.77",
+            "WB (F) 49.67",
+            "Air Vel (FPM): 463.64",
+            "Air PD (IWG): 0.66",
+            "Internal Vol (cu.in): 224.07",
+            "Refrig. PD (psi): 4.25",
+        ]
+    )
+
+
+def _cwc_and_hwc_sections_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CCWC-1 CWC Cooling B20_V_I_ERV LH",
+            "1 HHWC-1 HWC Heating B20_V_I_ERV LH",
+            "Cooling CWC",
+            "Coil",
+            "Model: CWD04C14-16.50x24.00R",
+            "Fin Surface: Flat",
+            "Fin Height (in): 16.5",
+            "Fin Length (in): 24",
+            "Face Area (sq.ft): 2.8",
+            "FPI: 14",
+            "Rows: 4",
+            "Circuits: 3",
+            "Fin Thickness (in): 0.0075",
+            "Coil Depth (in): 7.5",
+            "Coil Weight (lbs): 50.4",
+            'Inlet Conn. Size (in): 7/8"',
+            'Outlet Conn. Size (in): 7/8"',
+            "Entering",
+            "Airflow (CFM): 1095",
+            "DB (F): 86.4",
+            "WB (F): 75.2",
+            "Fluid Type: Propylene Glycol",
+            "Fluid Percent (%): 30",
+            "Fluid Ent Temp (F): 45",
+            "Fluid Lvg Temp (F): 57",
+            "Coil Operating Setpoint",
+            "DB (F): 70",
+            "Max Coil Performance",
+            "Airflow (CFM): 1095",
+            "Capacity (MBH): 50.7",
+            "DB (F): 64.1",
+            "WB (F): 62.9",
+            "Air Vel (FPM): 398",
+            "Air PD (inWG): 0.403",
+            "Fluid Flow Rate (GPM): 9.01",
+            "Fluid PD (ftWG): 11.16",
+            "Fluid Vel (fps): 3.32",
+            "Valve & Actuator",
+            "Valve Spec: Brass Trim, Normally Closed, SAS, 0-10V",
+            "Actuator: SAS-61.33U",
+            "Valve Size (in): 3/4",
+            "Control Valve (Cv): 6.3",
+            "Description: 2WNC BR FxF 0.75/6.3 + SAS61.33U",
+            "Heating HWC",
+            "Coil",
+            "Model: HWD02C08-18.00x30.00R",
+            "Fin Surface: Flat",
+            "Fin Height (in): 18",
+            "Fin Length (in): 30",
+            "Face Area (sq.ft): 3.8",
+            "FPI: 8",
+            "Rows: 2",
+            "Circuits: 1",
+            "Fin Thickness (in): 0.0075",
+            "Coil Depth (in): 5.5",
+            "Coil Weight (lbs): 32.8",
+            "Inlet Conn. Size (in): 0.75",
+            "Outlet Conn. Size (in): 0.75",
+            "Entering",
+            "Airflow (CFM): 1095",
+            "DB (F): 50.4",
+            "Fluid Type: Water",
+            "Fluid Percent (%): 100",
+            "Fluid Ent Temp (F): 140",
+            "Fluid Lvg Temp (F): 110",
+            "Coil Operating Setpoint",
+            "DB (F): 85",
+            "Max Coil Performance",
+            "Airflow (CFM): 1095",
+            "Capacity (MBH): 41.9",
+            "DB (F): 85.8",
+            "Air Vel (FPM): 292",
+            "Air PD (inWG): 0.047",
+            "Fluid Flow Rate (GPM): 2.82",
+            "Fluid PD (ftWG): 6.5",
+            "Fluid Vel (fps): 3.04",
+            "Valve & Actuator",
+            "Valve Size (in): 1/2",
+        ]
+    )
+
+
+def _repeated_preheat_and_heating_hwc_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 PHWC-1 HWC Pre-Heat H05_I_ERV_BP LH",
+            "1 HHWC-1 HWC Heating H05_I_ERV_BP LH",
+            "2 PHWC-2 HWC Pre-Heat H05_I_ERV_BP LH",
+            "2 HHWC-2 HWC Heating H05_I_ERV_BP LH",
+            "Preheat HWC",
+            "Coil",
+            "Fin Height (in): 10.5",
+            "Fin Length (in): 14.25",
+            "Rows: 2",
+            "Max Coil Performance",
+            "Capacity (MBH): 23",
+            "Heating HWC",
+            "Coil",
+            "Fin Height (in): 10.5",
+            "Fin Length (in): 14.25",
+            "Rows: 3",
+            "Max Coil Performance",
+            "Capacity (MBH): 13.1",
+            "Supply Fan",
+            "Rows: 77",
+            "Preheat HWC",
+            "Coil",
+            "Fin Height (in): 12.5",
+            "Fin Length (in): 20",
+            "Rows: 4",
+            "Max Coil Performance",
+            "Capacity (MBH): 31",
+            "Heating HWC",
+            "Coil",
+            "Fin Height (in): 13.5",
+            "Fin Length (in): 21",
+            "Rows: 5",
+            "Max Coil Performance",
+            "Capacity (MBH): 21",
+            "Supply Fan",
+            "Rows: 88",
+        ]
+    )
+
+
+def _four_format_cover_page_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_015 LH",
+            "1 RHHGRC-1 HGRC Reheat TR_C_015 LH",
+            "1 CCWC-1 Chilled Water Coil TR_C_015 LH",
+            "1 PHWC-1 Pre Hot Water Coil TR_C_015 LH",
+            "1 HHWC-1 Post Hot Water Coil TR_C_015 LH",
+        ]
+    )
+
+
+def _make_text_pdf(lines: list[str]) -> bytes:
+    text_ops = ["BT", "/F1 12 Tf", "72 720 Td"]
+    first = True
+    for line in lines:
+        safe = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        if not first:
+            text_ops.append("0 -16 Td")
+        text_ops.append(f"({safe}) Tj")
+        first = False
+    text_ops.append("ET")
+    stream = "\n".join(text_ops).encode("latin-1")
+    objects = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+        (
+            b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n"
+        ),
+        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+        f"5 0 obj << /Length {len(stream)} >> stream\n".encode("ascii")
+        + stream
+        + b"\nendstream endobj\n",
+    ]
+    output = BytesIO()
+    output.write(b"%PDF-1.4\n")
+    offsets = []
+    for obj in objects:
+        offsets.append(output.tell())
+        output.write(obj)
+    xref_offset = output.tell()
+    output.write(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii"))
+    for offset in offsets:
+        output.write(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.write(
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode(
+            "ascii"
+        )
+    )
+    return output.getvalue()

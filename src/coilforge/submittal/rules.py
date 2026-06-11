@@ -6,14 +6,18 @@ from typing import Literal
 
 CandidateFieldTarget = Literal[
     "tag",
+    "quantity",
     "product_type",
     "coil_type",
     "header_type",
     "geometry",
     "airside_conditions",
     "refrigerant_conditions",
+    "materials_construction",
     "connections",
+    "manufacturing_options",
     "performance",
+    "drawing_parameters",
 ]
 
 

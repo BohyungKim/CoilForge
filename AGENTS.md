@@ -44,6 +44,7 @@ The immediate Phase 1 purpose is a checklist-driven drawing populator for Direct
 - Drawing generation must be explainable, rule-driven, and reviewable.
 - JSON import/export is a core architectural requirement, not an afterthought.
 - Source evidence and normalized interpretation must remain separate when they differ.
+- PDF extraction should evolve toward supplier-specific adapters selected from the PDF supplier/manufacturer context. Each supplier adapter must keep raw PDF data out of stored/exported payloads, preserve source evidence, and mark extracted mappings as review-required until John or engineering confirms them.
 
 ## Safety Rule
 

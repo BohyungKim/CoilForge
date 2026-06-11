@@ -1,0 +1,169 @@
+{
+  "schema_version": "mapping_lab_v1",
+  "case_id": "case_001_dx_hgrh",
+  "supplier": "oxygen8",
+  "source_type": "sanitized_mock_pdf_extraction",
+  "raw_pdf_stored": false,
+  "cover_page": {
+    "page": 1,
+    "rows": [
+      {
+        "row_number": 1,
+        "qty": 1,
+        "tag": "CDXC-1",
+        "item": "DXC Cooling",
+        "model": "TR_C_040",
+        "handing": "LH"
+      },
+      {
+        "row_number": 2,
+        "qty": 1,
+        "tag": "RHHGRC-1",
+        "item": "HGRH Reheat",
+        "model": "TR_C_040",
+        "handing": "LH"
+      }
+    ]
+  },
+  "coil_instances": [
+    {
+      "tag": "CDXC-1",
+      "qty": 1,
+      "coil_format": "dx",
+      "coil_type": "DX COIL",
+      "sequence_index": 1,
+      "handing": "LH",
+      "sections": [
+        {
+          "heading": "Unit Details",
+          "page": 2,
+          "fields": {
+            "Altitude (ft)": {
+              "value": 0,
+              "unit": "ft",
+              "evidence_id": "case_001:p2:unit_details:altitude"
+            }
+          }
+        },
+        {
+          "heading": "Cooling DX",
+          "page": 3,
+          "fields": {
+            "Model": {
+              "value": "3DX-06.24.0-11.48.0-18",
+              "unit": "",
+              "evidence_id": "case_001:p3:cooling_dx:model"
+            },
+            "Fin Height (in)": {
+              "value": 24,
+              "unit": "in",
+              "evidence_id": "case_001:p3:cooling_dx:fin_height"
+            },
+            "Fin Length (in)": {
+              "value": 48,
+              "unit": "in",
+              "evidence_id": "case_001:p3:cooling_dx:fin_length"
+            },
+            "FPI": {
+              "value": 11,
+              "unit": "",
+              "evidence_id": "case_001:p3:cooling_dx:fpi"
+            },
+            "Rows": {
+              "value": 6,
+              "unit": "",
+              "evidence_id": "case_001:p3:cooling_dx:rows"
+            },
+            "Total Feeds": {
+              "value": 18,
+              "unit": "",
+              "evidence_id": "case_001:p3:cooling_dx:total_feeds"
+            },
+            "Airflow (CFM)": {
+              "value": 3735,
+              "unit": "CFM",
+              "evidence_id": "case_001:p3:cooling_dx:airflow"
+            },
+            "DB (F)": {
+              "value": 95,
+              "unit": "degF",
+              "evidence_id": "case_001:p3:cooling_dx:entering_db"
+            },
+            "WB (F)": {
+              "value": 78,
+              "unit": "degF",
+              "evidence_id": "case_001:p3:cooling_dx:entering_wb"
+            },
+            "Refrigerant": {
+              "value": "R-32",
+              "unit": "",
+              "evidence_id": "case_001:p3:cooling_dx:refrigerant"
+            },
+            "Capacity (MBH)": {
+              "value": 329.48,
+              "unit": "MBH",
+              "evidence_id": "case_001:p3:cooling_dx:capacity"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tag": "RHHGRC-1",
+      "qty": 1,
+      "coil_format": "condensing",
+      "coil_type": "HGRH COIL",
+      "sequence_index": 1,
+      "handing": "LH",
+      "sections": [
+        {
+          "heading": "Reheat Hot Gas Reheat Coil",
+          "page": 4,
+          "stop_before_heading": "Supply Fan",
+          "fields": {
+            "Fin Height (in)": {
+              "value": 24,
+              "unit": "in",
+              "evidence_id": "case_001:p4:hgrh:fin_height"
+            },
+            "Fin Length (in)": {
+              "value": 48,
+              "unit": "in",
+              "evidence_id": "case_001:p4:hgrh:fin_length"
+            },
+            "FPI": {
+              "value": 11,
+              "unit": "",
+              "evidence_id": "case_001:p4:hgrh:fpi"
+            },
+            "Rows": {
+              "value": 1,
+              "unit": "",
+              "evidence_id": "case_001:p4:hgrh:rows"
+            },
+            "Airflow (CFM)": {
+              "value": 3735,
+              "unit": "CFM",
+              "evidence_id": "case_001:p4:hgrh:airflow"
+            },
+            "DB (F)": {
+              "value": 55,
+              "unit": "degF",
+              "evidence_id": "case_001:p4:hgrh:entering_db"
+            },
+            "Refrigerant": {
+              "value": "R-32",
+              "unit": "",
+              "evidence_id": "case_001:p4:hgrh:refrigerant"
+            },
+            "Capacity (MBH)": {
+              "value": 60.85,
+              "unit": "MBH",
+              "evidence_id": "case_001:p4:hgrh:capacity"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

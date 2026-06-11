@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coilforge.local/schemas/drawing_template_seed_evidence.schema.json",
+  "title": "CoilForge Drawing Template Seed Evidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "template_id",
+    "source_case_id",
+    "supplier",
+    "coil_category",
+    "coil_hand",
+    "header_type",
+    "source_folder",
+    "intake_status",
+    "review_status",
+    "release_status",
+    "export_allowed",
+    "production_approved",
+    "pdf_export_enabled",
+    "source_files",
+    "slot_evidence",
+    "observed_candidates"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string"},
+    "template_id": {"type": "string"},
+    "source_case_id": {"type": "string"},
+    "supplier": {"type": "string"},
+    "coil_category": {"enum": ["DX", "HGRH", "CWC", "HWC"]},
+    "coil_hand": {"enum": ["LH", "RH"]},
+    "header_type": {"type": "string"},
+    "source_folder": {"type": "string"},
+    "intake_status": {"type": "string"},
+    "review_status": {"type": "string"},
+    "release_status": {"const": "review_aid_only"},
+    "export_allowed": {"const": false},
+    "production_approved": {"const": false},
+    "pdf_export_enabled": {"const": false},
+    "source_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/source_file"}
+    },
+    "slot_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/slot_evidence"}
+    },
+    "observed_candidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/observed_candidate"}
+    }
+  },
+  "$defs": {
+    "source_file": {
+      "type": "object",
+      "required": ["role", "committed_copy"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {"enum": ["ez_drawing_pdf", "ez_json_export", "submittal_pdf"]},
+        "filename": {"type": "string"},
+        "filename_policy": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+        "page_count": {"type": "integer", "minimum": 1},
+        "committed_copy": {"const": false},
+        "notes": {"type": "string"}
+      }
+    },
+    "slot_evidence": {
+      "type": "object",
+      "required": ["slot_id", "value", "source_channels", "review_status"],
+      "additionalProperties": false,
+      "properties": {
+        "slot_id": {"type": "string", "pattern": "^slot\\.[A-Za-z0-9_]+$"},
+        "value": {"type": "string"},
+        "unit": {"type": "string"},
+        "source_channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"enum": ["ez_drawing_pdf", "ez_json_export", "source_pdf_candidate", "manual_reviewed_value"]}
+        },
+        "review_status": {"type": "string"}
+      }
+    },
+    "observed_candidate": {
+      "type": "object",
+      "required": ["field", "value", "source_channels", "review_status"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {"type": "string"},
+        "value": {"type": "string"},
+        "unit": {"type": "string"},
+        "source_channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"enum": ["ez_drawing_pdf", "ez_json_export", "source_pdf_candidate", "manual_reviewed_value"]}
+        },
+        "review_status": {"type": "string"},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}

@@ -54,7 +54,7 @@ def map_submittal_candidate_to_canonical_result(
         refrigerant_conditions=dict(candidate.refrigerant_conditions),
         materials_construction=dict(candidate.materials_construction),
         connections=dict(candidate.connections),
-        manufacturing_options={},
+        manufacturing_options=dict(candidate.manufacturing_options),
         drawing_parameters=dict(candidate.drawing_parameters),
         performance=dict(candidate.performance),
         source_evidence=_collect_source_evidence(candidate),
@@ -77,9 +77,12 @@ def map_submittal_candidate_to_canonical_result(
 
 
 def _build_coil_identity(candidate: SubmittalCoilCandidate) -> dict[str, FieldValue]:
-    if candidate.tag is None:
-        return {}
-    return {"tag": candidate.tag}
+    identity = {}
+    if candidate.tag is not None:
+        identity["tag"] = candidate.tag
+    if candidate.quantity is not None:
+        identity["coil_quantity"] = candidate.quantity
+    return identity
 
 
 def _keep_candidate_classification(field_value: FieldValue | None) -> FieldValue | None:
@@ -103,6 +106,7 @@ def _collect_source_evidence(candidate: SubmittalCoilCandidate) -> list[SourceEv
 
     for field_value in (
         candidate.tag,
+        candidate.quantity,
         candidate.product_type,
         candidate.coil_type,
         candidate.header_type,
@@ -115,6 +119,7 @@ def _collect_source_evidence(candidate: SubmittalCoilCandidate) -> list[SourceEv
         candidate.refrigerant_conditions,
         candidate.materials_construction,
         candidate.connections,
+        candidate.manufacturing_options,
         candidate.performance,
         candidate.drawing_parameters,
     ):

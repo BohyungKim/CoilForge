@@ -1,0 +1,81 @@
+coil_tag,direct_field_key,direct_label,target_value,target_unit,source_section,source_label,source_value,source_unit,transform,source_type,confidence,review_note
+CDXC-1,coil_quantity,Coil Quantity,1,,Cover Page,Qty,1,,direct,pdf,exact_match,
+CDXC-1,coil_hand,Coil Hand,Right,,Cover Page,Handing,RH,,normalize_rh_to_right,pdf_normalized,normalized_match,
+CDXC-1,tube_diameter_standard_at_top,Tube Diameter (standard at top),3/8 1.00 x 0.866,,,,,,engineer_selected,engineer_default,engineer_default,Direct Coil selection value visible in screenshot; not explicit in PDF section.
+CDXC-1,tubes_high,Tubes High,26,,Cooling DX,Fin Height (in),26,in,match_tubes_high_to_fin_height_for_dx,pdf_normalized,needs_review,Verify if tubes high always equals fin height for this supplier.
+CDXC-1,finned_height,Finned Height(In),26,in,Cooling DX,Fin Height (in),26,in,direct,pdf,exact_match,
+CDXC-1,finned_length,Finned Length(In),72,in,Cooling DX,Fin Length (in),72,in,direct,pdf,exact_match,
+CDXC-1,rows,Rows Deep,5,,Cooling DX,Rows,5,,direct,pdf,exact_match,
+CDXC-1,fin_density_fpi,Fins Per Inch,12,FPI,Cooling DX,FPI,11,,direct_coil_option_differs_from_pdf,review_required,needs_review,John review 2026-06-11: possible application engineer mistake or intentional adjustment to keep leaving dry bulb similar or below supplier value.
+CDXC-1,number_of_feeds_total,Number Of Feeds(Total),16,,Cooling DX,Total Feeds,16,,direct,pdf,exact_match,
+CDXC-1,tube_material,Tube Material,Copper 0.016 Plain,,Cooling DX,Tube Material,0.016 Copper,,engineer_option_from_pdf_material,pdf_normalized,normalized_match,Direct Coil adds Plain option text.
+CDXC-1,fin_material,Fin Material,Aluminum 0.008,,Cooling DX,Fin Material,0.0075 Aluminium,,engineer_option_from_pdf_material,review_required,needs_review,PDF says 0.0075 Aluminium but Direct Coil screenshot uses Aluminum 0.008.
+CDXC-1,fin_surface,Fin Surface,Flat,,Cooling DX,Fin Surface,Flat,,direct,pdf,exact_match,
+CDXC-1,header_material,Header Material,Copper,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,header_wall_schedule,Header Wall Schedule,(L),,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,connection_material,Connection Material,Copper,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,connection_type,Connection Type,Sweat,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,return_connection_size,Return Connection Size,Calculate,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,casing_style,Casing Style,Standard,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,casing_material,Casing Material,Galvanized Steel,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,connection_ends,Connection Ends,Same End Only,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,coil_coating,Coil Coating,Plain,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,system_type,System Type,3-Circuit Intertwine,,Cooling DX,Coil Style,Interlaced 3 Circuits,,normalize_interlaced_to_direct_coil_option,pdf_normalized,needs_review,Confirm Direct Coil system-type option text.
+CDXC-1,drain_pan_type,Drain Pan Type,None,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,drain_pan_material,Drain Pan Material,SST,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,airflow,Total Air Flow(CFM),5825,CFM,Cooling DX,Airflow (CFM),5825,CFM,direct,pdf,exact_match,
+CDXC-1,airflow_input_mode,Airflow Mode,Actual,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,airflow_per_coil,Air Flow Per Coil(CFM),5825,CFM,Cooling DX,Airflow (CFM),5825,CFM,same_as_total_for_qty_1,pdf_normalized,normalized_match,
+CDXC-1,face_velocity,Face Velocity(FPM),448.08,FPM,Cooling DX,Air Vel (FPM),448.08,FPM,direct,pdf,exact_match,
+CDXC-1,altitude,Altitude(FT),597,ft,Unit Details,Altitude (ft),597,ft,direct,pdf,exact_match,
+CDXC-1,entering_db_f,Entering Dry Bulb(F),78.41,degF,Cooling DX,DB (F),78.41,degF,direct,pdf,exact_match,
+CDXC-1,entering_wb_f,Entering Wet Bulb(F),65.33,degF,Cooling DX,WB (F),65.33,degF,direct,pdf,exact_match,
+CDXC-1,entering_relative_humidity_percent,Entering Relative Humidity(%),50.3,,,,,,calculated_from_db_wb_altitude,calculated,calculated,Direct Coil screenshot shows calculated RH.
+CDXC-1,leaving_db_f,Leaving Dry Bulb(F),55.0,degF,Cooling DX,Operating Setpoint DB (F),54.5,degF,direct_coil_rounded_setpoint,review_required,needs_review,John review 2026-06-11: possible application engineer mistake or intentional adjustment to keep leaving dry bulb similar or below supplier value.
+CDXC-1,total_capacity_mbh_per_coil,Total Capacity(MBH)(Per Coil),0,MBH,Cooling DX,Nominal Cooling Capacity (MBH),623.79,MBH,not_mapped_in_screenshot,review_required,needs_review,PDF has nominal/max capacity but Direct Coil screenshot shows 0.
+CDXC-1,refrigerant,Refrigerant,R32,,Cooling DX,Refrigerant,R-32,,normalize_refrigerant_dash,pdf_normalized,normalized_match,
+CDXC-1,evaporating_temperature_f,Evaporating Temperature(F),43,degF,Cooling DX,Refrig. Suction Temp (F),43,degF,map_suction_temp_to_evap_temp,pdf_normalized,needs_review,Confirm Direct Coil evaporating temperature source.
+CDXC-1,liquid_temperature_f,Liquid Temperature(F),77,degF,Cooling DX,Refrig. Liquid Temp (F),77,degF,direct,pdf,exact_match,
+CDXC-1,superheat_f,Superheat(F),9,degF,Cooling DX,Refrig. Superheat Temp (F),9,degF,direct,pdf,exact_match,
+CDXC-1,dx_dist_capillary_size,DXDistCapillarySize,1/4 x 0.025,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+CDXC-1,air_side_fouling_factor,Air Side Fouling Factor,0,,,,,,engineer_default,engineer_default,engineer_default,Visible standard value in Direct Coil screenshot.
+RHHGRC-1,coil_quantity,Coil Quantity,1,,Cover Page,Qty,1,,direct,pdf,exact_match,
+RHHGRC-1,coil_hand,Coil Hand,Right,,Cover Page,Handing,RH,,normalize_rh_to_right,pdf_normalized,normalized_match,
+RHHGRC-1,tube_diameter_standard_at_top,Tube Diameter (standard at top),3/8 1.00 x 0.866,,,,,,engineer_selected,engineer_default,engineer_default,Direct Coil selection value visible in screenshot; not explicit in PDF section.
+RHHGRC-1,coil_type,Coil Type,Standard,,Reheat Hot Gas Reheat Coil,Coil Style,Standard,,direct,pdf,exact_match,
+RHHGRC-1,tubes_high,Tubes High,26,,Reheat Hot Gas Reheat Coil,Fin Height (in),26,in,match_tubes_high_to_fin_height_for_hgrh,pdf_normalized,needs_review,Verify if tubes high always equals fin height for this supplier and coil type.
+RHHGRC-1,finned_height,Finned Height(In),26,in,Reheat Hot Gas Reheat Coil,Fin Height (in),26,in,direct,pdf,exact_match,
+RHHGRC-1,finned_length,Finned Length(In),72,in,Reheat Hot Gas Reheat Coil,Fin Length (in),72,in,direct,pdf,exact_match,
+RHHGRC-1,rows,Rows Deep,1,,Reheat Hot Gas Reheat Coil,Rows,1,,direct,pdf,exact_match,
+RHHGRC-1,fin_density_fpi,Fins Per Inch,13,FPI,Reheat Hot Gas Reheat Coil,FPI,13.5,,direct_coil_option_differs_from_pdf,review_required,needs_review,John review 2026-06-11: possible application engineer mistake or intentional adjustment to keep leaving dry bulb similar or below supplier value.
+RHHGRC-1,number_of_feeds,Number Of Feeds,4,,Reheat Hot Gas Reheat Coil,Total Feeds,3,,direct_coil_option_differs_from_pdf,review_required,needs_review,John review 2026-06-11: possible application engineer mistake or intentional adjustment to keep leaving dry bulb similar or below supplier value.
+RHHGRC-1,tube_material,Tube Material,Copper 0.016 Plain,,Reheat Hot Gas Reheat Coil,Tube Material,0.016 Copper,,engineer_option_from_pdf_material,pdf_normalized,normalized_match,Direct Coil adds Plain option text.
+RHHGRC-1,fin_material,Fin Material,Aluminum 0.008,,Reheat Hot Gas Reheat Coil,Fin Material,0.0075 Aluminium,,engineer_option_from_pdf_material,review_required,needs_review,PDF says 0.0075 Aluminium but Direct Coil screenshot uses Aluminum 0.008.
+RHHGRC-1,fin_surface,Fin Surface,Flat,,Reheat Hot Gas Reheat Coil,Fin Surface,Sine,,application_engineer_misselect,review_required,known_misselect,John review 2026-06-11: application engineer misselect. Do not learn Flat as supplier-derived mapping because PDF source says Sine.
+RHHGRC-1,header_material,Header Material,Copper,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,header_wall_schedule,Header Wall Schedule,(L),,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,connection_material,Connection Material,Copper,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,connection_type,Connection Type,Sweat,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,supply_connection_size,Supply Connection Size,Calculate,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,return_connection_size,Return Connection Size,Calculate,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,casing_material,Casing Material,Galvanized Steel,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,casing_style,Casing Style,Standard,,Reheat Hot Gas Reheat Coil,Coil Style,Standard,,direct,pdf,exact_match,
+RHHGRC-1,connection_ends,Connection Ends,Same End Only,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,coil_coating,Coil Coating,Plain,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,system_type,System Type,Dual-Circuit Face Split,,,,,,engineer_selected,engineer_default,needs_review,Visible in Direct Coil screenshot but exact option suffix is partially clipped.
+RHHGRC-1,airflow,Total Air Flow(CFM),5825,CFM,Reheat Hot Gas Reheat Coil,Airflow (CFM),5825,CFM,direct,pdf,exact_match,
+RHHGRC-1,airflow_input_mode,Airflow Mode,Actual,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,airflow_per_coil,Air Flow Per Coil(CFM),5825,CFM,Reheat Hot Gas Reheat Coil,Airflow (CFM),5825,CFM,same_as_total_for_qty_1,pdf_normalized,normalized_match,
+RHHGRC-1,face_velocity,Face Velocity(FPM),448.08,FPM,Reheat Hot Gas Reheat Coil,Air Vel (FPM),448.08,FPM,direct,pdf,exact_match,
+RHHGRC-1,altitude,Altitude(FT),597,ft,Unit Details,Altitude (ft),597,ft,direct,pdf,exact_match,
+RHHGRC-1,entering_db_f,Entering Dry Bulb(F),54.5,degF,Reheat Hot Gas Reheat Coil,DB (F),54.5,degF,direct,pdf,exact_match,
+RHHGRC-1,leaving_db_f,Leaving Dry Bulb(F),90,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,PDF setpoint DB is 72 and max DB is 72.3 while Direct Coil screenshot shows 90.
+RHHGRC-1,total_capacity_mbh_per_coil,Total Capacity(MBH)(Per Coil),0,MBH,Reheat Hot Gas Reheat Coil,Max Capacity (MBH),111.9,MBH,not_mapped_in_screenshot,review_required,needs_review,PDF has max capacity but Direct Coil screenshot shows 0.
+RHHGRC-1,refrigerant,Refrigerant,R32,,Reheat Hot Gas Reheat Coil,Refrigerant,R-32,,normalize_refrigerant_dash,pdf_normalized,normalized_match,
+RHHGRC-1,temperature_input,Temperature Input,Vapor Temperature,,,,,,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,saturated_suction_temperature_f,Saturated Suction Temperature(F),45,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,John review 2026-06-11: source remains unsure. Keep review-required until more examples or engineer confirmation.
+RHHGRC-1,suction_temperature_at_compressor_f,Suction Temperature at Compressor(F),68,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,John review 2026-06-11: source remains unsure. Keep review-required until more examples or engineer confirmation.
+RHHGRC-1,vapor_temperature_f,Vapor Temperature(F),140,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,John review 2026-06-11: source remains unsure. Keep review-required until more examples or engineer confirmation.
+RHHGRC-1,condensing_temperature_f,Condensing Temperature(F),115,degF,Reheat Hot Gas Reheat Coil,Refrig. Cond. Temp (F),115,degF,direct,pdf,exact_match,
+RHHGRC-1,subcooling_f,Subcooling(F),18,degF,Reheat Hot Gas Reheat Coil,Refrig. Subcooling Temp (F),18,degF,direct,pdf,exact_match,
+RHHGRC-1,air_side_fouling_factor,Air Side Fouling Factor,0,,,,,,engineer_default,engineer_default,engineer_default,Visible standard value in Direct Coil screenshot.

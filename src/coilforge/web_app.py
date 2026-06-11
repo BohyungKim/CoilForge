@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body
+from fastapi import Body, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 
 from coilforge.adapters import load_sanitized_ez_json
@@ -25,9 +25,24 @@ from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate
 from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
+    run_pdf_to_direct_draft_workflow,
+    run_pdf_to_drawing_workflow,
     run_submittal_to_direct_draft_workflow,
     run_submittal_to_drawing_workflow,
 )
+
+
+def _cover_page_hint_from_request(request: Request) -> int | None:
+    raw_value = request.headers.get("x-coilforge-cover-page")
+    if raw_value in (None, ""):
+        return None
+    try:
+        page_number = int(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be an integer.") from exc
+    if page_number < 1:
+        raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be 1 or greater.")
+    return page_number
 
 
 def load_default_state():
@@ -46,6 +61,13 @@ async def workflow_default_demo():
 @app.get("/api/ui/default")
 async def ui_default_state():
     return build_phase2b_default_ui_state()
+
+
+@app.get("/api/direct-coil/paste-ready-fields")
+async def direct_coil_paste_ready_fields():
+    demo = build_default_demo_workflow_input()
+    workflow = run_submittal_to_direct_draft_workflow(demo["input"])
+    return jsonable_encoder(workflow["direct_coil_paste_ready"])
 
 
 @app.get("/api/compatibility/default-review")
@@ -157,6 +179,34 @@ async def workflow_submittal_to_direct_draft(request: dict[str, Any] = Body(defa
 @app.post("/api/workflow/submittal-to-drawing")
 async def workflow_submittal_to_drawing(request: dict[str, Any] = Body(default_factory=dict)):
     return run_submittal_to_drawing_workflow(request or {})
+
+
+@app.post("/api/workflow/pdf-to-direct-draft")
+async def workflow_pdf_to_direct_draft(request: Request):
+    pdf_bytes = await request.body()
+    try:
+        return run_pdf_to_direct_draft_workflow(
+            pdf_bytes,
+            source_id=request.headers.get("x-coilforge-source-id", "PDF-UPLOAD-INTAKE-001"),
+            source_filename=request.headers.get("x-coilforge-filename"),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/workflow/pdf-to-drawing")
+async def workflow_pdf_to_drawing(request: Request):
+    pdf_bytes = await request.body()
+    try:
+        return run_pdf_to_drawing_workflow(
+            pdf_bytes,
+            source_id=request.headers.get("x-coilforge-source-id", "PDF-UPLOAD-INTAKE-001"),
+            source_filename=request.headers.get("x-coilforge-filename"),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _build_compatibility_payload(

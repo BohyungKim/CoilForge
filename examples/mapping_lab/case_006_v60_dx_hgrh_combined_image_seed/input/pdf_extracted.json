@@ -1,0 +1,185 @@
+{
+  "schema_version": "mapping_lab_v1",
+  "case_id": "case_006_v60_dx_hgrh_combined_image_seed",
+  "supplier": "oxygen8",
+  "source_type": "sanitized_image_transcription_draft",
+  "raw_pdf_stored": false,
+  "cover_page": {
+    "page": 1,
+    "rows": [
+      {
+        "row_number": 1,
+        "qty": 1,
+        "tag": "DOAS 2-1",
+        "item": "ERV",
+        "model": "V60_I_ERV_BP",
+        "voltage": "460V/3ph/60Hz",
+        "controls_preference": "Constant Volume",
+        "installation": "Vertical",
+        "duct_connection": "S2",
+        "handing": "RH"
+      },
+      {
+        "row_number": 2,
+        "qty": 1,
+        "tag": "CDXC-1",
+        "item": "DXC Cooling",
+        "model": "V60_I_ERV_BP",
+        "handing": "RH"
+      },
+      {
+        "row_number": 3,
+        "qty": 1,
+        "tag": "RHHGRC-1",
+        "item": "HGRC Reheat",
+        "model": "V60_I_ERV_BP",
+        "handing": "RH"
+      },
+      {
+        "row_number": 8,
+        "qty": 3,
+        "tag": "EKEXV-CDXC-1",
+        "item": "EKEXV Valve (DX Coil)",
+        "model": "EKEXVA72U"
+      },
+      {
+        "row_number": 9,
+        "qty": 1,
+        "tag": "EKEXV-HGRC-1",
+        "item": "EKEXV Valve (HGRH Coil)",
+        "model": "EKEXVA96U"
+      }
+    ]
+  },
+  "unit_summary": {
+    "page": 2,
+    "unit_tag": "DOAS 2-1",
+    "unit_type": "Ventum+",
+    "fields": {
+      "Model": {"value": "V60IN-ERV-BP - (4800-6400 CFM)", "unit": "", "evidence_id": "case_006:p2:unit:model"},
+      "Qty": {"value": 1, "unit": "", "evidence_id": "case_006:p2:unit:qty"},
+      "Altitude (ft)": {"value": 597, "unit": "ft", "evidence_id": "case_006:p2:unit:altitude"},
+      "Orientation": {"value": "Vertical", "unit": "", "evidence_id": "case_006:p2:unit:orientation"},
+      "Controls Preference": {"value": "Constant Volume", "unit": "", "evidence_id": "case_006:p2:unit:controls"},
+      "Dampers & Actuator": {"value": "Factory Mounted and Wired", "unit": "", "evidence_id": "case_006:p2:unit:dampers"},
+      "EKEV Valves & Controllers": {
+        "value": "Rep Supplied and Factory Installed",
+        "unit": "",
+        "evidence_id": "case_006:p2:unit:ekev"
+      }
+    }
+  },
+  "coil_instances": [
+    {
+      "tag": "CDXC-1",
+      "qty": 1,
+      "coil_format": "dx",
+      "coil_type": "DX COIL",
+      "sequence_index": 1,
+      "handing": "RH",
+      "sections": [
+        {
+          "heading": "Cooling DX",
+          "page": 3,
+          "fields": {
+            "Model": {"value": "DXM05C11-26.00x72.00R", "unit": "", "evidence_id": "case_006:p3:cooling_dx:model"},
+            "Fin Height (in)": {"value": 26, "unit": "in", "evidence_id": "case_006:p3:cooling_dx:fin_height"},
+            "Fin Length (in)": {"value": 72, "unit": "in", "evidence_id": "case_006:p3:cooling_dx:fin_length"},
+            "Face Area (sq.ft)": {"value": 13, "unit": "sq.ft", "evidence_id": "case_006:p3:cooling_dx:face_area"},
+            "FPI": {"value": 11, "unit": "", "evidence_id": "case_006:p3:cooling_dx:fpi"},
+            "Rows": {"value": 5, "unit": "", "evidence_id": "case_006:p3:cooling_dx:rows"},
+            "Total Feeds": {"value": 16, "unit": "", "evidence_id": "case_006:p3:cooling_dx:total_feeds"},
+            "Fin Surface": {"value": "Flat", "unit": "", "evidence_id": "case_006:p3:cooling_dx:fin_surface"},
+            "Fin Material": {"value": "0.0075 Aluminium", "unit": "", "evidence_id": "case_006:p3:cooling_dx:fin_material"},
+            "Tube Material": {"value": "0.016 Copper", "unit": "", "evidence_id": "case_006:p3:cooling_dx:tube_material"},
+            "Tube Surface": {"value": "Smooth", "unit": "", "evidence_id": "case_006:p3:cooling_dx:tube_surface"},
+            "Coil Weight (lbs)": {"value": 156.99, "unit": "lb", "evidence_id": "case_006:p3:cooling_dx:coil_weight"},
+            "Suction Size (in)": {"value": 1.125, "unit": "in", "evidence_id": "case_006:p3:cooling_dx:suction_size"},
+            "Coil Style": {"value": "Interlaced 3 Circuits", "unit": "", "evidence_id": "case_006:p3:cooling_dx:coil_style"},
+            "Qty Conn. / Header": {"value": 3, "unit": "", "evidence_id": "case_006:p3:cooling_dx:qty_conn_header"},
+            "Airflow (CFM)": {"value": 5825, "unit": "CFM", "evidence_id": "case_006:p3:cooling_dx:airflow"},
+            "DB (F)": {"value": 78.41, "unit": "degF", "evidence_id": "case_006:p3:cooling_dx:entering_db"},
+            "WB (F)": {"value": 65.33, "unit": "degF", "evidence_id": "case_006:p3:cooling_dx:entering_wb"},
+            "Refrigerant": {"value": "R-32", "unit": "", "evidence_id": "case_006:p3:cooling_dx:refrigerant"},
+            "Refrig. Suction Temp (F)": {"value": 43, "unit": "degF", "evidence_id": "case_006:p3:cooling_dx:refrig_suction_temp"},
+            "Refrig. Liquid Temp (F)": {"value": 77, "unit": "degF", "evidence_id": "case_006:p3:cooling_dx:refrig_liquid_temp"},
+            "Refrig. Superheat Temp (F)": {"value": 9, "unit": "degF", "evidence_id": "case_006:p3:cooling_dx:refrig_superheat"},
+            "Nominal Cooling Capacity (MBH)": {"value": 623.79, "unit": "MBH", "evidence_id": "case_006:p3:cooling_dx:nominal_capacity"},
+            "Operating Setpoint DB (F)": {"value": 54.5, "unit": "degF", "evidence_id": "case_006:p3:cooling_dx:operating_setpoint_db"},
+            "Max Capacity (MBH)": {"value": 225.62, "unit": "MBH", "evidence_id": "case_006:p3:cooling_dx:max_capacity"},
+            "Capacity Sensible (MBH)": {"value": 152.84, "unit": "MBH", "evidence_id": "case_006:p3:cooling_dx:sensible_capacity"},
+            "Air Vel (FPM)": {"value": 448.08, "unit": "FPM", "evidence_id": "case_006:p3:cooling_dx:air_velocity"},
+            "Air PD (IWG)": {"value": 0.31, "unit": "IWG", "evidence_id": "case_006:p3:cooling_dx:air_pd"},
+            "Internal Vol (cu.in)": {"value": 972.72, "unit": "cu.in", "evidence_id": "case_006:p3:cooling_dx:internal_volume"},
+            "Refrig. PD (psi)": {"value": 5.18, "unit": "psi", "evidence_id": "case_006:p3:cooling_dx:refrig_pd"}
+          }
+        }
+      ],
+      "integration_kit": {
+        "heading": "VRV Integration Kit",
+        "fields": {
+          "Type": {"value": "AHU Integration Valve Kit", "unit": ""},
+          "Manufacturer": {"value": "Daikin", "unit": ""},
+          "Daikin System Type": {"value": "Heat Recovery System", "unit": ""},
+          "Model": {"value": "EKEXVA72U", "unit": ""},
+          "Qty of Valves": {"value": 3, "unit": ""},
+          "Nominal Tonnage": {"value": "6 tons x 3", "unit": ""}
+        }
+      }
+    },
+    {
+      "tag": "RHHGRC-1",
+      "qty": 1,
+      "coil_format": "condensing",
+      "coil_type": "HGRH COIL",
+      "sequence_index": 1,
+      "handing": "RH",
+      "sections": [
+        {
+          "heading": "Reheat Hot Gas Reheat Coil",
+          "page": 4,
+          "fields": {
+            "Model": {"value": "CD-F-S-01-13.5-26.00x72.00", "unit": "", "evidence_id": "case_006:p4:hgrh:model"},
+            "Fin Height (in)": {"value": 26, "unit": "in", "evidence_id": "case_006:p4:hgrh:fin_height"},
+            "Fin Length (in)": {"value": 72, "unit": "in", "evidence_id": "case_006:p4:hgrh:fin_length"},
+            "Face Area (sq.ft)": {"value": 13, "unit": "sq.ft", "evidence_id": "case_006:p4:hgrh:face_area"},
+            "FPI": {"value": 13.5, "unit": "", "evidence_id": "case_006:p4:hgrh:fpi"},
+            "Rows": {"value": 1, "unit": "", "evidence_id": "case_006:p4:hgrh:rows"},
+            "Total Feeds": {"value": 3, "unit": "", "evidence_id": "case_006:p4:hgrh:total_feeds"},
+            "Fin Surface": {"value": "Sine", "unit": "", "evidence_id": "case_006:p4:hgrh:fin_surface"},
+            "Fin Material": {"value": "0.0075 Aluminium", "unit": "", "evidence_id": "case_006:p4:hgrh:fin_material"},
+            "Tube Material": {"value": "0.016 Copper", "unit": "", "evidence_id": "case_006:p4:hgrh:tube_material"},
+            "Tube Surface": {"value": "Smooth", "unit": "", "evidence_id": "case_006:p4:hgrh:tube_surface"},
+            "Coil Weight (lbs)": {"value": 51.1, "unit": "lb", "evidence_id": "case_006:p4:hgrh:coil_weight"},
+            "Suction Size (in)": {"value": 0.875, "unit": "in", "evidence_id": "case_006:p4:hgrh:suction_size"},
+            "Coil Style": {"value": "Standard", "unit": "", "evidence_id": "case_006:p4:hgrh:coil_style"},
+            "Qty Conn. / Header": {"value": 1, "unit": "", "evidence_id": "case_006:p4:hgrh:qty_conn_header"},
+            "Airflow (CFM)": {"value": 5825, "unit": "CFM", "evidence_id": "case_006:p4:hgrh:airflow"},
+            "DB (F)": {"value": 54.5, "unit": "degF", "evidence_id": "case_006:p4:hgrh:entering_db"},
+            "Refrigerant": {"value": "R-32", "unit": "", "evidence_id": "case_006:p4:hgrh:refrigerant"},
+            "Refrig. Cond. Temp (F)": {"value": 115, "unit": "degF", "evidence_id": "case_006:p4:hgrh:refrig_cond_temp"},
+            "Refrig. Subcooling Temp (F)": {"value": 18, "unit": "degF", "evidence_id": "case_006:p4:hgrh:refrig_subcooling"},
+            "Operating Setpoint DB (F)": {"value": 72, "unit": "degF", "evidence_id": "case_006:p4:hgrh:operating_setpoint_db"},
+            "Max Capacity (MBH)": {"value": 111.9, "unit": "MBH", "evidence_id": "case_006:p4:hgrh:max_capacity"},
+            "Max DB (F)": {"value": 72.3, "unit": "degF", "evidence_id": "case_006:p4:hgrh:max_db"},
+            "Air Vel (FPM)": {"value": 448.08, "unit": "FPM", "evidence_id": "case_006:p4:hgrh:air_velocity"},
+            "Air PD (IWG)": {"value": 0.11, "unit": "IWG", "evidence_id": "case_006:p4:hgrh:air_pd"},
+            "Internal Vol (cu.in)": {"value": 182.19, "unit": "cu.in", "evidence_id": "case_006:p4:hgrh:internal_volume"},
+            "Refrig. PD (psi)": {"value": 8.69, "unit": "psi", "evidence_id": "case_006:p4:hgrh:refrig_pd"}
+          }
+        }
+      ],
+      "integration_kit": {
+        "heading": "VRV Integration Kit",
+        "fields": {
+          "Type": {"value": "AHU Integration Valve Kit", "unit": ""},
+          "Manufacturer": {"value": "Daikin", "unit": ""},
+          "Model": {"value": "EKEXVA96U", "unit": ""},
+          "Qty of Valves": {"value": 1, "unit": ""},
+          "Nominal Tonnage": {"value": "8 tons x 1", "unit": ""}
+        }
+      }
+    }
+  ]
+}
+

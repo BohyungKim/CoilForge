@@ -1,0 +1,79 @@
+{
+  "schema_version": "mapping_lab_v1",
+  "case_id": "case_003_multi_phwc_hhwc",
+  "engineer_output_type": "sanitized_mock_direct_coil_filled",
+  "coils": [
+    {
+      "tag": "PHWC-1",
+      "direct_coil_format": "pre_hot_water",
+      "fields": {
+        "coil_quantity": {"value": 1, "unit": ""},
+        "coil_hand": {"value": "Left", "unit": ""},
+        "finned_height": {"value": 10.5, "unit": "in"},
+        "finned_length": {"value": 14.25, "unit": "in"},
+        "rows": {"value": 2, "unit": ""},
+        "fin_density_fpi": {"value": 6.5, "unit": "FPI"},
+        "airflow": {"value": 500, "unit": "CFM"},
+        "entering_db_f": {"value": -40.2, "unit": "degF"},
+        "fluid_type": {"value": "Propylene Glycol", "unit": ""},
+        "fluid_ratio_percent": {"value": 50, "unit": "%"},
+        "entering_fluid_temp_f": {"value": 120, "unit": "degF"},
+        "leaving_fluid_temp_f": {"value": 100, "unit": "degF"}
+      }
+    },
+    {
+      "tag": "HHWC-1",
+      "direct_coil_format": "hot_water",
+      "fields": {
+        "coil_quantity": {"value": 1, "unit": ""},
+        "coil_hand": {"value": "Left", "unit": ""},
+        "finned_height": {"value": 10.5, "unit": "in"},
+        "finned_length": {"value": 14.25, "unit": "in"},
+        "rows": {"value": 3, "unit": ""},
+        "fin_density_fpi": {"value": 11, "unit": "FPI"},
+        "airflow": {"value": 500, "unit": "CFM"},
+        "entering_db_f": {"value": 50.9, "unit": "degF"},
+        "fluid_type": {"value": "Propylene Glycol", "unit": ""},
+        "fluid_ratio_percent": {"value": 50, "unit": "%"},
+        "entering_fluid_temp_f": {"value": 120, "unit": "degF"},
+        "leaving_fluid_temp_f": {"value": 100, "unit": "degF"}
+      }
+    },
+    {
+      "tag": "PHWC-2",
+      "direct_coil_format": "pre_hot_water",
+      "fields": {
+        "coil_quantity": {"value": 2, "unit": ""},
+        "coil_hand": {"value": "Left", "unit": ""},
+        "finned_height": {"value": 12.5, "unit": "in"},
+        "finned_length": {"value": 18, "unit": "in"},
+        "rows": {"value": 2, "unit": ""},
+        "fin_density_fpi": {"value": 8, "unit": "FPI"},
+        "airflow": {"value": 750, "unit": "CFM"},
+        "entering_db_f": {"value": -20, "unit": "degF"},
+        "fluid_type": {"value": "Propylene Glycol", "unit": ""},
+        "fluid_ratio_percent": {"value": 40, "unit": "%"},
+        "entering_fluid_temp_f": {"value": 110, "unit": "degF"},
+        "leaving_fluid_temp_f": {"value": 90, "unit": "degF"}
+      }
+    },
+    {
+      "tag": "HHWC-2",
+      "direct_coil_format": "hot_water",
+      "fields": {
+        "coil_quantity": {"value": 2, "unit": ""},
+        "coil_hand": {"value": "Left", "unit": ""},
+        "finned_height": {"value": 12.5, "unit": "in"},
+        "finned_length": {"value": 18, "unit": "in"},
+        "rows": {"value": 4, "unit": ""},
+        "fin_density_fpi": {"value": 12, "unit": "FPI"},
+        "airflow": {"value": 750, "unit": "CFM"},
+        "entering_db_f": {"value": 55, "unit": "degF"},
+        "fluid_type": {"value": "Propylene Glycol", "unit": ""},
+        "fluid_ratio_percent": {"value": 40, "unit": "%"},
+        "entering_fluid_temp_f": {"value": 110, "unit": "degF"},
+        "leaving_fluid_temp_f": {"value": 90, "unit": "degF"}
+      }
+    }
+  ]
+}

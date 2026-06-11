@@ -1,0 +1,592 @@
+{
+  "iteration_id": "iteration_001_ezc0001_dx_header1",
+  "case_id": "EZC-0001",
+  "case_folder": "Case/#2/EZC-0001 - DX_1",
+  "created_by": "codex_local_rulebase_pass",
+  "classification": {
+    "coil_category": "DX",
+    "header_type": "Header 1",
+    "normalized_roadmap_bucket": "DX / Header 1",
+    "confidence": "HIGH from ai_category_assessment; still reference-candidate until John review"
+  },
+  "privacy_policy": {
+    "raw_files_copied": false,
+    "raw_pdf_text_stored": false,
+    "source_paths_are_local_only": true
+  },
+  "source_inventory": [
+    {
+      "role": "source_submittal_pdf",
+      "file_name": "Oxygen8 Submittal - Hoffman Hoffman - 2862 - Avon Operations Center - Rev3_AsBuilt.pdf",
+      "bytes": 9210597,
+      "sha256": "f54088c2af1077ac75fa90d921aebc9f2ec177116c2c86a2128f02aa2f166f99",
+      "pages": 94
+    },
+    {
+      "role": "ez_drawing_pdf",
+      "file_name": "CDXC-1.pdf",
+      "bytes": 28887,
+      "sha256": "b7bf71a2b5c7de344b0d7f544e56b0c6f7ccc79bac3f9a7c826f2970c2fe6d7e",
+      "pages": 1
+    },
+    {
+      "role": "ez_export_json_txt",
+      "file_name": "CDXC-1.txt",
+      "bytes": 10129,
+      "sha256": "23aa287d14c7252b1187760a28347d673cecf590781eeb1bac54ba722fa78ab2"
+    },
+    {
+      "role": "ai_category_assessment",
+      "file_name": "ai_category_assessment.txt",
+      "bytes": 3617,
+      "sha256": "8093c697fad8cecb31e947f08e46e125674106219857e1226037e61830ec6610"
+    },
+    {
+      "role": "rendered_drawing_reference",
+      "file_name": "outputs\\phase0_category_assessment\\rendered_pages\\EZC-0001_page_2.png",
+      "available": true
+    }
+  ],
+  "submittal_candidate": {
+    "source": "source_pdf_text",
+    "pages_used": [
+      1,
+      6
+    ],
+    "coil_tag": "CDXC-1",
+    "cover_quantity": 1,
+    "cover_handing_observed": "LH",
+    "cover_item_observed": "DXC Cooling",
+    "cooling_dx_page": 6,
+    "cooling_dx_model_observed": "DXJ04C13-12.00x15.00R",
+    "fin_height_in": 12.0,
+    "fin_length_in": 15.0,
+    "fpi": 13.0,
+    "rows": 4,
+    "total_feeds": 2,
+    "fin_surface": "Sine",
+    "fin_material": "0.0075 Aluminium",
+    "tube_material": "0.016 Copper",
+    "tube_surface": "Smooth",
+    "coil_weight_lbs": 20.52,
+    "suction_size_in": 0.625,
+    "coil_style": "Standard",
+    "qty_conn_per_header": 1,
+    "entering_airflow_cfm": 485.0,
+    "entering_db_f": 76.91,
+    "entering_wb_f": 69.11,
+    "refrigerant": "R-32",
+    "refrigerant_suction_temp_f": 43.0,
+    "refrigerant_liquid_temp_f": 77.0,
+    "superheat_f": 9.0,
+    "nominal_cooling_capacity_mbh": 51.34,
+    "internal_volume_cuin": 87.63,
+    "extraction_notes": [
+      "Page 6 includes both Cooling DX Coil and Heating DX Coil sections; this candidate records the first Cooling DX Coil block.",
+      "Cover page observes CDXC-1 as LH; page 6 model suffix appears R while EZ drawing model suffix is L. Hand/model suffix semantics require review."
+    ]
+  },
+  "ez_json_summary": {
+    "source": "ez_export_json_text",
+    "inputs": {
+      "Nrows": 4,
+      "Fpi": 13.0,
+      "Nfeeds": 2,
+      "SCFM": 485.0,
+      "EnteringAirDryBulb": 76.91,
+      "EnteringAirWetBulb": 69.11,
+      "Fluid": 22,
+      "EvaporatingTemp": 43.0,
+      "RefrigerantLiquidTemp": 77.0,
+      "LeavingSuperheat": 9.0
+    },
+    "geometry": {
+      "CoilType": 1,
+      "CoilStyle": 0,
+      "CoilHand": 1,
+      "Nrows": 4,
+      "FH": 12.0,
+      "FL": 15.0,
+      "fpi": 13.0,
+      "Nfeeds": 2,
+      "MultiCircuitCoilFeeds": [
+        2
+      ],
+      "MultiCircuitCoilPasses": [
+        24
+      ],
+      "CH": 13.25,
+      "CL": 18.0,
+      "CD": 5.5,
+      "TSP": 0.625,
+      "BSP": 0.625,
+      "LEP": 1.5,
+      "REP": 1.5,
+      "RB": 1.75,
+      "RB2": 2.25,
+      "OAL": 0.0,
+      "ReturnConnectionsSize": 0.625,
+      "Distributors": [
+        "501-2-3/16-1.5"
+      ],
+      "header_count": 2
+    },
+    "headers": [
+      {
+        "Diameter": 0.88,
+        "Material": 0,
+        "NumberOfConnections": 1,
+        "ConnectionType": [
+          0,
+          0,
+          0
+        ],
+        "ConnectionSize": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "IsSupply": true,
+        "ID": 1,
+        "IsDistributor": true,
+        "HD": 4.5,
+        "SL": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "VentDrainLocation": 0,
+        "ConnectionRotationAngle": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "VentDrainRotationAngle": 0.0,
+        "ConnectionRotation": [
+          0,
+          0,
+          0
+        ],
+        "VentDrainRotation": 0,
+        "SR": 2.75,
+        "IO": [
+          3.0,
+          0.0,
+          0.0
+        ],
+        "TubeFeedTargets": [],
+        "HDRYlocations": [],
+        "AdapterSize": 0.0,
+        "OppositeEnd": false,
+        "DistributorModelNumber": "501-2-3/16-1.5",
+        "IsASC": false,
+        "DistOrientation": 1,
+        "ASCOrientation": 3,
+        "DistExtension": 6.0,
+        "ASCExtension": 0.0,
+        "Ymin": 0.0,
+        "Ymax": 0.0,
+        "Yconn": 9.625,
+        "Yconn2": 0.0,
+        "isFreezeBock": false,
+        "FreezeBlockRotation": 0,
+        "isFreezeBlockVacuumBreak": false,
+        "NumberFreezeBlocks": 1,
+        "FeedTubes": [],
+        "OversizedHoles": false,
+        "CustomAdaptersOnly": false,
+        "FixAdapterAngle": -1.0,
+        "isDouble90": false,
+        "Double90L1": 0.0,
+        "isCollectionHeader": false,
+        "isHorizontalHeader": false,
+        "Zconn": 0.0,
+        "Zconn2": 0.0,
+        "HorizontalHeaderAxisY": 0.0
+      },
+      {
+        "Diameter": 0.625,
+        "Material": 0,
+        "NumberOfConnections": 1,
+        "ConnectionType": [
+          2,
+          2,
+          0
+        ],
+        "ConnectionSize": [
+          0.625,
+          0.0,
+          0.0
+        ],
+        "IsSupply": false,
+        "ID": 2,
+        "IsDistributor": false,
+        "HD": 3.5,
+        "SL": [
+          8.0,
+          0.0,
+          0.0
+        ],
+        "VentDrainLocation": 5,
+        "ConnectionRotationAngle": [
+          180.0,
+          180.0,
+          0.0
+        ],
+        "VentDrainRotationAngle": 180.0,
+        "ConnectionRotation": [
+          0,
+          0,
+          0
+        ],
+        "VentDrainRotation": 0,
+        "SR": 0.625,
+        "IO": [
+          2.0,
+          0.0,
+          0.0
+        ],
+        "TubeFeedTargets": [],
+        "HDRYlocations": [],
+        "AdapterSize": 0.0,
+        "OppositeEnd": false,
+        "DistributorModelNumber": null,
+        "IsASC": false,
+        "DistOrientation": 0,
+        "ASCOrientation": 0,
+        "DistExtension": 0.0,
+        "ASCExtension": 0.0,
+        "Ymin": -0.25,
+        "Ymax": 5.75,
+        "Yconn": 1.375,
+        "Yconn2": 0.0,
+        "isFreezeBock": false,
+        "FreezeBlockRotation": 0,
+        "isFreezeBlockVacuumBreak": false,
+        "NumberFreezeBlocks": 1,
+        "FeedTubes": [],
+        "OversizedHoles": false,
+        "CustomAdaptersOnly": false,
+        "FixAdapterAngle": -1.0,
+        "isDouble90": false,
+        "Double90L1": 0.0,
+        "isCollectionHeader": false,
+        "isHorizontalHeader": false,
+        "Zconn": 0.0,
+        "Zconn2": 0.0,
+        "HorizontalHeaderAxisY": 0.0
+      }
+    ]
+  },
+  "drawing_observed": {
+    "source": "ez_drawing_pdf_text",
+    "page": 1,
+    "coil_tag": "CDXC-1",
+    "model_number": "DX-F-S-04-13-12.00x15.00-L",
+    "labels": {
+      "ROWS": 4.0,
+      "FH": 12.0,
+      "FL": 15.0,
+      "CH": 13.25,
+      "CL": 18.0,
+      "CD": 5.5,
+      "HD": 3.5,
+      "OAL": 20.25,
+      "SL": 8.0,
+      "I": 3.0,
+      "S": 2.75,
+      "O": 2.0,
+      "R": 0.63,
+      "TF": 0.63,
+      "BF": 0.63,
+      "HF": 1.5,
+      "RF": 1.5,
+      "RB": 1.75,
+      "HD2": 3.5,
+      "SL2": 8.0,
+      "HDx1": 4.5,
+      "I1": 3.0,
+      "S1": 2.75,
+      "O2": 2.0,
+      "R2": 0.63
+    },
+    "right_panel": {
+      "tube_material": [
+        "0.375 x 0.016",
+        "Copper Smooth"
+      ],
+      "fin_material": [
+        "13 Fins Per Inch",
+        "0.0075 Aluminum",
+        "Sine Wave"
+      ],
+      "casing_material": [
+        "16 Ga.",
+        "Galvanized Steel"
+      ],
+      "coil_tube_face": "Tube Face = 12",
+      "circuiting": [
+        "2 Feed / 24 Pass",
+        "0 Dropped Tubes"
+      ],
+      "header_material": "Type L Copper",
+      "distributors": [
+        "(1)501-2-3/16-1.5(0 ASC)",
+        "OD:5/8"
+      ],
+      "return_conn_size": [
+        "0.625\" OD Header",
+        "0.625\" SWT-Copper"
+      ],
+      "dry_weight": "20.5 Lbs. Per Coil",
+      "internal_volume": "0.06 ft3 Per Coil"
+    },
+    "callouts": [
+      "COLLARED HOLES REQUIRED",
+      "0.3125 in. MOUNTING HOLES",
+      "MOUNTING HOLE SPACING: 12 in.",
+      "DISTRIBUTOR 1 HAS 6\" EXTENSION"
+    ]
+  },
+  "rule_observations": [
+    {
+      "rule_id": "obs_ezc0001_dx_header1_rows",
+      "rule_family": "core_geometry_copy",
+      "status": "confirmed_in_pair_review_required",
+      "source_paths": [
+        "source_pdf.page6.Rows",
+        "Inputs.Nrows",
+        "Geometry.Nrows"
+      ],
+      "drawing_targets": [
+        "bottom_table.ROWS",
+        "right_panel.COIL_TUBE_FACE"
+      ],
+      "observed_mapping": "Rows 4 in submittal/EZ JSON appears as ROWS=4.00 and Tube Face=12 in drawing.",
+      "values": {
+        "submittal": 4,
+        "ez_json": 4,
+        "drawing": 4.0
+      },
+      "review_note": "Tube Face=12 appears to correspond to FH/tubes high, not rows; keep separate from ROWS rule."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_fin_pack",
+      "rule_family": "core_geometry_copy",
+      "status": "confirmed_in_pair_review_required",
+      "source_paths": [
+        "source_pdf.page6.Fin Height",
+        "source_pdf.page6.Fin Length",
+        "Geometry.FH",
+        "Geometry.FL"
+      ],
+      "drawing_targets": [
+        "front_view.FH",
+        "front_view.FL",
+        "bottom_table.FH",
+        "bottom_table.FL"
+      ],
+      "observed_mapping": "Fin Height/Length copy through to FH/FL drawing labels.",
+      "values": {
+        "FH": 12.0,
+        "FL": 15.0
+      },
+      "review_note": "Direct copy is strong for this pair."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_circuiting",
+      "rule_family": "circuiting_text",
+      "status": "confirmed_in_pair_review_required",
+      "source_paths": [
+        "source_pdf.page6.Total Feeds",
+        "Geometry.MultiCircuitCoilFeeds",
+        "Geometry.MultiCircuitCoilPasses"
+      ],
+      "drawing_targets": [
+        "right_panel.CIRCUITING"
+      ],
+      "observed_mapping": "2 feeds and 24 passes render as \"2 Feed / 24 Pass\".",
+      "values": {
+        "feeds": 2,
+        "passes": 24,
+        "drawing_text": "2 Feed / 24 Pass"
+      },
+      "review_note": "Pluralization and multi-circuit formats need more pairs."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_casing_dimensions",
+      "rule_family": "ez_json_to_drawing_dimensions",
+      "status": "ez_json_confirmed_review_required",
+      "source_paths": [
+        "Geometry.CH",
+        "Geometry.CL",
+        "Geometry.CD",
+        "Geometry.TSP",
+        "Geometry.BSP",
+        "Geometry.LEP",
+        "Geometry.REP",
+        "Geometry.RB"
+      ],
+      "drawing_targets": [
+        "CH",
+        "CL",
+        "CD",
+        "TF",
+        "BF",
+        "HF",
+        "RF",
+        "RB"
+      ],
+      "observed_mapping": "EZ geometry casing/flange fields map directly to drawing dimension labels in this pair.",
+      "values": {
+        "CH": 13.25,
+        "CL": 18.0,
+        "CD": 5.5,
+        "TF": 0.625,
+        "BF": 0.625,
+        "HF": 1.5,
+        "RF": 1.5,
+        "RB": 1.75
+      },
+      "review_note": "These values are not visible in the source submittal page 6; source-of-truth appears to be EZ geometry or derived EZ logic."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_header_pair_suffixes",
+      "rule_family": "header_array_to_suffix_labels",
+      "status": "candidate_rule_needs_more_pairs",
+      "source_paths": [
+        "Geometry.Headers[0]",
+        "Geometry.Headers[1]"
+      ],
+      "drawing_targets": [
+        "HDx1",
+        "I1",
+        "S1",
+        "HD2",
+        "SL2",
+        "O2",
+        "R2"
+      ],
+      "observed_mapping": "Odd supply/distributor header ID 1 maps to HDx1/I1/S1. Even return header ID 2 maps to HD2/SL2/O2/R2.",
+      "values": {
+        "Headers[0].HD_to_HDx1": [
+          4.5,
+          4.5
+        ],
+        "Headers[0].IO[0]_to_I1": [
+          3.0,
+          3.0
+        ],
+        "Headers[0].SR_to_S1": [
+          2.75,
+          2.75
+        ],
+        "Headers[1].HD_to_HD2": [
+          3.5,
+          3.5
+        ],
+        "Headers[1].SL[0]_to_SL2": [
+          8.0,
+          8.0
+        ],
+        "Headers[1].IO[0]_to_O2": [
+          2.0,
+          2.0
+        ],
+        "Headers[1].SR_to_R2": [
+          0.625,
+          0.63
+        ]
+      },
+      "review_note": "Needs Header 2/3 pairs to confirm suffix continuation and placement."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_oal_candidate",
+      "rule_family": "derived_dimension_candidate",
+      "status": "review_required_not_approved_formula",
+      "source_paths": [
+        "Geometry.CL",
+        "Geometry.RB2",
+        "Geometry.OAL"
+      ],
+      "drawing_targets": [
+        "front_view.OAL",
+        "bottom_table.OAL"
+      ],
+      "observed_mapping": "Drawing OAL is 20.25 while Geometry.OAL is 0.0; observed candidate is CL + RB2 = 18.0 + 2.25 = 20.25.",
+      "values": {
+        "Geometry.CL": 18.0,
+        "Geometry.RB2": 2.25,
+        "Geometry.OAL": 0.0,
+        "drawing.OAL": 20.25
+      },
+      "review_note": "Do not approve this as a CoilForge formula until John/engineering confirms across more pairs."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_right_panel_materials",
+      "rule_family": "right_panel_text",
+      "status": "mixed_source_review_required",
+      "source_paths": [
+        "source_pdf.page6 material fields",
+        "Geometry tube/fin/material codes",
+        "EZ drawing right panel"
+      ],
+      "drawing_targets": [
+        "right_panel.TUBE_MATERIAL",
+        "right_panel.FIN_MATERIAL",
+        "right_panel.CASING_MATERIAL",
+        "right_panel.DISTRIBUTORS",
+        "right_panel.RETURN_CONN_SIZE"
+      ],
+      "observed_mapping": "PDF material text and EZ drawing text mostly align after vocabulary formatting; casing/header material and distributor display depend on EZ defaults/codes.",
+      "values": {
+        "pdf_tube_material": "0.016 Copper / Smooth",
+        "drawing_tube_material": "0.375 x 0.016 / Copper Smooth",
+        "pdf_fin_material": "0.0075 Aluminium / Sine",
+        "drawing_fin_material": "13 Fins Per Inch / 0.0075 Aluminum / Sine Wave",
+        "drawing_distributor": "(1)501-2-3/16-1.5(0 ASC) OD:5/8"
+      },
+      "review_note": "Requires vocabulary/codes lookup before deterministic generation from PDF-only input."
+    },
+    {
+      "rule_id": "obs_ezc0001_dx_header1_hand_orientation_conflict",
+      "rule_family": "handing_and_orientation",
+      "status": "conflict_needs_john_review",
+      "source_paths": [
+        "source_pdf.page1.Handing",
+        "source_pdf.page6.Coil Model",
+        "EZ drawing title model"
+      ],
+      "drawing_targets": [
+        "title_block.model_number",
+        "front_view.airflow_arrow",
+        "geometry_mirroring"
+      ],
+      "observed_mapping": "Cover shows CDXC-1 LH and EZ drawing model ends -L; source PDF cooling model text appears to end R.",
+      "values": {
+        "cover_handing": "LH",
+        "source_pdf_model_suffix": "R",
+        "ez_drawing_model_suffix": "L"
+      },
+      "review_note": "Do not infer mirror/orientation rule from model suffix until this conflict is resolved."
+    }
+  ],
+  "iteration_assessment": {
+    "strong_links": [
+      "FH/FL",
+      "ROWS",
+      "FPI",
+      "feeds/pass circuiting",
+      "header suffix values for Header 1"
+    ],
+    "needs_more_pairs": [
+      "Header 2/3 suffix continuation",
+      "hand/orientation mirroring",
+      "right panel vocabulary/code expansion"
+    ],
+    "blocked_from_formula_approval": [
+      "OAL"
+    ],
+    "recommended_next_case": "DX Header 2 or DX Header 3 from Case/#2 to validate header suffix expansion."
+  }
+}

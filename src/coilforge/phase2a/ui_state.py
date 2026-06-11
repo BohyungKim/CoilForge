@@ -10,6 +10,7 @@ def build_phase2b_default_ui_state() -> dict[str, Any]:
     workflow = run_submittal_to_drawing_workflow(demo["input"])
     readiness = workflow["readiness_report"]
     draft = workflow["direct_coil_input_draft"]
+    paste_ready = workflow["direct_coil_paste_ready"]
     drawing_intent = workflow["drawing_intent"]
     drawing_parameters = workflow["drawing_parameter_set"]
 
@@ -36,9 +37,11 @@ def build_phase2b_default_ui_state() -> dict[str, Any]:
             "groups": draft["groups"],
             "fields": draft["fields"],
             "summary": draft["summary"],
+            "coil_quantity": draft.get("coil_quantity"),
             "export_status": draft["export_status"],
         },
         "readiness_report": readiness,
+        "direct_coil_paste_ready": paste_ready,
         "drawing_intent": drawing_intent,
         "drawing_parameters": drawing_parameters,
         "performance_summary": _build_performance_summary(draft),

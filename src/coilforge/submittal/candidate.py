@@ -38,6 +38,7 @@ class SubmittalCoilCandidate(BaseModel):
 
     candidate_id: str
     tag: FieldValue | None = None
+    quantity: FieldValue | None = None
     product_type: FieldValue | None = None
     coil_type: FieldValue | None = None
     header_type: FieldValue | None = None
@@ -46,6 +47,7 @@ class SubmittalCoilCandidate(BaseModel):
     refrigerant_conditions: dict[str, FieldValue] = Field(default_factory=dict)
     materials_construction: dict[str, FieldValue] = Field(default_factory=dict)
     connections: dict[str, FieldValue] = Field(default_factory=dict)
+    manufacturing_options: dict[str, FieldValue] = Field(default_factory=dict)
     performance: dict[str, FieldValue] = Field(default_factory=dict)
     drawing_parameters: dict[str, FieldValue] = Field(default_factory=dict)
     source_evidence: list[SourceEvidence] = Field(default_factory=list)
@@ -85,7 +87,7 @@ class SubmittalCoilCandidate(BaseModel):
             if not is_header_type_supported(str(self.header_type.value)):
                 blocked_fields.append("header_type")
 
-        for field_name in ("tag", "product_type", "coil_type", "header_type"):
+        for field_name in ("tag", "quantity", "product_type", "coil_type", "header_type"):
             field_value = getattr(self, field_name)
             if field_value is not None and field_value.review_required:
                 review_required_fields.append(field_name)
@@ -96,6 +98,7 @@ class SubmittalCoilCandidate(BaseModel):
             "refrigerant_conditions",
             "materials_construction",
             "connections",
+            "manufacturing_options",
             "performance",
             "drawing_parameters",
         ):

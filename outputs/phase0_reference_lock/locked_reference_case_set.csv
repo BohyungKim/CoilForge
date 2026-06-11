@@ -1,0 +1,16 @@
+case_id,coil_category,header_type,feed_type,special_feature,coil_name,model_number,reference_status,john_confirmed,notes
+EZC-0001,DX,Header 1,NOT_APPLICABLE,None,CDXC-1,DX-F-S-04-13-12.00x15.00-L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0002,HGRH,Header 1,Single Feed,None,RHHGRC-1,CD-F-F-02-08.5-12.00x15.00-L,LOCKED_REFERENCE,true,John confirmed classification.
+EZC-0003,DX,Header 1,NOT_APPLICABLE,None,CDXC-2,DX-F-F-05-12-15.00x35.00-L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0004,HGRH,Header 1,Single Feed,None,RHHGRH-2,CD-F-F-02-10.5-15.00x35.00-L,LOCKED_REFERENCE,true,John confirmed classification.
+EZC-0005,HWC,Header 1,NOT_APPLICABLE,None,PHWC-1,HW-A-F-02-06.5-19.50x12.50-L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0006,HWC,Header 1,NOT_APPLICABLE,None,HHWC-1,HWD02C13-19.50x12.50L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0007,DX,Header 3,NOT_APPLICABLE,None,CDXC-1,DXM05C12-34.00x52.00L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0008,HGRH,Header 2,Non-Single Feed,None,RHHGRC-1,CDM02C11.5-34.00x52.00L,LOCKED_REFERENCE,true,John confirmed classification.
+EZC-0009,DX,Header 1,NOT_APPLICABLE,None,CDXC-1,DX-F-S-06-14-12.00x24.00-L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0010,HGRH,Header 1,Single Feed,None,RHHGRC-1,CD-F-F-02-08-12.00x24.00-L,LOCKED_REFERENCE,true,John confirmed classification.
+EZC-0011,DX,Header 2,NOT_APPLICABLE,None,CDXC-2,DX-F-S-04-14-26.00x34.00-R,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0012,HGRH,Header 1,Non-Single Feed,None,RHHGRC-2,CD-F-F-02-08-26.00x34.00-R,LOCKED_REFERENCE,true,John confirmed classification.
+EZC-0013,DX,UNKNOWN,NOT_APPLICABLE,HGBP,CDXC-1,DX-F-F-05-12-12.00x19.00-L,LOCKED_REFERENCE,true,Source evidence is ASC; John confirmed normalized special_feature HGBP by internal company standard.
+EZC-0014,CWC,Header 1,NOT_APPLICABLE,None,CCWC-1,CW-A-F-04-14-16.50x24.00-L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.
+EZC-0015,HWC,Header 1,NOT_APPLICABLE,None,HHWC-1,HW-A-F-02-08-18.00x30.00-L,LOCKED_REFERENCE,false,Locked from Phase 0 source evidence; not individually John-confirmed in this packet.

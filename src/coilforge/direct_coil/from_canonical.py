@@ -40,6 +40,7 @@ def map_canonical_to_direct_coil_draft(
         groups=groups,
         fields=fields,
         summary=_summarize_fields(fields.values()),
+        coil_quantity=_build_optional_identity_field(record, "coil_quantity", "Coil quantity"),
     )
 
 
@@ -127,6 +128,30 @@ def _get_record_field_value(
         return None
     value = group.get(field_key)
     return value if isinstance(value, FieldValue) else None
+
+
+def _build_optional_identity_field(
+    record: CanonicalCoilRecord,
+    field_key: str,
+    label: str,
+) -> DirectCoilDraftField | None:
+    field_value = _get_record_field_value(record, f"coil_identity.{field_key}")
+    if field_value is None:
+        return None
+    status = _status_from_field_value(field_value)
+    return DirectCoilDraftField(
+        field_key=field_key,
+        label=label,
+        group="Coil Geometry",
+        value=field_value.value,
+        unit=field_value.unit,
+        source_evidence=list(field_value.source_evidence),
+        mapping_rule=f"canonical:coil_identity.{field_key}",
+        status=status,
+        review_required=status == "review_required" or field_value.review_required,
+        blocked_reason=field_value.blocked_reason,
+        manual_override=field_value.manual_override,
+    )
 
 
 def _status_from_field_value(field_value: FieldValue) -> str:

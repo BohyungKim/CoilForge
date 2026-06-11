@@ -59,4 +59,5 @@ class DirectCoilInputDraft(BaseModel):
     groups: dict[str, list[str]]
     fields: dict[str, DirectCoilDraftField]
     summary: DirectCoilDraftSummary
+    coil_quantity: DirectCoilDraftField | None = None
     export_status: str = "not_implemented"

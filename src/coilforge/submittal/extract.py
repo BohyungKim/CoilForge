@@ -10,7 +10,11 @@ from coilforge.submittal.rules import SubmittalFieldRule, get_submittal_field_ru
 
 
 _KEY_VALUE_PATTERN = re.compile(r"^\s*([A-Za-z0-9 _-]+)\s*[:=]\s*(.*?)\s*$")
-_NUMBER_UNIT_PATTERN = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*([A-Za-z%]+)?\s*$")
+_NUMBER_UNIT_PATTERN = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*([A-Za-z%\"]+)?\s*$")
+_FRACTION_UNIT_PATTERN = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*([A-Za-z%\"]+)?\s*$")
+_MIXED_FRACTION_UNIT_PATTERN = re.compile(
+    r"^\s*(-?\d+)\s+(\d+)\s*/\s*(\d+)\s*([A-Za-z%\"]+)?\s*$"
+)
 
 
 @dataclass(frozen=True)
@@ -18,6 +22,9 @@ class SanitizedSubmittalLine:
     source_key: str
     source_value: str
     line_number: int
+    source_page: int | None = None
+    source_section: str = "sanitized_text_intake"
+    source_location: str | None = None
 
 
 def extract_submittal_candidates_from_text(
@@ -35,11 +42,13 @@ def extract_submittal_candidate_from_structured(
     payload: Mapping[str, Any] | list[SanitizedSubmittalLine],
     *,
     source_id: str = "SANITIZED-SOURCE-DOC-INTAKE-001",
+    field_rules: Mapping[str, SubmittalFieldRule] | None = None,
 ) -> SubmittalCoilCandidate:
     lines = _coerce_structured_lines(payload)
     candidate_payload: dict[str, Any] = {
         "candidate_id": "SCC-SANITIZED-INTAKE-001",
         "tag": None,
+        "quantity": None,
         "product_type": None,
         "coil_type": None,
         "header_type": None,
@@ -48,6 +57,7 @@ def extract_submittal_candidate_from_structured(
         "refrigerant_conditions": {},
         "materials_construction": {},
         "connections": {},
+        "manufacturing_options": {},
         "performance": {},
         "drawing_parameters": {},
         "source_evidence": [],
@@ -59,7 +69,7 @@ def extract_submittal_candidate_from_structured(
     }
 
     for line in lines:
-        rule = get_submittal_field_rule(line.source_key)
+        rule = _get_field_rule(line.source_key, field_rules)
         if rule is None:
             candidate_payload["unmapped_fields"].append(
                 _build_unmapped_field(line, source_id)
@@ -67,7 +77,7 @@ def extract_submittal_candidate_from_structured(
             continue
 
         field_value = _build_field_value(line, rule, source_id)
-        if rule.target in {"tag", "product_type", "coil_type", "header_type"}:
+        if rule.target in {"tag", "quantity", "product_type", "coil_type", "header_type"}:
             candidate_payload[rule.target] = field_value
             candidate_payload["review_required_fields"].append(rule.target)
         else:
@@ -78,6 +88,15 @@ def extract_submittal_candidate_from_structured(
 
     _apply_inference_defaults(candidate_payload, source_id)
     return SubmittalCoilCandidate.model_validate(candidate_payload)
+
+
+def _get_field_rule(
+    source_key: str,
+    field_rules: Mapping[str, SubmittalFieldRule] | None,
+) -> SubmittalFieldRule | None:
+    if field_rules is None:
+        return get_submittal_field_rule(source_key)
+    return field_rules.get(normalize_source_key(source_key))
 
 
 def _parse_key_value_lines(text: str) -> list[SanitizedSubmittalLine]:
@@ -185,9 +204,9 @@ def _build_source_evidence(
         evidence_id=f"EV-INTAKE-{source_key}-{line.line_number}",
         source_type="submittal_pdf_candidate",
         source_id=source_id,
-        source_location=f"sanitized-text-line-{line.line_number}",
-        source_page=None,
-        source_section="sanitized_text_intake",
+        source_location=line.source_location or f"sanitized-text-line-{line.line_number}",
+        source_page=line.source_page,
+        source_section=line.source_section,
         source_table=None,
         source_key=source_key,
         source_value=line.source_value,
@@ -201,12 +220,35 @@ def _build_source_evidence(
 
 
 def _normalize_value(raw_value: str) -> tuple[Any, str | None]:
+    mixed_fraction_match = _MIXED_FRACTION_UNIT_PATTERN.match(raw_value)
+    if mixed_fraction_match is not None and int(mixed_fraction_match.group(3)) != 0:
+        whole = int(mixed_fraction_match.group(1))
+        numerator = int(mixed_fraction_match.group(2))
+        denominator = int(mixed_fraction_match.group(3))
+        sign = -1 if whole < 0 else 1
+        value = whole + sign * (numerator / denominator)
+        return value, _normalize_observed_unit(mixed_fraction_match.group(4))
+
     match = _NUMBER_UNIT_PATTERN.match(raw_value)
-    if match is None:
-        return raw_value.strip(), None
-    numeric = float(match.group(1))
-    value: int | float = int(numeric) if numeric.is_integer() else numeric
-    return value, match.group(2)
+    if match is not None:
+        numeric = float(match.group(1))
+        value: int | float = int(numeric) if numeric.is_integer() else numeric
+        return value, _normalize_observed_unit(match.group(2))
+
+    fraction_match = _FRACTION_UNIT_PATTERN.match(raw_value)
+    if fraction_match is not None and int(fraction_match.group(2)) != 0:
+        value = int(fraction_match.group(1)) / int(fraction_match.group(2))
+        return value, _normalize_observed_unit(fraction_match.group(3))
+    return raw_value.strip(), None
+
+
+def _normalize_observed_unit(unit: str | None) -> str | None:
+    if unit in (None, ""):
+        return None
+    normalized = unit.strip()
+    if normalized in {'"', "in", "inch", "inches"}:
+        return "in"
+    return normalized
 
 
 def _apply_inference_defaults(candidate_payload: dict[str, Any], source_id: str) -> None:
