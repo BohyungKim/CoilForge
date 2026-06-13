@@ -119,8 +119,9 @@ def test_hgbp_selects_special_feature_template_not_normal_header1() -> None:
 
     assert result.template_id == "coilmaster_dx_lh_hgbp"
     assert result.template_id != "coilmaster_dx_lh_header1"
-    assert result.generation_allowed is False
-    assert result.template_status == "needs_pair"
+    # HGBP is now seeded from EZC-0013 (real EZ drawing) and active as a review aid.
+    assert result.generation_allowed is True
+    assert result.template_status == "active_review_aid"
 
 
 def test_slot_map_schema_validates_seed_template() -> None:

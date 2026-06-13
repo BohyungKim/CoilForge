@@ -1,0 +1,23 @@
+{
+  "template_id": "coilmaster_dx_lh_hgbp",
+  "schema_version": "template-first.1",
+  "supplier": "coilmaster",
+  "coil_category": "DX",
+  "coil_hand": "LH",
+  "header_type": null,
+  "special_feature": "HGBP",
+  "status": "active_review_aid",
+  "source_case_id": "EZC-0013",
+  "source_folder": "Case/#2/EZC-0013 - DX_HB_LH",
+  "seed_method": "vectorised_from_provided_ez_drawing_pdf_values_redacted_to_slots",
+  "review_status": "review_required",
+  "release_status": "review_aid_only",
+  "export_allowed": false,
+  "production_approved": false,
+  "pdf_export_enabled": false,
+  "notes": [
+    "Artwork is the vectorised EZ drawing with values replaced by slots.",
+    "Raw PDFs are not copied into this template folder.",
+    "Review aid only; engineering must confirm before any use."
+  ]
+}

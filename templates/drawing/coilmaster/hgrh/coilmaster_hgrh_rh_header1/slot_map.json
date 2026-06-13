@@ -1,0 +1,12 @@
+{
+  "template_id": "coilmaster_hgrh_rh_header1",
+  "schema_version": "template-first.1",
+  "source_policy": [
+    "reviewed_canonical_value",
+    "ez_json_evidence",
+    "source_pdf_candidate",
+    "manual_reviewed_value",
+    "blocked_or_review_required"
+  ],
+  "slots": []
+}

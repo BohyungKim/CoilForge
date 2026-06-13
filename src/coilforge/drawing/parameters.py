@@ -32,7 +32,9 @@ class PreviewDefaultValue(BaseModel):
     key: str
     value: Any
     unit: str = "in"
-    source: Literal["sanitized_fixture/default"] = "sanitized_fixture/default"
+    source: Literal[
+        "sanitized_fixture/default", "rule_engine/generated", "ez_json/as_built"
+    ] = "sanitized_fixture/default"
     reason: str = "sanitized default preview value"
 
     @field_validator("key", "unit", "reason", mode="before")

@@ -72,6 +72,9 @@ def test_workflow_returns_svg_when_preview_allowed() -> None:
 def test_blocked_drawing_params_reflected_when_preview_not_allowed() -> None:
     workflow_input = _default_workflow_input()
     workflow_input["preview_defaults"] = []
+    # Also clear the header engine context so this exercises the genuine
+    # no-source path (no static defaults AND no engine generation).
+    workflow_input["header_context"] = {}
 
     response = client.post("/api/workflow/submittal-to-drawing", json=workflow_input)
 
@@ -80,6 +83,21 @@ def test_blocked_drawing_params_reflected_when_preview_not_allowed() -> None:
     assert payload["validation"]["preview_allowed"] is False
     assert payload["svg"] == ""
     assert {"CD", "BF", "TF", "CH"}.issubset(set(payload["validation"]["blocked_fields"]))
+
+
+def test_header_engine_generates_drawing_params_when_context_present() -> None:
+    # With header_context (default demo), CD/TF/BF are engine-generated, not blocked.
+    workflow_input = _default_workflow_input()
+    workflow_input["preview_defaults"] = []
+
+    payload = client.post(
+        "/api/workflow/submittal-to-drawing", json=workflow_input
+    ).json()
+
+    params = payload["drawing_parameter_set"]["parameters"]
+    assert params["TF"]["value"] == 0.625  # engine, not 0.63 demo constant
+    assert params["CD"]["value"] == 5.5
+    assert payload["drawing_parameter_generation"]["source"] == "rule_engine"
 
 
 def test_source_evidence_is_preserved() -> None:

@@ -1,0 +1,237 @@
+{
+  "schema_version": "template-seed-evidence.1",
+  "template_id": "coilmaster_dx_rh_header1",
+  "source_case_id": "EZC-0001",
+  "supplier": "coilmaster",
+  "coil_category": "DX",
+  "coil_hand": "RH",
+  "header_type": "Header 1",
+  "source_folder": "Case/#2/EZC-0001 - DX_1_LH",
+  "intake_status": "mirrored_review_required",
+  "review_status": "review_required",
+  "release_status": "review_aid_only",
+  "export_allowed": false,
+  "production_approved": false,
+  "pdf_export_enabled": false,
+  "source_files": [
+    {
+      "role": "ez_drawing_pdf",
+      "filename": "CDXC-1.PDF",
+      "sha256": "B7BF71A2B5C7DE344B0D7F544E56B0C6F7CCC79BAC3F9A7C826F2970C2FE6D7E",
+      "page_count": 1,
+      "committed_copy": false
+    },
+    {
+      "role": "ez_json_export",
+      "filename": "CDXC-1.txt",
+      "sha256": "23AA287D14C7252B1187760A28347D673CECF590781EEB1BAC54BA722FA78AB2",
+      "committed_copy": false
+    },
+    {
+      "role": "submittal_pdf",
+      "filename_policy": "redacted_not_persisted",
+      "committed_copy": false,
+      "notes": "A local submittal PDF is present in the source folder; the customer/source filename is intentionally not persisted in this template artifact."
+    }
+  ],
+  "slot_evidence": [
+    {
+      "slot_id": "slot.FH",
+      "value": "12.00",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FL",
+      "value": "15.00",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CH",
+      "value": "13.25",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CL",
+      "value": "18.00",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CD",
+      "value": "5.50",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TF",
+      "value": "0.63",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.BF",
+      "value": "0.63",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HF",
+      "value": "1.50",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RF",
+      "value": "1.50",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RB",
+      "value": "1.75",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HDx1",
+      "value": "4.50",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HD2",
+      "value": "3.50",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.SL2",
+      "value": "8.00",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.I1",
+      "value": "3.00",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.S1",
+      "value": "2.75",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.O2",
+      "value": "2.00",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.R2",
+      "value": "0.63",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf",
+        "ez_json_export"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TAG",
+      "value": "CDXC-1",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.MODEL_NUMBER",
+      "value": "DX-F-S-04-13-12.00x15.00-L",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    }
+  ],
+  "observed_candidates": [
+    {
+      "field": "OAL",
+      "value": "20.25",
+      "unit": "in",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "observed_candidate_review_required",
+      "notes": "Observed on the EZ drawing only; not an approved CoilForge formula."
+    }
+  ]
+}

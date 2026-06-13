@@ -1,0 +1,174 @@
+# CoilForge — JSON -> drawing field link-rule registry.
+#
+# Source-of-truth for how EZ Coil selection JSON fields populate drawing labels
+# (slots). Derived from the locked reference cases (Case/#1..#3, EZC-0001..0015)
+# and the phase1a linkage analysis (outputs/phase1a_json_drawing_linkage/).
+#
+# Confidence gate (mirrors the header rule engine):
+#   STRONG    -> auto-populate the slot from the source.
+#   DERIVED   -> review_required; observed formula, not engineering-approved.
+#   UNCERTAIN -> review_required; numeric coincidence or ambiguous meaning.
+#   FORBIDDEN -> never source from here (confirmed mismatch / trap field).
+#
+# These are mapping CANDIDATES, not approved drawing-population rules, until John
+# / engineering signs them off (AGENTS.md). STRONG entries are direct value
+# matches within 0.01 in across the reference cases.
+
+schema_version: "json-drawing-link.v1"
+
+# --------------------------------------------------------------------------- #
+# 1. JSON schema families (two distinct EZ Coil export shapes)
+# --------------------------------------------------------------------------- #
+schema_families:
+  geometry:
+    detect: "top-level 'Geometry' object present"
+    coil_categories: [DX, CWC, HWC]   # DX, CWC, and PHWC-style HWC
+    header_source: "Geometry.Headers[] array (populated)"
+    note: "Rich schema. Per-header connection geometry lives in Geometry.Headers[]."
+  physicaldata:
+    detect: "top-level 'PhysicalData' object present (no Geometry)"
+    coil_categories: [HGRH, HWC]      # HGRH (RHHGRC/RHHGRH) and HHWC-style HWC
+    header_source: "Construction.notes tokens (single-feed only)"
+    note: >
+      Sparse schema. No header geometry array. Header dimensions appear only as
+      text tokens in Construction.notes, and only for single-feed coils
+      (e.g. 'Add Headers & Stubouts. I1=2. SL1=6. ...'). Multi-feed HGRH carries
+      no tokens (geometry not preferred; out of scope per John 2026-06-11).
+
+# --------------------------------------------------------------------------- #
+# 2. Category decode (John's folder-suffix scheme, confirmed against JSON)
+# --------------------------------------------------------------------------- #
+category_decode:
+  pattern: "<coil_type>_<header_or_feature>_<hand>"
+  coil_type: { DX: DX, HG: HGRH, CW: CWC, HW: HWC }
+  hand: { LH: "CoilHand=1 / leftHand", RH: "CoilHand=0 / rightHand" }
+  rules:
+    - "DX Header N  == Geometry.NumCircuits == number of supply/return header PAIRS (1->2 headers, 2->4, 3->6)."
+    - "HB (HGBP)    == Geometry.Headers[0].IsASC == true (top-level Geometry.isASC=true)."
+    - "SF           == single feed (Nfeeds=1 / circuiting=1); HGRH SF carries notes tokens."
+    - "HGRH N       == coilStyle (HG_1=standard, HG_2=faceSplit2Circ, ...)."
+  evidence: ["EZC-0001 DX_1 NumCircuits=1", "EZC-0011 DX_2 NumCircuits=2", "EZC-0007 DX_3 NumCircuits=3", "EZC-0013 DX_HB Headers[0].IsASC=true"]
+
+# --------------------------------------------------------------------------- #
+# 3. Direct field links (geometry schema) — fin / casing / flange block
+# --------------------------------------------------------------------------- #
+direct_links:
+  - { link_id: L-001, slot: slot.FH, label: FH, schema: geometry, source: "Geometry.FH", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-002, slot: slot.FL, label: FL, schema: geometry, source: "Geometry.FL", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-003, slot: slot.CH, label: CH, schema: geometry, source: "Geometry.CH", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-004, slot: slot.CL, label: CL, schema: geometry, source: "Geometry.CL", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-005, slot: slot.CD, label: CD, schema: geometry, source: "Geometry.CD", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-006, slot: slot.TF, label: TF, schema: geometry, source: "Geometry.TSP", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-007, slot: slot.BF, label: BF, schema: geometry, source: "Geometry.BSP", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-008, slot: slot.RB, label: RB, schema: geometry, source: "Geometry.RB", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  # HF/RF: LEP and REP both equal 1.5 in the references, so the LEP-vs-REP meaning
+  # is ambiguous -> review before locking which maps to HF vs RF.
+  - { link_id: L-009, slot: slot.HF, label: HF, schema: geometry, source: "Geometry.LEP", tolerance_in: 0.01, confidence: UNCERTAIN, review_required: true, notes: "LEP==REP==1.5; HF/RF source ambiguous." }
+  - { link_id: L-010, slot: slot.RF, label: RF, schema: geometry, source: "Geometry.REP", tolerance_in: 0.01, confidence: UNCERTAIN, review_required: true, notes: "LEP==REP==1.5; HF/RF source ambiguous." }
+
+# --------------------------------------------------------------------------- #
+# 4. PhysicalData links (HGRH / HHWC sparse schema)
+# --------------------------------------------------------------------------- #
+physicaldata_links:
+  - { link_id: L-011, slot: slot.FH, label: FH, schema: physicaldata, source: "PhysicalData.finHeight", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-012, slot: slot.FL, label: FL, schema: physicaldata, source: "PhysicalData.finLength", tolerance_in: 0.01, confidence: STRONG, review_required: false }
+  - { link_id: L-013, slot: slot.CL, label: CL, schema: physicaldata, source: "PhysicalData.finLength + 3.0", confidence: DERIVED, review_required: true, notes: "Observed CL = finLength + 3.0 (consistent in references); needs engineering confirmation." }
+  - { link_id: L-014, slot: slot.CH, label: CH, schema: physicaldata, source: "PhysicalData.finHeight + observed_offset", confidence: DERIVED, review_required: true, notes: "Observed height offset; not an approved formula." }
+
+# --------------------------------------------------------------------------- #
+# 5. Header connection links (geometry schema) — THE key pattern
+# --------------------------------------------------------------------------- #
+# Drawing connection labels come from the Geometry.Headers[] array, NOT the
+# top-level same-named Geometry.I/O/S/R/SL fields (see forbidden_sources).
+# Headers alternate by id: odd = supply/distributor, even = return.
+# Drawing label index == header ID. Per circuit pair k: supply id=2k-1, return id=2k.
+header_connection_links:
+  roles:
+    supply_distributor:   # odd id; IsSupply=true & IsDistributor=true (DX)
+      detect: "Headers[i].IsSupply == true (DX also IsDistributor == true)"
+      typical_dx: { HD: 4.5, IO0: 3.0, DistExtension: 6.0 }
+      links:
+        - { link_id: L-020, slot_pattern: "I{id}",   source: "Headers[i].IO[0]", confidence: STRONG, review_required: false, note: "Distributor I value (DX dist I=3)." }
+        - { link_id: L-021, slot_pattern: "S{id}",   source: "Headers[i].SR",    confidence: STRONG, review_required: false, note: "Supply/distributor S position (geometry-specific per header)." }
+        - { link_id: L-022, slot_pattern: "HDx{id}", source: "Headers[i].HD",    confidence: STRONG, review_required: false, note: "Distributor HD (=4.5)." }
+        - { link_id: L-023, slot: slot.DIST_EXT,     source: "Headers[i].DistExtension", confidence: STRONG, review_required: false, note: "Distributor extension (=6)." }
+        - { link_id: L-024, slot: slot.DISTRIBUTORS, source: "Headers[i].DistributorModelNumber", confidence: STRONG, review_required: false }
+    return:               # even id; IsSupply=false
+      detect: "Headers[i].IsSupply == false"
+      typical_dx: { HD: 3.5, IO0: 2.0, SL0: 8.0 }
+      links:
+        - { link_id: L-030, slot_pattern: "O{id}",  source: "Headers[i].IO[0]", confidence: STRONG, review_required: false, note: "Return I/O (=2)." }
+        - { link_id: L-031, slot_pattern: "R{id}",  source: "Headers[i].SR",    confidence: STRONG, review_required: false, note: "Return R position (geometry-specific)." }
+        - { link_id: L-032, slot_pattern: "SL{id}", source: "Headers[i].SL[0]", confidence: STRONG, review_required: false, note: "Return stub length (=8)." }
+        - { link_id: L-033, slot_pattern: "HD{id}", source: "Headers[i].HD",    confidence: STRONG, review_required: false, note: "Return/suction HD (=3.5)." }
+  water_coil_note: >
+    CWC/PHWC headers have IsDistributor=false on both (no distributor). Labels
+    HD1/HD2, I/S/O/R, SL still map from Headers[].HD/IO/SR/SL[0] (STRONG).
+  asc_hgbp:
+    detect: "Headers[0].IsASC == true (top-level Geometry.isASC=true)  => HGBP / ASC coil"
+    links:
+      - { link_id: L-040, slot: slot.ASC,             source: "Geometry.isASC", confidence: STRONG, review_required: false, note: "ASC selected => HGBP per John standard." }
+      - { link_id: L-041, slot: slot.ASC_ORIENTATION, source: "Headers[0].ASCOrientation", confidence: DEFERRED, review_required: true, note: "ASC is EZ-Coil naming; Direct Coil mapping deferred (John 2026-06-11)." }
+    evidence: ["EZC-0013 DX_HB Headers[0].IsASC=true, ASCOrientation set"]
+
+# --------------------------------------------------------------------------- #
+# 6. Notes-token links (HGRH single-feed, physicaldata schema)
+# --------------------------------------------------------------------------- #
+notes_token_links:
+  applies_when: "Construction.notes contains 'Add Headers & Stubouts' (single feed)"
+  parse: "split Construction.notes on '. '; each 'KEY=VALUE' token -> drawing label KEY"
+  tokens: [I1, S1, SL1, O2, R2, HD2, SL2, SupConnAngle]
+  confidence: STRONG
+  review_required: false
+  evidence: ["EZC-0002 / EZC-0010 notes: 'I1=2. S1=1.875. SL1=6. O2=2. R2=0.625. HD2=3.5. SL2=8. SupConnAngle=LAS'"]
+  note: "Token values cross-validate the header-prepopulation engine (I1=2,SL1=6,O2=2,HD2=3.5,SL2=8,LAS)."
+
+# --------------------------------------------------------------------------- #
+# 7. Derived links (observed formulas — NOT engineering-approved)
+# --------------------------------------------------------------------------- #
+derived_links:
+  - { link_id: L-050, slot: slot.OAL, label: OAL, coil_categories: [DX],       source: "Geometry.CL + Geometry.RB2", confidence: DERIVED, review_required: true, note: "OAL not stored in JSON (Geometry.OAL=0). Observed DX formula." }
+  - { link_id: L-051, slot: slot.OAL, label: OAL, coil_categories: [CWC, HWC], source: "Geometry.CL + Geometry.RB",  confidence: DERIVED, review_required: true, note: "PHWC-style. Observed." }
+  - { link_id: L-052, slot: slot.OAL, label: OAL, coil_categories: [HWC],      source: "Geometry.FL + Geometry.RB",  confidence: DERIVED, review_required: true, note: "HHWC subtype variant. Observed." }
+
+# --------------------------------------------------------------------------- #
+# 8. Forbidden sources (confirmed MISMATCH — never populate the drawing)
+# --------------------------------------------------------------------------- #
+forbidden_sources:
+  evidence: ["phase1a: 158 MISMATCH rows confirm these traps."]
+  entries:
+    - { link_id: L-060, source: "Geometry.I",    reason: "Top-level I=0/4.437 does not match drawing I (use Headers[supply].IO[0])." }
+    - { link_id: L-061, source: "Geometry.O",    reason: "Top-level O does not match drawing O (use Headers[return].IO[0])." }
+    - { link_id: L-062, source: "Geometry.S",    reason: "Top-level S does not match drawing S (use Headers[supply].SR)." }
+    - { link_id: L-063, source: "Geometry.R",    reason: "Top-level R does not match drawing R (use Headers[return].SR)." }
+    - { link_id: L-064, source: "Geometry.SL",   reason: "Top-level SL=4 does not match drawing SL=8 (use Headers[].SL[0])." }
+    - { link_id: L-065, source: "Geometry.HD2",  reason: "Geometry.HD2=5.0 does not match drawing HD2=3.5 (use Headers[return].HD)." }
+    - { link_id: L-066, source: "Geometry.OAL",  reason: "Geometry.OAL=0; OAL is derived, not stored." }
+
+# --------------------------------------------------------------------------- #
+# 9. Engine -> slot bridge
+# --------------------------------------------------------------------------- #
+# Which drawing slots the header-prepopulation engine (coil_header_rules.yaml)
+# can auto-fill. When EZ JSON is present, JSON is the primary source and the
+# engine value is a cross-check; when no JSON (e.g. fresh Direct Coil entry),
+# the engine is the source. Engine field names per schemas/header_prepopulate.py.
+engine_slot_bridge:
+  mappings:
+    - { slot: slot.TF,    engine_field: top_flange }
+    - { slot: slot.BF,    engine_field: bottom_flange }
+    - { slot: slot.HF,    engine_field: header_flange }
+    - { slot: slot.RF,    engine_field: return_flange }
+    - { slot: slot.RB,    engine_field: return_bend }
+    - { slot: slot.CD,    engine_field: casing_depth }
+    - { slot: slot.HDx1,  engine_field: dist_hd }          # distributor HD = 4.5
+    - { slot: slot.HD2,   engine_field: suction_hd }        # suction/return HD = 3.5
+    - { slot: slot.I1,    engine_field: dist_i }            # DX distributor I (=3)
+    - { slot: slot.SL2,   engine_field: suction_sl }        # DX return/suction SL
+    - { slot: slot.DIST_EXT, engine_field: dist_extension }
+    - { slot: slot.NOTES, engine_field: notes }
+    - { slot: slot.CASING_WIDTH,  engine_field: casing_width }
+    - { slot: slot.CASING_HEIGHT, engine_field: casing_height }
+  note: >
+    HGRH single-feed engine outputs (supply_io=2, supply_sl=6, return_io=2,
+    return_sl=8, hd=3.5, conn_angle=LAS) match the Construction.notes tokens
+    (I1=2, SL1=6, O2=2, SL2=8, HD2=3.5, LAS) one-to-one.

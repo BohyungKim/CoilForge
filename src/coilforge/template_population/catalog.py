@@ -28,6 +28,57 @@ _HAND_ALIASES = {
 }
 
 
+# Templates seeded from the provided EZ drawing PDFs (real CoilMaster format,
+# values redacted to slots) + their opposite-hand mirrors. Each is an active
+# review-aid template. value = (category_dir, source_case_id, reference_status).
+_SEEDED = "seeded_from_provided_pdf_review_required"
+_MIRROR = "mirrored_from_seeded_pair_review_required"
+ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
+    "coilmaster_dx_lh_header1": ("dx", "EZC-0001", _SEEDED),
+    "coilmaster_dx_rh_header1": ("dx", "EZC-0001", _MIRROR),
+    "coilmaster_dx_rh_header2": ("dx", "EZC-0011", _SEEDED),
+    "coilmaster_dx_lh_header2": ("dx", "EZC-0011", _MIRROR),
+    "coilmaster_dx_lh_header3": ("dx", "EZC-0007", _SEEDED),
+    "coilmaster_dx_rh_header3": ("dx", "EZC-0007", _MIRROR),
+    "coilmaster_hgrh_lh_header1": ("hgrh", "EZC-0002", _SEEDED),
+    "coilmaster_hgrh_rh_header1": ("hgrh", "EZC-0012", _SEEDED),
+    "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
+    "coilmaster_hgrh_rh_header2": ("hgrh", "EZC-0008", _MIRROR),
+    "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
+    "coilmaster_dx_rh_hgbp": ("dx", "EZC-0013", _MIRROR),
+    "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
+    "coilmaster_cwc_rh": ("cwc", "EZC-0014", _MIRROR),
+    "coilmaster_hwc_lh": ("hwc", "EZC-0005", _SEEDED),
+    "coilmaster_hwc_rh": ("hwc", "EZC-0005", _MIRROR),
+}
+
+
+def _active_entry(
+    template_id: str,
+    coil_category: str,
+    hand: str,
+    header_type: str | None,
+    special_feature: str | None,
+) -> "DrawingTemplateEntry":
+    cat_dir, source_case_id, reference_status = ACTIVE_TEMPLATES[template_id]
+    folder = f"templates/drawing/coilmaster/{cat_dir}/{template_id}"
+    return DrawingTemplateEntry(
+        template_id=template_id,
+        supplier="coilmaster",
+        coil_category=coil_category,
+        coil_hand=hand,
+        header_type=header_type,
+        special_feature=special_feature,
+        status="active_review_aid",
+        generation_allowed=True,
+        template_path=f"{folder}/template.svg",
+        slot_map_path=f"{folder}/slot_map.json",
+        metadata_path=f"{folder}/template_metadata.json",
+        source_case_id=source_case_id,
+        reference_status=reference_status,
+    )
+
+
 @dataclass(frozen=True)
 class DrawingTemplateEntry:
     template_id: str
@@ -185,21 +236,9 @@ def _entry_for_header_category(
     hand: str,
 ) -> DrawingTemplateEntry:
     template_id = f"coilmaster_{category}_{hand.lower()}_header{header_number}"
-    if category == "dx" and header_number == 1 and hand == "LH":
-        return DrawingTemplateEntry(
-            template_id=template_id,
-            supplier="coilmaster",
-            coil_category="DX",
-            coil_hand=hand,
-            header_type="Header 1",
-            special_feature=None,
-            status="active_review_aid",
-            generation_allowed=True,
-            template_path=f"templates/drawing/coilmaster/dx/{template_id}/template.svg",
-            slot_map_path=f"templates/drawing/coilmaster/dx/{template_id}/slot_map.json",
-            metadata_path=f"templates/drawing/coilmaster/dx/{template_id}/template_metadata.json",
-            source_case_id="EZC-0001",
-            reference_status="seeded_from_pair_review_required",
+    if template_id in ACTIVE_TEMPLATES:
+        return _active_entry(
+            template_id, category.upper(), hand, f"Header {header_number}", None
         )
 
     source_case_id = _known_source_case(category, header_number, hand)
@@ -230,8 +269,11 @@ def _entry_for_header_category(
 
 
 def _entry_for_dx_hgbp(hand: str) -> DrawingTemplateEntry:
+    template_id = f"coilmaster_dx_{hand.lower()}_hgbp"
+    if template_id in ACTIVE_TEMPLATES:
+        return _active_entry(template_id, "DX", hand, None, "HGBP")
     return DrawingTemplateEntry(
-        template_id=f"coilmaster_dx_{hand.lower()}_hgbp",
+        template_id=template_id,
         supplier="coilmaster",
         coil_category="DX",
         coil_hand=hand,
@@ -249,13 +291,16 @@ def _entry_for_dx_hgbp(hand: str) -> DrawingTemplateEntry:
 
 
 def _entry_for_water_category(category: str, hand: str) -> DrawingTemplateEntry:
+    template_id = f"coilmaster_{category}_{hand.lower()}"
+    if template_id in ACTIVE_TEMPLATES:
+        return _active_entry(template_id, category.upper(), hand, "Header 1", None)
     source = None
     if category == "cwc" and hand == "LH":
         source = "EZC-0014"
     if category == "hwc" and hand == "LH":
         source = "EZC-0005"
     return DrawingTemplateEntry(
-        template_id=f"coilmaster_{category}_{hand.lower()}",
+        template_id=template_id,
         supplier="coilmaster",
         coil_category=category.upper(),
         coil_hand=hand,

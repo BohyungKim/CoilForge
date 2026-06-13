@@ -720,6 +720,12 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert "limitsrtostandardpositionsforeaseofmanufacture: false" in app_js
     assert "renderDcEmbeddedDrawingPreview" in app_js
     assert "drawingTemplateState" in app_js
+    # PDF-reproduction template drawing is carried into uiState and rendered.
+    assert "template_drawing: workflow.template_drawing || null" in app_js
+    assert "renderTemplateDrawingPreview" in app_js
+    assert "Reproduced from submittal drawing" in app_js
+    assert "Review-aid only — never manufacturing-approved." in app_js
+    assert "templateDrawingBody" in app_js
     assert 'id="drawing-template-status"' in index
     assert index.index("<h3>Drawing Parameters</h3>") < index.index('id="drawing-preview"')
     assert "addDxAirFallbackFields" in app_js

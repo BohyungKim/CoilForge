@@ -1,0 +1,930 @@
+# CoilForge — deterministic header prepopulation rule table.
+#
+# One entry per Rule ID from docs/rules/coil_header_rule_extraction.md.
+# This file is the ONLY source of rules; no rule may exist here without a
+# Rule ID and non-empty evidence_refs (enforced by the schema-validation test).
+#
+# Entry schema
+#   rule_id          : "R-###" (unique)
+#   applies_to       : { coil_type, product_family, terra_variant, size_pattern }
+#                      "*" (or ["*"]) means "all"; null means "not constrained".
+#   field            : output field name, or a list of field names.
+#   value            : literal value (XOR formula). null for CONFLICT/LOW.
+#   value_map        : product_family -> value (used instead of `value`).
+#   formula          : human-readable formula string (evaluated in engine by `kind`).
+#   kind             : engine handler hint (constant | formula_* | notes_* | lookup |
+#                      validation | noop | special_*).
+#   only_when        : conditional trigger (feeds_eq_1 | feeds_gt_1 | coating_set |
+#                      hot_gas_bypass | with_hgrh | back_to_back | qty_valves_set).
+#   requires_inputs  : inputs that must be present for a formula rule to evaluate.
+#   confidence       : HIGH | MEDIUM | LOW | CONFLICT
+#   review_required  : bool
+#   blocked_reason   : reason string for CONFLICT/LOW (cites both evidence refs).
+#   evidence_refs    : verbatim citations from the extraction doc.
+
+schema_version: "header-prepopulate.v1"
+
+rules:
+  # --- 2.1 Universal / per-coil-type constants ---------------------------------
+  - rule_id: R-001
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: collared_holes
+    value: true
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN", "CHK CWC!C18", "CHK HWC!C18", "CHK DX!C20", "CHK HGRH!C18"]
+
+  - rule_id: R-002
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: stacking_flanges
+    value: false
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN", "CHK CWC", "CHK HWC", "CHK DX", "CHK HGRH"]
+
+  - rule_id: R-002b
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: lifting_lugs
+    value: false
+    kind: constant
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN"]
+
+  - rule_id: R-003
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: header_flange
+    value: 1.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN", "CHK *!HF"]
+
+  - rule_id: R-004
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: return_flange
+    value: 1.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN", "CHK *!RF"]
+
+  - rule_id: R-005
+    applies_to: { coil_type: [DX, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: return_bend
+    value: 1.75
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "SOP §HGRH-TNVH", "CHK DX!C29", "CHK HGRH!C32"]
+
+  - rule_id: R-006
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: return_bend
+    value: 2.25
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC", "CHK CWC!C26", "CHK HWC!C30"]
+
+  - rule_id: R-007
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Vent & Drain installed <= 3\" from MPT connection. Only 1 Supply and 1 Return connection required. Do not bend connection to meet dimensional requirements."
+    kind: notes_base
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN", "CHK CWC!C20", "CHK HWC!C24"]
+
+  - rule_id: R-008
+    applies_to: { coil_type: [DX, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Copper Straps Required."
+    kind: notes_base
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN", "CHK DX!C23", "CHK HGRH!C26"]
+
+  # --- 2.2 Flanges (TF/BF) — the conflict zone --------------------------------
+  - rule_id: R-010
+    applies_to: { coil_type: [DX, HGRH], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: [top_flange, bottom_flange]
+    value: 0.625
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "SOP §HGRH-TNVH", "CHK DX!C27:C28", "CHK HGRH!C30:C31"]
+
+  - rule_id: R-011
+    applies_to: { coil_type: ["*"], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: [top_flange, bottom_flange]
+    value: 1
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP", "SOP §HGRH-VP", "SOP §CWC/HWC", "CHK *!TF/BF"]
+
+  # R-012/R-013/R-014: TF/BF conflicts resolved in favor of the checklist
+  # values (John, 2026-06-11: "checklist is typically the most accurate").
+  # The Terra asymmetry (TF=1.625, BF=0.375) is intentional per the checklist.
+  - rule_id: R-012
+    applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: [top_flange, bottom_flange]
+    field_values: { top_flange: 1.625, bottom_flange: 0.375 }
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK TERRA TF=1.625", "CHK TERRA BF=0.375", "John confirmation 2026-06-11 (checklist wins)"]
+
+  - rule_id: R-013
+    applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: [top_flange, bottom_flange]
+    value: 0.625
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK CWC TF/BF=0.625", "CHK HWC TF/BF=0.625", "John confirmation 2026-06-11 (checklist wins over SOP 1\")"]
+
+  - rule_id: R-014
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: [top_flange, bottom_flange]
+    field_values: { top_flange: 1.625, bottom_flange: 0.375 }
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK TERRA TF=1.625", "CHK TERRA BF=0.375", "John confirmation 2026-06-11 (checklist wins)"]
+
+  # --- 2.3 Connection / stubout geometry --------------------------------------
+  - rule_id: R-020
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: suction_io
+    value: 2
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "CHK DX!C30:C33"]
+
+  # Terra = Terra H C; checklist Terra values are reliable (John, 2026-06-11).
+  # R-021/R-027/R-042/R-045b/R-061/R-065 resolved to the checklist value (HIGH).
+  - rule_id: R-021
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: suction_io
+    value: 3.25
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK DX TERRA I/O=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-022
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: return_spacing
+    value: null
+    formula: "Rn = n*D + (n-1)*1.5  (D=suction_conn_size, n=1..circuits)"
+    kind: formula_return_spacing
+    requires_inputs: [suction_conn_size, circuits]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "CHK DX!C34:C37"]
+
+  - rule_id: R-023
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: return_spacing
+    value: null
+    formula: "Terra V variant spacing (SOP single-source)"
+    kind: formula_return_spacing_terra_v
+    requires_inputs: [suction_conn_size, circuits]
+    confidence: LOW
+    review_required: true
+    blocked_reason: "R-023 LOW: Terra V return spacing is SOP-only (single source), absent from CHK."
+    evidence_refs: ["SOP §DX-TNVH SPECIAL CASE Terra V"]
+
+  - rule_id: R-024
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: suction_hd
+    value: 3.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "CHK DX!C38:C41"]
+
+  - rule_id: R-025
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: suction_sl
+    value: 8
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "CHK DX!C42:C45"]
+
+  - rule_id: R-026
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: suction_sl
+    value: 10
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP", "CHK DX SL TERRA/VENTUM+=10"]
+
+  - rule_id: R-027
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: suction_sl
+    value: 10
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK DX TERRA SL=10", "SOP §DX-TNVH Terra H=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-028
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H, TERRA], terra_variant: null, size_pattern: null }
+    field: dist_i
+    value: 3
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "CHK DX!C50:C53"]
+
+  - rule_id: R-029
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: dist_i
+    value: 12
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP", "CHK DX!C50:C53"]
+
+  # Distributor HD = 4.5 for ALL products (John, 2026-06-11, corrected): the
+  # 3.5 value is the suction/return header HD (HD2 = suction_hd, R-024), NOT the
+  # distributor HD. Confirmed by all 5 as-built DX drawings (Headers[0].HD=4.5)
+  # and the checklist (4.5 unconditional). R-030 Nova/VH, R-030b Ventum+, R-030c Terra.
+  - rule_id: R-030
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: dist_hd
+    value: 4.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK DX HD=4.5", "as-built DX drawings Headers[0].HD=4.5 (EZC-0001/3/7/11/13)", "John 2026-06-11 (corrected)"]
+
+  - rule_id: R-030c
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: dist_hd
+    value: 4.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK DX HD=4.5", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-030b
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: dist_hd
+    value: 4.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP HD=4.5", "CHK DX HD=4.5"]
+
+  - rule_id: R-031
+    applies_to: { coil_type: [DX], product_family: [NOVA, TERRA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: dist_orientation
+    value: "DOWN"
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "CHK DX!C58"]
+
+  - rule_id: R-032
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: dist_orientation
+    value: "UP"
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP", "CHK DX!C58"]
+
+  - rule_id: R-033
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: dist_extension
+    value: 6
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "CHK DX!C59"]
+
+  # Distributor S placement resolved to checklist even-spacing (John, 2026-06-11).
+  - rule_id: R-034
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: dist_s
+    value: null
+    formula: "ROUND(k * CD / (circuits+1)) for k in 1..circuits  [checklist even-spacing]"
+    kind: formula_dist_s
+    requires_inputs: [rows, circuits]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK DX!C46:C49 even spacing", "John 2026-06-11 (checklist style)"]
+
+  # --- 2.4 HGRH-specific ------------------------------------------------------
+  - rule_id: R-040
+    applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: supply_io
+    value: 2
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH!C33"]
+
+  - rule_id: R-041
+    applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: return_io
+    value: 2
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH", "CHK HGRH!C37:C40"]
+
+  - rule_id: R-042
+    applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: return_io
+    value: 3.25
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK HGRH TERRA I/O=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-043
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: hd
+    value: 3.5
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH!C50:C57"]
+
+  - rule_id: R-044a
+    applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: supply_sl
+    value: 6
+    kind: constant
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH supply SL=6", "CHK HGRH supply SL1 geometric (6 + D/2 - S1)"]
+
+  - rule_id: R-044c
+    applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: supply_sl
+    value: 6
+    kind: constant
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-VP supply SL=6", "John engineering confirmation 2026-06-11 (golden T09)"]
+
+  - rule_id: R-044b
+    applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: return_sl
+    value: 8
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH return SL=8", "CHK HGRH!C59"]
+
+  - rule_id: R-045a
+    applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: return_sl
+    value: 10
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-VP return SL=10", "CHK HGRH VENTUM+ SL=10"]
+
+  - rule_id: R-045b
+    applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: return_sl
+    value: 10
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK HGRH TERRA SL=10", "SOP §HGRH-TNVH Terra-as-Terra-H=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-046
+    applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: [supply_io, supply_sl, return_sl]
+    value: null
+    kind: constant
+    confidence: LOW
+    review_required: true
+    blocked_reason: "R-046 LOW: Terra V HGRH I/O=2.75, supply SL=5, return SL=12 are SOP-only (single source), absent from CHK."
+    evidence_refs: ["SOP §HGRH-TNVH Terra V special cases"]
+
+  - rule_id: R-047
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: conn_angle
+    value: "LAS"
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH SupConnAngle=LAS"]
+
+  - rule_id: R-048
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: [supply_position, return_position]
+    value: null
+    formula: "Return X = X*D + (X-1)*1.5 ; Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5]"
+    kind: formula_hgrh_positions
+    requires_inputs: [circuits, conn_size, rows]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH position formulas", "CHK HGRH!C42:C49"]
+
+  - rule_id: R-049
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: single_feed_note
+    value: null
+    kind: special_single_feed_note
+    only_when: feeds_eq_1
+    requires_inputs: [feeds]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN SPECIAL CASE single feed", "CHK HGRH!C26"]
+
+  - rule_id: R-050
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: single_feed_ext
+    value: 3
+    kind: constant
+    only_when: feeds_eq_1
+    requires_inputs: [feeds]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH SPECIAL CASE", "SOP §HGRH-VP SPECIAL CASE"]
+
+  - rule_id: R-051
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: fh_fl_match_dx
+    value: null
+    kind: validation
+    requires_inputs: [fh, fl]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH DX FH/FL equality warning"]
+
+  # --- 2.5 CWC / HWC-specific -------------------------------------------------
+  - rule_id: R-060
+    applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: io
+    value: 2.3125
+    kind: special_cwc_io
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC I/O=2.3125", "CHK CWC/HWC IF(TERRA,3.25,2.3125)"]
+
+  - rule_id: R-061
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: io
+    value: 3.25
+    kind: special_cwc_io
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK CWC/HWC TERRA=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-062
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: hd
+    value: 4
+    kind: special_cwc_hd
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC HD=4", "CHK IF(feeds=1,'N/A',4)"]
+
+  - rule_id: R-063a
+    applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: sl
+    value: 8
+    kind: special_cwc_sl
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC", "CHK CWC/HWC SL formula NOVA/VENTUM H=8"]
+
+  - rule_id: R-063b
+    applies_to: { coil_type: [CWC, HWC], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: sl
+    value: 10
+    kind: special_cwc_sl
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC", "CHK CWC/HWC SL formula VENTUM+=10"]
+
+  - rule_id: R-064-sl
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: sl
+    value: null
+    value_map: { NOVA: 12, VENTUM_H: 12, VENTUM_PLUS: 14 }
+    kind: special_cwc_sl_single
+    only_when: feeds_eq_1
+    requires_inputs: [feeds]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC SPECIAL CASE single feed (12/14)", "CHK CWC/HWC SL IF(C14=1,...)"]
+
+  - rule_id: R-064-io
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: io
+    value: "TBD"
+    kind: constant
+    only_when: feeds_eq_1
+    requires_inputs: [feeds]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC single feed", "CHK CWC/HWC I/O=TBD (single feed)"]
+
+  - rule_id: R-064-hd
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: hd
+    value: "N/A"
+    kind: constant
+    only_when: feeds_eq_1
+    requires_inputs: [feeds]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC single feed", "CHK CWC/HWC HD=N/A (single feed)"]
+
+  - rule_id: R-065
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: sl
+    value: 10
+    kind: special_cwc_sl
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK CWC/HWC TERRA SL=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  - rule_id: R-066
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: vent_drain
+    value: "Connections"
+    kind: constant
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC Supply 1 & Return 1 = Connections"]
+
+  - rule_id: R-067
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: vent_drain
+    value: null
+    kind: constant
+    confidence: LOW
+    review_required: true
+    blocked_reason: "R-067 LOW: Terra V vent/drain='HDR ENDS' is SOP-only (single source, Rev I addition)."
+    evidence_refs: ["SOP §CWC/HWC SPECIAL CASE Terra V"]
+
+  - rule_id: R-068
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: s_r_values
+    value: null
+    kind: noop
+    confidence: MEDIUM
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §CWC/HWC 'Leave all S/R as default values'"]
+
+  # --- 2.6 Casing depth, casing dims, size classification --------------------
+  - rule_id: R-070
+    applies_to: { coil_type: [DX, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: casing_depth
+    value: null
+    formula: "ROUNDUP(rows * 0.866 to 1/8) + 2"
+    kind: formula_cd_dx_hgrh
+    requires_inputs: [rows]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP-OLE1..4", "CHK DX!C24", "CHK HGRH!C27"]
+
+  - rule_id: R-071
+    applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: casing_depth
+    value: null
+    formula: "ROUNDUP(rows * 1.299 to 1/8) + 2"
+    kind: formula_cd_cwc_hwc
+    requires_inputs: [rows]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP-OLE5", "CHK CWC!C21", "CHK HWC!C25"]
+
+  - rule_id: R-072
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: casing_depth
+    value: null
+    formula: "max(base, (circuits+1)*D + (circuits-1)*1.5)  [DX-only] or circuits*(D+1.5)+(D-D_hgrh)/2  [w/HGRH]"
+    kind: formula_cd_dx_multicircuit
+    requires_inputs: [rows, circuits, suction_conn_size]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH SPECIAL CASE", "SOP §DX-VP SPECIAL CASE", "CHK DX!C24 MAX(...)"]
+
+  - rule_id: R-073
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: casing_depth
+    value: null
+    formula: "(circuits+1)*D + (circuits-1)*1.5 ; CHK VENTUM+ -> 3*conn ; CHK TERRA -> (H+2)*D+(H-1)*1.5+0.5"
+    kind: formula_cd_hgrh_multiheader
+    requires_inputs: [circuits, conn_size]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §HGRH-TNVH", "CHK HGRH!C27 branches"]
+
+  - rule_id: R-074
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: [casing_width, casing_height]
+    value: null
+    kind: lookup_casing_dims
+    requires_inputs: [application]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["CHK Units sheet", "CHK CWC!E7:E8 XLOOKUP", "CHK HWC!E7:E8 XLOOKUP", "CHK DX!E9:E10", "CHK HGRH!E7:E8"]
+    # Full CHK Units-sheet table, transcribed directly from the workbook
+    # (Coil Checklist Template.xlsx, "Units" sheet) on 2026-06-11. Key is
+    # "<product_family>|<application>|<unit_size>"; value selection per the
+    # CASING WIDTH/HEIGHT XLOOKUP formulas (AND(product, application) -> size
+    # lookup). DX/CWC/HGRH share the "DX/CWC" application columns; HWC uses its
+    # own. Single-source (CHK only; SOP has no equivalent table) -> MEDIUM.
+    # 'N/A' cells in the sheet are omitted (application not offered for that size).
+    lookup:
+      "NOVA|DECOUPLED|A16": { casing_width: 34, casing_height: 20 }
+      "NOVA|DECOUPLED|A18": { casing_width: 36, casing_height: 22 }
+      "NOVA|DECOUPLED|B20": { casing_width: 38, casing_height: 24 }
+      "NOVA|DECOUPLED|B22": { casing_width: 40, casing_height: 26 }
+      "NOVA|DECOUPLED|C20": { casing_width: 50, casing_height: 26 }
+      "NOVA|DECOUPLED|C22": { casing_width: 52, casing_height: 28 }
+      "NOVA|DECOUPLED|C24": { casing_width: 54, casing_height: 28 }
+      "NOVA|DECOUPLED|C26": { casing_width: 56, casing_height: 30 }
+      "NOVA|DECOUPLED|C30": { casing_width: 60, casing_height: 30 }
+      "NOVA|DECOUPLED|C32": { casing_width: 62, casing_height: 32 }
+      "NOVA|DECOUPLED|C40": { casing_width: 64, casing_height: 34 }
+      "NOVA|DECOUPLED|C48": { casing_width: 66, casing_height: 38 }
+      "NOVA|DECOUPLED|C58": { casing_width: 70, casing_height: 42 }
+      "NOVA|DECOUPLED|C70": { casing_width: 76, casing_height: 46 }
+      "NOVA|CPLD/DCPLD HORZ|A16": { casing_width: 20.625, casing_height: 16 }
+      "NOVA|CPLD/DCPLD HORZ|B20": { casing_width: 24.625, casing_height: 20 }
+      "NOVA|CPLD/DCPLD HORZ|C20": { casing_width: 30.625, casing_height: 20 }
+      "NOVA|CPLD/DCPLD HORZ|C24": { casing_width: 30.625, casing_height: 24 }
+      "NOVA|CPLD/DCPLD HORZ|C30": { casing_width: 30.625, casing_height: 30 }
+      "NOVA|CPLD/DCPLD VERT|A16": { casing_width: 16, casing_height: 20.625 }
+      "NOVA|CPLD/DCPLD VERT|A18": { casing_width: 17.625, casing_height: 21.875 }
+      "NOVA|CPLD/DCPLD VERT|B20": { casing_width: 20, casing_height: 24.625 }
+      "NOVA|CPLD/DCPLD VERT|B22": { casing_width: 21.625, casing_height: 25.875 }
+      "NOVA|CPLD/DCPLD VERT|C20": { casing_width: 20, casing_height: 30.625 }
+      "NOVA|CPLD/DCPLD VERT|C22": { casing_width: 21.625, casing_height: 31.875 }
+      "NOVA|CPLD/DCPLD VERT|C24": { casing_width: 24, casing_height: 30.625 }
+      "NOVA|CPLD/DCPLD VERT|C26": { casing_width: 25.625, casing_height: 31.875 }
+      "NOVA|CPLD/DCPLD VERT|C30": { casing_width: 30, casing_height: 30.625 }
+      "NOVA|CPLD/DCPLD VERT|C32": { casing_width: 31.625, casing_height: 31.875 }
+      "NOVA|CPLD/DCPLD VERT|C40": { casing_width: 39.5, casing_height: 31.875 }
+      "NOVA|CPLD/DCPLD VERT|C48": { casing_width: 47.5, casing_height: 31.875 }
+      "NOVA|CPLD/DCPLD VERT|C58": { casing_width: 57.5, casing_height: 31.875 }
+      "NOVA|CPLD/DCPLD VERT|C70": { casing_width: 69.5, casing_height: 31.875 }
+      "NOVA|STANDALONE|A18": { casing_width: 21.875, casing_height: 17.625 }
+      "NOVA|STANDALONE|B22": { casing_width: 25.875, casing_height: 21.625 }
+      "NOVA|STANDALONE|C22": { casing_width: 31.875, casing_height: 21.625 }
+      "NOVA|STANDALONE|C26": { casing_width: 31.875, casing_height: 25.625 }
+      "NOVA|STANDALONE|C32": { casing_width: 31.875, casing_height: 31.625 }
+      "NOVA|STANDALONE|C40": { casing_width: 39.5, casing_height: 31.875 }
+      "NOVA|STANDALONE|C48": { casing_width: 47.5, casing_height: 31.875 }
+      "NOVA|STANDALONE|C58": { casing_width: 57.5, casing_height: 31.875 }
+      "NOVA|STANDALONE|C70": { casing_width: 69.5, casing_height: 31.875 }
+      "NOVA|CPLD W/ COOLING|A16": { casing_width: 34, casing_height: 20 }
+      "NOVA|CPLD W/ COOLING|A18": { casing_width: 36, casing_height: 22 }
+      "NOVA|CPLD W/ COOLING|B20": { casing_width: 38, casing_height: 24 }
+      "NOVA|CPLD W/ COOLING|B22": { casing_width: 40, casing_height: 26 }
+      "NOVA|CPLD W/ COOLING|C20": { casing_width: 50, casing_height: 26 }
+      "NOVA|CPLD W/ COOLING|C22": { casing_width: 52, casing_height: 28 }
+      "NOVA|CPLD W/ COOLING|C24": { casing_width: 54, casing_height: 28 }
+      "NOVA|CPLD W/ COOLING|C26": { casing_width: 56, casing_height: 30 }
+      "NOVA|CPLD W/ COOLING|C30": { casing_width: 60, casing_height: 30 }
+      "NOVA|CPLD W/ COOLING|C32": { casing_width: 62, casing_height: 32 }
+      "NOVA|CPLD W/ COOLING|C40": { casing_width: 64, casing_height: 34 }
+      "NOVA|CPLD W/ COOLING|C48": { casing_width: 66, casing_height: 38 }
+      "NOVA|CPLD W/ COOLING|C58": { casing_width: 70, casing_height: 42 }
+      "NOVA|CPLD W/ COOLING|C70": { casing_width: 76, casing_height: 46 }
+      "TERRA|INTEGRATED|6": { casing_width: 30, casing_height: 20 }
+      "TERRA|INTEGRATED|9": { casing_width: 36, casing_height: 20 }
+      "TERRA|INTEGRATED|12": { casing_width: 44, casing_height: 20 }
+      "TERRA|INTEGRATED|15": { casing_width: 50, casing_height: 20 }
+      "TERRA|INTEGRATED|18": { casing_width: 50, casing_height: 21 }
+      "TERRA|INTEGRATED|24": { casing_width: 62, casing_height: 21 }
+      "TERRA|INTEGRATED|32": { casing_width: 54, casing_height: 30 }
+      "TERRA|INTEGRATED|40": { casing_width: 62, casing_height: 30 }
+      "TERRA|INTEGRATED|48": { casing_width: 72, casing_height: 30 }
+      "VENTUM_H|CPLD EXT|H05": { casing_width: 29, casing_height: 18 }
+      "VENTUM_H|CPLD EXT|H10": { casing_width: 36, casing_height: 18 }
+      "VENTUM_H|CPLD EXT|H15": { casing_width: 37, casing_height: 21 }
+      "VENTUM_H|CPLD EXT|H20": { casing_width: 46, casing_height: 21 }
+      "VENTUM_H|CPLD EXT|H25": { casing_width: 36, casing_height: 32 }
+      "VENTUM_H|CPLD EXT|H30": { casing_width: 45, casing_height: 32 }
+      "VENTUM_H|CPLD/DCPLD STD|H05": { casing_width: 21.875, casing_height: 18 }
+      "VENTUM_H|CPLD/DCPLD STD|H10": { casing_width: 31.875, casing_height: 18 }
+      "VENTUM_H|CPLD/DCPLD STD|H15": { casing_width: 31.875, casing_height: 21 }
+      "VENTUM_H|CPLD/DCPLD STD|H20": { casing_width: 39.375, casing_height: 21 }
+      "VENTUM_H|CPLD/DCPLD STD|H25": { casing_width: 31.875, casing_height: 32 }
+      "VENTUM_H|CPLD/DCPLD STD|H30": { casing_width: 39.375, casing_height: 32 }
+      "VENTUM_PLUS|INTEGRATED|V20": { casing_width: 56.375, casing_height: 52 }
+      "VENTUM_PLUS|INTEGRATED|V25": { casing_width: 56.375, casing_height: 58 }
+      "VENTUM_PLUS|INTEGRATED|V30": { casing_width: 69.5, casing_height: 60 }
+      "VENTUM_PLUS|INTEGRATED|V40": { casing_width: 69.5, casing_height: 68 }
+      "VENTUM_PLUS|INTEGRATED|V50": { casing_width: 69.5, casing_height: 78 }
+      "VENTUM_PLUS|INTEGRATED|V60": { casing_width: 85.625, casing_height: 78 }
+      "VENTUM_PLUS|INTEGRATED|V80": { casing_width: 85.625, casing_height: 92 }
+      "VENTUM_PLUS|INTEGRATED|V100": { casing_width: 101.875, casing_height: 92 }
+      "VENTUM_PLUS|INTEGRATED|V120": { casing_width: 115.75, casing_height: 92 }
+      "VENTUM_PLUS|INTEGRATED|V150": { casing_width: 115.75, casing_height: 106 }
+
+  - rule_id: R-075
+    applies_to: { coil_type: ["*"], product_family: [NOVA], terra_variant: null, size_pattern: null }
+    field: size_class
+    value: null
+    kind: special_size_class
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP fit rules (1\" Nova / 2\" Nova)", "CHK WIDTH/HEIGHT FIT formulas"]
+    size_class_map:
+      NOVA_1IN: [A16, B20, C20, C24, C30]
+      NOVA_2IN: [A18, B22, C22, C26, C32, C40, C48, C58, C70]
+
+  - rule_id: R-076
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: unit_size
+    value: null
+    kind: validation_unit_size
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK Units sheet"]
+    enumerations:
+      NOVA: [A16, A18, B20, B22, C20, C22, C24, C26, C30, C32, C40, C48, C58, C70]
+      TERRA: ["6", "9", "12", "15", "18", "24", "32", "40", "48"]
+      VENTUM_H: [H05, H10, H15, H20, H25, H30]
+      VENTUM_PLUS: [V20, V25, V30, V40, V50, V60, V80, V100, V120, V150]
+
+  - rule_id: R-077
+    applies_to: { coil_type: [HWC, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: drain_pan_check
+    value: "review drain-pan / install width"
+    kind: constant
+    only_when: installed_on_drain_pan
+    requires_inputs: [installed_on_drain_pan]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["CHK HWC rows 20-23 INSTALL FIT", "CHK Install sheet", "SOP drain-pan special cases"]
+
+  # --- 2.7 Notes / special-case conflicts ------------------------------------
+  # R-080/R-081: Direct Coil selection has no coating trigger field, so the
+  # coating note is always appended to the drawing notes (John, 2026-06-11).
+  # SOP Rev H wording wins (authored by John Kim) -> conflict resolved -> HIGH.
+  # CHK still carries the older wording and should be updated to match.
+  # NOTE: coating notes apply to DX and HGRH only. CWC/HWC intentionally have
+  # no coating note -- those coils typically have no coating process
+  # (confirmed by John, 2026-06-11).
+  - rule_id: R-080
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Do Not Coat Last 5-6 inches of Distributor Extensions."
+    kind: notes_append
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP Rev H (authored by John Kim, Dec 2025)", "John direction 2026-06-11", "CHK DX!C23 (older wording, to update)"]
+
+  - rule_id: R-081
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Do Not Coat Last 5-6 inches of Supply Stubouts."
+    kind: notes_append
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP Rev H (authored by John Kim, Dec 2025)", "John direction 2026-06-11", "CHK HGRH coating note (older/incorrect wording, to update)"]
+
+  - rule_id: R-082
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }
+    field: notes_mounting_holes
+    value: null
+    kind: constant
+    only_when: with_hgrh
+    requires_inputs: [with_hgrh]
+    confidence: LOW
+    review_required: true
+    blocked_reason: "R-082 LOW: 'Exclude mounting holes on the bottom flange only.' is CHK-only (no SOP backing); CHK conditions differ between DX and HGRH."
+    evidence_refs: ["CHK DX!C23 conditional", "CHK HGRH!C26"]
+
+  # R-083/R-084: ASC is EZ Coil-specific terminology. Direct Coil will use
+  # different naming, so the ASC orientation conflict (R-084) is DEFERRED until
+  # the Direct Coil field naming is defined (John, 2026-06-11). R-084 stays
+  # CONFLICT/blocked (never auto-populated) in the meantime; do not resolve the
+  # Left-vs-UP/DOWN convention until the Direct Coil mapping exists.
+  - rule_id: R-083
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: asc
+    value: "selected"
+    kind: constant
+    only_when: hot_gas_bypass
+    requires_inputs: [hot_gas_bypass]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH SPECIAL CASE", "CHK DX!C60"]
+
+  - rule_id: R-084
+    applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: asc_orientation
+    value: null
+    kind: constant
+    only_when: hot_gas_bypass
+    requires_inputs: [hot_gas_bypass]
+    confidence: CONFLICT
+    review_required: true
+    blocked_reason: "R-084 CONFLICT: SOP 'Left' (same direction as return stubouts) vs CHK LH->UP / RH->DOWN (different coordinate conventions)."
+    evidence_refs: ["SOP §DX-TNVH SPECIAL CASE 'Left'", "CHK DX!C61 LH->UP/RH->DOWN"]
+
+  - rule_id: R-085
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: back_to_back_mounting
+    value: "Mounting Holes, Bolts, 0.3125\", 12\" spacing"
+    kind: constant
+    only_when: back_to_back
+    requires_inputs: [back_to_back]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["SOP §GEN SPECIAL CASE back-to-back"]
+
+  - rule_id: R-086
+    applies_to: { coil_type: [DX, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: coil_style
+    value: null
+    kind: special_coil_style
+    only_when: qty_valves_set
+    requires_inputs: [qty_valves]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    feature_flag: coil_style
+    evidence_refs: ["SOP §GEN coil style from qty valves"]

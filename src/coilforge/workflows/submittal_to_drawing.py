@@ -93,6 +93,17 @@ def build_default_demo_workflow_input() -> dict[str, Any]:
                 "quantity": 1,
             },
             "preview_defaults": list(DEFAULT_PREVIEW_VALUES),
+            # Header engine context. product_type/unit_size are not on the
+            # Direct Coil form; in the real flow they come from the submittal /
+            # unit context (Track B). NOVA/B20 are documented demo assumptions
+            # (NOVA matches the as-built TF/BF=0.625; geometry values do not
+            # depend on size for this DX slice).
+            "header_context": {
+                "coil_type": "DX",
+                "product_type": "NOVA",
+                "unit_size": "B20",
+                "circuits": 1,
+            },
         },
         "summary": {
             "input_type": "sanitized_text",
@@ -134,17 +145,65 @@ def run_submittal_to_direct_draft_workflow(payload: dict[str, Any]) -> dict[str,
     }
 
 
+def _inject_extra_drawing_params(parameter_set: Any, engine_values: list[Any]) -> None:
+    """Add drawing-output params beyond the registry (e.g. HDx1 distributor HD)."""
+    from coilforge.drawing.parameters import DrawingParameter
+    from coilforge.services.drawing_param_resolver import EXTRA_DRAWING_PARAMS
+
+    for value in engine_values:
+        if value.key in EXTRA_DRAWING_PARAMS:
+            parameter_set.parameters[value.key] = DrawingParameter(
+                key=value.key,
+                label=value.key,
+                value=value.value,
+                unit=value.unit,
+                mode="default",
+                status="review_required",
+                review_required=True,
+            )
+
+
 def run_submittal_to_drawing_workflow(payload: dict[str, Any]) -> dict[str, Any]:
+    from coilforge.services.drawing_param_resolver import engine_preview_values
+
     direct_result = run_submittal_to_direct_draft_workflow(payload)
     draft_payload = direct_result["direct_coil_input_draft"]
     draft = DirectCoilInputDraft.model_validate(draft_payload)
+
+    static_defaults = [
+        PreviewDefaultValue.model_validate(item)
+        for item in payload.get("preview_defaults", [])
+    ]
+    generation_report: dict[str, Any] = {
+        "source": "static_default",
+        "connected": [],
+        "not_connected": {},
+    }
+    header_context = payload.get("header_context") or {}
+    if header_context.get("product_type") and header_context.get("unit_size"):
+        # Generate parameters from the header engine; static defaults fill only
+        # the keys the engine has no logic for (CH, ZD, S, ...).
+        engine_values, generation_report = engine_preview_values(
+            draft,
+            coil_type=header_context.get("coil_type", "DX"),
+            product_type=header_context["product_type"],
+            unit_size=header_context["unit_size"],
+            circuits=header_context.get("circuits"),
+            ez_json=header_context.get("ez_json"),
+        )
+        merged = {value.key: value for value in static_defaults}
+        for value in engine_values:  # engine precedence
+            merged[value.key] = value
+        default_preview_values = list(merged.values())
+    else:
+        engine_values = []
+        default_preview_values = static_defaults
+
     parameter_set = resolve_drawing_parameters(
         draft,
-        default_preview_values=[
-            PreviewDefaultValue.model_validate(item)
-            for item in payload.get("preview_defaults", [])
-        ],
+        default_preview_values=default_preview_values,
     )
+    _inject_extra_drawing_params(parameter_set, engine_values)
     preview = render_direct_coil_svg_preview(
         draft,
         parameter_set,
@@ -154,6 +213,7 @@ def run_submittal_to_drawing_workflow(payload: dict[str, Any]) -> dict[str, Any]
     return {
         **direct_result,
         "drawing_parameter_set": parameter_set.model_dump(),
+        "drawing_parameter_generation": generation_report,
         "drawing_intent": preview.intent.model_dump(),
         "svg": preview.svg,
         "metadata": preview.metadata,
@@ -237,6 +297,16 @@ def run_pdf_to_drawing_workflow(
         workflows,
         intake.summary.cover_page_rows,
     )
+    # Strong CoilMaster-drawing extraction -> linked, populated template-first
+    # drawing (reads the scanned drawing's as-built values directly).
+    try:
+        from coilforge.submittal.pdf_to_template_drawing import (
+            pdf_bytes_to_template_drawing,
+        )
+
+        selected_result["template_drawing"] = pdf_bytes_to_template_drawing(pdf_bytes)
+    except Exception as exc:  # never break the existing workflow on extraction issues
+        selected_result["template_drawing"] = {"error": str(exc)}
     return selected_result
 
 
@@ -274,10 +344,17 @@ def _run_candidate_to_drawing_payload(
             "coil_type": "DX_HEADER1_WORKFLOW_CANDIDATE",
         },
     )
+    generation_report = {
+        "source": "static_default",
+        "connected": [],
+        "not_connected": {},
+        "note": "PDF path uses static preview defaults; engine wiring pending product/size.",
+    }
 
     return {
         **direct_result,
         "drawing_parameter_set": parameter_set.model_dump(),
+        "drawing_parameter_generation": generation_report,
         "drawing_intent": preview.intent.model_dump(),
         "svg": preview.svg,
         "metadata": preview.metadata,

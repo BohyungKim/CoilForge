@@ -1,0 +1,636 @@
+"""Deterministic header prepopulation rule engine.
+
+Pure function ``prepopulate(request) -> HeaderPrepopulateResponse``. The only
+I/O is loading ``coil_header_rules.yaml`` once (module-level cache). No Epicor,
+export, BOM, or quoting calls. Header prepopulation only.
+
+Confidence/review gate (constraint #3):
+
+* ``HIGH``     -> ``values``        (auto-prepopulate)
+* ``MEDIUM``   -> ``suggestions``   (always ``review_required``)
+* ``LOW`` / ``CONFLICT`` -> ``blocked`` (``value=None``, ``blocked_reason`` set)
+
+Formula evaluation uses explicit safe helpers (no ``eval``).
+"""
+
+from __future__ import annotations
+
+import math
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from coilforge.schemas.header_prepopulate import (
+    Confidence,
+    CoilType,
+    FieldResult,
+    HeaderPrepopulateRequest,
+    HeaderPrepopulateResponse,
+    ProductFamily,
+)
+
+_RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules.yaml"
+
+# Rule IDs handled by dedicated phases rather than the generic constant emitter.
+_NOTES_BASE_IDS = {"R-007", "R-008"}
+_NOTES_APPEND_IDS = {"R-080", "R-081"}
+_CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
+_RETURN_SPACING_IDS = {"R-022", "R-023"}
+_CWC_IO_HD_SL_IDS = {
+    "R-060", "R-061", "R-062", "R-063a", "R-063b",
+    "R-064-sl", "R-064-io", "R-064-hd", "R-065",
+}
+_OTHER_SPECIAL_IDS = {
+    "R-034",  # DX distributor S placement (formula)
+    "R-048",  # HGRH S/R positions (formula)
+    "R-049",  # HGRH single-feed note
+    "R-051",  # cross-coil validation (no value rule)
+    "R-068",  # CWC/HWC S/R "leave defaults" no-op
+    "R-074",  # casing dims lookup
+    "R-075",  # size_class
+    "R-076",  # unit-size validation
+}
+_SPECIAL_IDS = (
+    _NOTES_BASE_IDS
+    | _NOTES_APPEND_IDS
+    | _CASING_DEPTH_IDS
+    | _RETURN_SPACING_IDS
+    | _CWC_IO_HD_SL_IDS
+    | _OTHER_SPECIAL_IDS
+)
+
+# Feature flags. R-086 (coil_style) is intentionally disabled by default.
+_ENABLED_FEATURE_FLAGS: frozenset[str] = frozenset()
+
+
+# --------------------------------------------------------------------------- #
+# Rule table loading
+# --------------------------------------------------------------------------- #
+@lru_cache(maxsize=1)
+def load_rule_table() -> list[dict[str, Any]]:
+    """Load and cache the YAML rule list."""
+    with _RULES_PATH.open(encoding="utf-8") as handle:
+        doc = yaml.safe_load(handle)
+    return list(doc["rules"])
+
+
+def _rule_index() -> dict[str, dict[str, Any]]:
+    return {rule["rule_id"]: rule for rule in load_rule_table()}
+
+
+def _refs(*rule_ids: str) -> list[str]:
+    """Collect verbatim evidence_refs for the given rule IDs (deduped)."""
+    index = _rule_index()
+    out: list[str] = []
+    for rid in rule_ids:
+        for ref in index[rid]["evidence_refs"]:
+            if ref not in out:
+                out.append(ref)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Safe formula helpers
+# --------------------------------------------------------------------------- #
+def roundup_eighth(value: float) -> float:
+    """Round ``value`` UP to the nearest eighth (1/8 = 0.125)."""
+    eighths = math.ceil(round(value * 8, 6))
+    return eighths / 8
+
+
+def cd_dx_hgrh(rows: int) -> float:
+    """DX/HGRH casing depth: ROUNDUP(rows * 0.866 to 1/8) + 2 (SOP-OLE1..4)."""
+    return roundup_eighth(rows * 0.866) + 2
+
+
+def cd_cwc_hwc(rows: int) -> float:
+    """CWC/HWC casing depth: ROUNDUP(rows * 1.299 to 1/8) + 2 (SOP-OLE5)."""
+    return roundup_eighth(rows * 1.299) + 2
+
+
+def _return_spacing(suction_conn_size: float, circuits: int) -> list[float]:
+    """R-022: Rn = n*D + (n-1)*1.5 for n in 1..circuits."""
+    return [n * suction_conn_size + (n - 1) * 1.5 for n in range(1, circuits + 1)]
+
+
+def _excel_round(value: float) -> int:
+    """Excel ROUND to nearest integer (half away from zero)."""
+    return math.floor(value + 0.5) if value >= 0 else math.ceil(value - 0.5)
+
+
+def _dx_cd_value(request: HeaderPrepopulateRequest) -> float:
+    """DX casing depth (R-070 base, R-072 multi-circuit). Assumes rows set."""
+    base = cd_dx_hgrh(request.rows)  # type: ignore[arg-type]
+    if request.circuits is not None and request.suction_conn_size is not None:
+        d = request.suction_conn_size
+        c = request.circuits
+        if request.with_hgrh and request.hgrh_conn_size is not None:
+            multi = c * (d + 1.5) + (d - request.hgrh_conn_size) / 2
+        else:
+            multi = (c + 1) * d + (c - 1) * 1.5
+        return max(base, multi)
+    return base
+
+
+# --------------------------------------------------------------------------- #
+# Confidence routing (constraint #3 — exercised directly by the invariant test)
+# --------------------------------------------------------------------------- #
+def bucket_for_confidence(confidence: Confidence) -> str:
+    if confidence == Confidence.HIGH:
+        return "values"
+    if confidence == Confidence.MEDIUM:
+        return "suggestions"
+    return "blocked"  # LOW | CONFLICT
+
+
+# --------------------------------------------------------------------------- #
+# applies_to / condition matching
+# --------------------------------------------------------------------------- #
+def _matches_list(token: str, allowed: Any) -> bool:
+    if allowed is None:
+        return True
+    if isinstance(allowed, str):
+        allowed = [allowed]
+    return "*" in allowed or token in allowed
+
+
+def _applies(rule: dict[str, Any], req: HeaderPrepopulateRequest) -> bool:
+    applies_to = rule["applies_to"]
+    if not _matches_list(req.type_of_coil.value, applies_to.get("coil_type")):
+        return False
+    if not _matches_list(req.product_type.value, applies_to.get("product_family")):
+        return False
+    variant = applies_to.get("terra_variant")
+    if variant is not None:
+        if req.terra_variant is None or req.terra_variant.value not in variant:
+            return False
+    return True
+
+
+def _coating_set(req: HeaderPrepopulateRequest) -> bool:
+    return req.coating is not None and req.coating.strip().upper() != "NONE"
+
+
+def _condition_met(only_when: str, req: HeaderPrepopulateRequest) -> bool:
+    if only_when == "feeds_eq_1":
+        return req.feeds == 1
+    if only_when == "feeds_gt_1":
+        return req.feeds is not None and req.feeds > 1
+    if only_when == "coating_set":
+        return _coating_set(req)
+    if only_when == "hot_gas_bypass":
+        return bool(req.hot_gas_bypass)
+    if only_when == "with_hgrh":
+        return bool(req.with_hgrh)
+    if only_when == "back_to_back":
+        return bool(req.back_to_back)
+    if only_when == "qty_valves_set":
+        return req.qty_valves is not None
+    if only_when == "installed_on_drain_pan":
+        return bool(req.installed_on_drain_pan)
+    return True
+
+
+# --------------------------------------------------------------------------- #
+# Engine
+# --------------------------------------------------------------------------- #
+def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
+    rules = load_rule_table()
+    index = _rule_index()
+    product = request.product_type
+    coil = request.type_of_coil
+
+    # --- R-076: unit-size validation (global gate) ---
+    enumerations = index["R-076"]["enumerations"]
+    valid_sizes = enumerations.get(product.value, [])
+    if request.unit_size not in valid_sizes:
+        return HeaderPrepopulateResponse(blocked_reason="unknown_unit_size")
+
+    values: dict[str, FieldResult] = {}
+    suggestions: dict[str, FieldResult] = {}
+    blocked: dict[str, FieldResult] = {}
+    missing: list[str] = []
+
+    def add_missing(inputs: list[str]) -> None:
+        for inp in inputs:
+            if inp not in missing:
+                missing.append(inp)
+
+    def place(field: str, result: FieldResult) -> None:
+        bucket = bucket_for_confidence(result.confidence)
+        {"values": values, "suggestions": suggestions, "blocked": blocked}[bucket][
+            field
+        ] = result
+
+    # --- Generic constant / conflict emitter ---
+    for rule in rules:
+        rid = rule["rule_id"]
+        if rid in _SPECIAL_IDS:
+            continue
+        if not _applies(rule, request):
+            continue
+        flag = rule.get("feature_flag")
+        if flag is not None and flag not in _ENABLED_FEATURE_FLAGS:
+            continue
+        only_when = rule.get("only_when")
+        if only_when is not None and not _condition_met(only_when, request):
+            continue
+
+        confidence = Confidence(rule["confidence"])
+        # Terra is resolved to Terra H C with reliable checklist values
+        # (John, 2026-06-11), so there is no longer a terra_variant gate.
+        review_reason = None
+        # Field/value resolution: `field_values` (per-field values) takes
+        # precedence; otherwise `field` (str or list) + `value`/`value_map`.
+        field_values = rule.get("field_values")
+        if field_values is not None:
+            field_value_pairs = list(field_values.items())
+        else:
+            fields = rule["field"]
+            if isinstance(fields, str):
+                fields = [fields]
+            value = rule.get("value")
+            value_map = rule.get("value_map")
+            if value_map is not None:
+                value = value_map.get(product.value)
+            field_value_pairs = [(field, value) for field in fields]
+
+        if confidence in (Confidence.LOW, Confidence.CONFLICT):
+            for field, _ in field_value_pairs:
+                place(
+                    field,
+                    FieldResult(
+                        value=None,
+                        confidence=confidence,
+                        evidence_refs=rule["evidence_refs"],
+                        review_required=True,
+                        review_required_reason=review_reason,
+                        blocked_reason=rule.get("blocked_reason"),
+                    ),
+                )
+            continue
+
+        review_required = confidence == Confidence.MEDIUM
+        for field, field_value in field_value_pairs:
+            place(
+                field,
+                FieldResult(
+                    value=field_value,
+                    confidence=confidence,
+                    evidence_refs=rule["evidence_refs"],
+                    review_required=review_required,
+                    review_required_reason=review_reason if review_required else None,
+                ),
+            )
+
+    # --- Notes assembly: base (R-007/R-008) then coating append (R-080/R-081) ---
+    # Direct Coil selection has no coating trigger field, so the coating note is
+    # always appended to the drawing notes (per John, 2026-06-11).
+    note_lines: list[str] = []
+    note_refs: list[str] = []
+    for rid in ("R-007", "R-008", "R-080", "R-081"):
+        rule = index[rid]
+        if _applies(rule, request):
+            note_lines.append(rule["value"])
+            for ref in rule["evidence_refs"]:
+                if ref not in note_refs:
+                    note_refs.append(ref)
+    if note_lines:
+        place(
+            "notes",
+            FieldResult(
+                value=note_lines,
+                confidence=Confidence.HIGH,
+                evidence_refs=note_refs,
+            ),
+        )
+
+    # --- size_class (R-075, NOVA only) ---
+    rule = index["R-075"]
+    if _applies(rule, request):
+        size_class = None
+        for cls, sizes in rule["size_class_map"].items():
+            if request.unit_size in sizes:
+                size_class = cls
+                break
+        if size_class is not None:
+            place(
+                "size_class",
+                FieldResult(
+                    value=size_class,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                ),
+            )
+
+    # --- casing_depth (R-070 / R-071 / R-072 / R-073) ---
+    _emit_casing_depth(request, place, add_missing)
+
+    # --- return_spacing (R-022 / R-023) ---
+    if coil == CoilType.DX:
+        rule = index["R-022"]
+        if _applies(rule, request) and request.product_type != ProductFamily.TERRA:
+            if request.suction_conn_size is not None and request.circuits is not None:
+                place(
+                    "return_spacing",
+                    FieldResult(
+                        value=_return_spacing(
+                            request.suction_conn_size, request.circuits
+                        ),
+                        confidence=Confidence.HIGH,
+                        evidence_refs=rule["evidence_refs"],
+                    ),
+                )
+            else:
+                add_missing(["suction_conn_size", "circuits"])
+
+    # --- DX distributor S placement (R-034, checklist even-spacing) ---
+    if coil == CoilType.DX:
+        rule = index["R-034"]
+        if request.rows is not None and request.circuits is not None:
+            cd = _dx_cd_value(request)
+            c = request.circuits
+            place(
+                "dist_s",
+                FieldResult(
+                    value=[_excel_round(k * cd / (c + 1)) for k in range(1, c + 1)],
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                ),
+            )
+        else:
+            add_missing(["rows", "circuits"])
+
+    # --- CWC/HWC io / hd / sl resolvers ---
+    if coil in (CoilType.CWC, CoilType.HWC):
+        _emit_cwc_io_hd_sl(request, place)
+
+    # --- casing dims lookup (R-074) ---
+    rule = index["R-074"]
+    if request.application is None:
+        add_missing(["application"])
+    else:
+        key = f"{product.value}|{request.application}|{request.unit_size}"
+        entry = rule.get("lookup", {}).get(key)
+        if entry is not None:
+            for field, val in entry.items():
+                place(
+                    field,
+                    FieldResult(
+                        value=val,
+                        confidence=Confidence.MEDIUM,
+                        evidence_refs=rule["evidence_refs"],
+                        review_required=True,
+                    ),
+                )
+
+    # --- HGRH single-feed note (R-049) ---
+    if coil == CoilType.HGRH and request.feeds == 1:
+        rule = index["R-049"]
+        place(
+            "single_feed_note",
+            FieldResult(
+                value=_single_feed_note(product),
+                confidence=Confidence.MEDIUM,
+                evidence_refs=rule["evidence_refs"],
+                review_required=True,
+            ),
+        )
+
+    # --- HGRH S/R positions (R-048) ---
+    if coil == CoilType.HGRH:
+        rule = index["R-048"]
+        if (
+            request.circuits is not None
+            and request.conn_size is not None
+            and request.rows is not None
+        ):
+            positions = [
+                x * request.conn_size + (x - 1) * 1.5
+                for x in range(1, request.circuits + 1)
+            ]
+            for field in ("supply_position", "return_position"):
+                place(
+                    field,
+                    FieldResult(
+                        value=positions,
+                        confidence=Confidence.MEDIUM,
+                        evidence_refs=rule["evidence_refs"],
+                        review_required=True,
+                    ),
+                )
+        else:
+            add_missing(["circuits", "conn_size", "rows"])
+
+    review_required = bool(suggestions) or bool(blocked)
+
+    return HeaderPrepopulateResponse(
+        values=values,
+        suggestions=suggestions,
+        blocked=blocked,
+        missing_inputs=missing,
+        review_required=review_required,
+        blocked_reason=None,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Phase helpers
+# --------------------------------------------------------------------------- #
+def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-untyped-def]
+    coil = request.type_of_coil
+    index = _rule_index()
+
+    if coil in (CoilType.DX, CoilType.HGRH):
+        if request.rows is None:
+            add_missing(["rows"])
+            return
+        base = cd_dx_hgrh(request.rows)
+        if coil == CoilType.DX:
+            multi_circuit = (
+                request.circuits is not None and request.suction_conn_size is not None
+            )
+            place(
+                "casing_depth",
+                FieldResult(
+                    value=_dx_cd_value(request),
+                    confidence=Confidence.HIGH,
+                    evidence_refs=(
+                        _refs("R-070", "R-072")
+                        if multi_circuit
+                        else index["R-070"]["evidence_refs"]
+                    ),
+                ),
+            )
+        else:  # HGRH
+            if request.circuits is not None and request.conn_size is not None:
+                d = request.conn_size
+                c = request.circuits
+                multi = (c + 1) * d + (c - 1) * 1.5
+                place(
+                    "casing_depth",
+                    FieldResult(
+                        value=multi,
+                        confidence=Confidence.MEDIUM,
+                        evidence_refs=index["R-073"]["evidence_refs"],
+                        review_required=True,
+                    ),
+                )
+            else:
+                place(
+                    "casing_depth",
+                    FieldResult(
+                        value=base,
+                        confidence=Confidence.HIGH,
+                        evidence_refs=index["R-070"]["evidence_refs"],
+                    ),
+                )
+    else:  # CWC / HWC
+        if request.rows is None:
+            add_missing(["rows"])
+            return
+        place(
+            "casing_depth",
+            FieldResult(
+                value=cd_cwc_hwc(request.rows),
+                confidence=Confidence.HIGH,
+                evidence_refs=index["R-071"]["evidence_refs"],
+            ),
+        )
+
+
+def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
+    """CWC/HWC io / hd / sl, accounting for feeds and product family.
+
+    feeds == 1   -> single-feed overrides (R-064): sl=12/14 HIGH, io=TBD/hd=N/A MEDIUM
+    feeds  > 1   -> R-060 io=2.3125 HIGH, R-062 hd=4 HIGH, R-063 sl HIGH
+    feeds absent -> io/hd MEDIUM suggestions (missing feeds); sl HIGH default
+    TERRA        -> io=3.25 HIGH (R-061), sl=10 HIGH (R-065) [checklist, John 2026-06-11]
+    """
+    index = _rule_index()
+    product = request.product_type
+    feeds_one = request.feeds == 1
+    feeds_multi = request.feeds is not None and request.feeds > 1
+
+    # --- io ---
+    if product == ProductFamily.TERRA:
+        rule = index["R-061"]
+        place(
+            "io",
+            FieldResult(
+                value=rule["value"],
+                confidence=Confidence.HIGH,
+                evidence_refs=rule["evidence_refs"],
+            ),
+        )
+    elif feeds_one:
+        rule = index["R-064-io"]
+        place(
+            "io",
+            FieldResult(
+                value="TBD",
+                confidence=Confidence.MEDIUM,
+                evidence_refs=rule["evidence_refs"],
+                review_required=True,
+            ),
+        )
+    else:
+        rule = index["R-060"]
+        if feeds_multi:
+            place(
+                "io",
+                FieldResult(
+                    value=2.3125,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                ),
+            )
+        else:  # feeds absent
+            place(
+                "io",
+                FieldResult(
+                    value=2.3125,
+                    confidence=Confidence.MEDIUM,
+                    evidence_refs=rule["evidence_refs"],
+                    review_required=True,
+                    missing_inputs=["feeds"],
+                ),
+            )
+
+    # --- hd ---
+    if feeds_one:
+        rule = index["R-064-hd"]
+        place(
+            "hd",
+            FieldResult(
+                value="N/A",
+                confidence=Confidence.MEDIUM,
+                evidence_refs=rule["evidence_refs"],
+                review_required=True,
+            ),
+        )
+    else:
+        rule = index["R-062"]
+        if feeds_multi:
+            place(
+                "hd",
+                FieldResult(
+                    value=4,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                ),
+            )
+        else:  # feeds absent
+            place(
+                "hd",
+                FieldResult(
+                    value=4,
+                    confidence=Confidence.MEDIUM,
+                    evidence_refs=rule["evidence_refs"],
+                    review_required=True,
+                    missing_inputs=["feeds"],
+                ),
+            )
+
+    # --- sl ---
+    if product == ProductFamily.TERRA:
+        rule = index["R-065"]
+        place(
+            "sl",
+            FieldResult(
+                value=10,
+                confidence=Confidence.HIGH,
+                evidence_refs=rule["evidence_refs"],
+            ),
+        )
+    elif feeds_one:
+        rule = index["R-064-sl"]
+        value = rule["value_map"][product.value]
+        place(
+            "sl",
+            FieldResult(
+                value=value,
+                confidence=Confidence.HIGH,
+                evidence_refs=rule["evidence_refs"],
+            ),
+        )
+    else:
+        rid = "R-063b" if product == ProductFamily.VENTUM_PLUS else "R-063a"
+        rule = index[rid]
+        place(
+            "sl",
+            FieldResult(
+                value=rule["value"],
+                confidence=Confidence.HIGH,
+                evidence_refs=rule["evidence_refs"],
+            ),
+        )
+
+
+def _single_feed_note(product: ProductFamily) -> str:
+    """R-049 per-platform single-feed header/stubout note (advisory wording)."""
+    if product == ProductFamily.VENTUM_PLUS:
+        return "Single feed: add headers & stubouts (e.g. O2=2, SL2=10 for Ventum+)."
+    return "Single feed: add headers & stubouts (e.g. O2=2, SL2=8)."

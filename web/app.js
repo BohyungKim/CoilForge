@@ -1714,6 +1714,10 @@ function renderImportSummary(uiState) {
 }
 
 function renderDrawingPreview(uiState) {
+  if (uiState.template_drawing && !uiState.template_drawing.error) {
+    renderTemplateDrawingPreview(uiState.template_drawing);
+    return;
+  }
   const preview = uiState.drawing_preview;
   const templateState = currentDrawingTemplateState(uiState);
   if (elements.drawingTemplateStatus) {
@@ -1736,6 +1740,88 @@ function renderDrawingPreview(uiState) {
   } else {
     elements.drawingPreview.textContent = "Drawing preview blocked until required parameters are supplied.";
   }
+}
+
+// PDF reproduction path: the scanned CoilMaster drawing's as-built values were
+// read directly and pushed into the matching seeded template. This is distinct
+// from the header-engine prediction preview (drawing_preview.svg).
+function renderTemplateDrawingPreview(templateDrawing) {
+  const rendered = Boolean(templateDrawing.generation_allowed && templateDrawing.svg);
+  if (elements.drawingTemplateStatus) {
+    elements.drawingTemplateStatus.className = `drawing-template-status ${rendered ? "status-review-required" : "status-blocked"}`;
+    elements.drawingTemplateStatus.innerHTML = `
+      <strong>${escapeHtml(templateDrawingLabel(templateDrawing))}</strong>
+      <span>${escapeHtml(templateDrawingReason(templateDrawing))}</span>
+    `;
+  }
+  if (elements.previewStatus) {
+    elements.previewStatus.textContent = rendered ? "Reproduced from PDF" : "Links — artwork not seeded";
+    elements.previewStatus.className = `status-chip ${rendered ? "status-review-required" : "status-blocked"}`;
+  }
+  elements.drawingPreview.innerHTML = `
+    <div class="template-drawing-preview">
+      <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
+      <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
+    </div>
+  `;
+}
+
+function templateDrawingLabel(templateDrawing) {
+  if (templateDrawing.generation_allowed && templateDrawing.svg) {
+    return `Reproduced from submittal drawing: ${templateDrawing.template_id}`;
+  }
+  if (templateDrawing.template_found) {
+    return `Links to ${templateDrawing.template_id} — artwork not seeded yet`;
+  }
+  return "No drawing template registered for this coil";
+}
+
+function templateDrawingReason(templateDrawing) {
+  const extracted = templateDrawing.extracted || {};
+  const parts = [
+    extracted.coil_category,
+    extracted.hand,
+    extracted.circuits ? `${extracted.circuits} circuit${extracted.circuits > 1 ? "s" : ""}` : null,
+  ].filter(Boolean);
+  const base = parts.length ? `${parts.join(" / ")}. ` : "";
+  return `${base}Read from the as-built drawing. Review-aid only — never manufacturing-approved.`;
+}
+
+function templateDrawingCaption(templateDrawing) {
+  const extracted = templateDrawing.extracted || {};
+  const cells = [
+    ["Tag", extracted.tag],
+    ["Coil", extracted.coil_category],
+    ["Hand", extracted.hand],
+    ["Circuits", extracted.circuits],
+    ["Rows", extracted.rows],
+    ["Feeds", extracted.feeds],
+    ["Return conn.", extracted.return_conn_size],
+    ["Unit size", templateDrawing.unit_size],
+    ["Product", templateDrawing.product_type],
+    ["Dims read", extracted.dimension_count],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  return cells
+    .map(([label, value]) => `<span><em>${escapeHtml(label)}</em><strong>${escapeHtml(value)}</strong></span>`)
+    .join("");
+}
+
+function templateDrawingBody(templateDrawing, rendered) {
+  if (rendered) {
+    return templateDrawing.svg;
+  }
+  const slots = templateDrawing.slot_values || {};
+  const dims = Object.entries(slots)
+    .filter(([key]) => key.startsWith("slot."))
+    .map(([key, value]) => `<li><span>${escapeHtml(key.replace("slot.", ""))}</span><strong>${escapeHtml(value)}</strong></li>`)
+    .join("");
+  return `
+    <div class="template-drawing-pending">
+      <strong>${escapeHtml(templateDrawingLabel(templateDrawing))}</strong>
+      <p>The coil's values are fully extracted and ready to drop in as soon as this template's artwork is seeded.</p>
+      ${dims ? `<ul class="template-drawing-slots">${dims}</ul>` : ""}
+    </div>
+  `;
 }
 
 function renderDrawingParameters(uiState) {
@@ -1789,6 +1875,21 @@ function drawingTemplateState(uiState, fieldsByLabel) {
 }
 
 function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
+  const templateDrawing = uiState.template_drawing;
+  if (templateDrawing && !templateDrawing.error) {
+    const rendered = Boolean(templateDrawing.generation_allowed && templateDrawing.svg);
+    return `
+      <section class="dc-coil-drawing-panel">
+        <div class="dc-coil-drawing-toolbar">
+          <span>Coil Drawing</span>
+          <strong>${rendered ? "Reproduced from PDF — review aid" : "Links — artwork not seeded"}</strong>
+        </div>
+        <div class="dc-coil-drawing-canvas">
+          ${templateDrawingBody(templateDrawing, rendered)}
+        </div>
+      </section>
+    `;
+  }
   const templateState = drawingTemplateState(uiState, fieldsByLabel);
   const preview = uiState.drawing_preview || {};
   const body =
@@ -2080,6 +2181,7 @@ function workflowToUiState(previousUiState, workflow, workflowInput) {
       preview_allowed: workflow.validation.preview_allowed,
       export_allowed: workflow.validation.export_allowed,
     },
+    template_drawing: workflow.template_drawing || null,
     actions: {
       ...previousUiState.actions,
       export_pdf: { enabled: false, placeholder: true },
