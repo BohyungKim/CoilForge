@@ -288,6 +288,106 @@
         "pdf_drawing_value_redacted_to_slot"
       ],
       "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.CASING_MATERIAL_2",
+      "label": "CASING_MATERIAL_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.CIRCUITING_2",
+      "label": "CIRCUITING_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.CIRCUITING_3",
+      "label": "CIRCUITING_3",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.DRY_WEIGHT",
+      "label": "DRY_WEIGHT",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.FASTENER_TYPE",
+      "label": "FASTENER_TYPE",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_2",
+      "label": "FIN_MATERIAL_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_3",
+      "label": "FIN_MATERIAL_3",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE",
+      "label": "SUPPLY_CONN_SIZE",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
+      "label": "SUPPLY_CONN_SIZE_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.TUBE_MATERIAL_2",
+      "label": "TUBE_MATERIAL_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
     }
   ]
 }

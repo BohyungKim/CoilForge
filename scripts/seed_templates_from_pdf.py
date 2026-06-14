@@ -45,7 +45,8 @@ _TB_COLUMN_SLOT = {
     "R": "slot.R2", "TF": "slot.TF", "BF": "slot.BF", "HF": "slot.HF",
     "RF": "slot.RF", "RB": "slot.RB",
 }
-# Side-panel heading -> slot id.
+# Side-panel heading -> slot id. The FIRST value line under a heading takes the
+# bare slot; subsequent lines take slot_2, slot_3 (see _side_panel_map).
 _PANEL_HEADING_SLOT = {
     "TUBE MATERIAL": "slot.TUBE_MATERIAL",
     "FIN MATERIAL": "slot.FIN_MATERIAL",
@@ -54,8 +55,21 @@ _PANEL_HEADING_SLOT = {
     "CIRCUITING": "slot.CIRCUITING",
     "HEADER MATERIAL": "slot.HEADER_MATERIAL",
     "DISTRIBUTORS": "slot.DISTRIBUTORS",
+    "SUPPLY CONN SIZE": "slot.SUPPLY_CONN_SIZE",
     "RETURN CONN SIZE": "slot.RETURN_CONN_SIZE",
+    "FASTENER TYPE": "slot.FASTENER_TYPE",
+    "DRY WEIGHT": "slot.DRY_WEIGHT",
+    "INTERNAL VOLUME": "slot.INTERNAL_VOLUME",
 }
+# Generic boilerplate at the foot of the spec panel — never tokenized; its
+# appearance also ends the current section's value capture.
+_PANEL_BOILERPLATE_RE = re.compile(
+    r"TUBE SUPPORTS|ALL COILS ARE TESTED|P\.S\.I|DRY NITROGEN|DRAWING CREATED|"
+    r"COILS OVER|PROPERTY OF|REPRODUCED",
+    re.I,
+)
+# CoilMaster identity to strip (de-brand -> Oxygen8 own drawing, review aid).
+_COILMASTER_NOTE = "Coilmaster will revise any drawing that contains component interferences"
 _MODEL_RE = re.compile(r"^[A-Z]{2}-[A-Z]-[A-Z]-[\d.x-]+-[LR]$")
 
 
@@ -159,6 +173,7 @@ def seed_pdf(pdf_path: Path) -> SeedResult:
         return m.group(0)
 
     svg = re.sub(r"<text\b([^>]*)>(.*?)</text>", rewrite_text, svg, flags=re.S)
+    svg = debrand(svg)  # CoilMaster identity removed -> Oxygen8's own drawing
     return SeedResult(svg=svg, slot_ids=used, reference=ref)
 
 
@@ -203,7 +218,12 @@ def _title_block_tokens(page: fitz.Page) -> list[tuple[float, str]]:
 
 
 def _side_panel_map(page: fitz.Page) -> dict[str, str]:
-    """{first-value-line-text: slot_id} for each right-column spec section."""
+    """{value-line-text: slot_id} for each right-column spec section.
+
+    First value line under a heading -> bare slot; subsequent lines -> slot_2,
+    slot_3 (capped at 3). Generic boilerplate ends the section so the bottom
+    title-block / test notes are never tokenized.
+    """
     lines: list[tuple[float, float, str]] = []
     for b in page.get_text("dict")["blocks"]:
         for ln in b.get("lines", []):
@@ -214,13 +234,17 @@ def _side_panel_map(page: fitz.Page) -> dict[str, str]:
     lines.sort()
     mapping: dict[str, str] = {}
     current: str | None = None
+    idx = 0
     for _, _, txt in lines:
         if txt in _PANEL_HEADING_SLOT:
-            current = _PANEL_HEADING_SLOT[txt]
+            current, idx = _PANEL_HEADING_SLOT[txt], 0
             continue
-        if current and txt not in _PANEL_HEADING_SLOT and not _is_other_heading(txt):
-            mapping.setdefault(txt, current)
-            current = None  # only first value line of the section
+        if _PANEL_BOILERPLATE_RE.search(txt):
+            current = None
+            continue
+        if current and idx < 3:
+            idx += 1
+            mapping.setdefault(txt, current if idx == 1 else f"{current}_{idx}")
     return mapping
 
 
@@ -393,6 +417,34 @@ def mirror_svg(svg: str, region: tuple = _COIL_REGION) -> str:
     return f"{head}{content}{flip}{trailer}"
 
 
+def debrand(svg: str) -> str:
+    """Remove CoilMaster identity so the drawing is Oxygen8's own (CoilMaster
+    *style* only): drop the logo image, the "Coilmaster will revise" note, the
+    "PROPERTY OF COILMASTER" legal block and the CoilMaster drafter name; drop an
+    OXYGEN8 wordmark placeholder into the logo cell (swap for the real logo asset
+    when provided). Style/layout/dimensions are untouched.
+    """
+    # 1. Logo image group (tiny-scale matrix wrapping an <image>) -> OXYGEN8 wordmark.
+    svg = re.sub(
+        r'<g transform="matrix\(\.\d[^"]*"\s*>\s*<image\b.*?</g>',
+        '<text x="54" y="560" font-family="Arial" font-size="16" '
+        'font-weight="bold" fill="#0f3d62">OXYGEN8</text>',
+        svg, flags=re.S, count=1,
+    )
+
+    # 2. "PROPERTY OF COILMASTER ..." legal <text> element -> remove entirely.
+    def drop_legal(m: re.Match[str]) -> str:
+        return "" if "PROPERTY OF" in m.group(0) and "COILMASTER" in m.group(0) else m.group(0)
+
+    svg = re.sub(r"<text\b[^>]*>.*?</text>", drop_legal, svg, flags=re.S)
+
+    # 3. "Coilmaster will revise ..." note (any occurrence) -> remove.
+    svg = svg.replace(_COILMASTER_NOTE, "")
+    # 4. CoilMaster drafter name after "Qty: N" -> remove, keep the quantity.
+    svg = re.sub(r"(Qty:\s*\d+)\s*[A-Z]\.\s*[A-Za-z]+", r"\1", svg)
+    return svg
+
+
 def finalize(svg: str, template_id: str, height: float = 612.0) -> str:
     """Add the review-aid watermark + template identity line before </svg>."""
     band = (
@@ -475,10 +527,17 @@ def build_bucket(spec: tuple) -> set[str]:
     (out_dir / "template.svg").write_text(finalize(res.svg, template_id), encoding="utf-8")
     src_folder = str(Path(src).parent).replace("\\", "/")
     page_count = fitz.open(REPO_ROOT / src).page_count
-    # Preserve existing hand-authored slot_map / metadata / evidence (only the
-    # artwork is swapped to the real EZ format). Generate them for new buckets.
+    # slot_map: preserve hand-authored entries, but MERGE in any new slot ids the
+    # template now uses (additive; tests check the slot set with >=, so safe).
     slot_map_path = out_dir / "slot_map.json"
-    if not slot_map_path.exists():
+    if slot_map_path.exists():
+        existing = json.loads(slot_map_path.read_text(encoding="utf-8"))
+        have = {s["slot_id"] for s in existing.get("slots", [])}
+        added = [s for s in _slot_map(template_id, res.slot_ids)["slots"] if s["slot_id"] not in have]
+        if added:
+            existing["slots"].extend(added)
+            slot_map_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    else:
         slot_map_path.write_text(json.dumps(_slot_map(template_id, res.slot_ids), indent=2), encoding="utf-8")
     if (out_dir / "template_metadata.json").exists() and (out_dir / "seed_evidence.json").exists():
         return res.slot_ids

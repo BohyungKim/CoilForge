@@ -71,6 +71,42 @@ def test_dx2_links_and_renders_seeded_header2() -> None:
     assert out["slot_values"]["slot.HDx1"] == 4.5
 
 
+def test_dx1_dimensions_are_logic_derived_and_validated() -> None:
+    """PDF inputs -> documented engine/formula logic DERIVES the dimensions
+    (authoritative); the as-built drawing is read only to validate."""
+    out = pdf_text_to_template_drawing(DX1_TEXT, cover_text=COVER)
+    assert out["drawing_value_source"] == "logic_derived"
+    assert out["header_engine_used"] is True
+    assert out["product_type"] == "NOVA" and out["unit_size"] == "A16"
+    src = out["slot_sources"]
+    # Engine-rule + recovered-formula dimensions match the as-built drawing.
+    assert src["slot.CD"]["source"] == "engine_rule" and src["slot.CD"]["validation"] == "match"
+    assert src["slot.CH"]["source"] == "recovered_formula" and src["slot.CH"]["validation"] == "match"
+    assert src["slot.HDx1"]["validation"] == "match" and src["slot.HDx1"]["value"] == 4.5
+    assert src["slot.S1"]["value"] == 2.75  # S = CD/(circuits+1)
+    # The one documented-uncertain value is flagged, never silently wrong.
+    assert out["validation_mismatches"].get("slot.OAL", "").startswith("mismatch")
+    assert "5.5" in out["svg"]
+
+
+def test_logic_reproduces_reference_coil_within_gate() -> None:
+    """Ground truth: the documented logic reproduces the EZC-0001 as-built dims."""
+    from coilforge.services.direct_coil_drawing_pipeline import build_drawing_slots
+
+    slots, _ = build_drawing_slots(
+        coil_type="DX", product_type="NOVA", unit_size="A16",
+        rows=4, feeds=2, circuits=1, suction_conn_size=0.625,
+        finned_height=12.0, finned_length=15.0,
+    )
+    expected = {
+        "slot.CD": 5.5, "slot.TF": 0.625, "slot.BF": 0.625, "slot.HDx1": 4.5,
+        "slot.HD2": 3.5, "slot.SL2": 8.0, "slot.I1": 3.0, "slot.O2": 2.0,
+        "slot.CH": 13.25, "slot.CL": 18.0, "slot.S1": 2.75,
+    }
+    for slot, value in expected.items():
+        assert abs(float(slots[slot]) - value) < 0.02, f"{slot}: {slots.get(slot)} != {value}"
+
+
 def test_workflow_includes_populated_template_drawing() -> None:
     """The intake workflow surfaces a populated template_drawing for a DX1 PDF."""
     workflow = run_pdf_to_drawing_workflow(_make_text_pdf(DX1_TEXT.splitlines()))
