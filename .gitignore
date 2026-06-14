@@ -23,6 +23,7 @@ outputs/**/rendered_pages/
 *.jpeg
 
 # Local/cache/build artifacts
+build/
 __pycache__/
 *.pyc
 .venv/
