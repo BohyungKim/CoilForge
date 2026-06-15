@@ -445,8 +445,34 @@ def debrand(svg: str) -> str:
     return svg
 
 
+_SLOT_TSPAN_RE = re.compile(
+    r'(<tspan\b[^>]*\bx=")([^"]*)("[^>]*>)(.*?)(</tspan>)', re.S
+)
+
+
+def collapse_slot_tspans(svg: str) -> str:
+    """Collapse per-glyph x-lists on placeholder-bearing tspans to a single x.
+
+    PyMuPDF emits one x coordinate per character of the *original* value. When a
+    slot is substituted with a different-length string (notably the multi-word
+    'REVIEW REQUIRED' placeholder), those fixed per-glyph positions pin the new
+    characters to the old slots and smear/overlap. Keeping only the first x lets
+    the substituted text flow naturally with the font's own kerning.
+    """
+
+    def _fix(match: re.Match) -> str:
+        head, x_list, mid, body, tail = match.groups()
+        if "{{slot." not in body:
+            return match.group(0)
+        first_x = x_list.split()[0] if x_list.split() else x_list
+        return f"{head}{first_x}{mid}{body}{tail}"
+
+    return _SLOT_TSPAN_RE.sub(_fix, svg)
+
+
 def finalize(svg: str, template_id: str, height: float = 612.0) -> str:
     """Add the review-aid watermark + template identity line before </svg>."""
+    svg = collapse_slot_tspans(svg)
     band = (
         f'<g id="zone.review_metadata">'
         f'<text x="8" y="{height - 4:.0f}" font-family="Arial" font-size="7" '
