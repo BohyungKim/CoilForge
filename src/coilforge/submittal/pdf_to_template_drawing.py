@@ -44,9 +44,13 @@ from coilforge.template_population.slot_population import populate_template_slot
 _COIL_CODE_TO_CATEGORY = {"DX": "DX", "HG": "HGRH", "CW": "CWC", "HW": "HWC"}
 # Slots produced by the recovered formulas in build_drawing_slots (vs engine rules).
 _FORMULA_SLOTS = {
-    "slot.FH", "slot.CH", "slot.FL", "slot.CL", "slot.OAL", "slot.S1",
-    "slot.R2", "slot.ROWS",
+    "slot.FH", "slot.CH", "slot.FL", "slot.CL", "slot.OAL", "slot.ROWS",
 }
+# Per-header positional families emitted by build_drawing_slots' per-circuit loop.
+# Supply S{odd} is the recovered k*CD/(circuits+1) formula; the rest (per-header
+# constants I/HDx/O/HD/SL and the engine R-022 list R{even}) are engine rules.
+_PER_HEADER_FORMULA_RE = re.compile(r"^slot\.S\d+$")
+_PER_HEADER_ENGINE_RE = re.compile(r"^slot\.(HDx|I|O|HD|SL|R)\d+$")
 
 
 def slots_from_drawing_extract(extract: dict[str, Any]) -> dict[str, Any]:
@@ -84,9 +88,9 @@ def _conn_float(value: Any) -> float | None:
 
 
 def _slot_source(slot: str) -> str:
-    if slot in _SLOT_ENGINE_FIELD:
+    if slot in _SLOT_ENGINE_FIELD or _PER_HEADER_ENGINE_RE.match(slot):
         return "engine_rule"
-    if slot in _FORMULA_SLOTS:
+    if slot in _FORMULA_SLOTS or _PER_HEADER_FORMULA_RE.match(slot):
         return "recovered_formula"
     return "engine_or_formula"
 

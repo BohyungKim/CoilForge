@@ -107,6 +107,53 @@ def test_logic_reproduces_reference_coil_within_gate() -> None:
         assert abs(float(slots[slot]) - value) < 0.02, f"{slot}: {slots.get(slot)} != {value}"
 
 
+# Two-circuit DX, LH, WITH a return-conn-size line so the R-022 return_spacing
+# list fires and every per-header position is logic-derived (not as-built).
+DX2_LH_CONN_TEXT = (
+    "34 FL\n26 FH27.25 CH\n37.00 CL1.50 HF 1.50 RF0.63 TF\n0.63 BF5.50 CD\n"
+    "39.25 OAL1.75 RB\n"
+    'RETURN CONN SIZE\n1.125" OD Header\n'
+    "C1: 3 Feed C2: 4 Feed\n"
+    "DX-F-S-04-14-26.00x34.00-L\nTag: CDXC-2\n"
+)
+DX2_LH_COVER = "1 CDXC- 2 DXC Cooling A16_V_I_ERV LH\n"
+
+
+def test_multi_header_positions_are_logic_derived() -> None:
+    """A 2-circuit DX derives BOTH header pairs (H1/H2 and H3/H4) from the engine
+    + recovered formulas, not the as-built fallback. Closes the multi-header gap:
+    the per-circuit loop emits I3/S3/HDx3/O4/R4/HD4/SL4 from engine constants,
+    the k*CD/(circuits+1) S-formula, and the R-022 return_spacing list."""
+    out = pdf_text_to_template_drawing(DX2_LH_CONN_TEXT, cover_text=DX2_LH_COVER)
+    assert out["extracted"]["circuits"] == 2
+    assert out["template_id"] == "coilmaster_dx_lh_header2"
+    assert out["drawing_value_source"] == "logic_derived"
+    src = out["slot_sources"]
+
+    # No per-header position falls back to the as-built reading.
+    per_header = [
+        "slot.I1", "slot.S1", "slot.HDx1", "slot.O2", "slot.R2", "slot.HD2", "slot.SL2",
+        "slot.I3", "slot.S3", "slot.HDx3", "slot.O4", "slot.R4", "slot.HD4", "slot.SL4",
+    ]
+    for slot in per_header:
+        assert slot in src, f"{slot} not derived"
+        assert src[slot]["source"] in {"engine_rule", "recovered_formula"}, (
+            f"{slot} fell back to {src[slot]['source']}"
+        )
+
+    # Constants repeat across same-parity headers.
+    sv = out["slot_values"]
+    assert sv["slot.I3"] == sv["slot.I1"] and sv["slot.HDx3"] == sv["slot.HDx1"]
+    assert sv["slot.O4"] == sv["slot.O2"] and sv["slot.HD4"] == sv["slot.HD2"]
+    assert sv["slot.SL4"] == sv["slot.SL2"]
+    # S = k*CD/(circuits+1); CD=5.5 -> S1=1.8333, S3=3.6667.
+    assert abs(float(sv["slot.S1"]) - 5.5 / 3) < 0.01
+    assert abs(float(sv["slot.S3"]) - 2 * 5.5 / 3) < 0.01
+    # R = return_spacing R-022 list: D=1.125 -> R2=1.125, R4=2D+1.5=3.75.
+    assert abs(float(sv["slot.R2"]) - 1.125) < 0.01
+    assert abs(float(sv["slot.R4"]) - 3.75) < 0.01
+
+
 def test_workflow_includes_populated_template_drawing() -> None:
     """The intake workflow surfaces a populated template_drawing for a DX1 PDF."""
     workflow = run_pdf_to_drawing_workflow(_make_text_pdf(DX1_TEXT.splitlines()))

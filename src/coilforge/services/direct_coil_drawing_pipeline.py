@@ -221,14 +221,41 @@ def build_drawing_slots(
         slots["slot.CL"] = round(finned_length + 3, 4)                  # CL = FL+3
         if rb is not None:
             slots["slot.OAL"] = round(finned_length + 3 + rb, 4)        # OAL (derived/review)
-    if cd is not None and circuits:
-        slots["slot.S1"] = round(cd / (circuits + 1), 4)               # single-circuit S
-    if suction_conn_size is not None and circuits:
-        slots["slot.R2"] = suction_conn_size                            # return_spacing[0]
     if rows is not None:
         slots["slot.ROWS"] = rows
     if tag:
         slots["slot.TAG"] = tag
+
+    # 2b. Per-header positions for EVERY circuit (generalizes the old header-1/2
+    # emission so multi-circuit coils are logic-derived, not as-built fallback).
+    # For circuit k (1..circuits): the supply/distributor header has odd id 2k-1
+    # and carries I/HDx/S; the return/suction header has even id 2k and carries
+    # O/HD/SL/R. The positional constants (dist_i, dist_hd, suction_io/hd/sl)
+    # repeat on every same-parity header; S is the recovered formula
+    # k*CD/(circuits+1); R is the engine R-022 per-circuit list (return_spacing).
+    # k=1 reproduces the legacy I1/S1/HDx1/O2/R2/HD2/SL2 values exactly.
+    dist_i, dist_hd = val("dist_i"), val("dist_hd")
+    suction_io, suction_hd, suction_sl = val("suction_io"), val("suction_hd"), val("suction_sl")
+    return_spacing = val("return_spacing")  # R-022 per-circuit list (HIGH) or None
+    if circuits:
+        for k in range(1, circuits + 1):
+            supply_id, return_id = 2 * k - 1, 2 * k
+            if dist_i is not None:
+                slots[f"slot.I{supply_id}"] = dist_i
+            if dist_hd is not None:
+                slots[f"slot.HDx{supply_id}"] = dist_hd
+            if cd is not None:
+                slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
+            if suction_io is not None:
+                slots[f"slot.O{return_id}"] = suction_io
+            if suction_hd is not None:
+                slots[f"slot.HD{return_id}"] = suction_hd
+            if suction_sl is not None:
+                slots[f"slot.SL{return_id}"] = suction_sl
+            if isinstance(return_spacing, list) and k <= len(return_spacing):
+                slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)
+            elif suction_conn_size is not None and k == 1:
+                slots[f"slot.R{return_id}"] = suction_conn_size         # fallback: R2 only
 
     # 3. EZ JSON as-built override for per-header positions (exact; multi-circuit).
     if ez_json:
