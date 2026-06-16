@@ -176,20 +176,22 @@ def test_dx_per_header_slots_unchanged() -> None:
 
 
 def test_hgrh_per_header_slots_resolved_from_category_fields() -> None:
-    """HGRH sources supply_io/return_io/hd/return_sl; no distributor -> no HDx."""
+    """HGRH sources supply_io/return_io and the shared header depth `hd` for both
+    headers (no distributor, so the supply header depth HDx1 = HD2 = hd)."""
     s = _slots("HGRH")
     assert s["slot.I1"] == 2          # supply_io
     assert s["slot.O2"] == 2          # return_io
-    assert s["slot.HD2"] == 3.5       # hd
+    assert s["slot.HD2"] == 3.5       # hd (return header depth)
     assert s["slot.SL2"] == 8         # return_sl
-    assert "slot.HDx1" not in s       # HGRH has no distributor header
+    assert s["slot.HDx1"] == 3.5      # supply header depth = hd (dimensioned too)
 
 
 def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
-    """CWC/HWC carry a single shared header geometry (io/hd/sl); no distributor."""
+    """CWC/HWC carry a single shared header geometry (io/hd/sl); no distributor, so
+    the supply header depth HDx1 = HD2 = hd (both headers dimensioned)."""
     s = _slots("CWC")
     assert s["slot.I1"] == 2.3125     # io
     assert s["slot.O2"] == 2.3125     # io (shared)
     assert s["slot.HD2"] == 4         # hd
     assert s["slot.SL2"] == 8         # sl
-    assert "slot.HDx1" not in s
+    assert s["slot.HDx1"] == 4        # supply header depth = hd

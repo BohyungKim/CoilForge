@@ -197,15 +197,16 @@ _SLOT_EZ_OVERRIDE: tuple[str, ...] = (
 #   - HGRH names supply_*/return_* and a single header depth `hd`; no distributor.
 #   - CWC/HWC carry a single shared header geometry (io/hd/sl); no distributor.
 # `i`/`o` -> supply/return I-O offsets, `hd` -> return header depth, `sl` ->
-# return stub length, `hdx` -> distributor HD (DX only). A missing key means that
-# slot simply has no engine source for the category (e.g. non-DX has no `hdx`),
-# so the slot is omitted, never guessed. These category->field correspondences
-# are review-required mappings (see plan), not auto-confirmed engineering values.
+# return stub length, `hdx` -> supply header depth (the DX distributor HD, or the
+# shared header `hd` for HGRH/CWC/HWC which have no distributor). A missing key
+# means that slot has no engine source for the category, so the slot is omitted,
+# never guessed. These category->field correspondences are review-required
+# mappings (see plan), not auto-confirmed engineering values.
 _PER_HEADER_ENGINE_FIELDS: dict[str, dict[str, str]] = {
     "DX": {"i": "dist_i", "hdx": "dist_hd", "o": "suction_io", "hd": "suction_hd", "sl": "suction_sl"},
-    "HGRH": {"i": "supply_io", "o": "return_io", "hd": "hd", "sl": "return_sl"},
-    "CWC": {"i": "io", "o": "io", "hd": "hd", "sl": "sl"},
-    "HWC": {"i": "io", "o": "io", "hd": "hd", "sl": "sl"},
+    "HGRH": {"i": "supply_io", "hdx": "hd", "o": "return_io", "hd": "hd", "sl": "return_sl"},
+    "CWC": {"i": "io", "hdx": "hd", "o": "io", "hd": "hd", "sl": "sl"},
+    "HWC": {"i": "io", "hdx": "hd", "o": "io", "hd": "hd", "sl": "sl"},
 }
 
 
