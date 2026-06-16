@@ -108,6 +108,9 @@ class CoilGeometry:
     casing_depth: float | None  # CD
     rows: int | None  # ROWS
     headers: tuple[HeaderSpec, ...]  # supply (id 1), return (id 2) for DX
+    # long-axis overalls (return-bend end)
+    return_bend: float | None  # RB — bend allowance beyond the casing at the return end
+    overall_length: float | None  # OAL — casing length + return bend
     # context (carried through for downstream layers / metadata)
     coil_category: str
     coil_hand: str
@@ -154,6 +157,8 @@ class CoilGeometry:
             casing_depth=_slot_inches(slot_values, "slot.CD"),
             rows=_slot_int(slot_values, "slot.ROWS"),
             headers=(supply, return_header),
+            return_bend=_slot_inches(slot_values, "slot.RB"),
+            overall_length=_slot_inches(slot_values, "slot.OAL"),
             coil_category=coil_category,
             coil_hand=coil_hand,
             header_type=header_type,

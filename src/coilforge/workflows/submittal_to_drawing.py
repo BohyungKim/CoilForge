@@ -306,6 +306,37 @@ def run_pdf_to_drawing_workflow(
     return selected_result
 
 
+def _attach_parametric_schematic(result: dict[str, Any]) -> None:
+    """Attach the parametric, to-scale geometry+dimensions drawing (numbers-only) built
+    from the same gated ``slot_values``. This is the drawing the UI shows for direct-coil
+    ordering: front + header/side views, dims at computed datums, no sheet chrome.
+    Review-aid only (``export_allowed=False`` + watermark). Never breaks the response.
+    """
+    from coilforge.drawing.schematic_renderer import render_scale_schematic
+
+    ex = result.get("extracted") or {}
+    slot_values = result.get("slot_values") or {}
+    try:
+        schem = render_scale_schematic(
+            slot_values,
+            coil_category=str(ex.get("coil_category") or "DX"),
+            coil_hand=str(ex.get("hand") or "LH"),
+            header_type=str(ex.get("header_type") or "Header 1"),
+            special_feature=ex.get("special_feature"),
+        )
+    except Exception as exc:  # a drawing-engine issue must never break the workflow
+        result["parametric_drawing"] = {"error": str(exc)}
+        return
+    result["parametric_drawing"] = {
+        "front_svg": schem.svg,
+        "side_svg": schem.side_svg,
+        "omitted_features": list(schem.omitted_features),
+        "export_allowed": schem.export_allowed,
+        "watermark": schem.watermark,
+        "metadata": schem.metadata,
+    }
+
+
 def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     """Re-derive ONE coil's template drawing given its classification + geometry
     plus an engineer-chosen product line + unit size (the UI product/size picker).
@@ -340,6 +371,7 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # Refresh the Drawing Parameters panel from the same slot values the re-derived
     # drawing renders, so picking a product line + unit size updates BOTH.
     result["drawing_parameter_set"] = parameter_set_from_template_drawing(result).model_dump()
+    _attach_parametric_schematic(result)
     return result
 
 
@@ -575,6 +607,9 @@ def _run_candidate_to_drawing_payload(
         )
     except Exception as exc:  # never break the workflow on extraction issues
         template_drawing = {"error": str(exc)}
+
+    if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):
+        _attach_parametric_schematic(template_drawing)
 
     # The Drawing Parameters panel mirrors the template drawing's slot values (the
     # single source of truth the drawing renders), so the panel and the drawing

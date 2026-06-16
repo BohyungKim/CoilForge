@@ -223,10 +223,27 @@ def test_connections_sit_at_face_not_buried_in_casing() -> None:
 
 def test_header_diameter_is_a_label_not_a_manifold_circle() -> None:
     res = render(sanitized_slots())
-    assert 'data-label="hd_supply"' in res.side_svg and "HDx1" in res.side_svg
-    assert 'data-label="hd_return"' in res.side_svg and "HD2" in res.side_svg
+    # Numbers-only: the header diameter shows as a numeric callout at the header
+    # (data-label identifies which header), not the code "HDx1"/"HD2".
+    assert 'data-label="hd_supply"' in res.side_svg and ">4.5<" in res.side_svg
+    assert 'data-label="hd_return"' in res.side_svg and ">3.5<" in res.side_svg
     # the only circles are connections — no full-diameter manifold circles.
     assert "header_supply" not in res.side_svg and "header_return" not in res.side_svg
+
+
+def test_dimension_text_is_numbers_only_not_label_codes() -> None:
+    import re
+
+    res = render(sanitized_slots())
+    for svg in (res.svg, res.side_svg):
+        for code, body in re.findall(r'<g data-dim="([^"]+)"[^>]*>(.*?)</g>', svg):
+            texts = re.findall(r'class="dim-label"[^>]*>([^<]*)</text>', body)
+            assert texts, f"{code} has no visible dim text"
+            for t in texts:
+                # numbers-only: the visible callout is the value, never the label code.
+                assert not t.strip().isalpha(), f"{code} shows a label code: {t!r}"
+    assert ">15<" in res.svg  # FL = 15 shown as the number
+    assert ">5.5<" in res.side_svg  # CD = 5.5 shown as the number
 
 
 def test_distinct_connections_do_not_overlap() -> None:

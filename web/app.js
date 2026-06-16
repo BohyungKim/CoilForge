@@ -1978,6 +1978,24 @@ function templateDrawingCaption(templateDrawing) {
 }
 
 function templateDrawingBody(templateDrawing, rendered) {
+  // Direct-coil ordering shows the parametric, to-scale geometry+dimensions drawing
+  // (numbers-only, no sheet chrome) — front + header/side views. It is built from the
+  // same gated slot values and is the single drawing surfaced here when available.
+  const param = templateDrawing.parametric_drawing;
+  if (param && !param.error && (param.front_svg || param.side_svg)) {
+    const omitted = (param.omitted_features || []).length
+      ? `<ul class="parametric-omitted">${param.omitted_features
+          .map((n) => `<li>${escapeHtml(n)}</li>`)
+          .join("")}</ul>`
+      : "";
+    return `
+      <div class="parametric-drawing">
+        ${param.front_svg ? `<div class="parametric-view" data-view="front">${param.front_svg}</div>` : ""}
+        ${param.side_svg ? `<div class="parametric-view" data-view="side">${param.side_svg}</div>` : ""}
+      </div>
+      ${omitted}
+    `;
+  }
   if (rendered) {
     return templateDrawing.svg;
   }

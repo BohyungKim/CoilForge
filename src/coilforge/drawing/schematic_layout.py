@@ -95,6 +95,7 @@ class Dimension:
     bx: float
     by: float
     tier_pos: float  # perpendicular tier coordinate (y for top/bottom, x for left/right)
+    value: float | None = None  # measured value in inches (the number the backend prints)
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,10 @@ class _DimReq:
     ay: float
     bx: float
     by: float
+    # Explicit measured value (inches). When None, place_dimensions derives it from the
+    # endpoint span along `orient` (true for every datum-span dim). Set it for callouts
+    # whose number is a property, not a span (e.g. a header diameter HDx1/HD2).
+    value: float | None = None
 
 
 def _omit(label: str) -> str:
@@ -163,10 +168,14 @@ def place_dimensions(
         group = [r for r in reqs if r.edge == edge]
         group.sort(key=lambda r: 0 if r.kind == "offset" else 1)  # offsets inner first
         for tier, r in enumerate(group):
+            value = r.value if r.value is not None else (
+                abs(r.bx - r.ax) if r.orient == "h" else abs(r.by - r.ay)
+            )
             placed.append(
                 Dimension(
                     r.label, r.kind, edge, tier, r.orient, r.ax, r.ay, r.bx, r.by,
                     tier_pos(casing, edge, tier, step, edge_base.get(edge, 0.0)),
+                    value,
                 )
             )
     return placed
@@ -190,6 +199,7 @@ def layout_dx_front_view(geom: CoilGeometry) -> ViewLayout:
 
     rects: list[LabeledRect] = []
     reqs: list[_DimReq] = []
+    segments: list[Segment] = []
 
     casing: Rect | None
     if cl is not None and ch is not None:
@@ -255,9 +265,30 @@ def layout_dx_front_view(geom: CoilGeometry) -> ViewLayout:
         else:
             notes.append(_omit("RF"))
 
+    # Return-bend end: OAL = CL + RB protrudes past the casing on the return side
+    # (canonical right). Draw a light bend-extreme line and dimension OAL (overall) +
+    # RB (offset) on the bottom edge; they stack collision-free with CL via the tiers.
+    if casing is not None:
+        oal, rb = geom.overall_length, geom.return_bend
+        cb = casing.y + casing.h
+        if oal is not None and oal > casing.w:
+            bend_x = casing.x + oal
+            extent_w = max(extent_w, bend_x + margin)
+            segments.append(Segment("return_bend", bend_x, casing.y, bend_x, cb))
+            reqs.append(_DimReq("OAL", "overall", "bottom", "h", casing.x, cb, bend_x, cb, value=oal))
+            if rb is not None:
+                reqs.append(_DimReq("RB", "offset", "bottom", "h", casing.x + casing.w, cb, bend_x, cb, value=rb))
+            else:
+                notes.append(_omit("RB"))
+        else:
+            if oal is None:
+                notes.append(_omit("OAL"))
+            if rb is None:
+                notes.append(_omit("RB"))
+
     dims = place_dimensions(reqs, casing, step) if casing is not None else []
     return ViewLayout(
-        "front", extent_w, extent_h, tuple(rects), (), (), (), tuple(dims),
+        "front", extent_w, extent_h, tuple(rects), (), tuple(segments), (), tuple(dims),
         tuple(dict.fromkeys(notes)),
     )
 
@@ -353,7 +384,10 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
                 notes.append(_omit(f"{dia_label} connection size"))
 
             if h.diameter is not None:
-                labels.append(Label(f"hd_{h.role}", conn_cx, cy - (r or 0.0) - 0.4 * step, f"{dia_label} Ø{h.diameter:.2f}"))
+                # Numbers-only callout (the diameter), placed at the header. The label
+                # code (HDx1/HD2) is dropped per direct-coil ordering; it stays on the
+                # SVG `data-label` attribute for identification.
+                labels.append(Label(f"hd_{h.role}", conn_cx, cy - (r or 0.0) - 0.4 * step, f"{h.diameter:g}"))
             else:
                 notes.append(_omit(dia_label))
 
@@ -378,7 +412,7 @@ def _mirror_dim(d: Dimension, extent_w: float) -> Dimension:
     tp = extent_w - d.tier_pos if d.edge in ("left", "right") else d.tier_pos
     return Dimension(
         d.label, d.kind, edge, d.tier, d.orient,
-        extent_w - d.ax, d.ay, extent_w - d.bx, d.by, tp,
+        extent_w - d.ax, d.ay, extent_w - d.bx, d.by, tp, d.value,
     )
 
 

@@ -173,6 +173,14 @@ def _label_svg(x: float, y: float, anchor: str, text: str) -> str:
     return f'<text x="{x:.2f}" y="{y:.2f}" text-anchor="{anchor}" class="dim-label">{_esc(text)}</text>'
 
 
+def _dim_text(dim: Dimension) -> str:
+    """The visible dimension callout. Numbers-only for direct-coil ordering: show the
+    measured value, not the label code (the code stays on the ``data-dim`` attribute).
+    Falls back to the code only if no value was carried (should not happen for real dims).
+    """
+    return _fmt(dim.value) if dim.value is not None else dim.label
+
+
 def _dimension_svg(dim: Dimension, x_px, y_px) -> str:  # noqa: ANN001 - local px mappers
     ax, ay = x_px(dim.ax), y_px(dim.ay)
     bx, by = x_px(dim.bx), y_px(dim.by)
@@ -221,5 +229,5 @@ def _dimension_svg(dim: Dimension, x_px, y_px) -> str:  # noqa: ANN001 - local p
         ]
         style = "leader"
 
-    body.append(_label_svg(lx, ly, anchor, dim.label))
+    body.append(_label_svg(lx, ly, anchor, _dim_text(dim)))
     return f'<g data-dim="{_esc(dim.label)}" data-style="{style}">{"".join(body)}</g>'
