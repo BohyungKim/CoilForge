@@ -1,10 +1,10 @@
 """Layer 2 — layout / datum engine (real inches only, no pixels).
 
 Turns a :class:`CoilGeometry` into a :class:`FrontViewLayout`: rectangles and
-dimension lines placed by datum/offset arithmetic in inches. There are no absolute
-hardcoded coordinates and no presentation scale here — doubling any inch dimension
-moves every dependent feature coherently because every position is derived from a
-datum. Pixels appear only in the SVG backend (Layer 3).
+dimensions placed by datum/offset arithmetic in inches. There are no absolute hardcoded
+coordinates and no presentation scale here — doubling any inch dimension moves every
+dependent feature coherently because every position is derived from a datum. Pixels
+appear only in the SVG backend (Layer 3).
 
 Front-view datum model (origin at the casing top-left, y grows downward):
 
@@ -12,8 +12,15 @@ Front-view datum model (origin at the casing top-left, y grows downward):
     finned  = inset by the flange datums — HF from the left, TF from the top
               (RH/LH mirror is Phase 2; this fixes one hand).
 
-When an offset slot is missing/REVIEW REQUIRED the finned face is centered on that
-axis and the offset dimension is omitted + annotated — never invented.
+Dimensioning is **tiered** to stay collision-free (Phase 1.5): each dimension is tagged
+``overall`` or ``offset`` and assigned a tier on its edge. Offsets sit on the inner tier
+(0), overall dims on the outer tier (1), so on any shared edge their perpendicular bands
+are disjoint. ``tier_pos`` is reusable across future views — it is pure tier math derived
+from the part, never pixels. The backend decides HOW each dimension is drawn (extension
+lines, arrowheads vs leader by rendered length).
+
+When an offset slot is missing/REVIEW REQUIRED the finned face is centered on that axis
+and the offset dimension is omitted + annotated — never invented.
 """
 
 from __future__ import annotations
@@ -22,10 +29,11 @@ from dataclasses import dataclass
 
 from coilforge.drawing.schematic_model import CoilGeometry
 
-# Model-space margin (inches) around the casing, reserving room for witness lines.
-DIM_MARGIN = 12.0
-# How far (inches) a witness line sits outside the feature it dimensions.
-DIM_OFFSET = 4.0
+# Tier step as a fraction of the part's larger side, so dimension tiers scale with the
+# drawing under fit-to-canvas (a fixed inch step would crowd large coils / float small).
+STEP_FRACTION = 0.06
+# Margin around the casing, in tier steps — room for the outer (overall) tier + labels.
+TIER_MARGIN_STEPS = 3
 
 
 @dataclass(frozen=True)
@@ -39,17 +47,24 @@ class Rect:
 
 
 @dataclass(frozen=True)
-class DimLine:
-    """A dimension/witness line in inches with a fixed-text label anchor."""
+class Dimension:
+    """A single dimension in inches. WHERE it goes (the backend decides HOW to draw it).
 
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+    ``ax/ay`` .. ``bx/by`` are the two feature points the dimension spans. ``tier_pos`` is
+    the perpendicular coordinate of the tier the dimension/label sit on (a ``y`` for
+    top/bottom edges, an ``x`` for left/right). No pixels.
+    """
+
     label: str
-    lx: float  # label anchor (inches)
-    ly: float
-    orient: str  # "h" | "v"
+    kind: str  # "overall" | "offset"
+    edge: str  # "top" | "bottom" | "left" | "right"
+    tier: int  # 0 = inner (offsets), 1+ = outer (overalls)
+    orient: str  # "h" | "v" — direction the measured span runs
+    ax: float
+    ay: float
+    bx: float
+    by: float
+    tier_pos: float
 
 
 @dataclass(frozen=True)
@@ -60,7 +75,7 @@ class FrontViewLayout:
     extent_h: float
     casing: Rect | None
     finned: Rect | None
-    dim_lines: tuple[DimLine, ...]
+    dimensions: tuple[Dimension, ...]
     omitted_notes: tuple[str, ...]
 
 
@@ -68,28 +83,102 @@ def _omit(label: str) -> str:
     return f"{label}: REVIEW REQUIRED (omitted)"
 
 
+def _step(part: Rect) -> float:
+    return STEP_FRACTION * max(part.w, part.h)
+
+
+def tier_pos(casing: Rect, edge: str, tier: int, step: float) -> float:
+    """Perpendicular coordinate of a dimension tier, outward from a casing edge (inches).
+
+    Reusable across views: tier 0 sits one step out, each further tier another step.
+    """
+    out = step * (tier + 1)
+    if edge == "top":
+        return casing.y - out
+    if edge == "bottom":
+        return casing.y + casing.h + out
+    if edge == "left":
+        return casing.x - out
+    if edge == "right":
+        return casing.x + casing.w + out
+    raise ValueError(f"unknown edge: {edge}")
+
+
+def _dx_front_dimensions(
+    casing: Rect | None, finned: Rect | None, geom: CoilGeometry, step: float
+) -> tuple[list[Dimension], list[str]]:
+    dims: list[Dimension] = []
+    notes: list[str] = []
+
+    def overall(label: str, edge: str, ax: float, ay: float, bx: float, by: float, orient: str) -> None:
+        dims.append(Dimension(label, "overall", edge, 1, orient, ax, ay, bx, by, tier_pos(casing, edge, 1, step)))
+
+    def offset(label: str, edge: str, ax: float, ay: float, bx: float, by: float, orient: str) -> None:
+        dims.append(Dimension(label, "offset", edge, 0, orient, ax, ay, bx, by, tier_pos(casing, edge, 0, step)))
+
+    # --- overall dimensions (outer tier) ---------------------------------- #
+    if finned is not None and casing is not None:
+        overall("FL", "top", finned.x, finned.y, finned.x + finned.w, finned.y, "h")
+        overall("FH", "right", finned.x + finned.w, finned.y, finned.x + finned.w, finned.y + finned.h, "v")
+    if casing is not None:
+        overall("CL", "bottom", casing.x, casing.y + casing.h, casing.x + casing.w, casing.y + casing.h, "h")
+        overall("CH", "left", casing.x, casing.y, casing.x, casing.y + casing.h, "v")
+
+    # --- flange offsets (inner tier; emitted only when present) ----------- #
+    if casing is not None and finned is not None:
+        mid_x = finned.x + finned.w / 2.0
+        mid_y = finned.y + finned.h / 2.0
+        cb, fb = casing.y + casing.h, finned.y + finned.h
+        cr, fr = casing.x + casing.w, finned.x + finned.w
+        if geom.top_flange is not None:
+            offset("TF", "top", mid_x, casing.y, mid_x, finned.y, "v")
+        else:
+            notes.append(_omit("TF"))
+        if geom.bottom_flange is not None:
+            offset("BF", "bottom", mid_x, fb, mid_x, cb, "v")
+        else:
+            notes.append(_omit("BF"))
+        if geom.header_flange is not None:
+            offset("HF", "left", casing.x, mid_y, finned.x, mid_y, "h")
+        else:
+            notes.append(_omit("HF"))
+        if geom.return_flange is not None:
+            offset("RF", "right", fr, mid_y, cr, mid_y, "h")
+        else:
+            notes.append(_omit("RF"))
+
+    return dims, notes
+
+
 def layout_dx_front_view(geom: CoilGeometry) -> FrontViewLayout:
-    dim_lines: list[DimLine] = []
     notes: list[str] = []
 
     cl, ch = geom.casing_length, geom.casing_height
     fl, fh = geom.finned_length, geom.finned_height
 
+    # --- tier step from the part size (casing, else finned, else unit) ----- #
+    if cl is not None and ch is not None:
+        step = STEP_FRACTION * max(cl, ch)
+    elif fl is not None and fh is not None:
+        step = STEP_FRACTION * max(fl, fh)
+    else:
+        step = STEP_FRACTION
+    margin = TIER_MARGIN_STEPS * step
+
     # --- casing datum ----------------------------------------------------- #
     casing: Rect | None
     if cl is not None and ch is not None:
-        casing = Rect(DIM_MARGIN, DIM_MARGIN, cl, ch)
-        extent_w = cl + 2 * DIM_MARGIN
-        extent_h = ch + 2 * DIM_MARGIN
+        casing = Rect(margin, margin, cl, ch)
+        extent_w = cl + 2 * margin
+        extent_h = ch + 2 * margin
     else:
         casing = None
         if cl is None:
             notes.append(_omit("CL"))
         if ch is None:
             notes.append(_omit("CH"))
-        # Fall back to the finned face (or a unit box) so the view still scales.
-        extent_w = (fl or 1.0) + 2 * DIM_MARGIN
-        extent_h = (fh or 1.0) + 2 * DIM_MARGIN
+        extent_w = (fl or 1.0) + 2 * margin
+        extent_h = (fh or 1.0) + 2 * margin
 
     # --- finned face datum (inset into the casing) ------------------------ #
     finned: Rect | None = None
@@ -116,63 +205,14 @@ def layout_dx_front_view(geom: CoilGeometry) -> FrontViewLayout:
             notes.append(_omit("FH"))
         notes.append("finned face: REVIEW REQUIRED (omitted)")
 
-    # --- dimension lines (each emitted only when its value is real) ------- #
-    if finned is not None:
-        # FL across the finned top.
-        wy = finned.y - DIM_OFFSET
-        dim_lines.append(
-            DimLine(finned.x, wy, finned.x + finned.w, wy, "FL", finned.x + finned.w / 2.0, wy, "h")
-        )
-        # FH up the finned right edge.
-        wx = finned.x + finned.w + DIM_OFFSET
-        dim_lines.append(
-            DimLine(wx, finned.y, wx, finned.y + finned.h, "FH", wx, finned.y + finned.h / 2.0, "v")
-        )
-
-    if casing is not None:
-        # CL across the casing bottom.
-        wy = casing.y + casing.h + DIM_OFFSET
-        dim_lines.append(
-            DimLine(casing.x, wy, casing.x + casing.w, wy, "CL", casing.x + casing.w / 2.0, wy, "h")
-        )
-        # CH up the casing left edge.
-        wx = casing.x - DIM_OFFSET
-        dim_lines.append(
-            DimLine(wx, casing.y, wx, casing.y + casing.h, "CH", wx, casing.y + casing.h / 2.0, "v")
-        )
-
-    # --- offset dimensions / omissions ------------------------------------ #
-    if casing is not None and finned is not None:
-        mid_x = finned.x + finned.w / 2.0
-        # TF: casing top -> finned top.
-        if geom.top_flange is not None:
-            dim_lines.append(DimLine(mid_x, casing.y, mid_x, finned.y, "TF", mid_x, (casing.y + finned.y) / 2.0, "v"))
-        else:
-            notes.append(_omit("TF"))
-        # BF: finned bottom -> casing bottom.
-        if geom.bottom_flange is not None:
-            cb, fb = casing.y + casing.h, finned.y + finned.h
-            dim_lines.append(DimLine(mid_x, fb, mid_x, cb, "BF", mid_x, (fb + cb) / 2.0, "v"))
-        else:
-            notes.append(_omit("BF"))
-        mid_y = finned.y + finned.h / 2.0
-        # HF: casing left -> finned left.
-        if geom.header_flange is not None:
-            dim_lines.append(DimLine(casing.x, mid_y, finned.x, mid_y, "HF", (casing.x + finned.x) / 2.0, mid_y, "h"))
-        else:
-            notes.append(_omit("HF"))
-        # RF: finned right -> casing right.
-        if geom.return_flange is not None:
-            cr, fr = casing.x + casing.w, finned.x + finned.w
-            dim_lines.append(DimLine(fr, mid_y, cr, mid_y, "RF", (fr + cr) / 2.0, mid_y, "h"))
-        else:
-            notes.append(_omit("RF"))
+    dims, dim_notes = _dx_front_dimensions(casing, finned, geom, step)
+    notes.extend(dim_notes)
 
     return FrontViewLayout(
         extent_w=extent_w,
         extent_h=extent_h,
         casing=casing,
         finned=finned,
-        dim_lines=tuple(dim_lines),
+        dimensions=tuple(dims),
         omitted_notes=tuple(dict.fromkeys(notes)),  # stable, de-duplicated
     )
