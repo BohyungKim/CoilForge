@@ -52,6 +52,11 @@ class PdfCoverRowSummary(BaseModel):
     handing: str = ""
     product_type: str = "DX"
     coil_format: str = "dx"
+    # CoilForge product line + unit size derived from the cover product/model code
+    # (e.g. "TR_C_040" -> "TERRA H" / "040") via the R-076-validated rule. Review-aid;
+    # blank when the code is unrecognised. product_type above stays the coil family.
+    product_line: str = ""
+    unit_size: str = ""
 
 
 class PdfCoilIntakeSummary(BaseModel):
@@ -1199,12 +1204,19 @@ def _candidate_from_cover_row(
         source_id=f"{source_id}-{_candidate_slug(row.tag, index)}",
         field_rules=PDF_INTAKE_FIELD_RULES,
     )
+    # Carry the cover-page product/model code forward so the drawing context can
+    # derive the CoilForge product line + unit size from it (e.g. "TR_C_040" ->
+    # Terra H / 040) and run the rule engine. Review-aid; overridable in the picker.
+    model_notes = (
+        [f"Cover product/model code: {row.model}"] if row.model else []
+    )
     return candidate.model_copy(
         update={
             "candidate_id": f"SCC-{source_id}-{_candidate_slug(row.tag, index)}",
             "notes": [
                 *candidate.notes,
                 "Created from one cover-page coil row for separate review page generation.",
+                *model_notes,
             ],
         }
     )
@@ -1256,7 +1268,11 @@ def _detail_lines_by_cover_row(
         if not matching_blocks:
             continue
         page, block = matching_blocks.pop(0)
-        detail_lines[row.tag].extend(_extract_detail_lines_from_block(page, block.lines))
+        detail_lines[row.tag].extend(
+            _extract_detail_lines_from_block(
+                page, block.lines, coil_format=block.coil_format
+            )
+        )
 
     return {tag: tuple(lines) for tag, lines in detail_lines.items()}
 
@@ -1362,9 +1378,19 @@ def _extract_detail_lines_from_page(page: _TextPage) -> tuple[SanitizedSubmittal
 def _extract_detail_lines_from_block(
     page: _TextPage,
     block: tuple[tuple[int, str], ...],
+    *,
+    coil_format: str | None = None,
 ) -> tuple[SanitizedSubmittalLine, ...]:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = 1
+    # Tables-first: pdfplumber preserves the submittal's side-by-side label/value
+    # columns, so reading the structured cells maps each value to the right field
+    # (e.g. Fin Height -> 12, Entering DB/WB -> 95/80) instead of letting the
+    # flattened text line bleed columns together. `_add_line` is first-wins, so the
+    # text-line parser below only fills source_keys the tables did not supply.
+    order = _seed_detail_lines_from_tables(
+        extracted, order, page, coil_format=coil_format
+    )
     contexts: tuple[str, ...] = ()
     for line_number, normalized_line in block:
         if not normalized_line:
@@ -1404,6 +1430,126 @@ def _extract_detail_lines_from_block(
                 "detail page label match",
             )
     return tuple(extracted.values())
+
+
+# --------------------------------------------------------------------------- #
+# Structured-table detail extraction
+# --------------------------------------------------------------------------- #
+# pdfplumber already returns the submittal's detail grid as structured cells
+# (`_TextPage.tables`). The detail grid lays sections out side by side in
+# columns -- e.g. col0/1 = "Coil" (Fin Height, Fin Length, FPI, Rows...),
+# col4/5 = "Entering" (Airflow, DB (F), WB (F), Refrigerant...), col7/8 =
+# "Coil Operating Setpoint" / "Max Coil Performance". Reading the cells maps each
+# value to the right field; the flattened text line cannot (it concatenates the
+# columns, so a greedy label capture swallows the neighbouring section's text).
+# These helpers reuse the existing context detection and label maps; only the
+# read mechanism differs.
+
+
+def _table_coil_format(table: tuple[tuple[str, ...], ...]) -> str | None:
+    """Identify which coil_format a detail table describes from its title cells,
+    mirroring `_detail_section_format` (the text-block path) so table fields
+    attach to the same coil on multi-coil pages."""
+    for row in table[:4]:
+        for cell in row:
+            fmt = _detail_section_format(_clean_cell(cell))
+            if fmt is not None:
+                return fmt
+    return None
+
+
+def _detail_table_section_columns(
+    table: tuple[tuple[str, ...], ...],
+) -> tuple[tuple[int, str], ...]:
+    """Find the section-header row and return (column_index, context) per section
+    (e.g. col0->'coil', col4->'entering', col7->'operating_setpoint'). Falls back
+    to a single label column at col0 with the 'coil' context for plain
+    label/value tables with no section header."""
+    for row in table:
+        sections: list[tuple[int, str]] = []
+        for col, cell in enumerate(row):
+            contexts = _detail_subsection_contexts(_clean_cell(cell))
+            if contexts:
+                sections.append((col, contexts[0]))
+        if sections:
+            return tuple(sections)
+    return ((0, "coil"),)
+
+
+def _match_detail_label(label_cell: str, context: str) -> str | None:
+    """Resolve a label cell to a source_key within a context (longest label first),
+    reusing `_CONTEXTUAL_DETAIL_LABELS`. Exact (normalized) match only -- the value
+    lives in a separate cell, so there is no greedy remainder to guess at."""
+    norm = _clean_cell(label_cell).rstrip(":").strip().lower()
+    if not norm:
+        return None
+    candidates = sorted(
+        _CONTEXTUAL_DETAIL_LABELS.get(context, ()),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    for label, source_key in candidates:
+        if norm == label.rstrip(":").strip().lower():
+            return source_key
+    return None
+
+
+def _detail_table_field_pairs(
+    table: tuple[tuple[str, ...], ...],
+) -> tuple[tuple[str, str, int, int], ...]:
+    """Extract (source_key, value, row_index, col_index) from a structured detail
+    table: per section column, the label cell maps to the first non-empty cell to
+    its right (up to the next section column), so spacer columns and 2-column
+    label/value tables are handled uniformly."""
+    sections = _detail_table_section_columns(table)
+    cols = [col for col, _ in sections]
+    pairs: list[tuple[str, str, int, int]] = []
+    for row_index, row in enumerate(table):
+        for section_index, (col, context) in enumerate(sections):
+            if col >= len(row):
+                continue
+            label_cell = _clean_cell(row[col])
+            if not label_cell:
+                continue
+            source_key = _match_detail_label(label_cell, context)
+            if source_key is None:
+                continue
+            next_col = cols[section_index + 1] if section_index + 1 < len(cols) else len(row)
+            value = ""
+            for value_col in range(col + 1, min(next_col, len(row))):
+                cell = _clean_cell(row[value_col])
+                if cell:
+                    value = cell
+                    break
+            if value:
+                pairs.append((source_key, value, row_index, col))
+    return tuple(pairs)
+
+
+def _seed_detail_lines_from_tables(
+    extracted: dict[str, SanitizedSubmittalLine],
+    order: int,
+    page: _TextPage,
+    *,
+    coil_format: str | None,
+) -> int:
+    """Seed `extracted` from the page's structured tables before the text-line
+    parser runs. When a coil_format is known (multi-coil pages), only tables whose
+    own title matches that format are consumed, preventing cross-coil bleed."""
+    for table_index, table in enumerate(page.tables):
+        if coil_format is not None and _table_coil_format(table) != coil_format:
+            continue
+        for source_key, value, row_index, col_index in _detail_table_field_pairs(table):
+            order = _add_line(
+                extracted,
+                source_key,
+                value,
+                order,
+                page,
+                row_index + 1,
+                f"detail table[{table_index}] r{row_index} c{col_index} cell match",
+            )
+    return order
 
 
 _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -1607,6 +1753,7 @@ def _append_detail_lines(
 
 
 def _cover_row_summary(row: _CoverRow) -> PdfCoverRowSummary:
+    product_line, unit_size = _derive_product_line_and_size(row.model, row.tag, row.item)
     return PdfCoverRowSummary(
         page_number=row.page_number,
         row_number=row.row_number,
@@ -1621,6 +1768,8 @@ def _cover_row_summary(row: _CoverRow) -> PdfCoverRowSummary:
         handing=_normalize_handing(row.handing) if row.handing else "",
         product_type=_derive_product_type(row.tag, row.item),
         coil_format=_derive_coil_format(row.tag, row.item),
+        product_line=product_line,
+        unit_size=unit_size,
     )
 
 
@@ -1769,6 +1918,17 @@ def _cover_item_from_text(value: str) -> str:
         if re.search(re.escape(pattern), value, re.IGNORECASE):
             return pattern
     return ""
+
+
+def _derive_product_line_and_size(*texts: str) -> tuple[str, str]:
+    """Derive the CoilForge product line + unit size from the cover product/model
+    code using the existing R-076-validated rule (e.g. "TR_C_040" -> ("TERRA H",
+    "040")). Returns ("", "") when no code in `texts` validates. Review-aid only."""
+    from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+
+    blob = " ".join(t for t in texts if t)
+    line, size = detect_product_and_size(blob)
+    return line or "", size or ""
 
 
 def _derive_product_type(tag: str, item: str) -> str:

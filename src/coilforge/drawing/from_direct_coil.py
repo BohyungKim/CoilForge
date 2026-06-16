@@ -90,6 +90,8 @@ def _intent_blockers(
         field = draft.fields[key]
         if field.status == "blocked":
             blockers.append(key)
+        elif key in _NUMERIC_INTENT_KEYS and _is_unparseable_number(field):
+            blockers.append(key)
     return list(dict.fromkeys(blockers))
 
 
@@ -130,7 +132,45 @@ def _coerce_number(value: Any) -> float:
         denominator = int(fraction.group("den"))
         sign = -1 if whole < 0 else 1
         return whole + sign * (numerator / denominator)
-    return float(text)
+    try:
+        return float(text)
+    except ValueError:
+        # The value is present but not a parseable number — e.g. a submittal cell
+        # that PDF text extraction concatenated into one string ("24 WB (F) 75 DB
+        # (F): 55"). Degrade to the 0.0 "no usable dimension" sentinel (same as a
+        # missing value) instead of crashing the whole PDF preview; the field is
+        # surfaced as a blocker (see `_is_unparseable_number` / `_intent_blockers`)
+        # so the preview stays gated and the bad value is never drawn as real.
+        return 0.0
+
+
+# Intent fields parsed as required dimensional numbers. A non-empty but
+# unparseable value here must gate the preview rather than be silently zeroed.
+_NUMERIC_INTENT_KEYS = (
+    "finned_height",
+    "finned_length",
+    "rows_deep",
+    "fins_per_inch",
+    "return_connection_size",
+)
+
+
+def _is_unparseable_number(field: DirectCoilDraftField | None) -> bool:
+    """True when a numeric field carries a value that is present but cannot be
+    parsed as a number (so it must block, not be drawn)."""
+    if field is None or field.value in (None, ""):
+        return False
+    value = field.value
+    if isinstance(value, (int, float)):
+        return False
+    text = str(value).strip()
+    if _FRACTION_TEXT_PATTERN.match(text) is not None:
+        return False
+    try:
+        float(text)
+        return False
+    except ValueError:
+        return True
 
 
 def _source_evidence_summary(draft: DirectCoilInputDraft) -> dict[str, list[str]]:

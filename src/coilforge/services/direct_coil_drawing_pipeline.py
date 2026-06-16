@@ -188,6 +188,25 @@ _SLOT_EZ_OVERRIDE: tuple[str, ...] = (
     "slot.I1", "slot.S1", "slot.O2", "slot.R2", "slot.SL2", "slot.HD2", "slot.HDx1",
 )
 
+# Per-category engine field that feeds each per-header drawing slot. The rule
+# engine names this geometry differently by coil type, so the bridge must pick
+# the right source field per category instead of assuming DX names:
+#   - DX   names the supply header's distributor (dist_*) and the return/suction
+#          header (suction_*) separately.
+#   - HGRH names supply_*/return_* and a single header depth `hd`; no distributor.
+#   - CWC/HWC carry a single shared header geometry (io/hd/sl); no distributor.
+# `i`/`o` -> supply/return I-O offsets, `hd` -> return header depth, `sl` ->
+# return stub length, `hdx` -> distributor HD (DX only). A missing key means that
+# slot simply has no engine source for the category (e.g. non-DX has no `hdx`),
+# so the slot is omitted, never guessed. These category->field correspondences
+# are review-required mappings (see plan), not auto-confirmed engineering values.
+_PER_HEADER_ENGINE_FIELDS: dict[str, dict[str, str]] = {
+    "DX": {"i": "dist_i", "hdx": "dist_hd", "o": "suction_io", "hd": "suction_hd", "sl": "suction_sl"},
+    "HGRH": {"i": "supply_io", "o": "return_io", "hd": "hd", "sl": "return_sl"},
+    "CWC": {"i": "io", "o": "io", "hd": "hd", "sl": "sl"},
+    "HWC": {"i": "io", "o": "io", "hd": "hd", "sl": "sl"},
+}
+
 
 def build_drawing_slots(
     *,
@@ -245,24 +264,34 @@ def build_drawing_slots(
     # repeat on every same-parity header; S is the recovered formula
     # k*CD/(circuits+1); R is the engine R-022 per-circuit list (return_spacing).
     # k=1 reproduces the legacy I1/S1/HDx1/O2/R2/HD2/SL2 values exactly.
-    dist_i, dist_hd = val("dist_i"), val("dist_hd")
-    suction_io, suction_hd, suction_sl = val("suction_io"), val("suction_hd"), val("suction_sl")
+    # Source the per-header geometry from the fields THIS coil category emits
+    # (DX dist_*/suction_*, HGRH supply_*/return_*/hd, CWC/HWC io/hd/sl). Without
+    # this the bridge only read DX field names, so every non-DX category left
+    # I/O/HD/SL (and HDx) blocked even when the engine had resolved them.
+    field_map = _PER_HEADER_ENGINE_FIELDS.get(
+        str(coil_type or "").strip().upper(), _PER_HEADER_ENGINE_FIELDS["DX"]
+    )
+    hdr_i = val(field_map["i"]) if "i" in field_map else None
+    hdr_hdx = val(field_map["hdx"]) if "hdx" in field_map else None
+    hdr_o = val(field_map["o"]) if "o" in field_map else None
+    hdr_hd = val(field_map["hd"]) if "hd" in field_map else None
+    hdr_sl = val(field_map["sl"]) if "sl" in field_map else None
     return_spacing = val("return_spacing")  # R-022 per-circuit list (HIGH) or None
     if circuits:
         for k in range(1, circuits + 1):
             supply_id, return_id = 2 * k - 1, 2 * k
-            if dist_i is not None:
-                slots[f"slot.I{supply_id}"] = dist_i
-            if dist_hd is not None:
-                slots[f"slot.HDx{supply_id}"] = dist_hd
+            if hdr_i is not None:
+                slots[f"slot.I{supply_id}"] = hdr_i
+            if hdr_hdx is not None:
+                slots[f"slot.HDx{supply_id}"] = hdr_hdx
             if cd is not None:
                 slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
-            if suction_io is not None:
-                slots[f"slot.O{return_id}"] = suction_io
-            if suction_hd is not None:
-                slots[f"slot.HD{return_id}"] = suction_hd
-            if suction_sl is not None:
-                slots[f"slot.SL{return_id}"] = suction_sl
+            if hdr_o is not None:
+                slots[f"slot.O{return_id}"] = hdr_o
+            if hdr_hd is not None:
+                slots[f"slot.HD{return_id}"] = hdr_hd
+            if hdr_sl is not None:
+                slots[f"slot.SL{return_id}"] = hdr_sl
             if isinstance(return_spacing, list) and k <= len(return_spacing):
                 slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)
             elif suction_conn_size is not None and k == 1:

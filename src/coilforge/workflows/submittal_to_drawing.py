@@ -416,6 +416,19 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         ctx["coil_hand"] = "RH" if _normalize_handing(str(hand_raw)) == "Right" else "LH"
     if _detect_hgbp(coil_type, item_note, options_blob):
         ctx["special_feature"] = "HGBP"
+    # Derive the CoilForge product line + unit size from the submittal's product/
+    # model code (e.g. "TR_C_040" -> Terra H / 040, R-076 validated) so the rule
+    # engine runs without a manual pick. Review-aid only; the engineer can still
+    # override in the product/size picker. Left absent when no code validates.
+    from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+
+    det_line, det_size = detect_product_and_size(
+        " ".join(filter(None, [str(ctx.get("tag") or ""), item_note]))
+    )
+    if det_line:
+        ctx["product_type"] = det_line
+    if det_size:
+        ctx["unit_size"] = det_size
     return ctx
 
 

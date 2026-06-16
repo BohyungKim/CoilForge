@@ -13,14 +13,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from fastapi.testclient import TestClient
 
 from coilforge.submittal.pdf_intake import (
+    _candidate_from_cover_row,
+    _CoverRow,
+    _cover_row_summary,
     _OcrPageResult,
     _TextPage,
+    _extract_detail_lines_from_page,
     detect_cover_page_from_pdf_pages,
     extract_coil_candidate_from_pdf_bytes,
     extract_coil_lines_from_pdf_text,
 )
 from coilforge.web_app import app
 from coilforge.workflows import run_pdf_to_drawing_workflow
+from coilforge.workflows.submittal_to_drawing import _template_header_context_from_candidate
 
 
 client = TestClient(app)
@@ -1362,3 +1367,109 @@ def _make_text_pdf(lines: list[str]) -> bytes:
         )
     )
     return output.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# Structured-table detail mapping: pdfplumber's side-by-side section columns must
+# map each value to the right field instead of letting the flattened text line
+# bleed neighbouring columns together (the "Finned Height = '12 WB (F) 80 DB (F):
+# 55'" bug). Fixtures are synthetic — no customer data.
+# --------------------------------------------------------------------------- #
+def _detail_lines_as_dict(page: _TextPage) -> dict[str, str]:
+    return {line.source_key: line.source_value for line in _extract_detail_lines_from_page(page)}
+
+
+def test_detail_table_maps_side_by_side_section_columns() -> None:
+    # Mirrors the real submittal grid: col0/1 = Coil, col4/5 = Entering,
+    # col7/8 = Coil Operating Setpoint (spacer columns between).
+    table = (
+        ("Cooling DX", "", "", "", "", "", "", "", ""),
+        ("", "", "", "", "", "", "", "", ""),
+        ("Coil", "", "", "", "Entering", "", "", "Coil Operating Setpoint", ""),
+        ("Model:", "DXM06C11", "", "", "Airflow (CFM):", "690", "", "Nominal Cooling Capacity (MBH)", "71.92"),
+        ("", "", "", "", "DB (F):", "95", "", "", ""),
+        ("Fin Height (in):", "12", "", "", "WB (F)", "80", "", "DB (F):", "55"),
+        ("Fin Length (in):", "22", "", "", "Refrigerant:", "R-32", "", "", ""),
+        ("FPI", "11", "", "", "", "", "", "", ""),
+        ("Rows", "6", "", "", "", "", "", "", ""),
+        ("Total Feeds", "4", "", "", "", "", "", "", ""),
+    )
+    page = _TextPage(page_number=4, text="", tables=(table,))
+    fields = _detail_lines_as_dict(page)
+
+    # Finned height is the number, NOT the bled "12 WB (F) 80 DB (F): 55" string.
+    assert fields["FINNED_HEIGHT"] == "12"
+    assert fields["FINNED_LENGTH"] == "22"
+    assert fields["FINS_PER_INCH"] == "11"
+    assert fields["ROWS_DEEP"] == "6"
+    assert fields["NUMBER_OF_FEEDS_TOTAL"] == "4"
+    # Entering vs Operating Setpoint "DB (F)" disambiguated by section column.
+    assert fields["ENTERING_DRY_BULB_F"] == "95"
+    assert fields["ENTERING_WET_BULB_F"] == "80"
+    assert fields["OPERATING_SETPOINT_DB_F"] == "55"
+    assert fields["TOTAL_AIR_FLOW_CFM"] == "690"
+    assert fields["REFRIGERANT"] == "R-32"
+
+
+def test_detail_table_plain_two_column_label_value() -> None:
+    # No section header row -> defaults to a single 'coil' label column at col0.
+    table = (
+        ("Fin Height (in):", "14"),
+        ("Fin Length (in):", "30"),
+        ("Rows", "8"),
+    )
+    page = _TextPage(page_number=2, text="", tables=(table,))
+    fields = _detail_lines_as_dict(page)
+
+    assert fields["FINNED_HEIGHT"] == "14"
+    assert fields["FINNED_LENGTH"] == "30"
+    assert fields["ROWS_DEEP"] == "8"
+
+
+def test_detail_text_fallback_when_no_tables() -> None:
+    # Empty tables -> the existing text-line parser still maps fields (no regression).
+    page = _TextPage(
+        page_number=3,
+        text="Coil\nFin Height (in): 16\nFin Length (in): 40",
+        tables=(),
+    )
+    fields = _detail_lines_as_dict(page)
+
+    assert fields["FINNED_HEIGHT"] == "16"
+    assert fields["FINNED_LENGTH"] == "40"
+
+
+# --------------------------------------------------------------------------- #
+# Cover-row product code -> product line + unit size: the cover model code
+# (e.g. "TR_C_040") drives the CoilForge product line (Terra H) + R-076 unit
+# size, surfaced in the cover summary and carried into the drawing context so
+# the rule engine can run without a manual pick. Review-aid, overridable.
+# --------------------------------------------------------------------------- #
+def test_cover_row_summary_derives_product_line_and_size_from_model_code() -> None:
+    summary = _cover_row_summary(
+        _CoverRow(page_number=1, row_number=2, qty=1, tag="CDXC-1",
+                  item="DX Cooling Coil", model="TR_C_040", handing="RH")
+    )
+    assert summary.product_type == "DX"      # coil family unchanged
+    assert summary.product_line == "TERRA H"  # from the cover model code
+    assert summary.unit_size == "040"
+
+
+def test_cover_row_product_code_flows_into_drawing_context() -> None:
+    candidate = _candidate_from_cover_row(
+        _CoverRow(page_number=1, row_number=2, qty=1, tag="CDXC-1",
+                  item="DX Cooling Coil", model="TR_V_012", handing="LH"),
+        source_id="TEST", index=1,
+    )
+    ctx = _template_header_context_from_candidate(candidate)
+    assert ctx["product_type"] == "TERRA V"   # engine product line, from the code
+    assert ctx["unit_size"] == "012"
+
+
+def test_unrecognised_model_code_leaves_product_line_blank() -> None:
+    summary = _cover_row_summary(
+        _CoverRow(page_number=1, row_number=3, qty=1, tag="CDXC-2",
+                  item="DX Cooling", model="DXM06C11")
+    )
+    assert summary.product_line == ""
+    assert summary.unit_size == ""

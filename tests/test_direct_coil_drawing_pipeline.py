@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from coilforge.services.direct_coil_drawing_pipeline import (  # noqa: E402
+    build_drawing_slots,
     build_header_request,
     run_direct_coil_drawing_pipeline,
 )
@@ -146,3 +147,49 @@ def test_step4_review_items_surfaced_not_silently_drawn() -> None:
     assert r.review_items
     # casing width/height need `application` (not provided) -> review item.
     assert any("casing" in item or "application" in item for item in r.review_items)
+
+
+# --------------------------------------------------------------------------- #
+# Category-aware engine->slot bridge: the per-header geometry (I/O/HD/SL) must
+# resolve for every coil category, not just DX. The rule engine names this
+# geometry differently per category, so the bridge selects the right source
+# field instead of assuming DX's dist_*/suction_* names. Regression for the bug
+# where HGRH/CWC/HWC left I/O/HD/SL/HDx blocked even with the engine running.
+# --------------------------------------------------------------------------- #
+def _slots(coil_type: str):
+    slots, _ = build_drawing_slots(
+        coil_type=coil_type, product_type="NOVA", unit_size="B20",
+        rows=4, feeds=2, circuits=1, suction_conn_size=0.625,
+        finned_height=12.0, finned_length=15.0,
+    )
+    return slots
+
+
+def test_dx_per_header_slots_unchanged() -> None:
+    """DX still sources from dist_*/suction_* — exact as-built values preserved."""
+    s = _slots("DX")
+    assert s["slot.I1"] == 3          # dist_i
+    assert s["slot.HDx1"] == 4.5      # dist_hd (distributor present for DX)
+    assert s["slot.O2"] == 2          # suction_io
+    assert s["slot.HD2"] == 3.5       # suction_hd
+    assert s["slot.SL2"] == 8         # suction_sl
+
+
+def test_hgrh_per_header_slots_resolved_from_category_fields() -> None:
+    """HGRH sources supply_io/return_io/hd/return_sl; no distributor -> no HDx."""
+    s = _slots("HGRH")
+    assert s["slot.I1"] == 2          # supply_io
+    assert s["slot.O2"] == 2          # return_io
+    assert s["slot.HD2"] == 3.5       # hd
+    assert s["slot.SL2"] == 8         # return_sl
+    assert "slot.HDx1" not in s       # HGRH has no distributor header
+
+
+def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
+    """CWC/HWC carry a single shared header geometry (io/hd/sl); no distributor."""
+    s = _slots("CWC")
+    assert s["slot.I1"] == 2.3125     # io
+    assert s["slot.O2"] == 2.3125     # io (shared)
+    assert s["slot.HD2"] == 4         # hd
+    assert s["slot.SL2"] == 8         # sl
+    assert "slot.HDx1" not in s
