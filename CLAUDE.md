@@ -173,9 +173,11 @@ anchored to datums. Scaling text or arrowheads is a defect.
 - Tests: `tests/test_schematic_renderer.py`
 - Existing template path — **DO NOT TOUCH**: `slot_population.py::populate_template_slots`,
   the 17 `template.svg` files, `pdf_to_template_drawing.py`.
-- Reuse from `phase2a/renderer.py`: `_conn_float`, the clamp idiom,
-  `REVIEW_WATERMARK`, `_esc` / `_text_line` / `_fmt`. Do **not** reuse its
-  x18 / x16 scaling.
+- Reuse from `phase2a/renderer.py`: the clamp idiom, `REVIEW_WATERMARK`,
+  `_esc` / `_text_line` / `_fmt`. Do **not** reuse its x18 / x16 scaling.
+  Note: `_conn_float` lives in the frozen `submittal/pdf_to_template_drawing.py`,
+  **not** in `renderer.py` — do not import it from that DO-NOT-TOUCH module; the
+  engine uses its own `_slot_inches` slot-coercion helper instead.
 
 ### Drawing-engine conventions
 
