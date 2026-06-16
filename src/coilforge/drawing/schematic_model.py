@@ -2,7 +2,7 @@
 
 This is the first of the three never-collapsed layers:
 
-    [L1 model] CoilGeometry  ->  [L2 layout] FrontViewLayout  ->  [L3 backend] SVG
+    [L1 model] CoilGeometry  ->  [L2 layout] ViewLayout  ->  [L3 backend] SVG
 
 ``CoilGeometry`` carries true dimensions in inches and nothing else: no pixels, no
 SVG/DXF knowledge, no presentation scale. It is built from gated ``slot_values`` that
@@ -31,6 +31,20 @@ _SLOT_KEYS: dict[str, str] = {
     "RF": "slot.RF",
 }
 
+# Header/side-view slots (verified against slot_map.json + ez_json_drawing_loader.py).
+# Header id 1 = supply/distributor (odd), id 2 = return/suction (even).
+_SUPPLY_SLOTS = {
+    "diameter": "slot.HDx1",
+    "offset": "slot.I1",
+    "connection_diameter": "slot.SUPPLY_CONN_SIZE",
+}
+_RETURN_SLOTS = {
+    "diameter": "slot.HD2",
+    "offset": "slot.O2",
+    "stub_length": "slot.SL2",
+    "connection_diameter": "slot.RETURN_CONN_SIZE",
+}
+
 _REVIEW_REQUIRED = "REVIEW REQUIRED"
 
 
@@ -55,6 +69,26 @@ def _slot_inches(slot_values: dict[str, Any], key: str) -> float | None:
     return float(match.group(0)) if match else None
 
 
+def _slot_int(slot_values: dict[str, Any], key: str) -> int | None:
+    value = _slot_inches(slot_values, key)
+    return int(value) if value is not None else None
+
+
+@dataclass(frozen=True)
+class HeaderSpec:
+    """One header/connection at the coil's header end, in inches. No pixels.
+
+    A field is ``None`` when its slot was missing / REVIEW REQUIRED — the side view
+    drops + annotates that feature rather than inventing it.
+    """
+
+    role: str  # "supply" | "return"
+    diameter: float | None  # HDx1 (supply) / HD2 (return)
+    offset: float | None  # I1 (supply) / O2 (return) — vertical position, review-aid datum
+    stub_length: float | None  # SL2 (return)
+    connection_diameter: float | None  # RETURN_CONN_SIZE (return)
+
+
 @dataclass(frozen=True)
 class CoilGeometry:
     """A coil's real-world dimensions in inches. No pixels, no renderer types."""
@@ -70,6 +104,10 @@ class CoilGeometry:
     bottom_flange: float | None  # BF
     header_flange: float | None  # HF
     return_flange: float | None  # RF
+    # header / end-view geometry
+    casing_depth: float | None  # CD
+    rows: int | None  # ROWS
+    headers: tuple[HeaderSpec, ...]  # supply (id 1), return (id 2) for DX
     # context (carried through for downstream layers / metadata)
     coil_category: str
     coil_hand: str
@@ -90,6 +128,20 @@ class CoilGeometry:
     ) -> CoilGeometry:
         resolved = {label: _slot_inches(slot_values, key) for label, key in _SLOT_KEYS.items()}
         omitted = tuple(label for label, value in resolved.items() if value is None)
+        supply = HeaderSpec(
+            role="supply",
+            diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["diameter"]),
+            offset=_slot_inches(slot_values, _SUPPLY_SLOTS["offset"]),
+            stub_length=None,  # supply distributor has no stubout (per EZ data)
+            connection_diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["connection_diameter"]),
+        )
+        return_header = HeaderSpec(
+            role="return",
+            diameter=_slot_inches(slot_values, _RETURN_SLOTS["diameter"]),
+            offset=_slot_inches(slot_values, _RETURN_SLOTS["offset"]),
+            stub_length=_slot_inches(slot_values, _RETURN_SLOTS["stub_length"]),
+            connection_diameter=_slot_inches(slot_values, _RETURN_SLOTS["connection_diameter"]),
+        )
         return cls(
             casing_length=resolved["CL"],
             casing_height=resolved["CH"],
@@ -99,6 +151,9 @@ class CoilGeometry:
             bottom_flange=resolved["BF"],
             header_flange=resolved["HF"],
             return_flange=resolved["RF"],
+            casing_depth=_slot_inches(slot_values, "slot.CD"),
+            rows=_slot_int(slot_values, "slot.ROWS"),
+            headers=(supply, return_header),
             coil_category=coil_category,
             coil_hand=coil_hand,
             header_type=header_type,
