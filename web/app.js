@@ -1978,9 +1978,11 @@ function templateDrawingCaption(templateDrawing) {
 }
 
 function templateDrawingBody(templateDrawing, rendered) {
-  // Direct-coil ordering shows the parametric, to-scale geometry+dimensions drawing
-  // (numbers-only, no sheet chrome) — front + header/side views. It is built from the
-  // same gated slot values and is the single drawing surfaced here when available.
+  // Direction (2026-06-16): the parametric, to-scale geometry+dimensions drawing
+  // (numbers-only, dims on leaders, no chrome) is the drawing surfaced for direct-coil
+  // ordering. It is built from the same gated slot values; for a registered case it
+  // draws that case's exact values. The template path is retired once parametric
+  // reaches EZ detail.
   const param = templateDrawing.parametric_drawing;
   if (param && !param.error && (param.front_svg || param.side_svg)) {
     const omitted = (param.omitted_features || []).length
