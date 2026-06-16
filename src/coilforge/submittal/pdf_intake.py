@@ -859,9 +859,17 @@ def extract_coil_lines_from_pdf_text(
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(qty_tag.group("tag")), order, page, line_number, "POs-style Qty/Tag row")
 
             component = _RE_COMPONENT_COIL.search(normalized_line)
-            if component and "COIL_TAG" not in extracted:
-                order = _add_line(extracted, "COIL_QUANTITY", component.group("qty"), order, page, line_number, "POs-style coil component row")
-                order = _add_line(extracted, "COIL_TAG", _normalize_tag(component.group("tag")), order, page, line_number, "POs-style coil component row")
+            if component:
+                coil_tag = _normalize_tag(component.group("tag"))
+                existing_tag = extracted.get(normalize_source_key("COIL_TAG"))
+                # A coil listed as a component (e.g. a preheat coil beneath its parent
+                # air-handling unit) must win over a unit tag captured earlier by the
+                # generic Qty/Tag row rule; otherwise the unit (ERV/AHU/...) shadows the
+                # actual coil. Only override when no coil tag has been captured yet.
+                if existing_tag is None or not _tag_prefix_is_coil(existing_tag.source_value):
+                    reason = "POs-style coil component row (coil tag prioritized over unit tag)"
+                    order = _set_line(extracted, "COIL_QUANTITY", component.group("qty"), order, page, line_number, reason)
+                    order = _set_line(extracted, "COIL_TAG", coil_tag, order, page, line_number, reason)
 
             anchor = _RE_UNIT_TAG_ANCHOR.search(normalized_line)
             if anchor:
@@ -924,6 +932,25 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
             rows=rows,
             review_note="Cover page detected by required Qty/Tag/Item/Model/Voltage/Controls/Installation/Duct/Handing table headers.",
         )
+    for table in page.tables:
+        header_idx, header_map = _find_cover_coil_table(table)
+        if header_idx is None or header_map is None:
+            continue
+        rows = tuple(_extract_cover_rows_from_table(page, table, header_idx, header_map))
+        if not rows:
+            continue
+        return _CoverPageDetection(
+            detected=True,
+            page_number=page.page_number,
+            detection_method="pdfplumber_table_positional_no_header",
+            detected_headers=(),
+            rows=rows,
+            review_note=(
+                "Cover coil rows detected by canonical column order in a borderless table "
+                "whose header band was dropped during extraction; the column mapping is "
+                "positional and requires review."
+            ),
+        )
     return _CoverPageDetection(detected=False)
 
 
@@ -957,6 +984,33 @@ def _find_cover_header_row(
                     break
         if all(key in header_map for key in COVER_PAGE_HEADER_KEYS):
             return row_index, header_map
+    return None, None
+
+
+def _find_cover_coil_table(
+    table: tuple[tuple[str, ...], ...],
+) -> tuple[int | None, dict[str, int] | None]:
+    """Recognize a cover coil table that pdfplumber extracted without a header row.
+
+    Some submittals render the Qty/Tag/Item/... columns as a borderless table whose
+    header band is dropped during extraction, so `_find_cover_header_row` finds nothing
+    even though the coil rows themselves are cleanly structured (e.g. a coil listed as a
+    component beneath its parent air-handling unit). When the table is at least as wide
+    as the standard cover layout and contains at least one recognizable coil row in the
+    canonical column order (col 0 = quantity, col 1 = coil tag), map the columns
+    positionally. The mapping stays review-required downstream; no values are invented.
+    Returns ``header_idx = -1`` so `_extract_cover_rows_from_table` treats every row as
+    data.
+    """
+    if max((len(row) for row in table), default=0) < len(COVER_PAGE_HEADER_KEYS):
+        return None, None
+    header_map = {key: index for index, key in enumerate(COVER_PAGE_HEADER_KEYS)}
+    for row in table:
+        qty = _extract_qty(_cell_at(row, header_map["qty"]))
+        tag = _normalize_tag(_cell_at(row, header_map["tag"]))
+        item = _cell_at(row, header_map["item"])
+        if qty is not None and tag and _is_cover_coil_row(tag, item):
+            return -1, header_map
     return None, None
 
 
@@ -1809,6 +1863,45 @@ def _add_line(
         source_location=f"{location}; {reason}",
     )
     return order + 1
+
+
+def _set_line(
+    extracted: dict[str, SanitizedSubmittalLine],
+    source_key: str,
+    source_value: str,
+    order: int,
+    page: _TextPage,
+    source_line_number: int,
+    reason: str,
+) -> int:
+    """Like `_add_line`, but overwrites an existing key in place.
+
+    Used when a higher-priority source (an actual coil component row) must replace a
+    value captured earlier from a lower-priority source (a parent unit's Qty/Tag row).
+    The line's position is preserved on overwrite so downstream ordering is stable; a
+    genuinely new key advances ``order`` exactly as `_add_line` would.
+    """
+    normalized_key = normalize_source_key(source_key)
+    existing = extracted.get(normalized_key)
+    line_order = existing.line_number if existing is not None else order
+    location = (
+        f"pdf-page-{page.page_number}-line-{source_line_number}"
+        if page.page_number > 0
+        else "pdf-intake-default"
+    )
+    extracted[normalized_key] = SanitizedSubmittalLine(
+        source_key=normalized_key,
+        source_value=source_value,
+        line_number=line_order,
+        source_page=None if page.page_number <= 0 else page.page_number,
+        source_section="pdf_text_intake",
+        source_location=f"{location}; {reason}",
+    )
+    return order if existing is not None else order + 1
+
+
+def _tag_prefix_is_coil(tag: str) -> bool:
+    return _normalize_tag(tag).split("-", 1)[0] in _COIL_TAG_PREFIXES
 
 
 def _normalize_tag(raw: str) -> str:

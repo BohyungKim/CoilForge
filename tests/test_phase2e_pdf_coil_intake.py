@@ -136,6 +136,60 @@ def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() ->
     assert values["HANDING"] == "Left"
 
 
+def test_borderless_coil_table_without_header_row_is_detected_positionally() -> None:
+    # Regression: some submittals render the Qty/Tag/Item/... columns as a borderless
+    # table whose header band is dropped during extraction, so the table starts directly
+    # at data rows. The coil (here a preheat coil listed beneath its parent ERV unit)
+    # must still be detected by canonical column order; the parent unit and a valve row
+    # must be excluded as non-coil rows.
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                ("1", "ERV-02", "ERV", "MODEL_A", "208V/3ph/60Hz", "Constant Volume", "Horizontal", "S1", "LH"),
+                ("1", "PHWC-2", "HWC Pre-Heat", "MODEL_A", "", "", "", "Coupled to ERV", "RH"),
+                ("1", "PHWCV-2", "HWC Pre-Heat Valve", "2-Way", "24VAC", "Modulating", "Ship Loose", "", ""),
+            ),
+        ),
+    )
+
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+    lines = extract_coil_lines_from_pdf_text([page], cover_detection=detection)
+    values = {line.source_key: line.source_value for line in lines}
+
+    assert detection.detected is True
+    assert detection.detection_method == "pdfplumber_table_positional_no_header"
+    assert [row.tag for row in detection.rows] == ["PHWC-2"]
+    assert values["COIL_TAG"] == "PHWC-2"
+    assert values["PRODUCT_TYPE"] == "HW"
+    assert values["COIL_TYPE"] == "Hot Water Coil"
+    assert values["HANDING"] == "Right"
+
+
+def test_line_fallback_prioritizes_coil_component_over_parent_unit_tag() -> None:
+    # Regression: with no cover table (PyPDF2 fallback / image page), the generic Qty/Tag
+    # row rule captures the parent unit (ERV/AHU) first. A coil component on a later line
+    # must override that unit tag so the actual coil is selected, not the air handler.
+    page = _TextPage(
+        page_number=1,
+        text="\n".join(
+            [
+                "1 ERV-02 ERV MODEL_A 208V/3ph/60Hz Constant Volume Horizontal S1 LH",
+                "1 PHWC-2 HWC Pre-Heat MODEL_A Coupled to ERV RH",
+            ]
+        ),
+    )
+
+    detection = detect_cover_page_from_pdf_pages([page])
+    lines = extract_coil_lines_from_pdf_text([page], cover_detection=detection)
+    values = {line.source_key: line.source_value for line in lines}
+
+    assert detection.detected is False
+    assert values["COIL_TAG"] == "PHWC-2"
+    assert values["COIL_QUANTITY"] == "1"
+
+
 def test_cover_page_rows_generate_separate_pdf_coil_candidates() -> None:
     result = extract_coil_candidate_from_pdf_bytes(_cover_page_pdf_bytes())
 
