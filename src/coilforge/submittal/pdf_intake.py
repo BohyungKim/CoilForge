@@ -1369,6 +1369,11 @@ _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
         ("Tube Surface", "TUBE_SURFACE"),
         ("Coil Weight (lbs)", "COIL_WEIGHT_LBS"),
         ("Suction Size (in)", "RETURN_CONNECTION_SIZE"),
+        # Oxygen8 submittals consistently mis-spell "Suction" as "Sunction";
+        # match the typo (and the unit-less form) so the connection size is read.
+        ("Sunction Size (in)", "RETURN_CONNECTION_SIZE"),
+        ("Sunction Size", "RETURN_CONNECTION_SIZE"),
+        ("Suction Size", "RETURN_CONNECTION_SIZE"),
         ("Inlet Conn. Size (in)", "INLET_CONNECTION_SIZE"),
         ("Inlet Conn. Size", "INLET_CONNECTION_SIZE"),
         ("Outlet Conn. Size (in)", "OUTLET_CONNECTION_SIZE"),

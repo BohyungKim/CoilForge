@@ -101,3 +101,113 @@ responses deliberately assert safety flags (`raw_private_data_returned: False`,
 - `.gitignore` blocks raw customer data by pattern (`*.pdf`, `*.xlsx`, `Case/`,
   `*_raw.json`, rendered PNG/JPG). Only sanitized fixtures under `examples/sanitized/`
   belong in the repo.
+
+## Drawing engine (parametric — in progress)
+
+The current submittal path fills a fixed SVG template via text substitution (static
+geometry — a coil with FL=120" draws the identical box as FL=20"). We are building a
+**parametric drawing engine** that redraws the coil to scale from resolved dimensions,
+targeting three first-class outputs: **SVG** (web review aid), **DXF** (shop / CAD
+handoff), and **PDF** (customer submittal).
+
+### Architecture — non-negotiable
+
+1. **Three layers, never collapsed.** geometry model -> layout/datum engine ->
+   renderer backend. Rendering code must not compute geometry; layout code must
+   not emit SVG/DXF/PDF.
+2. **Model is in real-world units (inches).** The geometry model and datum engine
+   carry true dimensions only — never pixels. Presentation scale lives in the
+   backend (see Output backends). One model, three backends.
+3. **Backend-swappable renderer.** SVG, DXF, and PDF backends all consume the same
+   geometry model. Adding or changing a backend must not touch the model or
+   layout layers. The model emits no renderer-specific types.
+4. **Input contract = gated `slot_values` only.** The engine consumes dimensions
+   already resolved and confidence-gated upstream (`slot.FH`, `slot.FL`,
+   `slot.CH`, `slot.CL`, `slot.CD`, `slot.HF`, header offsets...). Validation
+   stays upstream. The engine never invents a value: `None` / "REVIEW REQUIRED"
+   -> feature omitted and annotated, never guessed.
+5. **Datum/offset only — no absolute coordinates.** Every feature is placed
+   relative to computed datums (the "grid"). Doubling any dimension must move all
+   dependent features coherently. Hardcoded path coordinates are a defect.
+6. **No constraint solver / CAD kernel.** Deterministic recompute only. Do not
+   add an iterative or symbolic solver unless explicitly requested.
+7. **Aspect ratio preserved.** Scaling is uniform — never scale x and y
+   independently. That is the bug in `phase2a/renderer.py` (x18 / x16) we are not
+   repeating.
+
+### Output backends
+
+The model holds inches; each backend decides how to present them:
+
+- **SVG (review aid):** uniform `px_per_inch` (clamped via the `max(min(...))`
+  idiom), fit-to-canvas, centered. Watermark, `export_allowed: False`.
+- **DXF (shop / CAD):** emit **1:1 model-space geometry in inches** — no
+  fit-to-canvas scaling. Use layers (geometry / dimensions / annotation / title
+  block) and native dimension entities. Must import cleanly into DraftSight /
+  SolidWorks.
+- **PDF (submittal):** compose the drawing at a **declared drawing scale** on a
+  sheet (paper size + title block standard). Dimension precision per submittal
+  spec. `export_allowed` flips to `True` only after the submittal validation gate
+  passes.
+
+### Annotation rule
+
+Geometry scales; annotations do not. Dimension text, arrowheads, and
+witness-line labels are drawn at **fixed size** (in the SVG/PDF backends),
+anchored to datums. Scaling text or arrowheads is a defect.
+
+### Phase Gate workflow
+
+- Multi-file changes: **plan first, hold for approval before writing code.**
+- A phase closes only when: all tests green **and** an eyeball-verifiable result
+  exists.
+- Do not advance past a red gate. Do not silently expand scope beyond the
+  approved phase.
+
+### Where things live
+
+- Engine (new): `src/coilforge/drawing/schematic_renderer.py`
+- Layout/datum module: extracted in Phase 2 — keep it separable from day one.
+- Renderer backends: `src/coilforge/drawing/backends/` (`svg.py`, `dxf.py`,
+  `pdf.py`).
+- Tests: `tests/test_schematic_renderer.py`
+- Existing template path — **DO NOT TOUCH**: `slot_population.py::populate_template_slots`,
+  the 17 `template.svg` files, `pdf_to_template_drawing.py`.
+- Reuse from `phase2a/renderer.py`: `_conn_float`, the clamp idiom,
+  `REVIEW_WATERMARK`, `_esc` / `_text_line` / `_fmt`. Do **not** reuse its
+  x18 / x16 scaling.
+
+### Drawing-engine conventions
+
+- Renderers are **pure functions**: input -> result object, no side effects, no
+  file writes.
+- **Additive only** — no schema changes that would break the upstream confidence
+  gate.
+- Carry safety flags through: `export_allowed: False` + watermark until the PDF
+  submittal path explicitly promotes output to production.
+
+### Test requirements (every change)
+
+- Proportionality: doubling a dimension slot doubles its size within clamps;
+  `FL:FH` ratio preserved.
+- **Cross-backend dimension parity:** the same coil yields identical real
+  dimensions across SVG, DXF, and PDF (only presentation scale differs).
+- **DXF 1:1:** geometry emitted in true inches; round-trips at real size.
+- **PDF scale:** renders at the declared drawing scale on the chosen sheet.
+- One case per category: DX 1/2/3, HGBP, HGRH, CWC, HWC.
+- LH <-> RH mirror.
+- Missing-slot omission (`None` / "REVIEW REQUIRED" -> omitted + annotated).
+- Safety flags asserted (`export_allowed`, watermark present where required).
+
+### Roadmap
+
+1. Engine v0 — geometry model (real units) + DX front view, **SVG** backend +
+   tests.
+2. Extract layout/datum module; add header/side view (LH/RH mirror).
+3. Feature library — all 17 via a `(category, hand, header, special)` spec table.
+4. **DXF** backend via `ezdxf` (1:1 inches, layers, dimension entities); verify
+   DraftSight / SolidWorks import.
+5. **PDF** backend (submittal: title block, declared scale, dimension precision);
+   wire the export validation gate that flips `export_allowed`.
+6. Integration — wire all three backends into the pipeline + web UI; retire
+   template dependency for covered categories.

@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from coilforge.submittal.coilmaster_drawing_extract import (  # noqa: E402
+    detect_product_and_size,
     extract_coilmaster_drawing,
     extract_drawing_dimensions,
     extract_feeds_circuits,
@@ -26,6 +27,29 @@ DRAWING_TEXT = (
 )
 
 COVER_TEXT = "1 CDXC- 1 DXC Cooling A16_V_I_ERV LH\n"
+
+
+def test_detect_product_and_size_from_terra_model_code() -> None:
+    # TR_C_009 -> TERRA H / 009 (orientation from the C token), even with no "Terra"
+    # brand word present (a real submittal schedule only shows the model code).
+    assert detect_product_and_size("Model\nTR_C_009\nHanding RH") == ("TERRA H", "009")
+    assert detect_product_and_size("TR-C-009") == ("TERRA H", "009")
+    assert detect_product_and_size("TR_V_012") == ("TERRA V", "012")
+
+
+def test_detect_product_and_size_from_nova_ventum_tokens() -> None:
+    assert detect_product_and_size("unit A16 cooling") == ("NOVA", "A16")
+    assert detect_product_and_size("H05") == ("VENTUM_H", "H05")
+    assert detect_product_and_size("V20") == ("VENTUM_PLUS", "V20")
+
+
+def test_detect_product_and_size_rejects_noise() -> None:
+    # Out-of-range Terra size and unrelated part numbers must not produce a guess.
+    assert detect_product_and_size("TR_C_999") == (None, None)
+    assert detect_product_and_size(
+        "Project 25100374 PO#222639 EKEXVA60U TFB24"
+    ) == (None, None)
+    assert detect_product_and_size("") == (None, None)
 
 
 def test_lone_dot_callout_does_not_crash_extraction() -> None:
@@ -111,5 +135,5 @@ def test_single_feed_glued_to_rb_is_unglued() -> None:
 def test_product_for_other_sizes() -> None:
     assert product_for_unit_size("V40") == "VENTUM_PLUS"
     assert product_for_unit_size("H15") == "VENTUM_H"
-    assert product_for_unit_size("24") == "TERRA"
+    assert product_for_unit_size("024") == "TERRA"
     assert product_for_unit_size("ZZZ") is None

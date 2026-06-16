@@ -47,6 +47,80 @@ def test_slots_map_extracted_dims_to_slot_ids() -> None:
     assert slots["slot.TAG"] == "CDXC-1"
 
 
+def test_submittal_model_code_auto_populates_drawing() -> None:
+    """A submittal schedule with only the model code "TR_C_009" (no "Terra" word)
+    auto-detects TERRA H / 009 and runs the engine on feed, so the drawing
+    populates without a manual product/size pick (review-aid, still overridable)."""
+    ctx = {
+        "coil_category": "DX", "coil_hand": "RH", "circuits": 1, "tag": "CDXC-1",
+        "rows": 6, "feeds": 4, "finned_height": 22.0, "finned_length": 23.75,
+        "suction_conn_size": 1.125,
+    }
+    cover = "Qty Tag Item Model Handing\n1 CDXC-1 DXC Cooling TR_C_009 RH"
+    out = pdf_text_to_template_drawing("", cover_text=cover, header_context=ctx)
+
+    assert out["product_size_auto_detected"] is True
+    assert out["product_type"] == "TERRA H" and out["unit_size"] == "009"
+    assert out["header_engine_used"] is True
+    assert out["drawing_value_source"] == "logic_derived"
+    # Engine actually produced dimensions (not unknown_unit_size).
+    assert isinstance(out["slot_values"].get("slot.CD"), (int, float))
+    assert out["export_allowed"] is False
+
+
+def test_panel_mirrors_template_drawing_slots() -> None:
+    """The Drawing Parameters panel is built from the SAME slot values the drawing
+    renders, so the two never diverge (single source of truth)."""
+    from coilforge.services.drawing_param_resolver import (
+        PARAM_TO_SLOT,
+        parameter_set_from_template_drawing,
+    )
+
+    out = pdf_text_to_template_drawing(DX1_TEXT, cover_text=COVER)
+    assert out["header_engine_used"] is True
+    params = parameter_set_from_template_drawing(out).parameters
+    slots = out["slot_values"]
+    for key, slot in PARAM_TO_SLOT.items():
+        assert params[key].value == float(slots[slot]), f"{key} != {slot}"
+    # Distributor HD (HDx1) is distinct from the return header HD and is shown.
+    assert params["HDx1"].value == 4.5 and params["HD"].value != params["HDx1"].value
+    # ZD has no slot -> stays unmapped (as before).
+    assert params["ZD"].value is None and params["ZD"].mode == "unmapped"
+
+
+def test_panel_reads_review_required_before_engine_runs() -> None:
+    """With no product line + unit size the engine is gated, so the drawing shows
+    REVIEW REQUIRED and the panel mirrors that (no misleading numbers)."""
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    ctx = {"coil_category": "DX", "coil_hand": "RH", "circuits": 1, "tag": "CDXC-1"}
+    out = pdf_text_to_template_drawing("", cover_text="", header_context=ctx)
+    assert out["header_engine_used"] is False
+    params = parameter_set_from_template_drawing(out).parameters
+    for key in ("CD", "HD", "HDx1", "SL", "I", "S", "O", "CH"):
+        assert params[key].value is None
+        assert params[key].review_required is True
+
+
+def test_derive_endpoint_returns_aligned_parameter_set() -> None:
+    """Re-deriving with a chosen product line + unit size refreshes BOTH the
+    drawing and the panel from the same slot values."""
+    from coilforge.workflows.submittal_to_drawing import derive_coil_template_drawing
+
+    spec = {
+        "coil_category": "DX", "coil_hand": "LH", "circuits": 1, "tag": "CDXC-1",
+        "rows": 4, "feeds": 2, "finned_height": 12.0, "finned_length": 15.0,
+        "suction_conn_size": 0.625, "product_type": "NOVA", "unit_size": "A16",
+    }
+    result = derive_coil_template_drawing(spec)
+    assert "drawing_parameter_set" in result
+    params = result["drawing_parameter_set"]["parameters"]
+    assert params["CD"]["value"] == result["slot_values"]["slot.CD"]
+    assert params["HDx1"]["value"] == result["slot_values"]["slot.HDx1"]
+
+
 def test_dx1_pdf_links_and_renders() -> None:
     out = pdf_text_to_template_drawing(DX1_TEXT, cover_text=COVER)
     assert out["extracted"]["coil_category"] == "DX"
@@ -152,6 +226,283 @@ def test_multi_header_positions_are_logic_derived() -> None:
     # R = return_spacing R-022 list: D=1.125 -> R2=1.125, R4=2D+1.5=3.75.
     assert abs(float(sv["slot.R2"]) - 1.125) < 0.01
     assert abs(float(sv["slot.R4"]) - 3.75) < 0.01
+
+
+# --- Real-submittal path: a submittal has no embedded as-built CoilMaster
+# drawing, so classification (coil type / hand / header qty / HGBP) must arrive
+# via header_context and drive template selection — not the model-number parse. ---
+
+
+def test_submittal_classification_drives_template_selection() -> None:
+    """With no drawing text, the caller-resolved classification links the coil to
+    its template and is surfaced (the fields that actually pick a template)."""
+    out = pdf_text_to_template_drawing(
+        "",
+        header_context={
+            "coil_category": "DX",
+            "coil_hand": "RH",
+            "circuits": 1,
+            "tag": "CDXC-1",
+        },
+    )
+    assert out["template_found"] is True
+    assert out["template_id"] == "coilmaster_dx_rh_header1"
+    assert out["extracted"]["coil_category"] == "DX"
+    assert out["extracted"]["hand"] == "RH"
+    assert out["extracted"]["header_type"] == "Header 1"
+    assert out["extracted"]["tag"] == "CDXC-1"  # candidate tag wins over unit tag
+    assert out["export_allowed"] is False
+
+
+def test_submittal_hgrh_rh_links_header1() -> None:
+    out = pdf_text_to_template_drawing(
+        "", header_context={"coil_category": "HGRH", "coil_hand": "RH", "circuits": 1}
+    )
+    assert out["template_found"] is True
+    assert out["template_id"] == "coilmaster_hgrh_rh_header1"
+
+
+def test_submittal_hgbp_special_feature_links_hgbp_template() -> None:
+    """A best-effort HGBP signal routes to the HGBP template (header ignored)."""
+    out = pdf_text_to_template_drawing(
+        "",
+        header_context={"coil_category": "DX", "coil_hand": "LH", "special_feature": "HGBP"},
+    )
+    assert out["template_found"] is True
+    assert out["template_id"] == "coilmaster_dx_lh_hgbp"
+    assert out["extracted"]["special_feature"] == "HGBP"
+
+
+def test_submittal_links_but_leaves_dims_review_required_without_product_unit() -> None:
+    """Link + classify, but dimensions stay REVIEW REQUIRED when no product line +
+    unit size is known — the engine is gated, never fed invented context."""
+    out = pdf_text_to_template_drawing(
+        "",
+        header_context={
+            "coil_category": "DX",
+            "coil_hand": "RH",
+            "circuits": 1,
+            "rows": 6,
+            "feeds": 4,
+            "finned_height": 12.0,
+            "finned_length": 22.0,
+        },
+    )
+    assert out["template_found"] is True
+    assert out["header_engine_used"] is False
+    assert out["drawing_value_source"] == "as_built_fallback"
+
+
+def test_submittal_path_suppresses_garbage_as_built_and_maps_known_geometry() -> None:
+    """Part A + B: on the submittal path (no genuine drawing) the as-built text
+    parse is noise, so it is NOT used to fill slots; the genuinely-known geometry
+    (FH/FL/ROWS/circuiting) is mapped review-required instead."""
+    out = pdf_text_to_template_drawing(
+        "",
+        header_context={
+            "coil_category": "DX",
+            "coil_hand": "RH",
+            "circuits": 1,
+            "rows": 6,
+            "feeds": 4,
+            "finned_height": 12,
+            "finned_length": 22,
+        },
+    )
+    sv = out["slot_values"]
+    src = out["slot_sources"]
+    # Part B: known geometry mapped as submittal_input, review-required.
+    assert sv["slot.FH"] == 12 and src["slot.FH"]["source"] == "submittal_input"
+    assert sv["slot.FL"] == 22 and src["slot.FL"]["validation"] == "review_required"
+    assert sv["slot.ROWS"] == 6 and src["slot.ROWS"]["source"] == "submittal_input"
+    assert sv["slot.CIRCUITING"] == "4 Feed"
+    # Part A: no spurious as-built dims leaked in (engine gated, no real drawing).
+    assert "slot.CD" not in sv
+    assert not any(meta["source"] == "as_built_fallback" for meta in src.values())
+
+
+def test_derive_coil_template_drawing_unlocks_engine_dims() -> None:
+    """Part C: choosing a product line + unit size runs the engine, so the header
+    dimensions become logic-derived instead of REVIEW REQUIRED."""
+    from coilforge.workflows import derive_coil_template_drawing
+
+    out = derive_coil_template_drawing(
+        {
+            "coil_category": "DX",
+            "coil_hand": "RH",
+            "circuits": 1,
+            "tag": "CDXC-1",
+            "rows": 6,
+            "feeds": 4,
+            "finned_height": 12,
+            "finned_length": 22,
+            "product_type": "NOVA",
+            "unit_size": "A16",
+        }
+    )
+    assert out["template_found"] is True
+    assert out["template_id"] == "coilmaster_dx_rh_header1"
+    assert out["header_engine_used"] is True
+    assert out["drawing_value_source"] == "logic_derived"
+    sv = out["slot_values"]
+    assert sv["slot.TF"] == 0.625 and sv["slot.BF"] == 0.625
+    assert sv["slot.HDx1"] == 4.5 and sv["slot.HD2"] == 3.5
+    assert out["export_allowed"] is False
+
+
+def test_product_size_options_lists_the_four_product_lines() -> None:
+    from coilforge.submittal.coilmaster_drawing_extract import product_size_options
+
+    options = product_size_options()
+    assert set(options) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
+    assert "A16" in options["NOVA"]
+    # Terra is split into orientation categories sharing the zero-padded size set.
+    assert options["TERRA H"] == options["TERRA V"]
+    assert "009" in options["TERRA H"]
+    # Zero-padded 3-digit tokens, never the bare integers (John 2026-06-15).
+    assert "9" not in options["TERRA H"]
+
+
+def test_terra_picker_labels_resolve_to_product_family_and_variant() -> None:
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    # "TERRA H" -> resolved Terra H C; "TERRA V" -> Terra V; others unchanged.
+    assert resolve_product_line("TERRA H") == ("TERRA", "TERRA_H_C")
+    assert resolve_product_line("TERRA V") == ("TERRA", "TERRA_V")
+    assert resolve_product_line("TERRA") == ("TERRA", "TERRA_H_C")
+    assert resolve_product_line("NOVA") == ("NOVA", None)
+    assert resolve_product_line(None) == (None, None)
+
+
+def test_terra_v_picker_selection_drives_engine_variant() -> None:
+    """Picking TERRA V drives terra_variant=TERRA_V so the Terra-V-only HGRH
+    rule (R-046) fires; TERRA H (resolved H C) leaves those fields untouched."""
+    from coilforge.schemas.header_prepopulate import ProductFamily, TerraVariant
+    from coilforge.services.direct_coil_drawing_pipeline import build_header_request
+    from coilforge.services.header_prepopulate_engine import prepopulate
+
+    req_v = build_header_request(
+        coil_type="HGRH", product_type="TERRA V", unit_size="024", feeds=2, circuits=2
+    )
+    assert req_v.product_type == ProductFamily.TERRA
+    assert req_v.terra_variant == TerraVariant.TERRA_V
+    blocked_v = prepopulate(req_v).blocked
+    assert {"supply_io", "supply_sl", "return_sl"} <= set(blocked_v)  # R-046
+
+    req_h = build_header_request(
+        coil_type="HGRH", product_type="TERRA H", unit_size="024", feeds=2, circuits=2
+    )
+    assert req_h.terra_variant == TerraVariant.TERRA_H_C
+    blocked_h = prepopulate(req_h).blocked
+    assert not ({"supply_io", "supply_sl", "return_sl"} & set(blocked_h))
+
+
+# --- Right-side specification panel: submittal-stated materials / fins / weight /
+# circuiting / connection map review-required, independent of the engine gate. ---
+
+
+def test_submittal_panel_values_map_review_required() -> None:
+    out = pdf_text_to_template_drawing(
+        "",
+        cover_text="Unit Type: Terra Horizontal (Ceiling Hung) Model: TR_C_009",
+        header_context={
+            "coil_category": "DX",
+            "coil_hand": "RH",
+            "circuits": 1,
+            "tag": "CDXC-1",
+            "panel": {
+                "tube_material": "0.016 Copper",
+                "tube_surface": "Smooth",
+                "fin_material": "0.0075 Aluminium",
+                "fin_surface": "Flat",
+                "fins_per_inch": 11,
+                "dry_weight": 35.25,
+                "internal_volume": 741.87,
+                "feeds": 4,
+                "circuits": 1,
+                "conn_size": 1.125,
+            },
+        },
+    )
+    sv, src = out["slot_values"], out["slot_sources"]
+    assert sv["slot.TUBE_MATERIAL"] == "0.016 Copper"
+    assert sv["slot.TUBE_MATERIAL_2"] == "Smooth"
+    assert sv["slot.FIN_MATERIAL"] == "11 FPI"
+    assert sv["slot.FIN_MATERIAL_2"] == "0.0075 Aluminium"
+    assert sv["slot.FIN_MATERIAL_3"] == "Flat"
+    assert sv["slot.DRY_WEIGHT"] == "35.25 Lbs. Per Coil"
+    assert sv["slot.INTERNAL_VOLUME"] == "741.87 Cu. In."
+    assert sv["slot.CIRCUITING"] == "4 Feed"
+    assert sv["slot.RETURN_CONN_SIZE"] == '1.125"'  # DX shows the return connection
+    # Every panel value is submittal-stated and review-required — never silently
+    # treated as engine-derived/confirmed.
+    for slot in ("slot.TUBE_MATERIAL", "slot.FIN_MATERIAL", "slot.DRY_WEIGHT", "slot.INTERNAL_VOLUME", "slot.RETURN_CONN_SIZE"):
+        assert src[slot]["source"] == "submittal_input"
+        assert src[slot]["validation"] == "review_required"
+    # The "TR_C_009" model code now AUTO-DETECTS the product line + unit size
+    # (TERRA H / 009) and runs the engine on feed (review-aid, still overridable);
+    # because they are resolved, no separate review-required suggestion is emitted.
+    assert out["product_size_auto_detected"] is True
+    assert out["product_type"] == "TERRA H" and out["unit_size"] == "009"
+    assert out["suggested_product_type"] is None
+    assert "0.016 Copper" in out["svg"]
+
+
+def test_hgrh_panel_maps_supply_connection_slot() -> None:
+    """An HGRH coil's connection maps to the SUPPLY_CONN_SIZE slot the HGRH
+    template exposes (the DX RETURN_CONN_SIZE slot does not exist there)."""
+    out = pdf_text_to_template_drawing(
+        "",
+        header_context={
+            "coil_category": "HGRH",
+            "coil_hand": "RH",
+            "circuits": 1,
+            "panel": {"conn_size": 0.625, "fin_surface": "Sine", "feeds": 1, "circuits": 1},
+        },
+    )
+    sv = out["slot_values"]
+    assert sv["slot.SUPPLY_CONN_SIZE"] == '0.625"'
+    assert sv["slot.FIN_MATERIAL_3"] == "Sine"
+    assert sv["slot.CIRCUITING"] == "1 Feed"
+
+
+def test_sunction_typo_is_read_as_connection_size() -> None:
+    """Oxygen8 submittals mis-spell 'Suction' as 'Sunction'; the connection size
+    must still be extracted (else RETURN/SUPPLY CONN SIZE renders blank)."""
+    from coilforge.submittal import pdf_intake as intake
+
+    page = intake._TextPage(page_number=1, text="Coil\nSunction Size (in): 0.625\n")
+    captured = {
+        line.source_key.lower(): line.source_value
+        for line in intake._extract_detail_lines_from_page(page)
+    }
+    assert any("return" in key and "connection" in key for key in captured), captured
+    conn_key = next(key for key in captured if "return" in key and "connection" in key)
+    assert captured[conn_key] == "0.625"
+
+
+def test_header_material_defaults_to_type_l_copper_review_required() -> None:
+    """Header material is not on the submittal; default to the locked-evidence
+    norm 'Type L Copper' as a REVIEW-REQUIRED default (not a confirmed value)."""
+    out = pdf_text_to_template_drawing(
+        "",
+        header_context={"coil_category": "HGRH", "coil_hand": "RH", "circuits": 1, "panel": {}},
+    )
+    assert out["slot_values"]["slot.HEADER_MATERIAL"] == "Type L Copper"
+    src = out["slot_sources"]["slot.HEADER_MATERIAL"]
+    assert src["source"] == "review_default"
+    assert src["validation"] == "review_required"
+
+
+def test_intentional_mistake_in_as_built_is_flagged_not_silently_accepted() -> None:
+    """Mapping-function validation: corrupt the as-built CD to a deliberately wrong
+    value. The logic-derived value must still win (authoritative) and the
+    discrepancy must be surfaced as a mismatch — never silently overwritten."""
+    corrupted = DX1_TEXT.replace("0.63 BF5.50 CD", "0.63 BF9.99 CD")  # wrong CD
+    out = pdf_text_to_template_drawing(corrupted, cover_text=COVER)
+    assert out["slot_values"]["slot.CD"] == 5.5  # engine value is authoritative
+    assert out["slot_sources"]["slot.CD"]["validation"] == "mismatch:9.99"
+    assert out["validation_mismatches"].get("slot.CD", "").startswith("mismatch")
 
 
 def test_workflow_includes_populated_template_drawing() -> None:

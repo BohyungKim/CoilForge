@@ -122,14 +122,110 @@ def extract_unit_size(cover_text: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _r076_enumerations() -> dict[str, list[str]]:
+    return next(r for r in load_rule_table() if r["rule_id"] == "R-076")["enumerations"]
+
+
 def product_for_unit_size(unit_size: str | None) -> str | None:
     """Product family whose R-076 enumeration contains the unit size."""
     if unit_size is None:
         return None
-    enumerations = next(
-        r for r in load_rule_table() if r["rule_id"] == "R-076"
-    )["enumerations"]
-    for product, sizes in enumerations.items():
+    for product, sizes in _r076_enumerations().items():
         if unit_size in sizes:
             return product
     return None
+
+
+# Picker product-line labels. TERRA is split into H / V orientation categories
+# (John 2026-06-15): the engineer picks the Terra orientation, which drives the
+# engine's terra_variant ("TERRA H" -> resolved Terra H C; "TERRA V" -> Terra V).
+TERRA_H_LABEL = "TERRA H"
+TERRA_V_LABEL = "TERRA V"
+
+# Picker label -> (engine product_family, terra_variant or None). Only Terra is
+# special-cased; every other product line maps to itself with no variant.
+_PRODUCT_LINE_RESOLUTION: dict[str, tuple[str, str | None]] = {
+    TERRA_H_LABEL: ("TERRA", "TERRA_H_C"),
+    TERRA_V_LABEL: ("TERRA", "TERRA_V"),
+    "TERRA": ("TERRA", "TERRA_H_C"),  # bare Terra defaults to the resolved H C set
+}
+
+
+def resolve_product_line(label: str | None) -> tuple[str | None, str | None]:
+    """Resolve a picker product-line label to (engine product_family, terra_variant).
+
+    "TERRA H"/"TERRA V" carry the Terra orientation the engineer chose; every
+    other label (NOVA, VENTUM_H, VENTUM_PLUS) maps to itself with no variant.
+    """
+    if label is None:
+        return None, None
+    return _PRODUCT_LINE_RESOLUTION.get(label.strip().upper(), (label, None))
+
+
+def product_size_options() -> dict[str, list[str]]:
+    """{product_line: [unit sizes]} from R-076 — the valid choices an engineer
+    can pick to unlock the rule-engine dimensions for a submittal coil.
+
+    TERRA is presented as two orientation categories (TERRA H / TERRA V); both
+    share the R-076 Terra size set (zero-padded, e.g. 009)."""
+    options: dict[str, list[str]] = {}
+    for product, sizes in _r076_enumerations().items():
+        if product == "TERRA":
+            options[TERRA_H_LABEL] = list(sizes)
+            options[TERRA_V_LABEL] = list(sizes)
+        else:
+            options[product] = list(sizes)
+    return options
+
+
+# Terra model code on a submittal schedule, e.g. "TR_C_009" / "TR-C-009" / "TR C 9".
+# The C/V token carries the orientation (C -> TERRA H, V -> TERRA V); the trailing
+# digits are the (zero-padded) Terra unit size.
+_TERRA_MODEL_RE = re.compile(r"\bTR[_\- ]?([CV])[_\- ]?0*(\d{1,3})\b", re.IGNORECASE)
+
+
+def _non_terra_size_tokens() -> list[str]:
+    """Every R-076 unit-size token outside TERRA (whose sizes are bare digits and
+    must only be matched via the explicit TR_* model code, never a loose digit
+    search). Longest first so e.g. 'V100' wins over a hypothetical 'V10'."""
+    tokens: list[str] = []
+    for product, sizes in _r076_enumerations().items():
+        if product == "TERRA":
+            continue
+        tokens.extend(sizes)
+    return sorted(set(tokens), key=len, reverse=True)
+
+
+def detect_product_and_size(text: str | None) -> tuple[str | None, str | None]:
+    """Deterministically detect (picker product-line label, R-076 unit size) from a
+    submittal's model code — without needing the brand word.
+
+    Model-code driven and validated against the R-076 table (the single source of
+    truth), so it never invents a value:
+        TR_C_009 -> ("TERRA H", "009");  TR_V_012 -> ("TERRA V", "012")
+        A16 / B20 / C24 ... -> ("NOVA", token)
+        H05 ... H30        -> ("VENTUM_H", token)
+        V20 ... V150       -> ("VENTUM_PLUS", token)
+
+    Returns (None, None) when nothing validates. The explicit Terra model code wins
+    over a loose size token if both appear.
+    """
+    if not text:
+        return None, None
+    upper = text.upper()
+
+    # 1. Terra model code (orientation from the C/V token).
+    match = _TERRA_MODEL_RE.search(upper)
+    if match:
+        label = TERRA_H_LABEL if match.group(1).upper() == "C" else TERRA_V_LABEL
+        size = f"{int(match.group(2)):03d}"
+        if size in set(product_size_options().get(label, [])):
+            return label, size
+
+    # 2. NOVA / VENTUM: any enumerated non-Terra size token as a whole word.
+    for token in _non_terra_size_tokens():
+        if re.search(rf"\b{re.escape(token)}\b", upper):
+            product = product_for_unit_size(token)
+            if product:  # NOVA / VENTUM_H / VENTUM_PLUS
+                return product, token
+    return None, None

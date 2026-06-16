@@ -13,6 +13,8 @@ from coilforge.drawing import (
     render_direct_coil_svg_preview,
     resolve_drawing_parameters,
 )
+from coilforge.drawing.parameters import DrawingParameter
+from coilforge.phase2a.drawing_populator import build_phase2a_state_from_drawing_intent
 from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate_fixture
 from coilforge.submittal.to_canonical import map_submittal_candidate_to_canonical
 
@@ -146,6 +148,93 @@ def test_unsupported_header_type_blocks_preview() -> None:
     assert preview.intent.preview_allowed is False
     assert "header_type" in preview.intent.blocked_reasons
     assert preview.svg == ""
+
+
+def test_drawing_follows_parameters_not_title_block() -> None:
+    """The Drawing Parameters set is the single source of truth: when title_block
+    carries different positional/header dims, the rendered state must use the
+    parameter values (and distributor HD must come from HDx1, not HD)."""
+    draft = _build_draft_from_payload()
+    parameter_set = resolve_drawing_parameters(
+        draft, default_preview_values=_full_preview_defaults()
+    )
+    # HDx1 (distributor HD) is an extra drawing-output param, injected as the
+    # workflow does; give it a value distinct from HD (the return header).
+    parameter_set.parameters["HDx1"] = DrawingParameter(
+        key="HDx1",
+        label="HDx1",
+        value=4.5,
+        unit="in",
+        mode="default",
+        status="review_required",
+        review_required=True,
+    )
+
+    # Stale title_block values that must NOT win.
+    title_block = {
+        "coil_name": "PARAM PRECEDENCE",
+        "return_header_diameter": 9.9,
+        "distributor_header_diameter": 9.9,
+        "return_stub_length": 9.9,
+        "supply_offset_i1": 9.9,
+        "supply_spacing_s1": 9.9,
+        "return_offset_o2": 9.9,
+        "return_spacing_r2": 9.9,
+        "header_face": 9.9,
+        "return_face": 9.9,
+    }
+    intent = create_drawing_intent_from_direct_coil(
+        draft, parameter_set, title_block=title_block
+    )
+    state = build_phase2a_state_from_drawing_intent(intent)
+
+    assert state.return_header_diameter == 3.5  # param HD
+    assert state.distributor_header_diameter == 4.5  # param HDx1, NOT HD or 9.9
+    assert state.return_stub_length == 8.0  # param SL
+    assert state.supply_offset_i1 == 3.0  # param I
+    assert state.supply_spacing_s1 == 2.75  # param S
+    assert state.return_offset_o2 == 2.0  # param O
+    assert state.return_spacing_r2 == 0.63  # param R
+    assert state.header_face == 1.5  # param HF
+    assert state.return_face == 1.5  # param RF
+    # CD/TF/BF/CH were already param-sourced and stay aligned.
+    assert state.casing_depth == 5.5
+    assert state.casing_height == 13.25
+
+
+def test_title_block_used_only_when_param_value_absent() -> None:
+    """With no parameter value for a positional dim, title_block remains the
+    fallback so existing title-block-driven drafts still render."""
+    draft = _build_draft_from_payload()
+    parameter_set = resolve_drawing_parameters(
+        draft, default_preview_values=_preview_defaults()
+    )  # no HD/SL/I/... defaults -> those params have no value
+
+    intent = create_drawing_intent_from_direct_coil(
+        draft,
+        parameter_set,
+        title_block={"coil_name": "FALLBACK", "return_header_diameter": 7.0},
+    )
+    state = build_phase2a_state_from_drawing_intent(intent)
+
+    assert state.return_header_diameter == 7.0
+
+
+def _full_preview_defaults() -> list[PreviewDefaultValue]:
+    return [
+        PreviewDefaultValue(key="CD", value=5.5),
+        PreviewDefaultValue(key="BF", value=0.63),
+        PreviewDefaultValue(key="TF", value=0.63),
+        PreviewDefaultValue(key="CH", value=13.25),
+        PreviewDefaultValue(key="HD", value=3.5),
+        PreviewDefaultValue(key="SL", value=8.0),
+        PreviewDefaultValue(key="I", value=3.0),
+        PreviewDefaultValue(key="S", value=2.75),
+        PreviewDefaultValue(key="O", value=2.0),
+        PreviewDefaultValue(key="R", value=0.63),
+        PreviewDefaultValue(key="HF", value=1.5),
+        PreviewDefaultValue(key="RF", value=1.5),
+    ]
 
 
 def _build_draft_from_payload(

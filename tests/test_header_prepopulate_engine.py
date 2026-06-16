@@ -63,7 +63,7 @@ def _in_values(resp, field):
 # A valid unit size per product family (R-076 enumerations).
 VALID_SIZE = {
     ProductFamily.NOVA: "B20",
-    ProductFamily.TERRA: "24",
+    ProductFamily.TERRA: "024",
     ProductFamily.VENTUM_H: "H15",
     ProductFamily.VENTUM_PLUS: "V40",
 }
@@ -141,7 +141,7 @@ def test_t04_dx_ventum_h_h15() -> None:
 
 
 def test_t05_dx_terra_24_gate() -> None:
-    r = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "24"))
+    r = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024"))
     # Terra-invariant constants still populate HIGH.
     assert r.values["header_flange"].value == 1.5
     assert r.values["return_flange"].value == 1.5
@@ -216,7 +216,7 @@ def test_t09_hgrh_ventum_plus_v20() -> None:
 
 
 def test_t10_hgrh_terra_12_gate() -> None:
-    r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "12"))
+    r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "012"))
     assert r.values["hd"].value == 3.5
     assert r.values["conn_angle"].value == "LAS"
     assert r.values["return_bend"].value == 1.75
@@ -230,8 +230,12 @@ def test_t10_hgrh_terra_12_gate() -> None:
 
 def test_t11_hgrh_nova_single_feed() -> None:
     r = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "C20", feeds=1))
-    assert "single_feed_note" in r.suggestions
-    assert r.suggestions["single_feed_note"].review_required is True
+    # R-049 single-feed note is intentionally suppressed (John 2026-06-15): a
+    # single-feed HGRH is treated as a standard one-header HGRH, no note emitted.
+    assert "single_feed_note" not in r.suggestions
+    assert "single_feed_note" not in r.values
+    assert "single_feed_note" not in r.blocked
+    # R-050 single-feed extension is unaffected (separate dimension, not a note).
     assert r.suggestions["single_feed_ext"].value == 3
     assert r.suggestions["single_feed_ext"].confidence == Confidence.MEDIUM
 
@@ -286,7 +290,7 @@ def test_t15_hwc_nova_multi_feed_cd() -> None:
 
 
 def test_t16_cwc_terra_18_gate() -> None:
-    r = prepopulate(_req(CoilType.CWC, ProductFamily.TERRA, "18"))
+    r = prepopulate(_req(CoilType.CWC, ProductFamily.TERRA, "018"))
     assert r.values["return_bend"].value == 2.25
     assert r.values["header_flange"].value == 1.5
     assert r.values["notes"].value[0].startswith("Vent & Drain installed")
@@ -347,7 +351,7 @@ def test_t20_cwc_nova_casing_lookup() -> None:
         # DX/CWC/HGRH share the "DX/CWC" application columns.
         (CoilType.CWC, ProductFamily.NOVA, "A16", "DECOUPLED", 34, 20),
         (CoilType.DX, ProductFamily.NOVA, "C70", "DECOUPLED", 76, 46),
-        (CoilType.DX, ProductFamily.TERRA, "24", "INTEGRATED", 62, 21),
+        (CoilType.DX, ProductFamily.TERRA, "024", "INTEGRATED", 62, 21),
         (CoilType.HGRH, ProductFamily.VENTUM_H, "H15", "CPLD EXT", 37, 21),
         (CoilType.DX, ProductFamily.VENTUM_PLUS, "V150", "INTEGRATED", 115.75, 106),
         # HWC uses its own application columns.

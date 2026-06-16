@@ -4,7 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CoilForge Direct Coil Draft</title>
-    <link rel="stylesheet" href="/static/style.css?v=phase2f-phwc-hot-water-layout-20260609-004" />
+    <script>
+      // Apply the saved (or OS-preferred) theme before first paint to avoid a
+      // flash of the wrong theme. app.js reads back this attribute on load.
+      (function () {
+        try {
+          var saved = localStorage.getItem("coilforge-theme");
+          var dark = saved
+            ? saved === "dark"
+            : window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (dark) document.documentElement.setAttribute("data-theme", "dark");
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/style.css?v=phase2g-darkmode-20260615-001" />
   </head>
   <body>
     <div class="legacy-test-labels" aria-hidden="true">
@@ -42,6 +55,10 @@
           </div>
           <div class="topbar-actions">
             <span id="saved-status" class="saved-status">Draft saved locally</span>
+            <button id="theme-toggle" class="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Toggle dark mode">
+              <span class="theme-toggle-track" aria-hidden="true"><span id="theme-toggle-thumb" class="theme-toggle-thumb">☀</span></span>
+              <span id="theme-toggle-label" class="theme-toggle-label">Light</span>
+            </button>
           </div>
         </header>
 
@@ -72,7 +89,7 @@
           </div>
         </section>
 
-        <section id="checklist-section" class="pdf-intake-panel primary-intake-panel" aria-label="PDF coil intake">
+        <section id="checklist-section" class="pdf-intake-panel primary-intake-panel" data-view="checklist" aria-label="PDF coil intake">
           <div class="pdf-intake-heading">
             <span class="intake-step">Start here</span>
             <h3>PDF Coil Intake</h3>
@@ -92,7 +109,7 @@
           <div id="pdf-intake-summary" class="pdf-intake-summary">No PDF analyzed.</div>
         </section>
 
-        <section class="direct-coil-workbench" aria-label="Direct Coil software screen mirror">
+        <section class="direct-coil-workbench" data-view="checklist" aria-label="Direct Coil software screen mirror">
           <div class="section-heading">
             <h3>Direct Coil Screen Mirror &mdash; Review Aid Only</h3>
             <span class="subtle-label">Formatted for field-by-field paste review</span>
@@ -104,7 +121,7 @@
         </section>
 
         <section class="content-grid">
-          <div class="input-column">
+          <div class="input-column" data-view="checklist">
             <div class="section-heading">
               <h3>Direct Coil Input Groups</h3>
               <span id="draft-id" class="subtle-label">Loading draft</span>
@@ -162,20 +179,26 @@
                 </table>
               </div>
             </section>
-            <div id="direct-coil-groups" class="field-groups"></div>
+            <details class="raw-fields-disclosure">
+              <summary>Show all draft fields (raw key / status)</summary>
+              <div id="direct-coil-groups" class="field-groups"></div>
+            </details>
           </div>
 
           <aside class="inspector-column" aria-label="Review panels">
-            <section class="inspector-card">
+            <section class="inspector-card" data-view="checklist">
               <div class="card-title-row">
                 <h3>Import Summary / Source Evidence</h3>
                 <span id="candidate-status" class="status-chip">Loading</span>
               </div>
               <div id="import-summary" class="summary-list"></div>
-              <div id="source-evidence" class="evidence-list"></div>
+              <details class="evidence-disclosure">
+                <summary>Show source evidence</summary>
+                <div id="source-evidence" class="evidence-list"></div>
+              </details>
             </section>
 
-            <section id="drawing-section" class="inspector-card drawing-card">
+            <section id="drawing-section" class="inspector-card drawing-card" data-view="drawing">
               <div class="card-title-row">
                 <h3>Drawing Preview</h3>
                 <span id="preview-status" class="status-chip">Review</span>
@@ -183,13 +206,13 @@
               <div id="drawing-template-status" class="drawing-template-status">Loading template status</div>
             </section>
 
-            <section class="inspector-card">
+            <section class="inspector-card" data-view="drawing">
               <h3>Drawing Parameters</h3>
               <div id="drawing-parameters" class="parameter-grid"></div>
               <div id="drawing-preview" class="drawing-preview">Loading preview</div>
             </section>
 
-            <section id="compatibility-section" class="inspector-card compatibility-card">
+            <section id="compatibility-section" class="inspector-card compatibility-card" data-view="compatibility">
               <div class="card-title-row">
                 <h3>Compatibility Review</h3>
                 <span id="compatibility-status" class="status-chip">Loading</span>
@@ -208,7 +231,7 @@
               <div id="compatibility-decisions" class="compatibility-decisions"></div>
             </section>
 
-            <section id="review-section" class="inspector-card decision-capture-card">
+            <section id="review-section" class="inspector-card decision-capture-card" data-view="review">
               <div class="card-title-row">
                 <h3>John Decision Capture</h3>
                 <span class="status-chip">Disabled</span>
@@ -221,17 +244,17 @@
               <div id="decision-capture-items" class="decision-capture-list"></div>
             </section>
 
-            <section id="performance-section" class="inspector-card">
+            <section id="performance-section" class="inspector-card" data-view="performance">
               <h3>Performance Summary</h3>
               <div id="performance-summary" class="summary-list"></div>
             </section>
 
-            <section class="inspector-card">
+            <section class="inspector-card" data-view="review">
               <h3>Validation</h3>
               <div id="validation-summary" class="validation-list"></div>
             </section>
 
-            <section class="inspector-card">
+            <section class="inspector-card" data-view="review">
               <h3>Blocked Fields</h3>
               <div id="blocked-fields" class="blocked-list"></div>
             </section>
@@ -240,6 +263,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=phase2f-phwc-hot-water-layout-20260609-004" type="module"></script>
+    <script src="/static/app.js?v=phase2g-darkmode-20260615-001" type="module"></script>
   </body>
 </html>

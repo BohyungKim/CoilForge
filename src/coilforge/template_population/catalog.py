@@ -44,6 +44,8 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_hgrh_rh_header1": ("hgrh", "EZC-0012", _SEEDED),
     "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
     "coilmaster_hgrh_rh_header2": ("hgrh", "EZC-0008", _MIRROR),
+    "coilmaster_hgrh_rh_header3": ("hgrh", "EZC-0016", _SEEDED),
+    "coilmaster_hgrh_lh_header3": ("hgrh", "EZC-0016", _MIRROR),
     "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
     "coilmaster_dx_rh_hgbp": ("dx", "EZC-0013", _MIRROR),
     "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
@@ -244,7 +246,7 @@ def _entry_for_header_category(
     source_case_id = _known_source_case(category, header_number, hand)
     no_reference = (
         (category == "dx" and header_number == 4)
-        or (category == "hgrh" and header_number in {3, 4})
+        or (category == "hgrh" and header_number == 4)
     )
     return DrawingTemplateEntry(
         template_id=template_id,

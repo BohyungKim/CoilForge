@@ -31,9 +31,13 @@ from coilforge.services.direct_coil_drawing_pipeline import (
     material_title_slots,
 )
 from coilforge.submittal.coilmaster_drawing_extract import (
+    TERRA_H_LABEL,
+    TERRA_V_LABEL,
+    detect_product_and_size,
     extract_coilmaster_drawing,
     extract_unit_size,
     product_for_unit_size,
+    product_size_options,
 )
 from coilforge.template_population.catalog import (
     TemplateSelectionRequest,
@@ -104,6 +108,127 @@ def _validation(derived: Any, as_built: Any) -> str:
         return "match" if str(derived) == str(as_built) else f"mismatch:{as_built}"
 
 
+def _panel_slots(panel: dict[str, Any] | None, coil_category: str | None) -> dict[str, Any]:
+    """Right-side specification-panel slots from the submittal-stated values.
+
+    These are read straight off the submittal (materials, fins-per-inch, weight,
+    circuiting, connection size) and surfaced review-required — they are NOT
+    engine-derived, so they map whether or not a product line + unit size is
+    known. Only source-backed values are emitted; anything the submittal does not
+    state stays REVIEW REQUIRED rather than being invented.
+    """
+    if not panel:
+        return {}
+    slots: dict[str, Any] = {}
+
+    def put(slot: str, value: Any) -> None:
+        if value not in (None, ""):
+            slots[slot] = value
+
+    # Tube material block: "<thk> <material>" / surface.
+    put("slot.TUBE_MATERIAL", panel.get("tube_material"))
+    put("slot.TUBE_MATERIAL_2", panel.get("tube_surface"))
+    # Fin material block: FPI / "<thk> <material>" / surface.
+    fpi = panel.get("fins_per_inch")
+    put("slot.FIN_MATERIAL", f"{fpi} FPI" if fpi not in (None, "") else None)
+    put("slot.FIN_MATERIAL_2", panel.get("fin_material"))
+    put("slot.FIN_MATERIAL_3", panel.get("fin_surface"))
+    put("slot.CASING_MATERIAL", panel.get("casing_material"))
+    put("slot.HEADER_MATERIAL", panel.get("header_material"))
+    weight = panel.get("dry_weight")
+    put("slot.DRY_WEIGHT", f"{weight} Lbs. Per Coil" if weight not in (None, "") else None)
+    volume = panel.get("internal_volume")
+    put("slot.INTERNAL_VOLUME", f"{volume} Cu. In." if volume not in (None, "") else None)
+
+    feeds = panel.get("feeds")
+    if feeds not in (None, ""):
+        circuits = panel.get("circuits")
+        put(
+            "slot.CIRCUITING",
+            f"{feeds} Feed / {circuits} circuits"
+            if circuits and circuits > 1
+            else f"{feeds} Feed",
+        )
+
+    conn = panel.get("conn_size")
+    if conn not in (None, ""):
+        # DX coils show a return connection; water / HGRH coils show supply.
+        conn_slot = "slot.RETURN_CONN_SIZE" if coil_category == "DX" else "slot.SUPPLY_CONN_SIZE"
+        put(conn_slot, f'{conn}"')
+
+    if coil_category == "DX":
+        put("slot.DISTRIBUTORS", panel.get("distributor_notes"))
+    return slots
+
+
+# Daikin/Oxygen8 unit family -> CoilForge product line, and the unit-size token
+# (e.g. "TR_C_009" -> TERRA / "9"). Surfaced as a review-required SUGGESTION that
+# pre-fills the product/size picker; the engineer still confirms before the engine
+# derives any dimension (the gate is preserved — nothing is auto-drawn).
+def _suggest_product_and_size(text: str | None) -> tuple[str | None, str | None]:
+    if not text:
+        return None, None
+    upper = text.upper()
+    product: str | None = None
+    if "TERRA" in upper:
+        # Terra is split into orientation categories (John 2026-06-15): the cover
+        # text states "Terra Vertical" / "Terra Horizontal". Default to H.
+        product = TERRA_V_LABEL if "VERTICAL" in upper else TERRA_H_LABEL
+    elif "VENTUM" in upper:
+        product = (
+            "VENTUM_PLUS"
+            if ("VENTUM+" in upper or "VENTUM PLUS" in upper or "VENTUM-PLUS" in upper)
+            else "VENTUM_H"
+        )
+    elif "NOVA" in upper:
+        product = "NOVA"
+    if product is None:
+        return None, None
+
+    try:
+        valid_sizes = set(product_size_options().get(product, []))
+    except Exception:  # rule table unavailable; still suggest the product line
+        valid_sizes = set()
+
+    size: str | None = None
+    if product in (TERRA_H_LABEL, TERRA_V_LABEL):
+        # "TR_C_009" / "TR-C-009" -> "009" (zero-padded 3-digit Terra size token).
+        match = re.search(r"\bT[A-Z]?[_\- ]?C[_\- ]?0*(\d{1,3})\b", upper)
+        if match:
+            size = f"{int(match.group(1)):03d}"
+    else:
+        token = extract_unit_size(text)  # A16 / V60 / H10 style
+        if token:
+            size = token
+    if size is not None and valid_sizes and size not in valid_sizes:
+        size = None
+    return product, size
+
+
+def _submittal_geometry_slots(geo: dict[str, Any], circuits: int) -> dict[str, Any]:
+    """Slots known directly from the submittal candidate, independent of the rule
+    engine (so they map even when product/unit are unknown and the engine is gated).
+    These are submittal-stated inputs, surfaced review-required — not derived.
+    """
+    slots: dict[str, Any] = {}
+    if geo.get("finned_height") is not None:
+        slots["slot.FH"] = geo["finned_height"]
+    if geo.get("finned_length") is not None:
+        slots["slot.FL"] = geo["finned_length"]
+    if geo.get("rows") is not None:
+        slots["slot.ROWS"] = geo["rows"]
+    conn = geo.get("suction_conn_size")
+    if conn is not None:
+        slots["slot.RETURN_CONN_SIZE"] = conn
+    feeds = geo.get("feeds")
+    if feeds is not None:
+        slots["slot.CIRCUITING"] = (
+            f"{feeds} Feed / {circuits} circuits" if circuits and circuits > 1
+            else f"{feeds} Feed"
+        )
+    return slots
+
+
 def derive_slot_values(
     extract: dict[str, Any],
     *,
@@ -111,28 +236,46 @@ def derive_slot_values(
     circuits: int,
     product: str | None,
     unit_size: str | None,
+    geometry: dict[str, Any] | None = None,
+    panel: dict[str, Any] | None = None,
+    as_built_available: bool = True,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[str], bool]:
     """Logic-derived slot values (authoritative) + per-slot source/validation report.
 
     Returns (slot_values, slot_sources, review_items, header_engine_used).
+
+    When the as-built ``extract`` lacks geometry (a real submittal has no scanned
+    drawing to read), ``geometry`` supplies the engine inputs the caller already
+    resolved from the submittal candidate, and known-directly geometry is mapped to
+    slots review-required. ``as_built_available`` is False on the submittal path
+    (no genuine drawing) so the as-built text parse — which on a submittal is noise
+    (e.g. CD=1.0) — is not used to fill slots.
     """
-    as_built = slots_from_drawing_extract(extract)
+    geo = geometry or {}
+    as_built = slots_from_drawing_extract(extract) if as_built_available else {}
     slot_values: dict[str, Any] = {}
     sources: dict[str, dict[str, Any]] = {}
     review_items: list[str] = []
     header_engine_used = False
 
     if product and unit_size and coil_category:
+        rows = extract.get("rows") if extract.get("rows") is not None else geo.get("rows")
+        feeds = extract.get("feeds") if extract.get("feeds") is not None else geo.get("feeds")
+        finned_height = extract.get("fh") if extract.get("fh") is not None else geo.get("finned_height")
+        finned_length = extract.get("fl") if extract.get("fl") is not None else geo.get("finned_length")
+        conn = extract.get("return_conn_size")
+        if conn is None:
+            conn = geo.get("suction_conn_size")
         derived, response = build_drawing_slots(
             coil_type=coil_category,
             product_type=product,
             unit_size=unit_size,
-            rows=extract.get("rows"),
-            feeds=extract.get("feeds"),
+            rows=rows,
+            feeds=feeds,
             circuits=circuits,
-            suction_conn_size=_conn_float(extract.get("return_conn_size")),
-            finned_height=extract.get("fh"),
-            finned_length=extract.get("fl"),
+            suction_conn_size=_conn_float(conn),
+            finned_height=finned_height,
+            finned_length=finned_length,
             tag=extract.get("tag"),
         )
         derived.update(
@@ -151,7 +294,45 @@ def derive_slot_values(
                 "validation": _validation(value, as_built.get(slot)),
             }
 
-    # Slots the logic could not derive -> fall back to the as-built reading.
+    # Right-side spec panel (materials / fins / weight / circuiting / connection)
+    # straight from the submittal -> map review-required, independent of the
+    # engine gate. Does not overwrite an engine-derived value.
+    for slot, value in _panel_slots(panel, coil_category).items():
+        if slot not in slot_values:
+            slot_values[slot] = value
+            sources[slot] = {
+                "value": value,
+                "source": "submittal_input",
+                "as_built": as_built.get(slot),
+                "validation": "review_required",
+            }
+
+    # Header material: the locked evidence is consistently "Type L Copper" but
+    # it is NOT universal, so surface it as a review-required DEFAULT (not a
+    # confirmed/derived value) when the submittal does not state one.
+    if "slot.HEADER_MATERIAL" not in slot_values:
+        slot_values["slot.HEADER_MATERIAL"] = "Type L Copper"
+        sources["slot.HEADER_MATERIAL"] = {
+            "value": "Type L Copper",
+            "source": "review_default",
+            "as_built": as_built.get("slot.HEADER_MATERIAL"),
+            "validation": "review_required",
+        }
+
+    # Slots the engine could not derive but the submittal stated directly
+    # (FH/FL/ROWS/conn/circuiting) -> map them, review-required (not derived).
+    for slot, value in _submittal_geometry_slots(geo, circuits).items():
+        if slot not in slot_values:
+            slot_values[slot] = value
+            sources[slot] = {
+                "value": value,
+                "source": "submittal_input",
+                "as_built": as_built.get(slot),
+                "validation": "review_required",
+            }
+
+    # Remaining slots -> fall back to the as-built reading (genuine drawing only;
+    # on the submittal path as_built is empty so nothing noisy leaks in).
     for slot, value in as_built.items():
         if slot not in slot_values:
             slot_values[slot] = value
@@ -173,21 +354,51 @@ def pdf_text_to_template_drawing(
     """Classify the coil, select its template, and populate it with logic-derived
     dimensions (validated against the as-built reading).
 
-    product/unit come from the cover page token (cover_text) or, when the caller
-    already resolved them (e.g. the submittal intake's selected candidate), from
-    header_context["product_type"/"unit_size"] which takes precedence.
+    When the caller already resolved the coil (e.g. the submittal intake's selected
+    candidate), ``header_context`` carries the authoritative classification and
+    engine inputs and takes precedence over the as-built model-number parse:
+    ``coil_category``, ``coil_hand``, ``circuits``, ``special_feature`` (HGBP),
+    ``product_type``/``unit_size``, and geometry (``rows``/``feeds``/
+    ``finned_height``/``finned_length``/``suction_conn_size``). The
+    ``extract_coilmaster_drawing`` parse stays as the fallback for genuine scanned
+    CoilMaster drawing pages.
     """
     extract = extract_coilmaster_drawing(text)
-    coil_category = _COIL_CODE_TO_CATEGORY.get(
+    ctx = header_context or {}
+
+    # Caller-resolved classification (the submittal candidate path) is
+    # authoritative; the as-built model-number parse is the fallback for genuine
+    # scanned CoilMaster drawing pages.
+    coil_category = ctx.get("coil_category") or _COIL_CODE_TO_CATEGORY.get(
         extract.get("coil_code", ""), extract.get("coil_code")
     )
-    hand = extract.get("hand", "LH")
-    circuits = extract.get("circuits", 1)
-    header_type = f"Header {circuits}"
+    hand = ctx.get("coil_hand") or extract.get("hand") or "LH"
+    circuits = ctx.get("circuits") or extract.get("circuits") or 1
+    special_feature = ctx.get("special_feature")
+    header_type = None if special_feature else f"Header {circuits}"
+    # The candidate tag (a real coil tag like CDXC-1) wins over the as-built
+    # parse, which on a submittal grabs the unit tag (e.g. DOAS-1).
+    tag = ctx.get("tag") or extract.get("tag")
 
-    ctx = header_context or {}
-    unit_size = ctx.get("unit_size") or (extract_unit_size(cover_text) if cover_text else None)
-    product = ctx.get("product_type") or product_for_unit_size(unit_size)
+    # Auto-detect the product line + unit size from the submittal model code
+    # (e.g. "TR_C_009" -> TERRA H / 009) so the engine runs on feed. Deterministic
+    # and R-076-validated; surfaced review-required and overridable in the picker.
+    det_product, det_size = detect_product_and_size(cover_text)
+    unit_size = (
+        ctx.get("unit_size")
+        or det_size
+        or (extract_unit_size(cover_text) if cover_text else None)
+    )
+    product = ctx.get("product_type") or det_product or product_for_unit_size(unit_size)
+    product_size_auto_detected = bool(
+        det_product and not ctx.get("product_type") and not ctx.get("unit_size")
+    )
+
+    # The as-built text parse is trustworthy only when a genuine CoilMaster drawing
+    # was read (it always carries a model number). On the submittal path (caller
+    # classification, no model number) those readings are noise — don't fill slots.
+    submittal_path = bool(header_context)
+    as_built_available = (not submittal_path) or bool(extract.get("model_number"))
 
     selection = select_drawing_template(
         TemplateSelectionRequest(
@@ -195,6 +406,7 @@ def pdf_text_to_template_drawing(
             coil_category=coil_category,
             coil_hand=hand,
             header_type=header_type,
+            special_feature=special_feature,
         )
     )
 
@@ -204,7 +416,24 @@ def pdf_text_to_template_drawing(
         circuits=circuits,
         product=product,
         unit_size=unit_size,
+        geometry=ctx,
+        panel=ctx.get("panel"),
+        as_built_available=as_built_available,
     )
+
+    # Review-required product/size SUGGESTION from the unit family (e.g. a Terra
+    # unit -> TERRA product line). Only when the engineer has not already chosen
+    # a product line (the derive path supplies its own). Pre-fills the picker;
+    # the gate stays — the engine runs only after the engineer confirms.
+    suggested_product, suggested_unit_size = (
+        _suggest_product_and_size(cover_text) if not (product and unit_size) else (None, None)
+    )
+    if tag:
+        slot_values["slot.TAG"] = tag
+        slot_sources.setdefault(
+            "slot.TAG",
+            {"value": tag, "source": "submittal_input", "as_built": None, "validation": "review_required"},
+        )
     mismatches = {
         slot: meta["validation"]
         for slot, meta in slot_sources.items()
@@ -224,14 +453,24 @@ def pdf_text_to_template_drawing(
             "coil_category": coil_category,
             "hand": hand,
             "circuits": circuits,
-            "rows": extract.get("rows"),
-            "feeds": extract.get("feeds"),
-            "tag": extract.get("tag"),
-            "return_conn_size": extract.get("return_conn_size"),
+            "header_type": header_type,
+            "special_feature": special_feature,
+            "rows": extract.get("rows") if extract.get("rows") is not None else ctx.get("rows"),
+            "feeds": extract.get("feeds") if extract.get("feeds") is not None else ctx.get("feeds"),
+            "finned_height": extract.get("fh") if extract.get("fh") is not None else ctx.get("finned_height"),
+            "finned_length": extract.get("fl") if extract.get("fl") is not None else ctx.get("finned_length"),
+            "tag": tag,
+            "return_conn_size": extract.get("return_conn_size") or ctx.get("suction_conn_size"),
             "dimension_count": len(extract.get("dimensions", {})),
         },
         "unit_size": unit_size,
         "product_type": product,
+        "product_size_auto_detected": product_size_auto_detected,
+        "suggested_product_type": suggested_product,
+        "suggested_unit_size": suggested_unit_size,
+        # Echo the submittal spec-panel values so the UI re-derive can resend them
+        # and keep the right-side panel populated once dimensions are derived.
+        "panel": ctx.get("panel") or {},
         "template_id": selection.template_id,
         "template_found": selection.found,
         "generation_allowed": selection.generation_allowed,

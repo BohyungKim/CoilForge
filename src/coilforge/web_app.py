@@ -25,11 +25,13 @@ from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate
 from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
+    derive_coil_template_drawing,
     run_pdf_to_direct_draft_workflow,
     run_pdf_to_drawing_workflow,
     run_submittal_to_direct_draft_workflow,
     run_submittal_to_drawing_workflow,
 )
+from coilforge.submittal.coilmaster_drawing_extract import product_size_options
 
 
 def _cover_page_hint_from_request(request: Request) -> int | None:
@@ -207,6 +209,20 @@ async def workflow_pdf_to_drawing(request: Request):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/coil-drawing/product-options")
+async def coil_drawing_product_options():
+    """Valid product line -> unit sizes (R-076) for the per-coil picker that
+    unlocks the rule-engine dimensions."""
+    return {"product_lines": product_size_options()}
+
+
+@app.post("/api/coil-drawing/derive")
+async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dict)):
+    """Re-derive a coil's template drawing with an engineer-chosen product line +
+    unit size so the engine fills the dimensions. Review-aid only."""
+    return jsonable_encoder(derive_coil_template_drawing(request or {}))
 
 
 def _build_compatibility_payload(

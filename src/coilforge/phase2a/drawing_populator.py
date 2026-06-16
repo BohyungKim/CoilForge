@@ -36,17 +36,20 @@ def build_phase2a_state_from_drawing_intent(
         release_status="review_aid_only",
         drawing_status="generated_with_warnings" if intent.preview_allowed else "generation_blocked",
         observed_oal=title.get("observed_oal"),
-        return_header_diameter=title.get("return_header_diameter")
-        or _drawing_param_value(params, "HD"),
-        distributor_header_diameter=title.get("distributor_header_diameter")
-        or _drawing_param_value(params, "HD"),
-        return_stub_length=title.get("return_stub_length") or _drawing_param_value(params, "SL"),
-        supply_offset_i1=title.get("supply_offset_i1") or _drawing_param_value(params, "I"),
-        supply_spacing_s1=title.get("supply_spacing_s1") or _drawing_param_value(params, "S"),
-        return_offset_o2=title.get("return_offset_o2") or _drawing_param_value(params, "O"),
-        return_spacing_r2=title.get("return_spacing_r2") or _drawing_param_value(params, "R"),
-        header_face=title.get("header_face") or _drawing_param_value(params, "HF"),
-        return_face=title.get("return_face") or _drawing_param_value(params, "RF"),
+        # Drawing Parameters are the single source of truth: the resolved/engine
+        # parameter value wins; title_block is only a fallback for dims the param
+        # set does not carry. (Distributor HD comes from HDx1, not HD.)
+        return_header_diameter=_resolve_dim(params, "HD", title, "return_header_diameter"),
+        distributor_header_diameter=_resolve_dim(
+            params, "HDx1", title, "distributor_header_diameter"
+        ),
+        return_stub_length=_resolve_dim(params, "SL", title, "return_stub_length"),
+        supply_offset_i1=_resolve_dim(params, "I", title, "supply_offset_i1"),
+        supply_spacing_s1=_resolve_dim(params, "S", title, "supply_spacing_s1"),
+        return_offset_o2=_resolve_dim(params, "O", title, "return_offset_o2"),
+        return_spacing_r2=_resolve_dim(params, "R", title, "return_spacing_r2"),
+        header_face=_resolve_dim(params, "HF", title, "header_face"),
+        return_face=_resolve_dim(params, "RF", title, "return_face"),
         coil_id=title.get("coil_id", ""),
         item_number=title.get("item_number", "001"),
         revision=title.get("revision", "A"),
@@ -96,3 +99,12 @@ def _drawing_param_value(params, key: str):
     if parameter is None:
         return None
     return parameter.value
+
+
+def _resolve_dim(params, param_key: str, title, title_key: str):
+    """Drawing-parameter value wins; fall back to title_block only when the param
+    has no value. Uses an explicit None check so a legitimate 0.0 is kept."""
+    value = _drawing_param_value(params, param_key)
+    if value is not None:
+        return value
+    return title.get(title_key)

@@ -503,6 +503,8 @@ BUCKETS = [
      "Case/#2/EZC-0012 - HG_1_RH/RHHGRC-2.pdf", "EZC-0012"),
     ("coilmaster_hgrh_lh_header2", "hgrh", "HGRH", "LH", "Header 2", None,
      "Case/#2/EZC-0008 - HG_2_LH/RHHGRC-1.pdf", "EZC-0008"),
+    ("coilmaster_hgrh_rh_header3", "hgrh", "HGRH", "RH", "Header 3", None,
+     "Case/#3/EZC-0016 - HG_3_RH/RHHGRC-1.pdf", "EZC-0016"),
     ("coilmaster_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
      "Case/#2/EZC-0014 - CW_LH/CCWC-1.pdf", "EZC-0014"),
     ("coilmaster_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
@@ -516,6 +518,8 @@ MIRRORS = [
     ("coilmaster_dx_lh_header2", "dx", "coilmaster_dx_rh_header2"),
     ("coilmaster_dx_rh_header3", "dx", "coilmaster_dx_lh_header3"),
     ("coilmaster_hgrh_rh_header2", "hgrh", "coilmaster_hgrh_lh_header2"),
+    # RH seeded from EZC-0016 -> LH is the mirror (create_mirror handles RH->LH).
+    ("coilmaster_hgrh_lh_header3", "hgrh", "coilmaster_hgrh_rh_header3"),
     ("coilmaster_cwc_rh", "cwc", "coilmaster_cwc_lh"),
     ("coilmaster_hwc_rh", "hwc", "coilmaster_hwc_lh"),
     ("coilmaster_dx_rh_hgbp", "dx", "coilmaster_dx_lh_hgbp"),

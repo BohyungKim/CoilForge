@@ -45,7 +45,7 @@ _CWC_IO_HD_SL_IDS = {
 _OTHER_SPECIAL_IDS = {
     "R-034",  # DX distributor S placement (formula)
     "R-048",  # HGRH S/R positions (formula)
-    "R-049",  # HGRH single-feed note
+    "R-049",  # HGRH single-feed note — suppressed (treated as standard one-header)
     "R-051",  # cross-coil validation (no value rule)
     "R-068",  # CWC/HWC S/R "leave defaults" no-op
     "R-074",  # casing dims lookup
@@ -386,18 +386,11 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     ),
                 )
 
-    # --- HGRH single-feed note (R-049) ---
-    if coil == CoilType.HGRH and request.feeds == 1:
-        rule = index["R-049"]
-        place(
-            "single_feed_note",
-            FieldResult(
-                value=_single_feed_note(product),
-                confidence=Confidence.MEDIUM,
-                evidence_refs=rule["evidence_refs"],
-                review_required=True,
-            ),
-        )
+    # --- HGRH single-feed note (R-049): intentionally NOT emitted ---
+    # John decision 2026-06-15: a single-feed HGRH is treated the same as a
+    # standard one-header HGRH, so the advisory single-feed header/stubout note
+    # is suppressed. R-049 stays in _SPECIAL_IDS so the generic emitter skips it
+    # (no value is produced for `single_feed_note`).
 
     # --- HGRH S/R positions (R-048) ---
     if coil == CoilType.HGRH:
@@ -629,8 +622,3 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
         )
 
 
-def _single_feed_note(product: ProductFamily) -> str:
-    """R-049 per-platform single-feed header/stubout note (advisory wording)."""
-    if product == ProductFamily.VENTUM_PLUS:
-        return "Single feed: add headers & stubouts (e.g. O2=2, SL2=10 for Ventum+)."
-    return "Single feed: add headers & stubouts (e.g. O2=2, SL2=8)."

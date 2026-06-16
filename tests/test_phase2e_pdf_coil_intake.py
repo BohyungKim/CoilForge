@@ -289,6 +289,31 @@ def test_oxygen8_cooling_dx_and_hgrh_sections_extract_detail_fields_until_stop_h
     assert hgrh_fields["face_velocity_fpm"]["value"] == 466.88
 
 
+def test_each_cover_coil_links_to_its_drawing_template_from_classification() -> None:
+    """Regression for the real Oxygen8 submittal: every cover coil gets its OWN
+    template_drawing, linked from the candidate's coil type / hand / header qty
+    (not the as-built model-number parse, which a submittal does not satisfy)."""
+    workflow = run_pdf_to_drawing_workflow(_oxygen8_cooling_dx_and_hgrh_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+
+    dx = pages[0]["workflow"]["template_drawing"]
+    hgrh = pages[1]["workflow"]["template_drawing"]
+
+    assert dx["template_found"] is True
+    assert dx["template_id"] == "coilmaster_dx_lh_header1"
+    assert dx["extracted"]["coil_category"] == "DX"
+    assert dx["extracted"]["tag"] == "CDXC-1"
+
+    assert hgrh["template_found"] is True
+    assert hgrh["template_id"] == "coilmaster_hgrh_lh_header1"
+    assert hgrh["extracted"]["coil_category"] == "HGRH"
+    assert hgrh["extracted"]["tag"] == "RHHGRC-1"
+
+    # The selected (top-level) template_drawing matches the selected coil page,
+    # and stays review-aid only.
+    assert workflow["template_drawing"]["export_allowed"] is False
+
+
 def test_combined_detail_header_extracts_entering_values_without_max_db_overwrite() -> None:
     workflow = run_pdf_to_drawing_workflow(_oxygen8_combined_detail_header_pdf_bytes())
     candidate = workflow["pdf_coil_pages"][0]["workflow"]["candidates"][0]
@@ -646,6 +671,32 @@ def test_pdf_to_drawing_api_rejects_invalid_pdf_bytes() -> None:
     assert "Unable to extract text from PDF bytes" in response.json()["detail"]
 
 
+def test_coil_drawing_product_options_endpoint() -> None:
+    response = client.get("/api/coil-drawing/product-options")
+    assert response.status_code == 200
+    lines = response.json()["product_lines"]
+    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
+    assert "A16" in lines["NOVA"]
+
+
+def test_coil_drawing_derive_endpoint_runs_engine_with_chosen_product_size() -> None:
+    response = client.post(
+        "/api/coil-drawing/derive",
+        json={
+            "coil_category": "DX", "coil_hand": "RH", "circuits": 1, "tag": "CDXC-1",
+            "rows": 6, "feeds": 4, "finned_height": 12, "finned_length": 22,
+            "product_type": "NOVA", "unit_size": "A16",
+        },
+    )
+    assert response.status_code == 200
+    td = response.json()
+    assert td["template_id"] == "coilmaster_dx_rh_header1"
+    assert td["header_engine_used"] is True
+    assert td["drawing_value_source"] == "logic_derived"
+    assert td["slot_values"]["slot.TF"] == 0.625
+    assert td["export_allowed"] is False
+
+
 def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     index = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(
         encoding="utf-8"
@@ -682,6 +733,14 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     )
     assert "runWorkflowFromPdf" in app_js
     assert '"/api/workflow/pdf-to-drawing"' in app_js
+    # Per-coil product line + unit size picker that unlocks the engine dims.
+    assert "templateDrawingPicker" in app_js
+    assert "ensureProductOptions" in app_js
+    assert '"/api/coil-drawing/product-options"' in app_js
+    assert '"/api/coil-drawing/derive"' in app_js
+    assert "coil-product-line" in app_js
+    assert "coil-unit-size" in app_js
+    assert ".coil-drawing-picker" in style
     assert '"Content-Type": "application/pdf"' in app_js
     assert "formatPdfAnalysisError" in app_js
     assert "text could not be extracted from this PDF" in app_js
@@ -723,7 +782,11 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     # PDF-reproduction template drawing is carried into uiState and rendered.
     assert "template_drawing: workflow.template_drawing || null" in app_js
     assert "renderTemplateDrawingPreview" in app_js
-    assert "Reproduced from submittal drawing" in app_js
+    # Classification-first rendering: the drawing links from the submittal coil
+    # type / hand / header qty, and the dimension state is reported honestly.
+    assert "coilClassificationSummary" in app_js
+    assert "logic-derived drawing" in app_js
+    assert "no matching drawing template registered" in app_js
     assert "Review-aid only — never manufacturing-approved." in app_js
     assert "templateDrawingBody" in app_js
     assert 'id="drawing-template-status"' in index

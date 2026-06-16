@@ -24,8 +24,10 @@ from coilforge.schemas.header_prepopulate import (
     HeaderPrepopulateRequest,
     HeaderPrepopulateResponse,
     ProductFamily,
+    TerraVariant,
 )
 from coilforge.services.header_prepopulate_engine import prepopulate
+from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 from coilforge.services.json_drawing_link import engine_slot_bridge
 from coilforge.template_population.catalog import (
     TemplateSelectionRequest,
@@ -74,15 +76,24 @@ def build_header_request(
     with_hgrh: bool | None = None,
     hgrh_conn_size: float | None = None,
     hot_gas_bypass: bool | None = None,
+    terra_variant: str | None = None,
 ) -> HeaderPrepopulateRequest:
     """Map coil inputs to a HeaderPrepopulateRequest.
 
     product_type/unit_size are not on the Direct Coil form (they come from the
     submittal/unit context); the caller supplies them.
+
+    ``product_type`` may be a picker label ("TERRA H" / "TERRA V"); it is
+    resolved to the engine product family plus the matching ``terra_variant``,
+    so the Terra orientation the engineer chose drives the variant-gated rules.
+    An explicit ``terra_variant`` argument overrides the label-derived one.
     """
+    family, derived_variant = resolve_product_line(product_type)
+    variant_str = terra_variant or derived_variant
     return HeaderPrepopulateRequest(
         type_of_coil=_COIL_TYPE[coil_type.upper()],
-        product_type=_PRODUCT[product_type.upper()],
+        product_type=_PRODUCT[(family or product_type).upper()],
+        terra_variant=TerraVariant(variant_str) if variant_str else None,
         unit_size=unit_size,
         rows=rows,
         feeds=feeds,

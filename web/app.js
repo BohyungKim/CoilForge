@@ -9,6 +9,9 @@ const state = {
   coverPageHint: "",
   pdfCoilPages: [],
   activePdfCoilPageIndex: -1,
+  productOptions: null,
+  loadingProductOptions: false,
+  lastTemplateDrawing: null,
 };
 
 const LEGACY_COMPATIBILITY_ENDPOINT = "/api/compatibility/default-review";
@@ -438,8 +441,9 @@ function renderDirectCoilScreenMirror(uiState) {
       "DRAWING PARAMETERS",
       renderDcDrawingParameters(uiState, fieldsByLabel),
     )}
-    ${renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel)}
   `;
+  // The coil drawing is rendered on the dedicated Drawing tab
+  // (renderDcEmbeddedDrawingPreview) rather than duplicated inside the mirror.
 }
 
 function buildDirectCoilFieldLookup(uiState, surface) {
@@ -1746,6 +1750,7 @@ function renderDrawingPreview(uiState) {
 // read directly and pushed into the matching seeded template. This is distinct
 // from the header-engine prediction preview (drawing_preview.svg).
 function renderTemplateDrawingPreview(templateDrawing) {
+  state.lastTemplateDrawing = templateDrawing;
   const rendered = Boolean(templateDrawing.generation_allowed && templateDrawing.svg);
   if (elements.drawingTemplateStatus) {
     elements.drawingTemplateStatus.className = `drawing-template-status ${rendered ? "status-review-required" : "status-blocked"}`;
@@ -1755,36 +1760,200 @@ function renderTemplateDrawingPreview(templateDrawing) {
     `;
   }
   if (elements.previewStatus) {
-    elements.previewStatus.textContent = rendered ? "Reproduced from PDF" : "Links — artwork not seeded";
+    let chip;
+    if (!rendered) {
+      chip = templateDrawing.template_found ? "Links — artwork not seeded" : "Not registered";
+    } else {
+      chip = templateDrawing.header_engine_used ? "Logic-derived" : "Linked — review dims";
+    }
+    elements.previewStatus.textContent = chip;
     elements.previewStatus.className = `status-chip ${rendered ? "status-review-required" : "status-blocked"}`;
   }
   elements.drawingPreview.innerHTML = `
     <div class="template-drawing-preview">
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
+      ${templateDrawingPicker(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
+    </div>
+  `;
+  attachCoilDrawingPicker(templateDrawing);
+}
+
+// Per-coil product line + unit size picker. A submittal does not state the
+// CoilForge product line / unit size, which the rule engine needs to derive the
+// header dimensions. When John picks them, /api/coil-drawing/derive re-runs the
+// engine so CD/TF/BF/CH/HDx1/HD2/SL/I/O/R become logic-derived. Review-aid only.
+async function ensureProductOptions() {
+  if (state.productOptions || state.loadingProductOptions) {
+    return;
+  }
+  state.loadingProductOptions = true;
+  try {
+    state.productOptions = await requestJson("/api/coil-drawing/product-options");
+    if (state.lastTemplateDrawing) {
+      renderTemplateDrawingPreview(state.lastTemplateDrawing);
+    }
+  } catch (error) {
+    state.loadingProductOptions = false;
+  }
+}
+
+function templateDrawingPicker(templateDrawing) {
+  if (!templateDrawing.template_found) {
+    return "";
+  }
+  const options = state.productOptions && state.productOptions.product_lines;
+  if (!options) {
+    ensureProductOptions();
+    return `<div class="coil-drawing-picker"><span class="coil-picker-hint">Loading product lines…</span></div>`;
+  }
+  // Pre-fill the product line from the review-required suggestion derived from
+  // the unit family (e.g. a Terra unit -> TERRA). The engineer still picks the
+  // unit size to derive, so the engine gate is preserved.
+  const curProduct = templateDrawing.product_type || templateDrawing.suggested_product_type || "";
+  const curSize = templateDrawing.unit_size || "";
+  const products = Object.keys(options);
+  const sizes = options[curProduct] || [];
+  const productOpts = [`<option value="">— product line —</option>`]
+    .concat(products.map((p) =>
+      `<option value="${escapeHtml(p)}"${p === curProduct ? " selected" : ""}>${escapeHtml(p)}</option>`))
+    .join("");
+  const sizeOpts = [`<option value="">— unit size —</option>`]
+    .concat(sizes.map((s) =>
+      `<option value="${escapeHtml(s)}"${s === curSize ? " selected" : ""}>${escapeHtml(s)}</option>`))
+    .join("");
+  const derived = templateDrawing.header_engine_used;
+  const suggestion = !derived && templateDrawing.suggested_product_type
+    ? ` Suggested from the unit type: ${templateDrawing.suggested_product_type}${
+        templateDrawing.suggested_unit_size ? ` / ${templateDrawing.suggested_unit_size}` : ""
+      } (review required).`
+    : "";
+  const derivedHint = templateDrawing.product_size_auto_detected
+    ? "Auto-detected product line + unit size from the model code — review and override if needed:"
+    : "Dimensions logic-derived for the selected product line + unit size:";
+  return `
+    <div class="coil-drawing-picker ${derived ? "is-derived" : "is-pending"}">
+      <span class="coil-picker-hint">${derived
+        ? escapeHtml(derivedHint)
+        : "Pick a product line + unit size to derive the header dimensions (rule engine):" + escapeHtml(suggestion)}</span>
+      <label>Product line
+        <select id="coil-product-line">${productOpts}</select>
+      </label>
+      <label>Unit size
+        <select id="coil-unit-size"${curProduct ? "" : " disabled"}>${sizeOpts}</select>
+      </label>
     </div>
   `;
 }
 
-function templateDrawingLabel(templateDrawing) {
-  if (templateDrawing.generation_allowed && templateDrawing.svg) {
-    return `Reproduced from submittal drawing: ${templateDrawing.template_id}`;
+function attachCoilDrawingPicker(templateDrawing) {
+  const productSel = document.querySelector("#coil-product-line");
+  const sizeSel = document.querySelector("#coil-unit-size");
+  if (!productSel || !sizeSel) {
+    return;
   }
-  if (templateDrawing.template_found) {
-    return `Links to ${templateDrawing.template_id} — artwork not seeded yet`;
-  }
-  return "No drawing template registered for this coil";
+  const options = (state.productOptions && state.productOptions.product_lines) || {};
+  productSel.addEventListener("change", () => {
+    const sizes = options[productSel.value] || [];
+    sizeSel.innerHTML = [`<option value="">— unit size —</option>`]
+      .concat(sizes.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`))
+      .join("");
+    sizeSel.disabled = !productSel.value;
+  });
+  sizeSel.addEventListener("change", () => {
+    if (productSel.value && sizeSel.value) {
+      deriveCoilDrawing(templateDrawing, productSel.value, sizeSel.value);
+    }
+  });
 }
 
-function templateDrawingReason(templateDrawing) {
+async function deriveCoilDrawing(templateDrawing, productLine, unitSize) {
+  const ex = templateDrawing.extracted || {};
+  const spec = {
+    coil_category: ex.coil_category,
+    coil_hand: ex.hand,
+    circuits: ex.circuits,
+    special_feature: ex.special_feature,
+    tag: ex.tag,
+    rows: ex.rows,
+    feeds: ex.feeds,
+    finned_height: ex.finned_height,
+    finned_length: ex.finned_length,
+    suction_conn_size: ex.return_conn_size,
+    product_type: productLine,
+    unit_size: unitSize,
+    // Round-trip the submittal spec-panel values so the right-side panel stays
+    // populated after the dimensions are logic-derived.
+    panel: templateDrawing.panel,
+  };
+  if (elements.previewStatus) {
+    elements.previewStatus.textContent = "Deriving…";
+  }
+  try {
+    const updated = await requestJson("/api/coil-drawing/derive", {
+      method: "POST",
+      body: JSON.stringify(spec),
+    });
+    // The panel mirrors the drawing's slot values: refresh it from the re-derived
+    // response so the Drawing Parameters stay aligned with the new dimensions.
+    if (updated.drawing_parameter_set && state.ui) {
+      state.ui.drawing_parameters = updated.drawing_parameter_set;
+      renderDrawingParameters(state.ui);
+    }
+    renderTemplateDrawingPreview(updated);
+  } catch (error) {
+    if (elements.drawingTemplateStatus) {
+      elements.drawingTemplateStatus.innerHTML = `
+        <strong>Could not derive dimensions</strong>
+        <span>${escapeHtml(error.message)}</span>
+      `;
+    }
+  }
+}
+
+// Short coil classification summary (coil type / hand / header qty / HGBP) —
+// the fields that actually pick a template, led with so the engineer sees what
+// was classified rather than a bare dimension dump.
+function coilClassificationSummary(templateDrawing) {
   const extracted = templateDrawing.extracted || {};
   const parts = [
     extracted.coil_category,
     extracted.hand,
-    extracted.circuits ? `${extracted.circuits} circuit${extracted.circuits > 1 ? "s" : ""}` : null,
+    extracted.header_type
+      || (extracted.circuits ? `Header ${extracted.circuits}` : null),
+    extracted.special_feature ? `${extracted.special_feature} (special)` : null,
   ].filter(Boolean);
-  const base = parts.length ? `${parts.join(" / ")}. ` : "";
-  return `${base}Read from the as-built drawing. Review-aid only — never manufacturing-approved.`;
+  return parts.join(" / ");
+}
+
+function templateDrawingLabel(templateDrawing) {
+  const summary = coilClassificationSummary(templateDrawing);
+  if (!templateDrawing.template_found) {
+    return summary
+      ? `${summary} — no matching drawing template registered`
+      : "Could not classify this coil — REVIEW REQUIRED";
+  }
+  const prefix = summary ? `${summary} — ` : "";
+  if (templateDrawing.generation_allowed && templateDrawing.svg) {
+    return templateDrawing.header_engine_used
+      ? `${prefix}logic-derived drawing (${templateDrawing.template_id})`
+      : `${prefix}linked to ${templateDrawing.template_id} — dimensions REVIEW REQUIRED`;
+  }
+  return `${prefix}links to ${templateDrawing.template_id} — artwork not seeded yet`;
+}
+
+function templateDrawingReason(templateDrawing) {
+  if (!templateDrawing.template_found) {
+    return "No catalog template matches this coil type / hand / header count. "
+      + "Confirm the classification before relying on a drawing. Review-aid only.";
+  }
+  if (!templateDrawing.header_engine_used) {
+    return "Template linked from the submittal classification. Dimensions need a "
+      + "product line + unit size to derive — unfilled values stay REVIEW REQUIRED. "
+      + "Review-aid only — never manufacturing-approved.";
+  }
+  return "Dimensions logic-derived from the rule engine; values printed on any "
+    + "as-built are read only to validate. Review-aid only — never manufacturing-approved.";
 }
 
 function templateDrawingCaption(templateDrawing) {
@@ -1793,6 +1962,8 @@ function templateDrawingCaption(templateDrawing) {
     ["Tag", extracted.tag],
     ["Coil", extracted.coil_category],
     ["Hand", extracted.hand],
+    ["Header", extracted.header_type],
+    ["Special", extracted.special_feature],
     ["Circuits", extracted.circuits],
     ["Rows", extracted.rows],
     ["Feeds", extracted.feeds],
@@ -1810,6 +1981,10 @@ function templateDrawingBody(templateDrawing, rendered) {
   if (rendered) {
     return templateDrawing.svg;
   }
+  const found = Boolean(templateDrawing.template_found);
+  const message = found
+    ? "Template artwork is not seeded yet for this coil; the classification below links it to the catalog."
+    : "No catalog template matched this coil's type / hand / header count — classification is REVIEW REQUIRED before a drawing can be linked.";
   const slots = templateDrawing.slot_values || {};
   const dims = Object.entries(slots)
     .filter(([key]) => key.startsWith("slot."))
@@ -1818,8 +1993,8 @@ function templateDrawingBody(templateDrawing, rendered) {
   return `
     <div class="template-drawing-pending">
       <strong>${escapeHtml(templateDrawingLabel(templateDrawing))}</strong>
-      <p>The coil's values are fully extracted and ready to drop in as soon as this template's artwork is seeded.</p>
-      ${dims ? `<ul class="template-drawing-slots">${dims}</ul>` : ""}
+      <p>${escapeHtml(message)}</p>
+      ${dims ? `<p class="template-drawing-slots-label">Values read so far (as-built):</p><ul class="template-drawing-slots">${dims}</ul>` : ""}
     </div>
   `;
 }
@@ -2094,20 +2269,27 @@ function renderBlockedFields(uiState) {
   });
 }
 
+const TAB_VIEWS = {
+  checklist: "checklist",
+  performance: "performance",
+  drawing: "drawing",
+  compatibility: "compatibility",
+  review: "review",
+};
+
 function updateTabVisibility() {
+  const activeView = TAB_VIEWS[state.activeTab] || "checklist";
+  document.body.dataset.activeView = activeView;
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === state.activeTab);
   });
+  // Real tabs: show only the blocks tagged for the active view.
+  document.querySelectorAll("[data-view]").forEach((block) => {
+    block.classList.toggle("is-hidden-view", block.dataset.view !== activeView);
+  });
+  // Within the checklist view, every draft field row stays visible.
   document.querySelectorAll(".draft-field").forEach((row) => {
-    const group = row.dataset.group;
-    const show =
-      state.activeTab === "checklist" ||
-      (state.activeTab === "performance" && group.includes("Airside")) ||
-      (state.activeTab === "performance" && group.includes("Refrigerant")) ||
-      (state.activeTab === "drawing" && group.includes("Drawing")) ||
-      state.activeTab === "compatibility" ||
-      state.activeTab === "review";
-    row.hidden = !show;
+    row.hidden = false;
   });
 }
 
@@ -2526,6 +2708,69 @@ document.querySelector("#calculate-button")?.addEventListener("click", () => {
   elements.savedStatus.textContent = "Calculate is not implemented in this review shell";
 });
 
+// --- Theme (light/dark) toggle ---------------------------------------------
+// The pre-paint script in index.html has already set data-theme on <html> from
+// localStorage or the OS preference, so here we just sync the toggle UI and
+// handle clicks. localStorage key: "coilforge-theme" ("light" | "dark").
+const THEME_STORAGE_KEY = "coilforge-theme";
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  const isDark = theme === "dark";
+  if (isDark) {
+    root.setAttribute("data-theme", "dark");
+  } else {
+    root.removeAttribute("data-theme");
+  }
+  const toggle = document.querySelector("#theme-toggle");
+  const label = document.querySelector("#theme-toggle-label");
+  const thumb = document.querySelector("#theme-toggle-thumb");
+  if (toggle) toggle.setAttribute("aria-checked", String(isDark));
+  if (label) label.textContent = isDark ? "Dark" : "Light";
+  if (thumb) thumb.textContent = isDark ? "☾" : "☀";
+}
+
+function initThemeToggle() {
+  // Single source of truth: whatever the pre-paint script already resolved.
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+
+  const toggle = document.querySelector("#theme-toggle");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      applyTheme(next);
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, next);
+      } catch (e) {
+        /* storage unavailable — theme still applies for this session */
+      }
+    });
+  }
+
+  // Follow OS changes only while the user has not made an explicit choice.
+  if (window.matchMedia) {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event) => {
+      let stored = null;
+      try {
+        stored = localStorage.getItem(THEME_STORAGE_KEY);
+      } catch (e) {
+        stored = null;
+      }
+      if (!stored) applyTheme(event.matches ? "dark" : "light");
+    };
+    if (media.addEventListener) {
+      media.addEventListener("change", onChange);
+    } else if (media.addListener) {
+      media.addListener(onChange);
+    }
+  }
+}
+
+initThemeToggle();
+
 loadDefaultDemoWorkflow().catch((error) => {
   document.body.innerHTML = `<main class="load-error"><pre>${error.message}</pre></main>`;
 });
+
+ensureProductOptions();

@@ -46,8 +46,6 @@ def test_missing_reference_buckets_are_placeholder_blocked() -> None:
     for template_id in (
         "coilmaster_dx_lh_header4",
         "coilmaster_dx_rh_header4",
-        "coilmaster_hgrh_lh_header3",
-        "coilmaster_hgrh_rh_header3",
         "coilmaster_hgrh_lh_header4",
         "coilmaster_hgrh_rh_header4",
     ):
@@ -79,7 +77,7 @@ def test_selector_chooses_dx_lh_header1_seed_template() -> None:
     assert result.generation_allowed is True
 
 
-def test_selector_blocks_dx_header4_and_hgrh_header3() -> None:
+def test_selector_blocks_dx_header4_and_hgrh_header4() -> None:
     dx = select_drawing_template(
         TemplateSelectionRequest(
             supplier="coilmaster",
@@ -93,16 +91,44 @@ def test_selector_blocks_dx_header4_and_hgrh_header3() -> None:
             supplier="coilmaster",
             coil_category="HGRH",
             coil_hand="LH",
-            header_type="Header 3",
+            header_type="Header 4",
         )
     )
 
     assert dx.template_id == "coilmaster_dx_rh_header4"
     assert dx.template_status == "placeholder_blocked"
     assert dx.generation_allowed is False
-    assert hgrh.template_id == "coilmaster_hgrh_lh_header3"
+    assert hgrh.template_id == "coilmaster_hgrh_lh_header4"
     assert hgrh.template_status == "placeholder_blocked"
     assert hgrh.generation_allowed is False
+
+
+def test_selector_chooses_hgrh_header3_seed_and_mirror() -> None:
+    # HGRH Header 3 is now seeded from EZC-0016 (RH) with its LH mirror.
+    rh = select_drawing_template(
+        TemplateSelectionRequest(
+            supplier="coilmaster",
+            coil_category="HGRH",
+            coil_hand="RH",
+            header_type="Header 3",
+            source_case_id="EZC-0016",
+        )
+    )
+    lh = select_drawing_template(
+        TemplateSelectionRequest(
+            supplier="coilmaster",
+            coil_category="HGRH",
+            coil_hand="LH",
+            header_type="Header 3",
+        )
+    )
+
+    assert rh.template_id == "coilmaster_hgrh_rh_header3"
+    assert rh.template_status == "active_review_aid"
+    assert rh.generation_allowed is True
+    assert lh.template_id == "coilmaster_hgrh_lh_header3"
+    assert lh.template_status == "active_review_aid"
+    assert lh.generation_allowed is True
 
 
 def test_hgbp_selects_special_feature_template_not_normal_header1() -> None:

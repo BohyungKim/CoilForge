@@ -477,17 +477,25 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH position formulas", "CHK HGRH!C42:C49"]
 
+  # R-049 is intentionally NOT emitted (John 2026-06-15): a single-feed HGRH is
+  # treated the same as a standard one-header HGRH, so the advisory single-feed
+  # header/stubout note is suppressed. The entry is retained for traceability and
+  # kept in the engine's _SPECIAL_IDS so the generic emitter does not pick it up.
   - rule_id: R-049
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: single_feed_note
     value: null
     kind: special_single_feed_note
+    emit: false
     only_when: feeds_eq_1
     requires_inputs: [feeds]
     confidence: MEDIUM
     review_required: true
     blocked_reason: null
-    evidence_refs: ["SOP §GEN SPECIAL CASE single feed", "CHK HGRH!C26"]
+    evidence_refs:
+      - "SOP §GEN SPECIAL CASE single feed"
+      - "CHK HGRH!C26"
+      - "John decision 2026-06-15: single-feed HGRH = standard one-header; note NOT emitted"
 
   - rule_id: R-050
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -763,15 +771,15 @@ rules:
       "NOVA|CPLD W/ COOLING|C48": { casing_width: 66, casing_height: 38 }
       "NOVA|CPLD W/ COOLING|C58": { casing_width: 70, casing_height: 42 }
       "NOVA|CPLD W/ COOLING|C70": { casing_width: 76, casing_height: 46 }
-      "TERRA|INTEGRATED|6": { casing_width: 30, casing_height: 20 }
-      "TERRA|INTEGRATED|9": { casing_width: 36, casing_height: 20 }
-      "TERRA|INTEGRATED|12": { casing_width: 44, casing_height: 20 }
-      "TERRA|INTEGRATED|15": { casing_width: 50, casing_height: 20 }
-      "TERRA|INTEGRATED|18": { casing_width: 50, casing_height: 21 }
-      "TERRA|INTEGRATED|24": { casing_width: 62, casing_height: 21 }
-      "TERRA|INTEGRATED|32": { casing_width: 54, casing_height: 30 }
-      "TERRA|INTEGRATED|40": { casing_width: 62, casing_height: 30 }
-      "TERRA|INTEGRATED|48": { casing_width: 72, casing_height: 30 }
+      "TERRA|INTEGRATED|006": { casing_width: 30, casing_height: 20 }
+      "TERRA|INTEGRATED|009": { casing_width: 36, casing_height: 20 }
+      "TERRA|INTEGRATED|012": { casing_width: 44, casing_height: 20 }
+      "TERRA|INTEGRATED|015": { casing_width: 50, casing_height: 20 }
+      "TERRA|INTEGRATED|018": { casing_width: 50, casing_height: 21 }
+      "TERRA|INTEGRATED|024": { casing_width: 62, casing_height: 21 }
+      "TERRA|INTEGRATED|032": { casing_width: 54, casing_height: 30 }
+      "TERRA|INTEGRATED|040": { casing_width: 62, casing_height: 30 }
+      "TERRA|INTEGRATED|048": { casing_width: 72, casing_height: 30 }
       "VENTUM_H|CPLD EXT|H05": { casing_width: 29, casing_height: 18 }
       "VENTUM_H|CPLD EXT|H10": { casing_width: 36, casing_height: 18 }
       "VENTUM_H|CPLD EXT|H15": { casing_width: 37, casing_height: 21 }
@@ -819,7 +827,11 @@ rules:
     evidence_refs: ["CHK Units sheet"]
     enumerations:
       NOVA: [A16, A18, B20, B22, C20, C22, C24, C26, C30, C32, C40, C48, C58, C70]
-      TERRA: ["6", "9", "12", "15", "18", "24", "32", "40", "48"]
+      # Terra unit sizes are zero-padded to 3 digits (009 / 006 / 012 …) so the
+      # picker tokens match the submittal callouts (John 2026-06-15). Terra is
+      # split into TERRA H / TERRA V in the picker (see product_size_options);
+      # both orientations share this size set.
+      TERRA: ["006", "009", "012", "015", "018", "024", "032", "040", "048"]
       VENTUM_H: [H05, H10, H15, H20, H25, H30]
       VENTUM_PLUS: [V20, V25, V30, V40, V50, V60, V80, V100, V120, V150]
 
