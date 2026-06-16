@@ -246,6 +246,24 @@ def test_dimension_text_is_numbers_only_not_label_codes() -> None:
     assert ">5.5<" in res.side_svg  # CD = 5.5 shown as the number
 
 
+def test_side_view_dimensions_s1_r2_and_distributor_extension() -> None:
+    import re
+
+    sv = sanitized_slots()
+    sv["slot.S1"] = 2.75
+    sv["slot.R2"] = 0.625
+    sv["slot.DIST_EXT"] = 6.0
+    res = render(sv)
+    dims = {
+        code: re.findall(r'class="dim-label"[^>]*>([^<]*)<', body)
+        for code, body in re.findall(r'<g data-dim="([^"]+)"[^>]*>(.*?)</g>', res.side_svg)
+    }
+    assert dims.get("S1") == ["2.75"]   # supply depth position along CD
+    assert dims.get("R2") == ["0.625"]  # return depth position along CD
+    assert dims.get("DIST_EXT") == ["6"]  # supply distributor extension stub
+    assert "supply distributor: no stubout" not in res.side_svg
+
+
 def test_distinct_connections_do_not_overlap() -> None:
     conns = _connections(layout_header_side_view(geometry(sanitized_slots())))
     for a, b in itertools.combinations(conns, 2):

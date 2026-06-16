@@ -317,6 +317,8 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
         r = (h.connection_diameter / 2.0) if h.connection_diameter is not None else 0.0
         if h.role == "return":
             return (h.stub_length or 0.0) + r
+        if h.extension is not None:
+            return h.extension + r  # supply distributor extension stub
         return 2.0 * r  # a circle tangent just outside the face reaches 2r
     protrusion = max((_reach(h) for h in geom.headers), default=0.0)
     left_margin = max(base_margin, protrusion + 3 * step)  # protrusion + 2 dim tiers + label
@@ -360,6 +362,15 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
             else:
                 notes.append(_omit(off_label))
 
+            # S1 (supply) / R2 (return): the header's depth position along CD, measured
+            # from the front (left) edge — a top-edge horizontal dim (hand-mirrored with
+            # the view). S1 = CD/2 reads as a centered distributor.
+            sp_label = "S1" if h.role == "supply" else "R2"
+            if h.spacing is not None:
+                reqs.append(_DimReq(sp_label, "offset", "top", "h", casing.x, casing.y, casing.x + h.spacing, casing.y, value=h.spacing))
+            else:
+                notes.append(_omit(sp_label))
+
             r = (h.connection_diameter / 2.0) if h.connection_diameter is not None else None
             if h.role == "return":
                 if h.stub_length is not None:
@@ -370,8 +381,14 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
                 else:
                     notes.append(_omit("SL2"))
                     conn_cx = casing.x
-            else:
-                conn_cx = casing.x - (r or 0.0)  # tangent just outside the face
+            else:  # supply distributor — extension stub (DIST_EXT), mirror of the return SL2
+                if h.extension is not None:
+                    sx = casing.x - h.extension
+                    segments.append(Segment("stub", casing.x, cy, sx, cy))
+                    reqs.append(_DimReq("DIST_EXT", "offset", "bottom", "h", sx, cy, casing.x, cy, value=h.extension))
+                    conn_cx = sx
+                else:
+                    conn_cx = casing.x - (r or 0.0)  # tangent just outside the face
 
             if r is not None:
                 # overlap guard: never draw physically-impossible overlapping connections.
@@ -391,7 +408,6 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
             else:
                 notes.append(_omit(dia_label))
 
-        notes.append("supply distributor: no stubout (per EZ data)")
         reqs.append(_DimReq("CD", "overall", "bottom", "h", casing.x, bottom, casing.x + casing.w, bottom))
         reqs.append(_DimReq("CH", "overall", "right", "v", casing.x + casing.w, casing.y, casing.x + casing.w, bottom))
 

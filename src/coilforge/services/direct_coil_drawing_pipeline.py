@@ -182,6 +182,7 @@ _SLOT_ENGINE_FIELD: dict[str, str] = {
     "slot.SL2": "suction_sl",
     "slot.I1": "dist_i",        # distributor I
     "slot.O2": "suction_io",    # return I/O
+    "slot.DIST_EXT": "dist_extension",  # supply distributor extension (e.g. 6")
 }
 # EZ JSON as-built slots override the engine prediction for per-header positions.
 _SLOT_EZ_OVERRIDE: tuple[str, ...] = (

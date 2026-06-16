@@ -36,11 +36,14 @@ _SLOT_KEYS: dict[str, str] = {
 _SUPPLY_SLOTS = {
     "diameter": "slot.HDx1",
     "offset": "slot.I1",
+    "spacing": "slot.S1",
+    "extension": "slot.DIST_EXT",
     "connection_diameter": "slot.SUPPLY_CONN_SIZE",
 }
 _RETURN_SLOTS = {
     "diameter": "slot.HD2",
     "offset": "slot.O2",
+    "spacing": "slot.R2",
     "stub_length": "slot.SL2",
     "connection_diameter": "slot.RETURN_CONN_SIZE",
 }
@@ -87,6 +90,8 @@ class HeaderSpec:
     offset: float | None  # I1 (supply) / O2 (return) — vertical position, review-aid datum
     stub_length: float | None  # SL2 (return)
     connection_diameter: float | None  # RETURN_CONN_SIZE (return)
+    spacing: float | None = None  # S1 (supply) / R2 (return) — depth position along CD
+    extension: float | None = None  # DIST_EXT (supply distributor extension stub)
 
 
 @dataclass(frozen=True)
@@ -135,8 +140,10 @@ class CoilGeometry:
             role="supply",
             diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["diameter"]),
             offset=_slot_inches(slot_values, _SUPPLY_SLOTS["offset"]),
-            stub_length=None,  # supply distributor has no stubout (per EZ data)
+            stub_length=None,  # supply uses `extension` (distributor stub), not SL2
             connection_diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["connection_diameter"]),
+            spacing=_slot_inches(slot_values, _SUPPLY_SLOTS["spacing"]),
+            extension=_slot_inches(slot_values, _SUPPLY_SLOTS["extension"]),
         )
         return_header = HeaderSpec(
             role="return",
@@ -144,6 +151,7 @@ class CoilGeometry:
             offset=_slot_inches(slot_values, _RETURN_SLOTS["offset"]),
             stub_length=_slot_inches(slot_values, _RETURN_SLOTS["stub_length"]),
             connection_diameter=_slot_inches(slot_values, _RETURN_SLOTS["connection_diameter"]),
+            spacing=_slot_inches(slot_values, _RETURN_SLOTS["spacing"]),
         )
         return cls(
             casing_length=resolved["CL"],
