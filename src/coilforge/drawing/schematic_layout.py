@@ -73,12 +73,17 @@ class Segment:
 
 @dataclass(frozen=True)
 class Label:
-    """A fixed-size text callout anchored at an inch position (e.g. a header Ø note)."""
+    """A fixed-size text callout anchored at an inch position (e.g. a header Ø note).
+
+    ``connector`` is the feature point the label belongs to (inches); the backend draws a
+    leader to it after de-collision so the label never detaches from its feature.
+    """
 
     feature: str
     x: float
     y: float
     text: str
+    connector: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,7 @@ class Dimension:
     bx: float
     by: float
     tier_pos: float  # perpendicular tier coordinate (y for top/bottom, x for left/right)
+    value: float | None = None  # measured inches, for the EZ "{value} {CODE}" label
 
 
 @dataclass(frozen=True)
@@ -124,6 +130,7 @@ class _DimReq:
     ay: float
     bx: float
     by: float
+    value: float | None = None
 
 
 def _omit(label: str) -> str:
@@ -166,7 +173,7 @@ def place_dimensions(
             placed.append(
                 Dimension(
                     r.label, r.kind, edge, tier, r.orient, r.ax, r.ay, r.bx, r.by,
-                    tier_pos(casing, edge, tier, step, edge_base.get(edge, 0.0)),
+                    tier_pos(casing, edge, tier, step, edge_base.get(edge, 0.0)), r.value,
                 )
             )
     return placed
@@ -281,12 +288,14 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
         step = STEP_FRACTION
     base_margin = 4 * step
 
-    # How far connections/stubs reach left of the header face (the manifold HD is NOT drawn).
+    # How far connections/stubs reach left of the header face. Only the RETURN draws a
+    # connection (+ stub); the supply DISTRIBUTOR is labels-only (EZ: it has no sweat
+    # connection — its ConnectionSize is 0; 0.88 is the feeder-tube Ø, not a connection).
     def _reach(h: HeaderSpec) -> float:
+        if h.role != "return":
+            return 0.0
         r = (h.connection_diameter / 2.0) if h.connection_diameter is not None else 0.0
-        if h.role == "return":
-            return (h.stub_length or 0.0) + r
-        return 2.0 * r  # a circle tangent just outside the face reaches 2r
+        return (h.stub_length or 0.0) + r
     protrusion = max((_reach(h) for h in geom.headers), default=0.0)
     left_margin = max(base_margin, protrusion + 3 * step)  # protrusion + 2 dim tiers + label
 
@@ -325,41 +334,47 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
             cy = bottom - h.offset if h.offset is not None else casing.y + casing.h / 2.0
             if h.offset is not None:
                 # offset dim on the LEFT (connection) side, from the bottom to the connection.
-                reqs.append(_DimReq(off_label, "offset", "left", "v", casing.x, bottom, casing.x, cy))
+                reqs.append(_DimReq(off_label, "offset", "left", "v", casing.x, bottom, casing.x, cy, h.offset))
             else:
                 notes.append(_omit(off_label))
 
-            r = (h.connection_diameter / 2.0) if h.connection_diameter is not None else None
+            conn_r = 0.0
+            conn_cx = casing.x  # supply distributor: labels only, no circle (per EZ)
             if h.role == "return":
                 if h.stub_length is not None:
-                    sx = casing.x - h.stub_length
-                    segments.append(Segment("stub", casing.x, cy, sx, cy))
-                    reqs.append(_DimReq("SL2", "offset", "bottom", "h", sx, cy, casing.x, cy))
-                    conn_cx = sx
+                    conn_cx = casing.x - h.stub_length
+                    segments.append(Segment("stub", casing.x, cy, conn_cx, cy))
+                    reqs.append(_DimReq("SL2", "offset", "bottom", "h", conn_cx, cy, casing.x, cy, h.stub_length))
                 else:
                     notes.append(_omit("SL2"))
-                    conn_cx = casing.x
-            else:
-                conn_cx = casing.x - (r or 0.0)  # tangent just outside the face
-
-            if r is not None:
-                # overlap guard: never draw physically-impossible overlapping connections.
-                if any((conn_cx - px) ** 2 + (cy - py) ** 2 < (r + pr - 0.05) ** 2 for px, py, pr in kept):
-                    notes.append(f"{dia_label} connection overlaps another — review required (omitted)")
+                if h.connection_diameter is not None:
+                    conn_r = h.connection_diameter / 2.0
+                    # overlap guard: never draw physically-impossible overlapping connections.
+                    if any((conn_cx - px) ** 2 + (cy - py) ** 2 < (conn_r + pr - 0.05) ** 2 for px, py, pr in kept):
+                        notes.append(f"{dia_label} connection overlaps another — review required (omitted)")
+                        conn_r = 0.0
+                    else:
+                        kept.append((conn_cx, cy, conn_r))
+                        circles.append(Circle("connection_return", conn_cx, cy, conn_r))
+                        labels.append(Label(
+                            "conn_return", conn_cx, cy + conn_r + 0.4 * step,
+                            f"RETURN {h.connection_diameter:.2f}", connector=(conn_cx, cy),
+                        ))
                 else:
-                    kept.append((conn_cx, cy, r))
-                    circles.append(Circle(f"connection_{h.role}", conn_cx, cy, r))
-            else:
-                notes.append(_omit(f"{dia_label} connection size"))
+                    notes.append(_omit(f"{dia_label} connection size"))
 
+            # Header diameter is an EZ callout label ("{value} HDx1"), not a drawn manifold.
             if h.diameter is not None:
-                labels.append(Label(f"hd_{h.role}", conn_cx, cy - (r or 0.0) - 0.4 * step, f"{dia_label} Ø{h.diameter:.2f}"))
+                labels.append(Label(
+                    f"hd_{h.role}", conn_cx, cy - conn_r - 0.4 * step,
+                    f"{h.diameter:.2f} {dia_label}", connector=(conn_cx, cy),
+                ))
             else:
                 notes.append(_omit(dia_label))
 
-        notes.append("supply distributor: no stubout (per EZ data)")
-        reqs.append(_DimReq("CD", "overall", "bottom", "h", casing.x, bottom, casing.x + casing.w, bottom))
-        reqs.append(_DimReq("CH", "overall", "right", "v", casing.x + casing.w, casing.y, casing.x + casing.w, bottom))
+        notes.append("supply distributor: labels only, no stubout (per EZ data)")
+        reqs.append(_DimReq("CD", "overall", "bottom", "h", casing.x, bottom, casing.x + casing.w, bottom, cd))
+        reqs.append(_DimReq("CH", "overall", "right", "v", casing.x + casing.w, casing.y, casing.x + casing.w, bottom, ch))
 
     edge_base = {"left": protrusion} if casing is not None else {}
     dims = place_dimensions(reqs, casing, step, edge_base) if casing is not None else []
@@ -378,7 +393,7 @@ def _mirror_dim(d: Dimension, extent_w: float) -> Dimension:
     tp = extent_w - d.tier_pos if d.edge in ("left", "right") else d.tier_pos
     return Dimension(
         d.label, d.kind, edge, d.tier, d.orient,
-        extent_w - d.ax, d.ay, extent_w - d.bx, d.by, tp,
+        extent_w - d.ax, d.ay, extent_w - d.bx, d.by, tp, d.value,
     )
 
 
@@ -391,7 +406,13 @@ def mirror_view_x(view: ViewLayout) -> ViewLayout:
     )
     circles = tuple(Circle(c.feature, w - c.cx, c.cy, c.r) for c in view.circles)
     segments = tuple(Segment(s.feature, w - s.x1, s.y1, w - s.x2, s.y2) for s in view.segments)
-    labels = tuple(Label(lb.feature, w - lb.x, lb.y, lb.text) for lb in view.labels)
+    labels = tuple(
+        Label(
+            lb.feature, w - lb.x, lb.y, lb.text,
+            (w - lb.connector[0], lb.connector[1]) if lb.connector is not None else None,
+        )
+        for lb in view.labels
+    )
     dims = tuple(_mirror_dim(d, w) for d in view.dimensions)
     return ViewLayout(view.view, view.extent_w, view.extent_h, rects, circles, segments, labels, dims, view.omitted_notes)
 

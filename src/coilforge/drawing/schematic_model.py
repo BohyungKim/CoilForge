@@ -33,11 +33,9 @@ _SLOT_KEYS: dict[str, str] = {
 
 # Header/side-view slots (verified against slot_map.json + ez_json_drawing_loader.py).
 # Header id 1 = supply/distributor (odd), id 2 = return/suction (even).
-_SUPPLY_SLOTS = {
-    "diameter": "slot.HDx1",
-    "offset": "slot.I1",
-    "connection_diameter": "slot.SUPPLY_CONN_SIZE",
-}
+# A DX distributor has no single sweat connection (EZ: Headers[0].ConnectionSize=[0,0,0]),
+# so the supply carries no connection_diameter — it is represented by labels (HDx1 + I1).
+_SUPPLY_SLOTS = {"diameter": "slot.HDx1", "offset": "slot.I1"}
 _RETURN_SLOTS = {
     "diameter": "slot.HD2",
     "offset": "slot.O2",
@@ -133,7 +131,7 @@ class CoilGeometry:
             diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["diameter"]),
             offset=_slot_inches(slot_values, _SUPPLY_SLOTS["offset"]),
             stub_length=None,  # supply distributor has no stubout (per EZ data)
-            connection_diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["connection_diameter"]),
+            connection_diameter=None,  # a distributor has no single sweat connection
         )
         return_header = HeaderSpec(
             role="return",

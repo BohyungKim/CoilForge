@@ -40,7 +40,7 @@ SANITIZED_DX: dict[str, float] = {
     "slot.TF": 0.63, "slot.BF": 0.63, "slot.HF": 1.5, "slot.RF": 1.5,
     "slot.CD": 5.5, "slot.ROWS": 4, "slot.HDx1": 4.5, "slot.HD2": 3.5,
     "slot.I1": 3.0, "slot.O2": 2.0, "slot.SL2": 8.0,
-    "slot.RETURN_CONN_SIZE": 0.625, "slot.SUPPLY_CONN_SIZE": 0.88,
+    "slot.RETURN_CONN_SIZE": 0.625,
 }
 
 

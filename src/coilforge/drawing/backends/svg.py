@@ -14,11 +14,11 @@ its tier. The function is pure: layout in, result object out, no file writes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import hypot
 
 from coilforge.drawing.schematic_layout import Dimension, ViewLayout
-from coilforge.phase2a.renderer import REVIEW_WATERMARK, _esc, _fmt, _text_line
+from coilforge.phase2a.renderer import REVIEW_WATERMARK, _esc, _fmt
 
 # Scale guardrails (px per inch). Fit-to-canvas normally governs; these only catch
 # degenerate extents. MAX is huge so small coils fill the canvas.
@@ -33,6 +33,12 @@ FONT_PX = 13
 ARROW_PX = 7
 # Below this rendered span (px) a dimension is drawn with a leader, not double arrowheads.
 LEADER_THRESHOLD_PX = 28.0
+
+# Unified label de-collision (Phase 2.7). Text metrics are px, so this lives in the backend.
+CHAR_W_FACTOR = 0.6   # approx Arial advance width as a fraction of font size
+LABEL_GAP = 2.0       # vertical clearance the de-collision resolves to
+DECOLLIDE_STEP = 2.0  # px per nudge
+LEADER_MIN_PX = 4.0   # draw a leader to the feature once the label sits at least this far off
 
 # Feature -> rect CSS class (front + side casings, finned face).
 _RECT_CLASS = {"casing": "casing", "finned": "finned"}
@@ -51,6 +57,99 @@ class SvgBackendResult:
     casing_px: tuple[float, float, float, float]  # x, y, w, h (px); zeros if omitted
     finned_px: tuple[float, float, float, float] | None
     rects_px: dict[str, tuple[float, float, float, float]]  # feature -> px rect
+
+
+@dataclass
+class _Label:
+    """A text label in px, collected for the unified de-collision pass (mutable y)."""
+
+    x: float
+    y: float
+    anchor: str  # start | middle | end
+    css: str  # dim-label | callout | omitted
+    text: str
+    connector: tuple[float, float] | None = None  # feature point to draw a leader to
+    always_leader: bool = False  # leader-style dim / callout -> always connect
+    feature: str | None = None  # for data-label on callouts
+    y0: float = 0.0  # original y, to detect a nudge
+
+
+def text_bbox(x: float, y: float, anchor: str, text: str, font_px: float = FONT_PX):
+    """Approximate rendered text bounding box (x0, y0, x1, y1). Shared by the de-collision
+    pass and the all-label overlap test so both agree."""
+    w = max(1, len(text)) * font_px * CHAR_W_FACTOR
+    if anchor == "middle":
+        x0 = x - w / 2.0
+    elif anchor == "end":
+        x0 = x - w
+    else:
+        x0 = x
+    return (x0, y - font_px * 0.8, x0 + w, y + font_px * 0.25)
+
+
+def boxes_overlap(a, b, tol: float = 1.0) -> bool:  # noqa: ANN001
+    ix = min(a[2], b[2]) - max(a[0], b[0])
+    iy = min(a[3], b[3]) - max(a[1], b[1])
+    return ix > tol and iy > tol
+
+
+def _vclear(a, b, gap: float) -> bool:  # noqa: ANN001
+    """Two boxes are clear if they don't overlap in x, or are >= ``gap`` apart in y."""
+    ix = min(a[2], b[2]) - max(a[0], b[0])
+    if ix <= 0:
+        return True
+    iy = min(a[3], b[3]) - max(a[1], b[1])
+    return iy <= -gap
+
+
+def decollide(labels: list[_Label], center_x: float) -> list[_Label]:
+    """Deterministic, MIRROR-EQUIVARIANT de-collision: nudge labels in y only, in a
+    mirror-invariant order. Since y is unaffected by the x-mirror, the same y-shifts apply to
+    LH and RH, so the views stay clean mirrors. Greedy + monotonic => globally non-overlapping.
+    """
+    order = sorted(
+        range(len(labels)),
+        key=lambda i: (round(labels[i].y, 1), round(abs(labels[i].x - center_x), 1), labels[i].text, i),
+    )
+    placed: list[tuple[float, float, float, float]] = []
+    for i in order:
+        lb = labels[i]
+        box = text_bbox(lb.x, lb.y, lb.anchor, lb.text)
+        bad = [p for p in placed if not _vclear(box, p, LABEL_GAP)]
+        if bad:
+            centroid = sum((p[1] + p[3]) / 2.0 for p in bad) / len(bad)
+            direction = 1.0 if lb.y >= centroid else -1.0  # y-only -> mirror-invariant
+            guard = 0
+            while guard < 600 and any(not _vclear(box, p, LABEL_GAP) for p in placed):
+                lb.y += direction * DECOLLIDE_STEP
+                box = text_bbox(lb.x, lb.y, lb.anchor, lb.text)
+                guard += 1
+        placed.append(box)
+    return labels
+
+
+def _label_svg(lb: _Label) -> str:
+    attr = f' data-label="{_esc(lb.feature)}"' if lb.feature else ""
+    return (
+        f'<text{attr} x="{lb.x:.2f}" y="{lb.y:.2f}" text-anchor="{lb.anchor}" '
+        f'class="{lb.css}">{_esc(lb.text)}</text>'
+    )
+
+
+def _leader_svg(lb: _Label) -> str:
+    """Redraw a leader from the label's connector to its FINAL position. It lands on the
+    MIDPOINT of the box edge facing the connector (not a corner), so the connector clearly
+    points into the label. A vertical-first dogleg (or straight line) keeps it tidy."""
+    cx, cy = lb.connector  # type: ignore[misc]
+    x0, y0, x1, y1 = text_bbox(lb.x, lb.y, lb.anchor, lb.text)
+    mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    if abs(cx - mx) >= abs(cy - my):
+        ax, ay = (x1, my) if cx >= mx else (x0, my)  # near vertical edge, mid-height
+    else:
+        ax, ay = (mx, y1) if cy >= my else (mx, y0)  # near horizontal edge, mid-width
+    if abs(ax - cx) < 0.5 or abs(ay - cy) < 0.5:
+        return f'<line x1="{cx:.2f}" y1="{cy:.2f}" x2="{ax:.2f}" y2="{ay:.2f}" class="leader"/>'
+    return f'<path d="M {cx:.2f} {cy:.2f} L {cx:.2f} {ay:.2f} L {ax:.2f} {ay:.2f}" class="leader"/>'
 
 
 def render_view_svg(
@@ -79,7 +178,7 @@ def render_view_svg(
     def y_px(inch: float) -> float:
         return off_y + inch * ppi
 
-    parts: list[str] = []
+    geom: list[str] = []  # rects, circles, segments, dimension lines (fixed geometry)
     rects_px: dict[str, tuple[float, float, float, float]] = {}
 
     for lr in view.rects:
@@ -87,39 +186,53 @@ def render_view_svg(
         px = (x_px(r.x), y_px(r.y), r.w * ppi, r.h * ppi)
         rects_px[lr.feature] = px
         cls = _RECT_CLASS.get(lr.feature, "casing")
-        parts.append(
+        geom.append(
             f'<rect data-feature="{_esc(lr.feature)}" x="{px[0]:.2f}" y="{px[1]:.2f}" '
             f'width="{px[2]:.2f}" height="{px[3]:.2f}" class="{cls}"/>'
         )
 
     for s in view.segments:
         cls = _SEGMENT_CLASS.get(s.feature, "stub")
-        parts.append(
+        geom.append(
             f'<line data-feature="{_esc(s.feature)}" x1="{x_px(s.x1):.2f}" y1="{y_px(s.y1):.2f}" '
             f'x2="{x_px(s.x2):.2f}" y2="{y_px(s.y2):.2f}" class="{cls}"/>'
         )
 
     for c in view.circles:
         cls = _CIRCLE_CLASS.get(c.feature, "header-pipe")
-        parts.append(
+        geom.append(
             f'<circle data-feature="{_esc(c.feature)}" cx="{x_px(c.cx):.2f}" cy="{y_px(c.cy):.2f}" '
             f'r="{c.r * ppi:.2f}" class="{cls}"/>'
         )
 
-    for lb in view.labels:
-        parts.append(
-            f'<text data-label="{_esc(lb.feature)}" x="{x_px(lb.x):.2f}" y="{y_px(lb.y):.2f}" '
-            f'text-anchor="middle" class="callout">{_esc(lb.text)}</text>'
-        )
-
+    # Collect EVERY text label (dim labels, EZ callouts, notes) into one list, then run a
+    # single de-collision pass over all of them.
+    labels: list[_Label] = []
     for dim in view.dimensions:
-        parts.append(_dimension_svg(dim, x_px, y_px))
-
+        group, lab = _dimension_parts(dim, x_px, y_px)
+        geom.append(group)
+        labels.append(lab)
+    for lb in view.labels:
+        conn = (x_px(lb.connector[0]), y_px(lb.connector[1])) if lb.connector is not None else None
+        labels.append(
+            _Label(x_px(lb.x), y_px(lb.y), "middle", "callout", lb.text, conn, True, lb.feature)
+        )
     omitted_y = PAD_PX + 18
-    omitted_parts = [
-        _text_line(PAD_PX, omitted_y + idx * (FONT_PX + 4), note, "omitted")
-        for idx, note in enumerate(view.omitted_notes)
+    for idx, note in enumerate(view.omitted_notes):
+        labels.append(_Label(float(PAD_PX), float(omitted_y + idx * (FONT_PX + 4)), "start", "omitted", note))
+
+    for lb in labels:
+        lb.y0 = lb.y
+    decollide(labels, canvas_w / 2.0)
+
+    leader_parts = [
+        _leader_svg(lb)
+        for lb in labels
+        if lb.connector is not None
+        and (lb.always_leader or abs(lb.y - lb.y0) > 1.5)
+        and hypot(lb.connector[0] - lb.x, lb.connector[1] - lb.y) > LEADER_MIN_PX
     ]
+    text_parts = [_label_svg(lb) for lb in labels]
 
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {canvas_w} {canvas_h}" role="img" aria-label="CoilForge parametric {_esc(view.view)} view (review aid)">
   <defs>
@@ -145,10 +258,9 @@ def render_view_svg(
     </style>
   </defs>
   <g id="zone.{_esc(view.view)}_view">
-    {''.join(parts)}
-  </g>
-  <g id="zone.annotations">
-    {''.join(omitted_parts)}
+    {''.join(geom)}
+    {''.join(leader_parts)}
+    {''.join(text_parts)}
   </g>
   <g id="zone.review">
     <text x="{PAD_PX}" y="{canvas_h - 26}" class="watermark">{_esc(watermark)}</text>
@@ -169,11 +281,9 @@ def render_view_svg(
 render_front_view_svg = render_view_svg
 
 
-def _label_svg(x: float, y: float, anchor: str, text: str) -> str:
-    return f'<text x="{x:.2f}" y="{y:.2f}" text-anchor="{anchor}" class="dim-label">{_esc(text)}</text>'
-
-
-def _dimension_svg(dim: Dimension, x_px, y_px) -> str:  # noqa: ANN001 - local px mappers
+def _dimension_parts(dim: Dimension, x_px, y_px):  # noqa: ANN001 - local px mappers
+    """Return (fixed-geometry <g data-dim …>, collected text _Label). The label's text is
+    NOT inside the group, so the de-collision pass can move it (and a leader is redrawn)."""
     ax, ay = x_px(dim.ax), y_px(dim.ay)
     bx, by = x_px(dim.bx), y_px(dim.by)
     horizontal_edge = dim.edge in ("top", "bottom")
@@ -197,29 +307,28 @@ def _dimension_svg(dim: Dimension, x_px, y_px) -> str:  # noqa: ANN001 - local p
 
     if arrows:
         if horizontal_edge:
-            body = [
+            lines = [
                 f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{ax:.2f}" y2="{tp:.2f}" class="ext-line"/>',
                 f'<line x1="{bx:.2f}" y1="{by:.2f}" x2="{bx:.2f}" y2="{tp:.2f}" class="ext-line"/>',
                 f'<line x1="{ax:.2f}" y1="{tp:.2f}" x2="{bx:.2f}" y2="{tp:.2f}" class="dim-arrows"/>',
             ]
+            connector = (lpar, tp)
         else:
-            body = [
+            lines = [
                 f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{tp:.2f}" y2="{ay:.2f}" class="ext-line"/>',
                 f'<line x1="{bx:.2f}" y1="{by:.2f}" x2="{tp:.2f}" y2="{by:.2f}" class="ext-line"/>',
                 f'<line x1="{tp:.2f}" y1="{ay:.2f}" x2="{tp:.2f}" y2="{by:.2f}" class="dim-arrows"/>',
             ]
-        style = "arrows"
+            connector = (tp, lpar)
+        style, always = "arrows", False
     else:
-        mx, my = (ax + bx) / 2.0, (ay + by) / 2.0
-        if horizontal_edge:
-            leader = f'<line x1="{mx:.2f}" y1="{my:.2f}" x2="{mx:.2f}" y2="{tp:.2f}" class="leader"/>'
-        else:
-            leader = f'<line x1="{mx:.2f}" y1="{my:.2f}" x2="{tp:.2f}" y2="{my:.2f}" class="leader"/>'
-        body = [
-            f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{bx:.2f}" y2="{by:.2f}" class="witness"/>',
-            leader,
-        ]
-        style = "leader"
+        # leader style: the witness is the fixed geometry; the leader to the label is drawn
+        # AFTER de-collision, from the witness midpoint to the label's final position.
+        lines = [f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{bx:.2f}" y2="{by:.2f}" class="witness"/>']
+        connector = ((ax + bx) / 2.0, (ay + by) / 2.0)
+        style, always = "leader", True
 
-    body.append(_label_svg(lx, ly, anchor, dim.label))
-    return f'<g data-dim="{_esc(dim.label)}" data-style="{style}">{"".join(body)}</g>'
+    text = f"{dim.value:.2f} {dim.label}" if dim.value is not None else dim.label
+    group = f'<g data-dim="{_esc(dim.label)}" data-style="{style}">{"".join(lines)}</g>'
+    label = _Label(lx, ly, anchor, "dim-label", text, connector=connector, always_leader=always)
+    return group, label

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
+import re
 import sys
 from pathlib import Path
 
@@ -24,10 +25,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from coilforge.drawing.backends.svg import (
+    FONT_PX,
     PAD_PX,
     TARGET_FILL,
     SvgBackendResult,
+    boxes_overlap,
     render_view_svg,
+    text_bbox,
 )
 from coilforge.drawing.schematic_layout import (
     Circle,
@@ -55,8 +59,7 @@ def slots(**over: object) -> dict[str, object]:
         "slot.TF": 3.0, "slot.BF": 3.0, "slot.HF": 3.0, "slot.RF": 3.0,
         # side / header
         "slot.CD": 12.0, "slot.ROWS": 4, "slot.HDx1": 4.5, "slot.HD2": 3.5,
-        "slot.I1": 6.0, "slot.O2": 4.0, "slot.SL2": 3.0,
-        "slot.RETURN_CONN_SIZE": 0.625, "slot.SUPPLY_CONN_SIZE": 0.88,
+        "slot.I1": 6.0, "slot.O2": 4.0, "slot.SL2": 3.0, "slot.RETURN_CONN_SIZE": 0.625,
     }
     base.update(over)
     return base
@@ -68,8 +71,7 @@ def sanitized_slots() -> dict[str, object]:
         "slot.FH": 12.0, "slot.FL": 15.0, "slot.CH": 13.25, "slot.CL": 18.0,
         "slot.TF": 0.63, "slot.BF": 0.63, "slot.HF": 1.5, "slot.RF": 1.5,
         "slot.CD": 5.5, "slot.ROWS": 4, "slot.HDx1": 4.5, "slot.HD2": 3.5,
-        "slot.I1": 3.0, "slot.O2": 2.0, "slot.SL2": 8.0,
-        "slot.RETURN_CONN_SIZE": 0.625, "slot.SUPPLY_CONN_SIZE": 0.88,
+        "slot.I1": 3.0, "slot.O2": 2.0, "slot.SL2": 8.0, "slot.RETURN_CONN_SIZE": 0.625,
     }
 
 
@@ -236,15 +238,25 @@ def test_distinct_connections_do_not_overlap() -> None:
         assert dist >= a.r + b.r - 0.05  # physically plausible: no overlap
 
 
-def test_forced_overlap_is_omitted_not_drawn() -> None:
-    # Two large connections ~1in apart (return at the face, no stub) would overlap; the
-    # engine must omit + annotate, never draw impossible geometry.
-    sv = sanitized_slots()
-    sv["slot.SUPPLY_CONN_SIZE"] = 3.0
-    sv["slot.RETURN_CONN_SIZE"] = 3.0
-    del sv["slot.SL2"]
-    res = render(sv)
-    assert any("overlap" in note.lower() for note in res.omitted_features)
+def test_side_labels_match_ez_convention() -> None:
+    # EZ: geometry callouts are "{value} {CODE}" (value-first, no Ø/unit); the return
+    # connection follows EZ's panel style "RETURN {value}". data-dim stays the bare CODE.
+    svg = render(sanitized_slots()).side_svg
+    assert "4.50 HDx1" in svg  # supply header diameter callout
+    assert "3.50 HD2" in svg  # return header diameter callout
+    assert "2.00 O2" in svg and 'data-dim="O2"' in svg  # value-first dim text, bare-code id
+    assert 'data-label="conn_return"' in svg and "RETURN" in svg  # return connection label
+
+
+def test_supply_distributor_is_labels_only_no_circle() -> None:
+    # The distributor has no sweat connection (EZ ConnectionSize=0): labels only, no circle.
+    res = render(sanitized_slots())
+    assert 'data-feature="connection_supply"' not in res.side_svg
+    assert 'data-feature="connection_return"' in res.side_svg
+    assert 'data-label="hd_supply"' in res.side_svg  # HDx1 callout still shown
+    assert 'data-dim="I1"' in res.side_svg  # and the I1 offset
+    # The overlap guard remains in code for Phase 3 multi-circuit, but a single-circuit DX
+    # draws exactly one connection, so it cannot overlap here.
     assert res.side_svg.count('data-feature="connection_') == 1
 
 
@@ -252,6 +264,123 @@ def test_small_offset_renders_as_leader_not_arrowheads() -> None:
     res = render(sanitized_slots())
     assert 'data-dim="TF" data-style="leader"' in res.svg
     assert 'data-dim="CL" data-style="arrows"' in res.svg
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.7 — ONE unified collision pass over ALL labels (dim + callout + note)
+# --------------------------------------------------------------------------- #
+_LABEL_CLASSES = ("dim-label", "callout", "omitted")
+
+
+def _svg_label_boxes(svg: str) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Every rendered text label as (text, bbox), using the SAME estimator the backend's
+    de-collision uses — so this test and the engine agree."""
+    out = []
+    for m in re.finditer(r"<text([^>]*)>([^<]*)</text>", svg):
+        attrs, text = m.group(1), m.group(2)
+        cm = re.search(r'class="([^"]+)"', attrs)
+        if not cm or cm.group(1) not in _LABEL_CLASSES:
+            continue
+        x = float(re.search(r'\bx="(-?[\d.]+)"', attrs).group(1))
+        y = float(re.search(r'\by="(-?[\d.]+)"', attrs).group(1))
+        am = re.search(r'text-anchor="(\w+)"', attrs)
+        out.append((text, text_bbox(x, y, am.group(1) if am else "start", text, FONT_PX)))
+    return out
+
+
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_no_label_overlaps_anywhere(hand: str) -> None:
+    res = render(sanitized_slots(), coil_hand=hand)
+    for svg in (res.svg, res.side_svg):
+        boxes = _svg_label_boxes(svg)
+        assert len(boxes) >= 5
+        for (ta, a), (tb, b) in itertools.combinations(boxes, 2):
+            assert not boxes_overlap(a, b), f"{hand}: {ta!r} overlaps {tb!r}"
+
+
+def test_i1_dim_and_return_callout_no_longer_overlap() -> None:
+    # The previously-colliding pair on the side view.
+    boxes = _svg_label_boxes(render(sanitized_slots()).side_svg)
+    i1 = next(b for t, b in boxes if t.endswith(" I1"))
+    ret = next(b for t, b in boxes if t.startswith("RETURN"))
+    assert not boxes_overlap(i1, ret)
+
+
+def test_side_label_y_is_mirror_equivariant() -> None:
+    # y is unaffected by the x-mirror and the de-collision nudges only in y, so the
+    # (text, label-centre-y) multiset must be identical between LH and RH.
+    def key(svg: str) -> list[tuple[str, float]]:
+        return sorted((t, round((b[1] + b[3]) / 2.0, 1)) for t, b in _svg_label_boxes(svg))
+
+    lh = render(sanitized_slots(), coil_hand="LH").side_svg
+    rh = render(sanitized_slots(), coil_hand="RH").side_svg
+    assert key(lh) == key(rh)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.7b — every leader-bearing label is REACHED by its connector (geometric,
+# not a leader-count proxy): the leader endpoint lands on the label's edge midpoint.
+# --------------------------------------------------------------------------- #
+REACH_TOL = 4.0
+
+
+def _leader_endpoints(svg: str) -> list[tuple[float, float]]:
+    pts = []
+    for m in re.finditer(r'<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" class="leader"', svg):
+        pts.append((float(m.group(3)), float(m.group(4))))
+        pts.append((float(m.group(1)), float(m.group(2))))
+    for m in re.finditer(r'<path d="M [\d. ]+L [\d. ]+L ([\d.]+) ([\d.]+)" class="leader"', svg):
+        pts.append((float(m.group(1)), float(m.group(2))))
+    return pts
+
+
+def _edge_mids(b: tuple[float, float, float, float]) -> tuple[tuple[float, float], ...]:
+    x0, y0, x1, y1 = b
+    mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    return ((mx, y0), (mx, y1), (x0, my), (x1, my))
+
+
+def _bearing_labels(svg: str) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Labels that rely on a leader: callouts + leader-style ('offset') dim labels."""
+    codes = {m.group(1) for m in re.finditer(r'<g data-dim="(\w+)" data-style="leader"', svg)}
+    out = []
+    for m in re.finditer(r"<text([^>]*)>([^<]*)</text>", svg):
+        attrs, text = m.group(1), m.group(2)
+        cm = re.search(r'class="([^"]+)"', attrs)
+        cls = cm.group(1) if cm else ""
+        code = text.split()[-1] if text.split() else ""
+        if not (cls == "callout" or (cls == "dim-label" and code in codes)):
+            continue
+        x = float(re.search(r'\bx="(-?[\d.]+)"', attrs).group(1))
+        y = float(re.search(r'\by="(-?[\d.]+)"', attrs).group(1))
+        am = re.search(r'text-anchor="(\w+)"', attrs)
+        out.append((text, text_bbox(x, y, am.group(1) if am else "start", text, FONT_PX)))
+    return out
+
+
+def _reach_px(box: tuple[float, float, float, float], ends: list[tuple[float, float]]) -> float:
+    mids = _edge_mids(box)
+    return min(min(((e[0] - md[0]) ** 2 + (e[1] - md[1]) ** 2) ** 0.5 for md in mids) for e in ends)
+
+
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_every_leader_bearing_label_is_reached_by_its_connector(hand: str) -> None:
+    res = render(sanitized_slots(), coil_hand=hand)
+    for svg in (res.svg, res.side_svg):
+        ends = _leader_endpoints(svg)
+        labels = _bearing_labels(svg)
+        assert labels and ends
+        for text, box in labels:
+            d = _reach_px(box, ends)
+            assert d <= REACH_TOL, f"{hand}: {text!r} connector lands {d:.1f}px off (corner/detached)"
+
+
+def test_i1_o2_connectors_reach_after_nudge() -> None:
+    svg = render(sanitized_slots()).side_svg
+    ends = _leader_endpoints(svg)
+    boxes = {t: b for t, b in _bearing_labels(svg)}
+    for code in ("3.00 I1", "2.00 O2"):
+        assert _reach_px(boxes[code], ends) <= REACH_TOL
 
 
 # --------------------------------------------------------------------------- #
