@@ -308,13 +308,31 @@ def run_pdf_to_drawing_workflow(
 
 # CoilMaster dim callouts print "value LABEL" (e.g. "3.5 HD2", "4.13 SL1", "1.25 X").
 # For direct-coil ordering John wants numbers only, so the cleaner drops the trailing
-# label code from the blue dimension callouts (fill="#1c0a80"). The label is the final
-# whitespace-separated token, an uppercase-led code <=5 chars (HD2/HDx1/SL1/X/RF/…); the
-# value before it (a number, fraction, or "REVIEW REQUIRED") is kept. This is generic
-# across all template categories — no per-template label list to maintain.
-_CALLOUT_LABEL_RE = re.compile(
-    r'(fill="#1c0a80"[^>]*><tspan[^>]*>)(.*?) [A-Za-z][A-Za-z0-9]{0,4}(</tspan>)'
+# label code from the blue dim callouts (fill="#1c0a80"), keeping the value (number /
+# fraction / "REVIEW REQUIRED"). The label is the final uppercase-led token (<=5 chars).
+#
+# Mirror correction: seeded templates (one hand per category) have normal text
+# (matrix(1 ...)) — dropping the label leaves the value on its leader. The mirrored hand
+# (matrix(-1 ...)) flips the value+label bounding box, so the value lands offset LEFT by
+# the full pair width; we shift those callouts right by the pair width (estimated from the
+# character count at the callout font size) to put the value back on the leader. Seeded
+# callouts are not shifted. Generic across categories — no per-template list.
+_DIM_CHAR_W = 5.9  # ~Arial advance per char at the callout font-size (~11.2)
+_CALLOUT_RE = re.compile(
+    r'(fill="#1c0a80"[^>]*\btransform="matrix\(\s*(-?1)\b[^"]*"[^>]*><tspan)([^>]*)(>)'
+    r"([^<]*?) ([A-Za-z][A-Za-z0-9]{0,4})(</tspan>)"
 )
+
+
+def _clean_callout(m: "re.Match[str]") -> str:
+    head, sign, attrs, gt, value, label, close = m.groups()
+    if sign == "-1":  # mirrored hand — value is offset left by the pair width; shift right
+        xm = re.search(r'x="(-?\d+(?:\.\d+)?)"', attrs)
+        if xm:
+            shift = (len(value) + 1 + len(label)) * _DIM_CHAR_W
+            new_x = float(xm.group(1)) + shift
+            attrs = f'{attrs[: xm.start()]}x="{new_x:.2f}"{attrs[xm.end():]}'
+    return f"{head}{attrs}{gt}{value}{close}"
 
 # Crop window (CoilMaster sheet is 792x612; all templates share this layout). Selecting
 # just the drawing region clips away the sheet chrome that lives outside it — the right
@@ -341,7 +359,7 @@ def _clean_template_svg(svg: str) -> str:
     """
     if not svg:
         return svg
-    svg = _CALLOUT_LABEL_RE.sub(r"\1\2\3", svg)
+    svg = _CALLOUT_RE.sub(_clean_callout, svg)
     svg = _VIEWBOX_RE.sub(f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"', svg)
     svg = _SIZE_RE.sub(rf'\1width="{_CROP_W}" height="{_CROP_H}"', svg)
     return svg
