@@ -306,15 +306,14 @@ def run_pdf_to_drawing_workflow(
     return selected_result
 
 
-# Dimension label codes that the CoilMaster template prints next to each value
-# (e.g. "3.5 HD2"). For direct-coil ordering John wants numbers only, so the cleaner
-# strips the trailing " LABEL" from the blue dimension callouts (fill="#1c0a80").
-_DIM_LABELS = (
-    "HDx1", "HD2", "SL2", "OAL", "BF", "CD", "CH", "CL", "FH", "FL",
-    "HF", "I1", "O2", "R2", "RB", "RF", "S1", "TF",
-)
+# CoilMaster dim callouts print "value LABEL" (e.g. "3.5 HD2", "4.13 SL1", "1.25 X").
+# For direct-coil ordering John wants numbers only, so the cleaner drops the trailing
+# label code from the blue dimension callouts (fill="#1c0a80"). The label is the final
+# whitespace-separated token, an uppercase-led code <=5 chars (HD2/HDx1/SL1/X/RF/…); the
+# value before it (a number, fraction, or "REVIEW REQUIRED") is kept. This is generic
+# across all template categories — no per-template label list to maintain.
 _CALLOUT_LABEL_RE = re.compile(
-    r'(fill="#1c0a80"[^>]*><tspan[^>]*>)([^<]*?) (?:' + "|".join(_DIM_LABELS) + r')(</tspan>)'
+    r'(fill="#1c0a80"[^>]*><tspan[^>]*>)(.*?) [A-Za-z][A-Za-z0-9]{0,4}(</tspan>)'
 )
 
 # Crop window (CoilMaster sheet is 792x612; all templates share this layout). Selecting
