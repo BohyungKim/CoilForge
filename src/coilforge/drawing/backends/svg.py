@@ -38,8 +38,8 @@ LEADER_THRESHOLD_PX = 28.0
 _RECT_CLASS = {"casing": "casing", "finned": "finned"}
 # Feature -> circle CSS class (headers vs connection bubble).
 _CIRCLE_CLASS = {"connection": "connection"}
-# Feature -> segment CSS class (tube rows vs header stub).
-_SEGMENT_CLASS = {"row": "row"}
+# Feature -> segment CSS class (tube rows / header stub / airflow arrow).
+_SEGMENT_CLASS = {"row": "row", "airflow": "airflow"}
 
 
 @dataclass(frozen=True)
@@ -126,6 +126,9 @@ def render_view_svg(
     <marker id="schem-arrow" markerWidth="{ARROW_PX}" markerHeight="{ARROW_PX}" refX="{ARROW_PX - 1}" refY="{ARROW_PX / 2:.1f}" orient="auto">
       <path d="M 0 0 L {ARROW_PX} {ARROW_PX / 2:.1f} L 0 {ARROW_PX} z" fill="#242092"/>
     </marker>
+    <marker id="airflow-arrow" markerWidth="{ARROW_PX + 3}" markerHeight="{ARROW_PX + 3}" refX="{ARROW_PX + 1}" refY="{(ARROW_PX + 3) / 2:.1f}" orient="auto">
+      <path d="M 0 0 L {ARROW_PX + 3} {(ARROW_PX + 3) / 2:.1f} L 0 {ARROW_PX + 3} z" fill="#64748b"/>
+    </marker>
     <style>
       .casing {{ fill: #fbfbfb; stroke: #1f2937; stroke-width: 2; }}
       .finned {{ fill: #eef2ff; stroke: #4b5563; stroke-width: 1.5; }}
@@ -133,6 +136,7 @@ def render_view_svg(
       .connection {{ fill: #ffffff; stroke: #4b5563; stroke-width: 1.5; }}
       .stub {{ stroke: #1f2937; stroke-width: 1.5; fill: none; }}
       .row {{ stroke: #c7cce8; stroke-width: 0.8; fill: none; }}
+      .airflow {{ stroke: #64748b; stroke-width: 1.6; fill: none; marker-end: url(#airflow-arrow); }}
       .ext-line {{ stroke: #9aa0c4; stroke-width: 0.8; fill: none; }}
       .dim-arrows {{ stroke: #242092; stroke-width: 1.2; fill: none; marker-start: url(#schem-arrow); marker-end: url(#schem-arrow); }}
       .witness {{ stroke: #242092; stroke-width: 1.1; fill: none; }}

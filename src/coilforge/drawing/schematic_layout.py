@@ -200,11 +200,13 @@ def layout_dx_front_view(geom: CoilGeometry) -> ViewLayout:
     rects: list[LabeledRect] = []
     reqs: list[_DimReq] = []
     segments: list[Segment] = []
+    labels: list[Label] = []
 
+    af_zone = 4.0 * step  # left reserve for the AIRFLOW annotation, clear of the dim tiers
     casing: Rect | None
     if cl is not None and ch is not None:
-        casing = Rect(margin, margin, cl, ch)
-        extent_w, extent_h = cl + 2 * margin, ch + 2 * margin
+        casing = Rect(margin + af_zone, margin, cl, ch)
+        extent_w, extent_h = cl + 2 * margin + af_zone, ch + 2 * margin
         rects.append(LabeledRect("casing", casing))
     else:
         casing = None
@@ -212,7 +214,7 @@ def layout_dx_front_view(geom: CoilGeometry) -> ViewLayout:
             notes.append(_omit("CL"))
         if ch is None:
             notes.append(_omit("CH"))
-        extent_w, extent_h = (fl or 1.0) + 2 * margin, (fh or 1.0) + 2 * margin
+        extent_w, extent_h = (fl or 1.0) + 2 * margin + af_zone, (fh or 1.0) + 2 * margin
 
     finned: Rect | None = None
     if fl is not None and fh is not None and casing is not None:
@@ -286,9 +288,17 @@ def layout_dx_front_view(geom: CoilGeometry) -> ViewLayout:
             if rb is None:
                 notes.append(_omit("RB"))
 
+    # AIRFLOW arrow — annotation in the reserved left zone, pointing into the coil face
+    # (review-aid; generic direction). Sits clear of the CH dim tiers on the left.
+    if casing is not None:
+        ay = casing.y + casing.h / 2.0
+        ax0, ax1 = 0.4 * step, 0.4 * step + 2.2 * step
+        segments.append(Segment("airflow", ax0, ay, ax1, ay))
+        labels.append(Label("airflow", (ax0 + ax1) / 2.0, ay - 0.9 * step, "AIRFLOW"))
+
     dims = place_dimensions(reqs, casing, step) if casing is not None else []
     return ViewLayout(
-        "front", extent_w, extent_h, tuple(rects), (), tuple(segments), (), tuple(dims),
+        "front", extent_w, extent_h, tuple(rects), (), tuple(segments), tuple(labels), tuple(dims),
         tuple(dict.fromkeys(notes)),
     )
 
