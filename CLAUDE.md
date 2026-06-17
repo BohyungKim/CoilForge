@@ -34,6 +34,31 @@ is no install step or `pyproject.toml`.
 Runtime deps that may need installing: `python -m pip install fastapi uvicorn pyyaml pydantic`.
 PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade gracefully.
 
+## Trigger keywords
+
+**`shipit`** — "tests-green, then commit + push, in one go." When John types `shipit`
+(alone or in a message), do exactly this, in order, and stop at the first failure:
+
+1. Run the full suite: `python -m pytest -q`.
+2. **Gate:** proceed only if the run is green. The tree currently has 4 known
+   pre-existing `phase2c` PO-logic reds — `shipit` treats the run as passing only when
+   the *only* failures are those 4 documented reds and nothing in the files you changed
+   regressed; any new/other failure → **STOP, report it, commit nothing.** (To require a
+   fully-green run instead, say `shipit strict`. To scope to the drawing work, say
+   `shipit drawing` → run only `tests/test_schematic_renderer.py`.)
+3. Stage **only the files for the current work** — review `git status` first and `git add`
+   those paths explicitly. **Never `git add -A`**: this worktree carries unrelated edits
+   from a concurrent session that must not be swept into the commit.
+4. Commit with a Conventional Commit subject (`feat:`/`fix:`/`refactor:`/`docs:`…) and the
+   `Co-Authored-By: Claude …` trailer.
+5. Push: first push on this branch needs `git push -u origin <current-branch>`; later
+   pushes are plain `git push`.
+
+**Hard guards (never bypass, even with `shipit`):** never push to `main`; never
+`--force`/`--force-with-lease`; never `--no-verify`; never amend an already-pushed commit.
+For drawing-engine changes the Phase-Gate eyeball approval still applies — John typing
+`shipit` *is* that approval for the change in hand; it does not pre-approve future work.
+
 ## Architecture — the big picture
 
 Two input tracks converge on a shared canonical model, then fan out to drawings.
@@ -155,6 +180,36 @@ The model holds inches; each backend decides how to present them:
 Geometry scales; annotations do not. Dimension text, arrowheads, and
 witness-line labels are drawn at **fixed size** (in the SVG/PDF backends),
 anchored to datums. Scaling text or arrowheads is a defect.
+
+### Label legibility (Phase 3c — verified against the real EZC-0007)
+
+The narrow spread/end view is the hard case: many dims compete for a ~8" wide
+column. The rules that keep it legible — and the precedent for any future view:
+
+- **One view, one job.** The spread/end view carries only what positions the
+  circuits: spacing (`S`/`R`), offsets (`I`/`O`), and the box overalls (`CD`/`CH`),
+  plus the connection **glyphs** (nozzles, return circles, stubs, tube runs).
+  **Per-feature value labels do NOT belong here** — header diameters (`HDx`/`HD`),
+  stub length (`SL`), and the `RETURN` connection size are **data-strip / table
+  items, deferred to the wider header strip (Phase 4)**. EZC-0007 keeps them out of
+  the end view for exactly this reason; forcing them in makes their leaders rake
+  through the cramped return column. Keep the glyph, move the text. When a label
+  cannot be placed without crossing geometry/another label, **defer it to the right
+  view — do not cram it.**
+- **Value off its own line.** A dimension value sits a clear gap *beside* its line,
+  never on it (strikethrough is a defect). Place it at the **datum end** (away from
+  the measured point), like EZC-0007, so it never lands where the dim/ext lines run.
+- **Mirror-covariance is load-bearing.** LH↔RH is a single `mirror_view_x` on the
+  layer-2 layout, so every placement must be mirror-*covariant*: midpoint `(a+b)/2`
+  and `ax + sign(ax-bx)*gap` are; a hardcoded `min(ax,bx)` + fixed anchor is **not**.
+  For datum-end text, flip the anchor with the span (`end`↔`start`) so it reflects.
+  There are mirror-equivariance tests — run LH and RH for any label change.
+- **Obstacle-complete de-collision.** Label nudging treats **dim/witness/leader
+  lines + connection glyphs as fixed obstacles**, not just other labels. A green
+  label↔label test while lines cross labels is a **false green** — assert
+  "no line through any label bbox" and "no glyph over any label bbox" (LH+RH,
+  single+multi). Overalls (`kind=="overall"`) draw as tiered **arrows** regardless
+  of span; only offsets stay leader-style.
 
 ### Phase Gate workflow
 

@@ -57,21 +57,43 @@ def slots(**over: object) -> dict[str, object]:
         # front
         "slot.FL": 18.0, "slot.FH": 18.0, "slot.CL": 24.0, "slot.CH": 24.0,
         "slot.TF": 3.0, "slot.BF": 3.0, "slot.HF": 3.0, "slot.RF": 3.0,
-        # side / header
+        # side / header (single-circuit DX): supply id1 + return id2, with spacing S/R
         "slot.CD": 12.0, "slot.ROWS": 4, "slot.HDx1": 4.5, "slot.HD2": 3.5,
-        "slot.I1": 6.0, "slot.O2": 4.0, "slot.SL2": 3.0, "slot.RETURN_CONN_SIZE": 0.625,
+        "slot.I1": 6.0, "slot.O2": 4.0, "slot.S1": 3.0, "slot.R2": 2.0,
+        "slot.SL2": 3.0, "slot.RETURN_CONN_SIZE": 0.625,
     }
     base.update(over)
     return base
 
 
 def sanitized_slots() -> dict[str, object]:
-    # A real, small DX coil (sanitized example values).
+    # A real, small single-circuit DX coil (sanitized EZC-0001 values: I/O offset, S/R spacing).
     return {
         "slot.FH": 12.0, "slot.FL": 15.0, "slot.CH": 13.25, "slot.CL": 18.0,
         "slot.TF": 0.63, "slot.BF": 0.63, "slot.HF": 1.5, "slot.RF": 1.5,
         "slot.CD": 5.5, "slot.ROWS": 4, "slot.HDx1": 4.5, "slot.HD2": 3.5,
-        "slot.I1": 3.0, "slot.O2": 2.0, "slot.SL2": 8.0, "slot.RETURN_CONN_SIZE": 0.625,
+        "slot.I1": 3.0, "slot.O2": 2.0, "slot.S1": 2.75, "slot.R2": 0.63,
+        "slot.SL2": 8.0, "slot.RETURN_CONN_SIZE": 0.625,
+    }
+
+
+def multi_circuit_slots() -> dict[str, object]:
+    # A SANITIZED 3-circuit DX, modelled on EZC-0007's STRUCTURE (constant I/O, increasing
+    # S/R per circuit) — values altered so no raw customer numbers are committed.
+    return {
+        "slot.FH": 22.0, "slot.FL": 26.0, "slot.CH": 24.0, "slot.CL": 28.0,
+        "slot.TF": 1.0, "slot.BF": 1.0, "slot.HF": 1.5, "slot.RF": 1.5,
+        "slot.CD": 8.0, "slot.ROWS": 5,
+        # circuit 1: supply id1 / return id2
+        "slot.HDx1": 4.5, "slot.I1": 3.0, "slot.S1": 1.5,
+        "slot.HD2": 3.5, "slot.O2": 2.0, "slot.R2": 1.0, "slot.SL2": 6.0,
+        # circuit 2: supply id3 / return id4
+        "slot.HDx3": 4.5, "slot.I3": 3.0, "slot.S3": 4.0,
+        "slot.HD4": 3.5, "slot.O4": 2.0, "slot.R4": 3.5, "slot.SL4": 6.0,
+        # circuit 3: supply id5 / return id6
+        "slot.HDx5": 4.5, "slot.I5": 3.0, "slot.S5": 6.5,
+        "slot.HD6": 3.5, "slot.O6": 2.0, "slot.R6": 6.0, "slot.SL6": 6.0,
+        "slot.RETURN_CONN_SIZE": 1.0,
     }
 
 
@@ -186,10 +208,10 @@ def test_front_no_label_band_collision() -> None:
 
 def test_side_dimensioning_reuses_helper_no_collision_and_leader() -> None:
     layout = layout_header_side_view(geometry(slots()))
-    _assert_no_tier_collision(layout)  # CH overall vs I1/O2 offsets disjoint; CD vs SL2 disjoint
+    _assert_no_tier_collision(layout)  # CH overall vs I/O offsets disjoint; CD vs SL2 disjoint
     res = render(slots())
     # header offsets are offsets -> leader style (never crammed arrowheads).
-    assert 'data-dim="O2" data-style="leader"' in res.side_svg
+    assert 'data-dim="O" data-style="leader"' in res.side_svg
     assert 'data-dim="CD" data-style="arrows"' in res.side_svg
 
 
@@ -201,33 +223,39 @@ def _connections(layout: ViewLayout) -> list[Circle]:
     return [c for c in layout.circles if c.feature.startswith("connection")]
 
 
-def test_side_offset_dims_colocated_with_connections() -> None:
-    # Phase 2.5 fix: I1/O2 witness to the SAME (left) side as the connections, not the
-    # opposite edge.
+def test_side_offset_dims_on_side_edges() -> None:
+    # Phase 3c (EZC-0007): the offsets are vertical dims on the SIDE edges — supply I on the
+    # LEFT, return O on the RIGHT, value beside — out of the nozzle/return columns (where the
+    # diameter leaders run). The witness spans the offset depth at the box edge.
     layout = layout_header_side_view(geometry(slots()))
     casing = _side_casing(layout)
-    for label in ("I1", "O2"):
-        dim = dim_by_label(layout, label)
-        assert dim.edge == "left"
-        assert dim.ax == pytest.approx(casing.x)  # attaches at the header face
-    conns = _connections(layout)
-    assert conns and all(c.cx <= casing.x + 1e-9 for c in conns)  # on the left of the face
+    i, o = dim_by_label(layout, "I"), dim_by_label(layout, "O")  # bare codes (one per row)
+    assert i.edge == "left" and o.edge == "right"
+    assert i.ax == pytest.approx(casing.x)  # I witness at the left edge
+    assert o.ax == pytest.approx(casing.x + casing.w)  # O witness at the right edge
+    assert abs(i.by - i.ay) == pytest.approx(i.value)  # spans the I offset depth
+    assert abs(o.ay - o.by) == pytest.approx(o.value)  # spans the O offset depth
 
 
-def test_connections_sit_at_face_not_buried_in_casing() -> None:
+def test_connections_sit_below_bottom_edge_within_depth() -> None:
+    # V2: return connections hang at the end of their SL stub, below the bottom edge, at a
+    # spread-x within the casing depth (not buried in the casing).
     layout = layout_header_side_view(geometry(sanitized_slots()))
     casing = _side_casing(layout)
     conns = _connections(layout)
     assert conns
     for c in conns:
-        assert c.cx + c.r <= casing.x + 0.1  # tangent/at the face, not inside the casing
+        assert casing.x - 1e-9 <= c.cx <= casing.x + casing.w + 1e-9  # within the depth span
+        assert c.cy >= casing.y + casing.h - 1e-9  # at / below the bottom edge (stub end)
 
 
-def test_header_diameter_is_a_label_not_a_manifold_circle() -> None:
+def test_header_diameters_deferred_no_manifold_circle() -> None:
+    # Phase 3c (EZC-0007 faithful): header diameters HDx/HD are NOT drawn in the narrow
+    # spread/end view — they belong in the wider header strip (Phase 4). The only circles
+    # here are sweat connections, never full-diameter manifold circles, and no Ø callouts.
     res = render(sanitized_slots())
-    assert 'data-label="hd_supply"' in res.side_svg and "HDx1" in res.side_svg
-    assert 'data-label="hd_return"' in res.side_svg and "HD2" in res.side_svg
-    # the only circles are connections — no full-diameter manifold circles.
+    assert 'data-label="hd_supply_1"' not in res.side_svg and "HDx1" not in res.side_svg
+    assert 'data-label="hd_return_2"' not in res.side_svg
     assert "header_supply" not in res.side_svg and "header_return" not in res.side_svg
 
 
@@ -239,24 +267,25 @@ def test_distinct_connections_do_not_overlap() -> None:
 
 
 def test_side_labels_match_ez_convention() -> None:
-    # EZ: geometry callouts are "{value} {CODE}" (value-first, no Ø/unit); the return
-    # connection follows EZ's panel style "RETURN {value}". data-dim stays the bare CODE.
+    # EZ spread view: geometry callouts are "{value} {CODE}" (value-first, no Ø/unit); each
+    # circuit carries an offset (I/O) + spacing (S/R) dim. Header diameters (HDx/HD) and the
+    # RETURN connection size are data-strip items, deferred to Phase 4 — not in this view.
     svg = render(sanitized_slots()).side_svg
-    assert "4.50 HDx1" in svg  # supply header diameter callout
-    assert "3.50 HD2" in svg  # return header diameter callout
-    assert "2.00 O2" in svg and 'data-dim="O2"' in svg  # value-first dim text, bare-code id
-    assert 'data-label="conn_return"' in svg and "RETURN" in svg  # return connection label
+    assert "2.00 O" in svg and 'data-dim="O"' in svg  # return offset (bare code, one per row)
+    assert "0.63 R2" in svg and 'data-dim="R2"' in svg  # return spacing (one per circuit)
+    assert "2.75 S1" in svg and 'data-dim="S1"' in svg  # supply spacing (one per circuit)
+    assert "HDx" not in svg and "RETURN" not in svg  # diameters + conn-size deferred
 
 
 def test_supply_distributor_is_labels_only_no_circle() -> None:
-    # The distributor has no sweat connection (EZ ConnectionSize=0): labels only, no circle.
+    # The distributor has no sweat connection (EZ ConnectionSize=0): nozzle glyph + labels,
+    # but no connection circle of its own.
     res = render(sanitized_slots())
     assert 'data-feature="connection_supply"' not in res.side_svg
     assert 'data-feature="connection_return"' in res.side_svg
-    assert 'data-label="hd_supply"' in res.side_svg  # HDx1 callout still shown
-    assert 'data-dim="I1"' in res.side_svg  # and the I1 offset
-    # The overlap guard remains in code for Phase 3 multi-circuit, but a single-circuit DX
-    # draws exactly one connection, so it cannot overlap here.
+    assert 'data-dim="I"' in res.side_svg  # the bare I offset (one per row)
+    assert 'data-feature="distributor_supply"' in res.side_svg  # nozzle glyph drawn
+    # exactly one connection circle (the single return) — the supply contributes none.
     assert res.side_svg.count('data-feature="connection_') == 1
 
 
@@ -264,6 +293,215 @@ def test_small_offset_renders_as_leader_not_arrowheads() -> None:
     res = render(sanitized_slots())
     assert 'data-dim="TF" data-style="leader"' in res.svg
     assert 'data-dim="CL" data-style="arrows"' in res.svg
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 — N indexed connections on the DX topology (EZ spread view)
+# --------------------------------------------------------------------------- #
+def multi_render(sv: dict[str, object] | None = None, **kw: object) -> SchematicResult:
+    return render(sv if sv is not None else multi_circuit_slots(), header_type="Header 3", **kw)
+
+
+def test_multi_circuit_all_indexed_labels_present() -> None:
+    # Spacing S/R appear once per circuit (they position each circuit along the depth).
+    # Offsets collapse to one bare I / O per row. Diameters HDx/HD are deferred (Phase 4).
+    svg = multi_render().side_svg
+    for code in ("S1", "S3", "S5", "R2", "R4", "R6"):
+        assert code in svg, f"missing indexed label {code}"
+    assert "HDx" not in svg and "RETURN" not in svg  # diameters + conn-size deferred
+    assert 'data-dim="I"' in svg and 'data-dim="O"' in svg  # offsets collapsed to one bare I/O per row
+
+
+def test_multi_circuit_offset_deduped_to_one_per_row() -> None:
+    # Phase 3b: constant per-circuit offset collapses to ONE bare "I" / "O" dim per row
+    # (was once-per-circuit, illegibly stacked). Spacing S/R stay per-circuit.
+    svg = multi_render().side_svg
+    assert svg.count('data-dim="I"') == 1  # constant supply offset -> a single I dim
+    assert svg.count('data-dim="O"') == 1  # constant return offset -> a single O dim
+    for code in ('data-dim="I3"', 'data-dim="I5"', 'data-dim="O4"', 'data-dim="O6"'):
+        assert code not in svg  # no per-circuit offset dims
+
+
+def test_offset_dedupe_is_value_aware_not_hardcoded_once() -> None:
+    # When supply offsets genuinely DIFFER, each distinct value gets its own bare "I" dim
+    # at its own height (the dedupe is value-keyed, not hardcoded "once").
+    sv = multi_circuit_slots()
+    sv["slot.I1"], sv["slot.I3"], sv["slot.I5"] = 2.0, 10.0, 18.0
+    layout = layout_header_side_view(geometry(sv))
+    i_dims = [d for d in layout.dimensions if d.label == "I"]
+    assert len(i_dims) == 3  # three distinct values -> three I dims
+    assert len({round(d.tier_pos, 3) for d in i_dims}) == 3  # at distinct heights
+
+
+def test_multi_circuit_return_connsize_deferred() -> None:
+    # RETURN_CONN_SIZE is a data-strip item (Phase 4) -> no "RETURN {value}" callout in the
+    # spread view, though the return sweat circles themselves are still drawn (one per circuit).
+    svg = multi_render().side_svg
+    assert svg.count('data-label="conn_return"') == 0
+    assert "RETURN " not in svg
+    assert svg.count('data-feature="connection_return"') == 3
+
+
+def test_multi_circuit_diameters_deferred_from_spread_view() -> None:
+    # Header diameters (HDx / HD) are NOT drawn in the narrow spread/end view — they belong
+    # in the wider header strip (Phase 4). The spread view shows no Ø callouts at all.
+    res = multi_render()
+    dia = [(t, b) for t, b in _svg_label_boxes(res.side_svg) if "HD" in t]
+    assert len(dia) == 0
+
+
+def test_multi_circuit_spacing_stays_one_per_circuit() -> None:
+    svg = multi_render().side_svg
+    for code in ("S1", "S3", "S5", "R2", "R4", "R6"):
+        assert svg.count(f'data-dim="{code}"') == 1  # spacing positions each circuit
+
+
+def test_multi_circuit_n_return_circles_distinct_and_supply_has_none() -> None:
+    layout = layout_header_side_view(geometry(multi_circuit_slots()))
+    conns = _connections(layout)
+    assert len(conns) == 3  # one sweat connection per return circuit
+    assert len({round(c.cx, 3) for c in conns}) == 3  # distinct spread-x (constant I/O does NOT collapse them)
+    svg = multi_render().side_svg
+    assert 'data-feature="connection_supply"' not in svg  # supply distributors have no circle
+    assert svg.count('data-feature="connection_') == 3
+
+
+def test_multi_circuit_spread_follows_spacing_not_offset() -> None:
+    # The whole point of the re-plan: circuits are positioned by R{even} spacing even though
+    # the O offset is constant — so the return circles' x-order follows R2 < R4 < R6.
+    layout = layout_header_side_view(geometry(multi_circuit_slots()))
+    by_x = sorted(_connections(layout), key=lambda c: c.cx)
+    assert [round(c.cx - by_x[0].cx, 3) for c in by_x] == sorted(round(c.cx - by_x[0].cx, 3) for c in by_x)
+    # and they are NOT all at the same x (which a constant-offset stack would produce)
+    assert by_x[0].cx < by_x[-1].cx
+
+
+def test_multi_circuit_dropped_slot_omits_only_that_header() -> None:
+    sv = multi_circuit_slots()
+    del sv["slot.S3"]  # circuit-2 supply spacing missing
+    res = multi_render(sv)
+    assert 'data-dim="S3"' not in res.side_svg  # that circuit's spacing dim omitted
+    assert any("S3" in note for note in res.omitted_features)  # and annotated
+    assert 'data-dim="S1"' in res.side_svg  # other circuits intact
+    assert 'data-dim="S5"' in res.side_svg
+
+
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_multi_circuit_no_label_overlaps(hand: str) -> None:
+    svg = multi_render(coil_hand=hand).side_svg
+    boxes = _svg_label_boxes(svg)
+    # S1/S3/S5 + R2/R4/R6 spacing + bare I/O + CD/CH = 10 dim values in the spread view
+    # (diameters + RETURN deferred to Phase 4).
+    assert len(boxes) >= 10
+    for (ta, a), (tb, b) in itertools.combinations(boxes, 2):
+        assert not boxes_overlap(a, b), f"{hand}: {ta!r} overlaps {tb!r}"
+
+
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_multi_circuit_every_leader_reached(hand: str) -> None:
+    svg = multi_render(coil_hand=hand).side_svg
+    ends, labels = _leader_endpoints(svg), _bearing_labels(svg)
+    assert labels and ends
+    for text, box in labels:
+        assert _reach_px(box, ends) <= REACH_TOL, f"{hand}: {text!r} connector detached"
+
+
+def test_multi_circuit_mirror_equivariant() -> None:
+    def key(svg: str) -> list[tuple[str, float]]:
+        return sorted((t, round((b[1] + b[3]) / 2.0, 1)) for t, b in _svg_label_boxes(svg))
+
+    assert key(multi_render(coil_hand="LH").side_svg) == key(multi_render(coil_hand="RH").side_svg)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3c — obstacle-complete legibility: no LINE through a label, no GLYPH on a label
+# (general properties — these FAIL on the 3b output that only checked label<->label)
+# --------------------------------------------------------------------------- #
+def _seg_hits_box(x1, y1, x2, y2, box) -> bool:
+    """Liang-Barsky: does the segment cross the (already-shrunk) box interior?"""
+    bx0, by0, bx1, by1 = box
+    if bx0 >= bx1 or by0 >= by1:
+        return False
+    dx, dy = x2 - x1, y2 - y1
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, x1 - bx0), (dx, bx1 - x1), (-dy, y1 - by0), (dy, by1 - y1)):
+        if abs(p) < 1e-9:
+            if q < 0:
+                return False
+        else:
+            r = q / p
+            if p < 0:
+                if r > t1:
+                    return False
+                t0 = max(t0, r)
+            else:
+                if r < t0:
+                    return False
+                t1 = min(t1, r)
+    return t0 <= t1
+
+
+def _annotation_segments(svg: str) -> list[tuple[float, float, float, float]]:
+    """Every dimension / witness / leader line segment (incl. dogleg-path leaders)."""
+    segs = []
+    for m in re.finditer(
+        r'<line x1="(-?[\d.]+)" y1="(-?[\d.]+)" x2="(-?[\d.]+)" y2="(-?[\d.]+)" '
+        r'class="(?:ext-line|dim-arrows|witness|leader)"',
+        svg,
+    ):
+        segs.append(tuple(float(m.group(i)) for i in range(1, 5)))
+    for m in re.finditer(
+        r'<path d="M (-?[\d.]+) (-?[\d.]+) L (-?[\d.]+) (-?[\d.]+) L (-?[\d.]+) (-?[\d.]+)" class="leader"',
+        svg,
+    ):
+        v = [float(m.group(i)) for i in range(1, 7)]
+        segs.append((v[0], v[1], v[2], v[3]))
+        segs.append((v[2], v[3], v[4], v[5]))
+    return segs
+
+
+def _glyph_boxes(svg: str) -> list[tuple[float, float, float, float]]:
+    """Connection glyph bboxes: return circles + nozzle/stub segments."""
+    boxes = []
+    for m in re.finditer(
+        r'<circle data-feature="connection_return" cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"', svg
+    ):
+        cx, cy, r = (float(m.group(i)) for i in (1, 2, 3))
+        boxes.append((cx - r, cy - r, cx + r, cy + r))
+    for m in re.finditer(
+        r'<line data-feature="(?:distributor_supply|stub)" x1="([\d.]+)" y1="([\d.]+)" '
+        r'x2="([\d.]+)" y2="([\d.]+)"',
+        svg,
+    ):
+        xs, ys = (float(m.group(1)), float(m.group(3))), (float(m.group(2)), float(m.group(4)))
+        boxes.append((min(xs), min(ys), max(xs), max(ys)))
+    return boxes
+
+
+@pytest.mark.parametrize("sv", [sanitized_slots(), multi_circuit_slots()], ids=["single", "multi"])
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_no_annotation_line_passes_through_a_label(sv: dict, hand: str) -> None:
+    # A label box, shrunk 2.5px so a leader that lands ON its edge midpoint (2.7b) doesn't
+    # count — only a line crossing the value's interior (strikethrough / weave) fails.
+    svg = render(sv, header_type="Header 3", coil_hand=hand).side_svg
+    boxes = _svg_label_boxes(svg)
+    segs = _annotation_segments(svg)
+    assert boxes and segs
+    for x1, y1, x2, y2 in segs:
+        for t, b in boxes:
+            shrunk = (b[0] + 2.5, b[1] + 2.5, b[2] - 2.5, b[3] - 2.5)
+            assert not _seg_hits_box(x1, y1, x2, y2, shrunk), f"{hand}: line crosses {t!r}"
+
+
+@pytest.mark.parametrize("sv", [sanitized_slots(), multi_circuit_slots()], ids=["single", "multi"])
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_no_connection_glyph_overlaps_a_label(sv: dict, hand: str) -> None:
+    svg = render(sv, header_type="Header 3", coil_hand=hand).side_svg
+    gboxes = _glyph_boxes(svg)
+    assert gboxes
+    for t, b in _svg_label_boxes(svg):
+        for g in gboxes:
+            assert not boxes_overlap(b, g, tol=0.5), f"{hand}: glyph sits on {t!r}"
 
 
 # --------------------------------------------------------------------------- #
@@ -298,12 +536,14 @@ def test_no_label_overlaps_anywhere(hand: str) -> None:
             assert not boxes_overlap(a, b), f"{hand}: {ta!r} overlaps {tb!r}"
 
 
-def test_i1_dim_and_return_callout_no_longer_overlap() -> None:
-    # The previously-colliding pair on the side view.
+def test_side_offsets_on_opposite_edges_do_not_overlap() -> None:
+    # Phase 3c: the I/O offsets sit on opposite side edges (I left, O right), so the pair
+    # that previously collided in the return column is clear by construction.
     boxes = _svg_label_boxes(render(sanitized_slots()).side_svg)
-    i1 = next(b for t, b in boxes if t.endswith(" I1"))
-    ret = next(b for t, b in boxes if t.startswith("RETURN"))
-    assert not boxes_overlap(i1, ret)
+    i_off = next(b for t, b in boxes if t.endswith(" I"))
+    o_off = next(b for t, b in boxes if t.endswith(" O"))
+    assert i_off[2] < o_off[0]  # I's right edge is left of O's left edge
+    assert not boxes_overlap(i_off, o_off)
 
 
 def test_side_label_y_is_mirror_equivariant() -> None:
@@ -379,7 +619,7 @@ def test_i1_o2_connectors_reach_after_nudge() -> None:
     svg = render(sanitized_slots()).side_svg
     ends = _leader_endpoints(svg)
     boxes = {t: b for t, b in _bearing_labels(svg)}
-    for code in ("3.00 I1", "2.00 O2"):
+    for code in ("3.00 I", "2.00 O"):
         assert _reach_px(boxes[code], ends) <= REACH_TOL
 
 

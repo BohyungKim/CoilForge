@@ -34,13 +34,28 @@ FRONT_CASES: dict[str, dict[str, float]] = {
     },
 }
 
-# The acceptance case: a real small DX coil with sub-1" flanges + headers/connections.
+# The acceptance case: a real small single-circuit DX coil (sanitized EZC-0001 values).
 SANITIZED_DX: dict[str, float] = {
     "slot.FH": 12.0, "slot.FL": 15.0, "slot.CH": 13.25, "slot.CL": 18.0,
     "slot.TF": 0.63, "slot.BF": 0.63, "slot.HF": 1.5, "slot.RF": 1.5,
     "slot.CD": 5.5, "slot.ROWS": 4, "slot.HDx1": 4.5, "slot.HD2": 3.5,
-    "slot.I1": 3.0, "slot.O2": 2.0, "slot.SL2": 8.0,
-    "slot.RETURN_CONN_SIZE": 0.625,
+    "slot.I1": 3.0, "slot.O2": 2.0, "slot.S1": 2.75, "slot.R2": 0.63,
+    "slot.SL2": 8.0, "slot.RETURN_CONN_SIZE": 0.625,
+}
+
+# Phase 3 acceptance: a SANITIZED 3-circuit DX (EZC-0007 structure — constant I/O, increasing
+# S/R per circuit; values altered so no raw customer numbers ship).
+MULTI_CIRCUIT_DX: dict[str, float] = {
+    "slot.FH": 22.0, "slot.FL": 26.0, "slot.CH": 24.0, "slot.CL": 28.0,
+    "slot.TF": 1.0, "slot.BF": 1.0, "slot.HF": 1.5, "slot.RF": 1.5,
+    "slot.CD": 8.0, "slot.ROWS": 5,
+    "slot.HDx1": 4.5, "slot.I1": 3.0, "slot.S1": 1.5,
+    "slot.HD2": 3.5, "slot.O2": 2.0, "slot.R2": 1.0, "slot.SL2": 6.0,
+    "slot.HDx3": 4.5, "slot.I3": 3.0, "slot.S3": 4.0,
+    "slot.HD4": 3.5, "slot.O4": 2.0, "slot.R4": 3.5, "slot.SL4": 6.0,
+    "slot.HDx5": 4.5, "slot.I5": 3.0, "slot.S5": 6.5,
+    "slot.HD6": 3.5, "slot.O6": 2.0, "slot.R6": 6.0, "slot.SL6": 6.0,
+    "slot.RETURN_CONN_SIZE": 1.0,
 }
 
 
@@ -81,6 +96,25 @@ def main() -> int:
                 f"sanitized_dx_{view_name}_{hand:2s}   -> {path}  "
                 f"px_per_inch={ppi:.2f}  canvas_fill={_fill_percent(views[view_name], ppi):.0f}%"
             )
+
+    # Phase 3: the SANITIZED multi-circuit DX side view, LH + RH (the spread/end view).
+    for hand in ("lh", "rh"):
+        result = render_scale_schematic(
+            MULTI_CIRCUIT_DX, coil_category="DX", coil_hand=hand.upper(), header_type="Header 3"
+        )
+        views = build_dx_views(
+            CoilGeometry.from_slot_values(
+                MULTI_CIRCUIT_DX, coil_category="DX", coil_hand=hand.upper(),
+                header_type="Header 3", special_feature=None,
+            )
+        )
+        path = out_dir / f"multi_circuit_dx_side_{hand}.svg"
+        path.write_text(result.side_svg, encoding="utf-8")
+        ppi = result.metadata["side_px_per_inch"]
+        print(
+            f"multi_circuit_dx_side_{hand:2s} -> {path}  "
+            f"px_per_inch={ppi:.2f}  canvas_fill={_fill_percent(views['side'], ppi):.0f}%"
+        )
 
     verdict = "VISIBLY DIFFERENT" if aspects["tall_narrow"] < 1.0 < aspects["short_wide"] else "TOO SIMILAR — FAILED"
     print(f"\nProportion check: {verdict}")

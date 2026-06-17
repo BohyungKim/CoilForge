@@ -44,8 +44,8 @@ LEADER_MIN_PX = 4.0   # draw a leader to the feature once the label sits at leas
 _RECT_CLASS = {"casing": "casing", "finned": "finned"}
 # Feature -> circle CSS class (headers vs connection bubble).
 _CIRCLE_CLASS = {"connection": "connection"}
-# Feature -> segment CSS class (tube rows vs header stub).
-_SEGMENT_CLASS = {"row": "row"}
+# Feature -> segment CSS class (tube rows / circuit tube runs are light; stub/nozzle dark).
+_SEGMENT_CLASS = {"row": "row", "tube_run": "row"}
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,12 @@ def boxes_overlap(a, b, tol: float = 1.0) -> bool:  # noqa: ANN001
     return ix > tol and iy > tol
 
 
+def _seg_box(x1: float, y1: float, x2: float, y2: float, pad: float = 1.5):
+    """Axis-aligned bbox of a line segment, padded for its stroke width — so a segment can
+    join the de-collision obstacle set (a label must clear lines, not just other labels)."""
+    return (min(x1, x2) - pad, min(y1, y2) - pad, max(x1, x2) + pad, max(y1, y2) + pad)
+
+
 def _vclear(a, b, gap: float) -> bool:  # noqa: ANN001
     """Two boxes are clear if they don't overlap in x, or are >= ``gap`` apart in y."""
     ix = min(a[2], b[2]) - max(a[0], b[0])
@@ -102,23 +108,40 @@ def _vclear(a, b, gap: float) -> bool:  # noqa: ANN001
     return iy <= -gap
 
 
-def decollide(labels: list[_Label], center_x: float) -> list[_Label]:
-    """Deterministic, MIRROR-EQUIVARIANT de-collision: nudge labels in y only, in a
-    mirror-invariant order. Since y is unaffected by the x-mirror, the same y-shifts apply to
-    LH and RH, so the views stay clean mirrors. Greedy + monotonic => globally non-overlapping.
+def decollide(
+    labels: list[_Label],
+    center_x: float,
+    obstacles: list[tuple[float, float, float, float]] | None = None,
+    casing_y: tuple[float, float] | None = None,
+) -> list[_Label]:
+    """Deterministic, MIRROR-EQUIVARIANT, OBSTACLE-COMPLETE de-collision: nudge labels in y
+    only, in a mirror-invariant order, so each label clears every other label AND every fixed
+    ``obstacle`` (dimension / witness lines + connection glyph bboxes), not just other labels.
+
+    ``casing_y`` = the box's (top, bottom) in px. A label that starts ABOVE the box is only
+    ever pushed further UP, one BELOW only further DOWN — so labels stay on their side and
+    never get shoved across the (open) coil interior into the opposite band. Since y and the
+    region test are unaffected by the x-mirror, the same y-shifts apply to LH and RH.
     """
     order = sorted(
         range(len(labels)),
         key=lambda i: (round(labels[i].y, 1), round(abs(labels[i].x - center_x), 1), labels[i].text, i),
     )
-    placed: list[tuple[float, float, float, float]] = []
+    # Seed with the fixed obstacles: they are never moved, but every label must clear them.
+    placed: list[tuple[float, float, float, float]] = list(obstacles) if obstacles else []
+    top, bot = casing_y if casing_y is not None else (None, None)
     for i in order:
         lb = labels[i]
         box = text_bbox(lb.x, lb.y, lb.anchor, lb.text)
         bad = [p for p in placed if not _vclear(box, p, LABEL_GAP)]
         if bad:
-            centroid = sum((p[1] + p[3]) / 2.0 for p in bad) / len(bad)
-            direction = 1.0 if lb.y >= centroid else -1.0  # y-only -> mirror-invariant
+            if top is not None and lb.y0 <= top:
+                direction = -1.0  # above the box -> push further up (never across it)
+            elif bot is not None and lb.y0 >= bot:
+                direction = 1.0  # below the box -> push further down
+            else:
+                centroid = sum((p[1] + p[3]) / 2.0 for p in bad) / len(bad)
+                direction = 1.0 if lb.y >= centroid else -1.0  # side labels: away from the crowd
             guard = 0
             while guard < 600 and any(not _vclear(box, p, LABEL_GAP) for p in placed):
                 lb.y += direction * DECOLLIDE_STEP
@@ -206,12 +229,22 @@ def render_view_svg(
         )
 
     # Collect EVERY text label (dim labels, EZ callouts, notes) into one list, then run a
-    # single de-collision pass over all of them.
+    # single OBSTACLE-COMPLETE de-collision over all of them. The obstacle set is the fixed
+    # dimension/witness lines + the connection glyphs (return circles, nozzle + stub segments),
+    # so a label clears lines and glyphs, not just other labels.
     labels: list[_Label] = []
+    obstacles: list[tuple[float, float, float, float]] = []
     for dim in view.dimensions:
-        group, lab = _dimension_parts(dim, x_px, y_px)
+        group, lab, line_boxes = _dimension_parts(dim, x_px, y_px)
         geom.append(group)
         labels.append(lab)
+        obstacles.extend(line_boxes)
+    for c in view.circles:
+        r = c.r * ppi
+        obstacles.append((x_px(c.cx) - r, y_px(c.cy) - r, x_px(c.cx) + r, y_px(c.cy) + r))
+    for s in view.segments:
+        if s.feature in ("distributor_supply", "stub"):  # nozzle / return-stub glyphs
+            obstacles.append(_seg_box(x_px(s.x1), y_px(s.y1), x_px(s.x2), y_px(s.y2)))
     for lb in view.labels:
         conn = (x_px(lb.connector[0]), y_px(lb.connector[1])) if lb.connector is not None else None
         labels.append(
@@ -223,7 +256,9 @@ def render_view_svg(
 
     for lb in labels:
         lb.y0 = lb.y
-    decollide(labels, canvas_w / 2.0)
+    cp = rects_px.get("casing")
+    casing_y = (cp[1], cp[1] + cp[3]) if cp else None
+    decollide(labels, canvas_w / 2.0, obstacles, casing_y)
 
     leader_parts = [
         _leader_svg(lb)
@@ -282,31 +317,41 @@ render_front_view_svg = render_view_svg
 
 
 def _dimension_parts(dim: Dimension, x_px, y_px):  # noqa: ANN001 - local px mappers
-    """Return (fixed-geometry <g data-dim …>, collected text _Label). The label's text is
-    NOT inside the group, so the de-collision pass can move it (and a leader is redrawn)."""
+    """Return (fixed-geometry <g data-dim …>, collected text _Label, line-segment bboxes). The
+    value text is NOT inside the group, so de-collision can move it (a leader is redrawn); the
+    returned bboxes let the value (and every other label) be kept CLEAR of the dim lines. The
+    value is seated a clear gap OFF its own line — never centered on it."""
     ax, ay = x_px(dim.ax), y_px(dim.ay)
     bx, by = x_px(dim.bx), y_px(dim.by)
     horizontal_edge = dim.edge in ("top", "bottom")
     tp = y_px(dim.tier_pos) if horizontal_edge else x_px(dim.tier_pos)
 
-    span_px = hypot(bx - ax, by - ay)
-    arrows = dim.kind == "overall" and span_px >= LEADER_THRESHOLD_PX
+    # Overalls (CD/CH + spacing S/R) draw as tiered arrows like EZC-0007 — regardless of span,
+    # so short spacings tier cleanly instead of piling up as leaders. Offsets (I/O/SL) stay
+    # leader-style (their span is the offset itself).
+    arrows = dim.kind == "overall"
+    off = 0.25 * FONT_PX + LABEL_GAP + 4  # vertical clearance so the value clears its own line
 
     if horizontal_edge:
         lpar = (ax + bx) / 2.0
-        if dim.edge == "top":
-            lx, ly, anchor = lpar, tp - 5, "middle"
-        else:
-            lx, ly, anchor = lpar, tp + FONT_PX + 2, "middle"
+        # Value BEYOND the datum end (away from the measured point), off the line — like
+        # EZC-0007, so it never sits where the dimension ext-lines run. ``dirn`` flips under the
+        # x-mirror with ax/bx, and the end<->start anchor flips with it, so the placement stays
+        # mirror-covariant (the y-only de-collision then matches LH/RH).
+        dirn = -1.0 if ax <= bx else 1.0
+        lx = ax + dirn * 4.0
+        anchor = "end" if dirn < 0 else "start"
+        ly = tp - off if dim.edge == "top" else tp + 0.8 * FONT_PX + LABEL_GAP + 4
     else:
         lpar = (ay + by) / 2.0
         if dim.edge == "left":
-            lx, ly, anchor = tp - 6, lpar + 4, "end"
+            lx, ly, anchor = tp - 8, lpar + 4, "end"  # value BESIDE the vertical line
         else:
-            lx, ly, anchor = tp + 6, lpar + 4, "start"
+            lx, ly, anchor = tp + 8, lpar + 4, "start"
 
     if arrows:
         if horizontal_edge:
+            segs = [(ax, ay, ax, tp), (bx, by, bx, tp), (ax, tp, bx, tp)]
             lines = [
                 f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{ax:.2f}" y2="{tp:.2f}" class="ext-line"/>',
                 f'<line x1="{bx:.2f}" y1="{by:.2f}" x2="{bx:.2f}" y2="{tp:.2f}" class="ext-line"/>',
@@ -314,6 +359,7 @@ def _dimension_parts(dim: Dimension, x_px, y_px):  # noqa: ANN001 - local px map
             ]
             connector = (lpar, tp)
         else:
+            segs = [(ax, ay, tp, ay), (bx, by, tp, by), (tp, ay, tp, by)]
             lines = [
                 f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{tp:.2f}" y2="{ay:.2f}" class="ext-line"/>',
                 f'<line x1="{bx:.2f}" y1="{by:.2f}" x2="{tp:.2f}" y2="{by:.2f}" class="ext-line"/>',
@@ -324,6 +370,7 @@ def _dimension_parts(dim: Dimension, x_px, y_px):  # noqa: ANN001 - local px map
     else:
         # leader style: the witness is the fixed geometry; the leader to the label is drawn
         # AFTER de-collision, from the witness midpoint to the label's final position.
+        segs = [(ax, ay, bx, by)]
         lines = [f'<line x1="{ax:.2f}" y1="{ay:.2f}" x2="{bx:.2f}" y2="{by:.2f}" class="witness"/>']
         connector = ((ax + bx) / 2.0, (ay + by) / 2.0)
         style, always = "leader", True
@@ -331,4 +378,4 @@ def _dimension_parts(dim: Dimension, x_px, y_px):  # noqa: ANN001 - local px map
     text = f"{dim.value:.2f} {dim.label}" if dim.value is not None else dim.label
     group = f'<g data-dim="{_esc(dim.label)}" data-style="{style}">{"".join(lines)}</g>'
     label = _Label(lx, ly, anchor, "dim-label", text, connector=connector, always_leader=always)
-    return group, label
+    return group, label, [_seg_box(*s) for s in segs]

@@ -31,19 +31,29 @@ _SLOT_KEYS: dict[str, str] = {
     "RF": "slot.RF",
 }
 
-# Header/side-view slots (verified against slot_map.json + ez_json_drawing_loader.py).
-# Header id 1 = supply/distributor (odd), id 2 = return/suction (even).
-# A DX distributor has no single sweat connection (EZ: Headers[0].ConnectionSize=[0,0,0]),
-# so the supply carries no connection_diameter — it is represented by labels (HDx1 + I1).
-_SUPPLY_SLOTS = {"diameter": "slot.HDx1", "offset": "slot.I1"}
-_RETURN_SLOTS = {
-    "diameter": "slot.HD2",
-    "offset": "slot.O2",
-    "stub_length": "slot.SL2",
-    "connection_diameter": "slot.RETURN_CONN_SIZE",
-}
+# Header/side-view slots (verified against slot_map.json + ez_json_drawing_loader.py and the
+# real DX references EZC-0001 / EZC-0007). Headers are indexed by EZ id: ODD = supply/
+# distributor, EVEN = return/suction. Each circuit k -> supply id 2k-1, return id 2k.
+#   supply id : HDx{id} (header Ø), I{id} (offset from edge), S{id} (spacing along the depth)
+#   return id : HD{id}, O{id}, R{id}, SL{id} (stub) + the shared RETURN_CONN_SIZE (sweat Ø)
+# A DX distributor has no single sweat connection (EZ: Headers[supply].ConnectionSize=[0,0,0]),
+# so the supply carries no connection_diameter — it is represented by labels (HDx + I + S).
+_HEADER_SLOT_RE = re.compile(r"^slot\.(HDx|HD|SL|S|R|I|O)(\d+)$")
+_RETURN_CONN_SLOT = "slot.RETURN_CONN_SIZE"
 
 _REVIEW_REQUIRED = "REVIEW REQUIRED"
+
+
+def _header_ids(slot_values: dict[str, Any]) -> list[int]:
+    """Sorted unique EZ header ids present in the indexed side-view slots (e.g. ``[1, 2]``
+    single-circuit, ``[1, 2, 3, 4, 5, 6]`` for a 3-circuit DX). ``RETURN_CONN_SIZE`` is a
+    shared (un-indexed) slot and is intentionally not matched here."""
+    ids: set[int] = set()
+    for key in slot_values:
+        match = _HEADER_SLOT_RE.match(str(key))
+        if match:
+            ids.add(int(match.group(2)))
+    return sorted(ids)
 
 
 def _slot_inches(slot_values: dict[str, Any], key: str) -> float | None:
@@ -76,15 +86,46 @@ def _slot_int(slot_values: dict[str, Any], key: str) -> int | None:
 class HeaderSpec:
     """One header/connection at the coil's header end, in inches. No pixels.
 
+    Indexed by EZ id (``index``): odd = supply/distributor, even = return. The real DX
+    references (EZC-0001 / EZC-0007) show ``offset`` (I/O) is a per-row CONSTANT while
+    ``spacing`` (S/R) is what positions each circuit along the depth — so both are carried.
+
     A field is ``None`` when its slot was missing / REVIEW REQUIRED — the side view
     drops + annotates that feature rather than inventing it.
     """
 
     role: str  # "supply" | "return"
-    diameter: float | None  # HDx1 (supply) / HD2 (return)
-    offset: float | None  # I1 (supply) / O2 (return) — vertical position, review-aid datum
-    stub_length: float | None  # SL2 (return)
-    connection_diameter: float | None  # RETURN_CONN_SIZE (return)
+    index: int  # EZ header id (odd = supply, even = return)
+    diameter: float | None  # HDx{id} (supply) / HD{id} (return)
+    offset: float | None  # I{id} (supply) / O{id} (return) — constant offset from the edge
+    spacing: float | None  # S{id} (supply) / R{id} (return) — position along the depth
+    stub_length: float | None  # SL{id} (return)
+    connection_diameter: float | None  # RETURN_CONN_SIZE (return; shared sweat Ø)
+
+
+def _make_header(slot_values: dict[str, Any], hid: int) -> HeaderSpec:
+    """Build one indexed header from its gated slots. Odd id = supply/distributor
+    (HDx/I/S, no stub or sweat connection per the EZ DX distributor rule); even id =
+    return (HD/O/R/SL + the shared RETURN_CONN_SIZE sweat Ø)."""
+    if hid % 2 == 1:  # supply / distributor
+        return HeaderSpec(
+            role="supply",
+            index=hid,
+            diameter=_slot_inches(slot_values, f"slot.HDx{hid}"),
+            offset=_slot_inches(slot_values, f"slot.I{hid}"),
+            spacing=_slot_inches(slot_values, f"slot.S{hid}"),
+            stub_length=None,  # supply distributor has no stubout (per EZ data)
+            connection_diameter=None,  # a distributor has no single sweat connection
+        )
+    return HeaderSpec(
+        role="return",
+        index=hid,
+        diameter=_slot_inches(slot_values, f"slot.HD{hid}"),
+        offset=_slot_inches(slot_values, f"slot.O{hid}"),
+        spacing=_slot_inches(slot_values, f"slot.R{hid}"),
+        stub_length=_slot_inches(slot_values, f"slot.SL{hid}"),
+        connection_diameter=_slot_inches(slot_values, _RETURN_CONN_SLOT),
+    )
 
 
 @dataclass(frozen=True)
@@ -126,20 +167,10 @@ class CoilGeometry:
     ) -> CoilGeometry:
         resolved = {label: _slot_inches(slot_values, key) for label, key in _SLOT_KEYS.items()}
         omitted = tuple(label for label, value in resolved.items() if value is None)
-        supply = HeaderSpec(
-            role="supply",
-            diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["diameter"]),
-            offset=_slot_inches(slot_values, _SUPPLY_SLOTS["offset"]),
-            stub_length=None,  # supply distributor has no stubout (per EZ data)
-            connection_diameter=None,  # a distributor has no single sweat connection
-        )
-        return_header = HeaderSpec(
-            role="return",
-            diameter=_slot_inches(slot_values, _RETURN_SLOTS["diameter"]),
-            offset=_slot_inches(slot_values, _RETURN_SLOTS["offset"]),
-            stub_length=_slot_inches(slot_values, _RETURN_SLOTS["stub_length"]),
-            connection_diameter=_slot_inches(slot_values, _RETURN_SLOTS["connection_diameter"]),
-        )
+        # One HeaderSpec per EZ id present (odd = supply, even = return). Default to the
+        # single-circuit pair [1, 2] when no indexed header slots are present (back-compat).
+        ids = _header_ids(slot_values) or [1, 2]
+        headers = tuple(_make_header(slot_values, hid) for hid in ids)
         return cls(
             casing_length=resolved["CL"],
             casing_height=resolved["CH"],
@@ -151,7 +182,7 @@ class CoilGeometry:
             return_flange=resolved["RF"],
             casing_depth=_slot_inches(slot_values, "slot.CD"),
             rows=_slot_int(slot_values, "slot.ROWS"),
-            headers=(supply, return_header),
+            headers=headers,
             coil_category=coil_category,
             coil_hand=coil_hand,
             header_type=header_type,

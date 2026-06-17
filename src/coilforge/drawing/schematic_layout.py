@@ -272,11 +272,23 @@ def layout_dx_front_view(geom: CoilGeometry) -> ViewLayout:
 # --------------------------------------------------------------------------- #
 # Header / side (end) view
 # --------------------------------------------------------------------------- #
+def _spread_x(casing: Rect, h: HeaderSpec) -> float | None:
+    """Depth position of a header along the spread axis (CD), from its spacing S/R.
+    ``None`` when the spacing slot was missing — the caller omits + annotates."""
+    if h.spacing is None:
+        return None
+    return casing.x + min(max(h.spacing, 0.0), casing.w)
+
+
 def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
-    """End view (CD x CH). Headers are drawn as their small CONNECTIONS (to scale) at the
-    header-face (canonical = left) edge; the manifold diameter HD is a label, not a circle.
-    Connection heights come from I1/O2 (from the casing bottom); the return carries the SL2
-    stub; the supply distributor has no stubout (per EZ data)."""
+    """End / spread view (CH high x CD wide) — faithful to the EZ DX convention
+    (EZC-0001 / EZC-0007). Circuits are positioned ALONG the depth (CD) by their spacing
+    (``S{odd}`` / ``R{even}``); supply distributors sit near the TOP edge (offset ``I`` down),
+    return connections near the BOTTOM edge (offset ``O`` up). ``I``/``O`` is a per-row
+    CONSTANT and ``S``/``R`` is what positions each circuit, so every connection is
+    dual-dimensioned (offset I/O + spacing S/R). The supply is a nozzle glyph (no sweat
+    circle, per EZ); the return is a connection circle + ``SL`` stub. ``None`` /
+    "REVIEW REQUIRED" → the feature is omitted + annotated. LH<->RH is the single x-mirror."""
     notes: list[str] = []
     cd, ch = geom.casing_depth, geom.casing_height
 
@@ -286,18 +298,24 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
         step = STEP_FRACTION * ch
     else:
         step = STEP_FRACTION
-    base_margin = 4 * step
 
-    # How far connections/stubs reach left of the header face. Only the RETURN draws a
-    # connection (+ stub); the supply DISTRIBUTOR is labels-only (EZ: it has no sweat
-    # connection — its ConnectionSize is 0; 0.88 is the feeder-tube Ø, not a connection).
-    def _reach(h: HeaderSpec) -> float:
-        if h.role != "return":
+    supplies = [h for h in geom.headers if h.role == "supply"]
+    returns = [h for h in geom.headers if h.role == "return"]
+    circuits = max(len(supplies), len(returns), 1)
+
+    # A return's stub reaches below the bottom edge by SL beyond its O offset.
+    def _below(h: HeaderSpec) -> float:
+        if h.stub_length is None:
             return 0.0
-        r = (h.connection_diameter / 2.0) if h.connection_diameter is not None else 0.0
-        return (h.stub_length or 0.0) + r
-    protrusion = max((_reach(h) for h in geom.headers), default=0.0)
-    left_margin = max(base_margin, protrusion + 3 * step)  # protrusion + 2 dim tiers + label
+        return max(0.0, h.stub_length - (h.offset or 0.0))
+    protrusion = max((_below(h) for h in returns), default=0.0)
+
+    # Margins fit the dim band: top carries S spacing (circuits) + CD; bottom carries R
+    # spacing (circuits) + SL, cleared past the stub protrusion. (Header diameters HDx/HD are
+    # NOT drawn here — EZ shows them in the wider header strip; deferred to Phase 4.)
+    top_margin = max(4.0, circuits + 3) * step
+    bottom_margin = max(top_margin, protrusion + (circuits + 3) * step)
+    left_margin = right_margin = 4 * step
 
     rects: list[LabeledRect] = []
     circles: list[Circle] = []
@@ -307,9 +325,9 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
 
     casing: Rect | None
     if cd is not None and ch is not None:
-        casing = Rect(left_margin, base_margin, cd, ch)
-        extent_w = left_margin + cd + base_margin
-        extent_h = 2 * base_margin + ch
+        casing = Rect(left_margin, top_margin, cd, ch)
+        extent_w = left_margin + cd + right_margin
+        extent_h = top_margin + ch + bottom_margin
         rects.append(LabeledRect("casing", casing))
     else:
         casing = None
@@ -317,66 +335,111 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
             notes.append(_omit("CD"))
         if ch is None:
             notes.append(_omit("CH"))
-        extent_w = left_margin + (cd or 1.0) + base_margin
-        extent_h = 2 * base_margin + (ch or 1.0)
+        extent_w = left_margin + (cd or 1.0) + right_margin
+        extent_h = top_margin + (ch or 1.0) + bottom_margin
 
     if casing is not None:
+        top = casing.y
         bottom = casing.y + casing.h
+        datum_x = casing.x  # spacing measured rightward from the header-face datum
+
+        # ROWS as faint lines across the depth (CD) — the spread axis.
         if geom.rows and geom.rows > 1:
             for i in range(1, geom.rows):
                 x = casing.x + i * casing.w / geom.rows
-                segments.append(Segment("row", x, casing.y, x, bottom))
+                segments.append(Segment("row", x, top, x, bottom))
 
-        kept: list[tuple[float, float, float]] = []  # (cx, cy, r) of placed connections
-        for h in geom.headers:
-            dia_label = "HDx1" if h.role == "supply" else "HD2"
-            off_label = "I1" if h.role == "supply" else "O2"
-            cy = bottom - h.offset if h.offset is not None else casing.y + casing.h / 2.0
+        # --- supply distributors: top row, offset I down, spaced by S ---
+        # Offset I is a per-row constant in EZ -> dimension it ONCE per distinct value (bare
+        # "I"); spacing S stays one per circuit (it positions them). Diameter HDx goes OUTSIDE
+        # the casing (above the top edge) on a leader.
+        supply_offsets: set[float] = set()
+        for h in supplies:
+            sp_lab = f"S{h.index}"
+            cx = _spread_x(casing, h)
+            if cx is None:
+                cx = casing.x + casing.w / 2.0
+                notes.append(_omit(sp_lab))
+            else:
+                reqs.append(_DimReq(sp_lab, "overall", "top", "h", datum_x, top, cx, top, h.spacing))
+            cy = top + h.offset if h.offset is not None else top + step
             if h.offset is not None:
-                # offset dim on the LEFT (connection) side, from the bottom to the connection.
-                reqs.append(_DimReq(off_label, "offset", "left", "v", casing.x, bottom, casing.x, cy, h.offset))
+                key = round(h.offset, 3)
+                if key not in supply_offsets:  # one bare "I" dim per distinct value, not per circuit
+                    supply_offsets.add(key)
+                    # EZ draws the supply offset on the LEFT (value beside), out of the nozzle column
+                    reqs.append(_DimReq("I", "offset", "left", "v", casing.x, top, casing.x, cy, h.offset))
             else:
-                notes.append(_omit(off_label))
+                notes.append(_omit(f"I{h.index}"))
+            # nozzle glyph (downward triangle) — NO sweat circle (per EZ distributor rule). The
+            # header diameter HDx is NOT labelled here (shown in the header strip — Phase 4).
+            fw, fd = 0.16 * casing.w, 0.5 * step
+            segments.append(Segment("distributor_supply", cx - fw, cy, cx + fw, cy))
+            segments.append(Segment("distributor_supply", cx - fw, cy, cx, cy + fd))
+            segments.append(Segment("distributor_supply", cx + fw, cy, cx, cy + fd))
 
-            conn_r = 0.0
-            conn_cx = casing.x  # supply distributor: labels only, no circle (per EZ)
-            if h.role == "return":
-                if h.stub_length is not None:
-                    conn_cx = casing.x - h.stub_length
-                    segments.append(Segment("stub", casing.x, cy, conn_cx, cy))
-                    reqs.append(_DimReq("SL2", "offset", "bottom", "h", conn_cx, cy, casing.x, cy, h.stub_length))
-                else:
-                    notes.append(_omit("SL2"))
-                if h.connection_diameter is not None:
-                    conn_r = h.connection_diameter / 2.0
-                    # overlap guard: never draw physically-impossible overlapping connections.
-                    if any((conn_cx - px) ** 2 + (cy - py) ** 2 < (conn_r + pr - 0.05) ** 2 for px, py, pr in kept):
-                        notes.append(f"{dia_label} connection overlaps another — review required (omitted)")
-                        conn_r = 0.0
-                    else:
-                        kept.append((conn_cx, cy, conn_r))
-                        circles.append(Circle("connection_return", conn_cx, cy, conn_r))
-                        labels.append(Label(
-                            "conn_return", conn_cx, cy + conn_r + 0.4 * step,
-                            f"RETURN {h.connection_diameter:.2f}", connector=(conn_cx, cy),
-                        ))
-                else:
-                    notes.append(_omit(f"{dia_label} connection size"))
-
-            # Header diameter is an EZ callout label ("{value} HDx1"), not a drawn manifold.
-            if h.diameter is not None:
-                labels.append(Label(
-                    f"hd_{h.role}", conn_cx, cy - conn_r - 0.4 * step,
-                    f"{h.diameter:.2f} {dia_label}", connector=(conn_cx, cy),
-                ))
+        # --- return connections: bottom row, offset O up, spaced by R, + SL stub ---
+        # Offset O dimensioned ONCE per distinct value (bare "O"); spacing R one per circuit.
+        # Diameter HD goes OUTSIDE (below the bottom edge); the shared RETURN conn-size is
+        # labelled ONCE. Geometry (circle at the stub end, stub, glyphs) is unchanged.
+        kept: list[tuple[float, float, float]] = []  # (cx, cy, r) placed connections
+        return_offsets: set[float] = set()
+        for h in returns:
+            dia_lab, sp_lab = f"HD{h.index}", f"R{h.index}"  # dia_lab only used in the conn notes
+            cx = _spread_x(casing, h)
+            if cx is None:
+                cx = casing.x + casing.w / 2.0
+                notes.append(_omit(sp_lab))
             else:
-                notes.append(_omit(dia_label))
+                reqs.append(_DimReq(sp_lab, "overall", "bottom", "h", datum_x, bottom, cx, bottom, h.spacing))
+            cy = bottom - h.offset if h.offset is not None else bottom - step
+            if h.offset is not None:
+                key = round(h.offset, 3)
+                if key not in return_offsets:  # one bare "O" dim per distinct value, not per circuit
+                    return_offsets.add(key)
+                    # EZ draws the return offset on the RIGHT (value beside), out of the return column
+                    right = casing.x + casing.w
+                    reqs.append(_DimReq("O", "offset", "right", "v", right, cy, right, bottom, h.offset))
+            else:
+                notes.append(_omit(f"O{h.index}"))
+            # The header diameter HD is NOT labelled here (shown in the header strip — Phase 4).
+            # stub down + sweat connection circle at its end (GEOMETRY UNCHANGED)
+            conn_cy = cy
+            if h.stub_length is not None:
+                conn_cy = cy + h.stub_length
+                segments.append(Segment("stub", cx, cy, cx, conn_cy))  # SL dimensioned in the header strip (Phase 4)
+            if h.connection_diameter is not None:
+                r = h.connection_diameter / 2.0
+                # overlap guard: never draw physically-impossible overlapping connections.
+                if any((cx - px) ** 2 + (conn_cy - py) ** 2 < (r + pr - 0.05) ** 2 for px, py, pr in kept):
+                    notes.append(f"{dia_lab} connection overlaps another — review required (omitted)")
+                else:
+                    kept.append((cx, conn_cy, r))
+                    circles.append(Circle("connection_return", cx, conn_cy, r))
+                    # The RETURN connection size is a data-table / header-strip item (Phase 4),
+                    # not a spread-view callout — EZC-0007 keeps it out of the narrow end view.
+            else:
+                notes.append(_omit(f"{dia_lab} connection size"))
 
-        notes.append("supply distributor: labels only, no stubout (per EZ data)")
-        reqs.append(_DimReq("CD", "overall", "bottom", "h", casing.x, bottom, casing.x + casing.w, bottom, cd))
-        reqs.append(_DimReq("CH", "overall", "right", "v", casing.x + casing.w, casing.y, casing.x + casing.w, bottom, ch))
+        # --- tube runs: supply id 2k-1 -> return id 2k (light, ties each circuit) ---
+        ret_by_id = {h.index: h for h in returns}
+        for s in supplies:
+            r = ret_by_id.get(s.index + 1)
+            if r is None:
+                continue
+            sx, rx = _spread_x(casing, s), _spread_x(casing, r)
+            if sx is None or rx is None:
+                continue
+            sy = top + (s.offset if s.offset is not None else step)
+            ry = bottom - (r.offset if r.offset is not None else step)
+            segments.append(Segment("tube_run", sx, sy, rx, ry))
 
-    edge_base = {"left": protrusion} if casing is not None else {}
+        if supplies:
+            notes.append("supply distributors: nozzle glyphs, no sweat connection (per EZ data)")
+        reqs.append(_DimReq("CD", "overall", "top", "h", casing.x, top, casing.x + casing.w, top, cd))
+        reqs.append(_DimReq("CH", "overall", "right", "v", casing.x + casing.w, top, casing.x + casing.w, bottom, ch))
+
+    edge_base = {"bottom": protrusion} if casing is not None else {}
     dims = place_dimensions(reqs, casing, step, edge_base) if casing is not None else []
     return ViewLayout(
         "side", extent_w, extent_h, tuple(rects), tuple(circles), tuple(segments),
