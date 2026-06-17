@@ -16,6 +16,7 @@ silently drawn. Output remains a review aid, never manufacturing-approved.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +27,7 @@ from coilforge.schemas.header_prepopulate import (
     ProductFamily,
     TerraVariant,
 )
+from coilforge.services.distributor_slots import distributor_drawing_slots
 from coilforge.services.header_prepopulate_engine import prepopulate
 from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 from coilforge.services.json_drawing_link import engine_slot_bridge
@@ -140,11 +142,20 @@ def map_engine_to_slots(
     response: HeaderPrepopulateResponse,
     *,
     geometry_slots: dict[str, Any] | None = None,
+    display: Mapping[str, Any] | None = None,
+    ez_headers: Sequence[Mapping[str, Any]] | None = None,
+    supply_ids: Sequence[int] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """HIGH engine values -> slot values; MEDIUM/blocked -> review items.
 
     geometry_slots are non-engine slots (FH/FL/CH/CL/ROWS/Tag) sourced from the
     coil JSON/canonical record; they are merged in as-is.
+
+    When ``display`` (drawing_callouts / distributors_display / airflow_direction) and/or
+    ``ez_headers`` are provided, the V3 distributor slots are sourced UPSTREAM via
+    :func:`distributor_drawing_slots` (Phase 4a): only its HIGH (``values``) slots merge into
+    ``slot_values`` — review/blocked are surfaced as review items, never silently drawn.
+    ``supply_ids`` defaults to the odd ``IsSupply`` ids in ``ez_headers`` when omitted.
     """
     slot_values: dict[str, Any] = dict(geometry_slots or {})
     for pair in engine_slot_bridge():
@@ -156,6 +167,21 @@ def map_engine_to_slots(
             slot_values[pair["slot"]] = value
 
     review_items: list[str] = []
+
+    if display is not None or ez_headers is not None or supply_ids is not None:
+        ids = list(supply_ids) if supply_ids is not None else _supply_ids_from_headers(ez_headers)
+        if ids:
+            dist = distributor_drawing_slots(
+                engine_response=response, supply_ids=ids,
+                ez_headers=ez_headers, display=display,
+            )
+            slot_values.update(dist.gated_slot_values())  # HIGH only
+            for gs in dist.review.values():
+                review_items.append(f"review:{gs.slot}={gs.value} ({gs.reason})")
+            for gs in dist.blocked.values():
+                review_items.append(f"blocked:{gs.slot} ({gs.reason})")
+            review_items.extend(dist.notes)
+
     for name, result in response.suggestions.items():
         review_items.append(f"suggestion:{name}={result.value} (review)")
     for name, result in response.blocked.items():
@@ -163,6 +189,19 @@ def map_engine_to_slots(
     for inp in response.missing_inputs:
         review_items.append(f"missing_input:{inp}")
     return slot_values, review_items
+
+
+def _supply_ids_from_headers(
+    ez_headers: Sequence[Mapping[str, Any]] | None,
+) -> list[int]:
+    """Odd EZ ids of the supply/distributor headers present (e.g. [1, 3, 5])."""
+    ids: list[int] = []
+    for h in ez_headers or []:
+        if isinstance(h, Mapping) and h.get("IsSupply") and "ID" in h:
+            hid = int(h["ID"])
+            if hid % 2 == 1:
+                ids.append(hid)
+    return sorted(ids)
 
 
 # --------------------------------------------------------------------------- #

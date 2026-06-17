@@ -1,0 +1,90 @@
+{
+  "fixture_name": "sanitized_dx_header3_ezc0007_default",
+  "fixture_status": "sanitized_example",
+  "coil_name": "SAMPLE_DX_HEADER3",
+  "model_number": "DX-SAMPLE-HEADER3",
+  "source_case_id": "EZC-0007",
+  "coil_category": "DX",
+  "header_type": "Header 3",
+  "rows": 5,
+  "fin_height": 22.0,
+  "fin_length": 26.0,
+  "fin_density_fpi": 13.0,
+  "casing_height": 24.0,
+  "casing_length": 28.0,
+  "casing_depth": 8.0,
+  "top_flange": 1.0,
+  "bottom_flange": 1.0,
+  "return_bend_allowance": 1.75,
+  "observed_oal": 29.75,
+  "return_header_diameter": 3.5,
+  "distributor_header_diameter": 4.5,
+  "return_stub_length": 6.0,
+  "header_assemblies": [
+    {
+      "ID": 1, "IsSupply": true, "IsDistributor": true,
+      "HD": 4.5, "SL": [0.0, 0.0, 0.0], "SR": 1.5, "IO": [3.0, 0.0, 0.0],
+      "Diameter": 0.88, "ConnectionSize": [0.0, 0.0, 0.0]
+    },
+    {
+      "ID": 2, "IsSupply": false, "IsDistributor": false,
+      "HD": 3.5, "SL": [6.0, 0.0, 0.0], "SR": 1.0, "IO": [2.0, 0.0, 0.0],
+      "Diameter": 0.625, "ConnectionSize": [1.0, 0.0, 0.0]
+    },
+    {
+      "ID": 3, "IsSupply": true, "IsDistributor": true,
+      "HD": 4.5, "SL": [0.0, 0.0, 0.0], "SR": 4.0, "IO": [3.0, 0.0, 0.0],
+      "Diameter": 0.88, "ConnectionSize": [0.0, 0.0, 0.0]
+    },
+    {
+      "ID": 4, "IsSupply": false, "IsDistributor": false,
+      "HD": 3.5, "SL": [6.0, 0.0, 0.0], "SR": 3.5, "IO": [2.0, 0.0, 0.0],
+      "Diameter": 0.625, "ConnectionSize": [1.0, 0.0, 0.0]
+    },
+    {
+      "ID": 5, "IsSupply": true, "IsDistributor": true,
+      "HD": 4.5, "SL": [0.0, 0.0, 0.0], "SR": 6.5, "IO": [3.0, 0.0, 0.0],
+      "Diameter": 0.88, "ConnectionSize": [0.0, 0.0, 0.0]
+    },
+    {
+      "ID": 6, "IsSupply": false, "IsDistributor": false,
+      "HD": 3.5, "SL": [6.0, 0.0, 0.0], "SR": 6.0, "IO": [2.0, 0.0, 0.0],
+      "Diameter": 0.625, "ConnectionSize": [1.0, 0.0, 0.0]
+    }
+  ],
+  "header_face": 1.5,
+  "return_face": 1.5,
+  "coil_id": "SAMPLE-0007",
+  "item_number": "001",
+  "revision": "A",
+  "quantity": 1,
+  "drawing_callouts": [
+    "COLLARED HOLES REQUIRED",
+    "0.3125 in. MOUNTING HOLES",
+    "MOUNTING HOLE SPACING: 12 in.",
+    "DISTRIBUTOR 1 HAS 6\" EXTENSION",
+    "DISTRIBUTOR 3 HAS 6\" EXTENSION",
+    "DISTRIBUTOR 5 HAS 6\" EXTENSION"
+  ],
+  "tube_material_display": ["0.375 x 0.016", "Copper Smooth"],
+  "fin_material_display": ["13 Fins Per Inch", "0.0075 Aluminum", "Sine Wave"],
+  "casing_material_display": ["16 Ga.", "Galvanized Steel"],
+  "coil_tube_face_display": ["Tube Face = 24"],
+  "circuiting_display_lines": ["6 Feed / 60 Pass", "0 Dropped Tubes"],
+  "header_material_display": ["Type L Copper"],
+  "distributors_display": ["(2)502-3-1/4-5(0 ASC)", "(1)502-3-1/4-5(0 ASC)", "OD:5/8"],
+  "return_conn_size_display": ["1.000\" OD Header", "1.000\" SWT-Copper"],
+  "fastener_type_display": ["Bolts"],
+  "dry_weight_display": ["55.0 Lbs. Per Coil"],
+  "internal_volume_display": ["0.18 ft3 Per Coil"],
+  "coil_hand": "Left",
+  "airflow_direction": "left_to_right",
+  "return_connection_size": 1.0,
+  "circuiting_display": "6 Feed / 60 Pass",
+  "notes": [
+    "Sanitized 3-circuit DX fixture modeled on EZC-0007 STRUCTURE; values altered.",
+    "Review aid only. Not for manufacturing."
+  ],
+  "release_status": "review_aid_only",
+  "drawing_status": "not_generated"
+}
