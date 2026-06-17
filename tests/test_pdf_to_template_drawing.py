@@ -407,7 +407,9 @@ def test_submittal_panel_values_map_review_required() -> None:
         cover_text="Unit Type: Terra Horizontal (Ceiling Hung) Model: TR_C_009",
         header_context={
             "coil_category": "DX",
-            "coil_hand": "RH",
+            # LH = the seeded DX Header-1 template. (RH is the mirror pair, whose
+            # generation is now disabled, so it would not render an SVG to assert on.)
+            "coil_hand": "LH",
             "circuits": 1,
             "tag": "CDXC-1",
             "panel": {

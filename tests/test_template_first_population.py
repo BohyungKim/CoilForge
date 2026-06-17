@@ -103,8 +103,10 @@ def test_selector_blocks_dx_header4_and_hgrh_header4() -> None:
     assert hgrh.generation_allowed is False
 
 
-def test_selector_chooses_hgrh_header3_seed_and_mirror() -> None:
-    # HGRH Header 3 is now seeded from EZC-0016 (RH) with its LH mirror.
+def test_selector_chooses_hgrh_header3_seed_mirror_forbidden() -> None:
+    # HGRH Header 3 RH is seeded from EZC-0016. Its LH partner was a mirror; mirror
+    # generation is now DISABLED (John, 2026-06-17), so LH is "template not
+    # registered" (needs_pair) until seeded from its own PDF.
     rh = select_drawing_template(
         TemplateSelectionRequest(
             supplier="coilmaster",
@@ -127,8 +129,8 @@ def test_selector_chooses_hgrh_header3_seed_and_mirror() -> None:
     assert rh.template_status == "active_review_aid"
     assert rh.generation_allowed is True
     assert lh.template_id == "coilmaster_hgrh_lh_header3"
-    assert lh.template_status == "active_review_aid"
-    assert lh.generation_allowed is True
+    assert lh.template_status == "needs_pair"
+    assert lh.generation_allowed is False
 
 
 def test_hgbp_selects_special_feature_template_not_normal_header1() -> None:

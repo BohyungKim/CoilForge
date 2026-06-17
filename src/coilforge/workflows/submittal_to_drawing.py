@@ -396,6 +396,40 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
     }
 
 
+# Product lines tracked separately from the other coil selections because their
+# CoilMaster template has NOT been seeded yet (John, 2026-06-17). The drawing-
+# parameter mapping (the rule engine) DOES cover these lines, but no template
+# geometry exists for them — generating a drawing would substitute their
+# dimensions into another line's artwork. Until each is explicitly seeded, the
+# template result is forced to "not registered" rather than borrowing artwork.
+_UNREGISTERED_PRODUCT_LINES = {"VENTUM_PLUS"}
+
+
+def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
+    """Force the template result to the not-registered state when the resolved
+    product line has no seeded template (e.g. Ventum Plus). No drawing is borrowed
+    from another product line. No-op for product lines with a seeded template."""
+    if not isinstance(result, dict):
+        return result
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    family, _variant = resolve_product_line(result.get("product_type"))
+    if family not in _UNREGISTERED_PRODUCT_LINES:
+        return result
+    label = str(family).replace("_", " ").title()
+    result["svg"] = ""
+    result["template_id"] = None
+    result["template_found"] = False
+    result["generation_allowed"] = False
+    result["template_status"] = None
+    result["unregistered_product_line"] = family
+    result["not_registered_reason"] = (
+        f"{label} templates are tracked separately and have not been seeded yet — "
+        "review required before a drawing can be linked."
+    )
+    return result
+
+
 def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     """Re-derive ONE coil's template drawing given its classification + geometry
     plus an engineer-chosen product line + unit size (the UI product/size picker).
@@ -430,6 +464,7 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # Refresh the Drawing Parameters panel from the same slot values the re-derived
     # drawing renders, so picking a product line + unit size updates BOTH.
     result["drawing_parameter_set"] = parameter_set_from_template_drawing(result).model_dump()
+    _gate_unregistered_product_line(result)
     if result.get("svg"):
         result["svg"] = _clean_template_svg(result["svg"])
     _attach_parametric_schematic(result)
@@ -669,6 +704,8 @@ def _run_candidate_to_drawing_payload(
     except Exception as exc:  # never break the workflow on extraction issues
         template_drawing = {"error": str(exc)}
 
+    if isinstance(template_drawing, dict):
+        _gate_unregistered_product_line(template_drawing)
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
         template_drawing["svg"] = _clean_template_svg(template_drawing["svg"])
     if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):

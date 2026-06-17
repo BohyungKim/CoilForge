@@ -1762,7 +1762,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
   if (elements.previewStatus) {
     let chip;
     if (!rendered) {
-      chip = templateDrawing.template_found ? "Links — artwork not seeded" : "Not registered";
+      chip = "Not registered";
     } else {
       chip = templateDrawing.header_engine_used ? "Logic-derived" : "Linked — review dims";
     }
@@ -1939,13 +1939,23 @@ function templateDrawingLabel(templateDrawing) {
       ? `${prefix}logic-derived drawing (${templateDrawing.template_id})`
       : `${prefix}linked to ${templateDrawing.template_id} — dimensions REVIEW REQUIRED`;
   }
-  return `${prefix}links to ${templateDrawing.template_id} — artwork not seeded yet`;
+  if (templateDrawing.unregistered_product_line) {
+    return `${prefix}template not registered (product line tracked separately — seed required)`;
+  }
+  return `${prefix}template not registered for this hand — seed required`;
 }
 
 function templateDrawingReason(templateDrawing) {
+  if (templateDrawing.not_registered_reason) {
+    return `${templateDrawing.not_registered_reason} Review-aid only.`;
+  }
   if (!templateDrawing.template_found) {
     return "No catalog template matches this coil type / hand / header count. "
       + "Confirm the classification before relying on a drawing. Review-aid only.";
+  }
+  if (!templateDrawing.generation_allowed) {
+    return "Template not registered for this coil hand — the mirror-derived pair is "
+      + "disabled; each hand must be seeded from its own provided PDF. Review-aid only.";
   }
   if (!templateDrawing.header_engine_used) {
     return "Template linked from the submittal classification. Dimensions need a "
@@ -1985,10 +1995,13 @@ function templateDrawingBody(templateDrawing, rendered) {
   if (rendered) {
     return templateDrawing.svg;
   }
-  const found = Boolean(templateDrawing.template_found);
-  const message = found
-    ? "Template artwork is not seeded yet for this coil; the classification below links it to the catalog."
-    : "No catalog template matched this coil's type / hand / header count — classification is REVIEW REQUIRED before a drawing can be linked.";
+  // Not rendered = no usable template is registered for this coil. Mirror-derived
+  // hands are disabled (each hand must be seeded from its own PDF) and separately
+  // tracked product lines (e.g. Ventum Plus) have no template yet — both surface
+  // here as "template not registered" rather than borrowing another hand/line's art.
+  const message = templateDrawing.not_registered_reason
+    || "Template not registered for this coil — a seeded template (this hand / product line) "
+       + "is required before a drawing can be generated. The classification below links it to the catalog.";
   const slots = templateDrawing.slot_values || {};
   const dims = Object.entries(slots)
     .filter(([key]) => key.startsWith("slot."))

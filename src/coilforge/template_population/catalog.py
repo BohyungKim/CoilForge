@@ -29,29 +29,29 @@ _HAND_ALIASES = {
 
 
 # Templates seeded from the provided EZ drawing PDFs (real CoilMaster format,
-# values redacted to slots) + their opposite-hand mirrors. Each is an active
-# review-aid template. value = (category_dir, source_case_id, reference_status).
+# values redacted to slots). Each is an active review-aid template.
+# value = (category_dir, source_case_id, reference_status).
+#
+# Mirror-derived RH/LH pairs are DISABLED (John, 2026-06-17): the horizontal
+# mirror flips the dimension callouts' bounding boxes, so the cleaned numbers no
+# longer sit on their leader lines (a char-width re-center heuristic could not
+# reliably repair it). Each hand must be seeded from its own provided PDF. The
+# `_MIRROR` entries are intentionally absent here; their buckets fall through to
+# `needs_pair` (generation_allowed=False -> "template not registered") until a
+# real seed arrives. The `mirror.py` helper is retained for possible future use
+# but no longer activates a template.
 _SEEDED = "seeded_from_provided_pdf_review_required"
-_MIRROR = "mirrored_from_seeded_pair_review_required"
 ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_dx_lh_header1": ("dx", "EZC-0001", _SEEDED),
-    "coilmaster_dx_rh_header1": ("dx", "EZC-0001", _MIRROR),
     "coilmaster_dx_rh_header2": ("dx", "EZC-0011", _SEEDED),
-    "coilmaster_dx_lh_header2": ("dx", "EZC-0011", _MIRROR),
     "coilmaster_dx_lh_header3": ("dx", "EZC-0007", _SEEDED),
-    "coilmaster_dx_rh_header3": ("dx", "EZC-0007", _MIRROR),
     "coilmaster_hgrh_lh_header1": ("hgrh", "EZC-0002", _SEEDED),
     "coilmaster_hgrh_rh_header1": ("hgrh", "EZC-0012", _SEEDED),
     "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
-    "coilmaster_hgrh_rh_header2": ("hgrh", "EZC-0008", _MIRROR),
     "coilmaster_hgrh_rh_header3": ("hgrh", "EZC-0016", _SEEDED),
-    "coilmaster_hgrh_lh_header3": ("hgrh", "EZC-0016", _MIRROR),
     "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
-    "coilmaster_dx_rh_hgbp": ("dx", "EZC-0013", _MIRROR),
     "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
-    "coilmaster_cwc_rh": ("cwc", "EZC-0014", _MIRROR),
     "coilmaster_hwc_lh": ("hwc", "EZC-0005", _SEEDED),
-    "coilmaster_hwc_rh": ("hwc", "EZC-0005", _MIRROR),
 }
 
 
