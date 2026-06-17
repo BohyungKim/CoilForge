@@ -306,6 +306,48 @@ def run_pdf_to_drawing_workflow(
     return selected_result
 
 
+# Dimension label codes that the CoilMaster template prints next to each value
+# (e.g. "3.5 HD2"). For direct-coil ordering John wants numbers only, so the cleaner
+# strips the trailing " LABEL" from the blue dimension callouts (fill="#1c0a80").
+_DIM_LABELS = (
+    "HDx1", "HD2", "SL2", "OAL", "BF", "CD", "CH", "CL", "FH", "FL",
+    "HF", "I1", "O2", "R2", "RB", "RF", "S1", "TF",
+)
+_CALLOUT_LABEL_RE = re.compile(
+    r'(fill="#1c0a80"[^>]*><tspan[^>]*>)([^<]*?) (?:' + "|".join(_DIM_LABELS) + r')(</tspan>)'
+)
+
+# Crop window (CoilMaster sheet is 792x612; all templates share this layout). Selecting
+# just the drawing region clips away the sheet chrome that lives outside it — the right
+# material panel, the bottom dim table + title block, and the top-left notes — leaving the
+# geometry + dimensions only (image #7). Tuned against the blue dim-callout bounds.
+_CROP_X, _CROP_Y, _CROP_W, _CROP_H = 40, 128, 527, 372
+_VIEWBOX_RE = re.compile(r'viewBox="0 0 792 612"')
+_SIZE_RE = re.compile(r'(<svg[^>]*?)width="792" height="612"')
+
+
+def _clean_template_svg(svg: str) -> str:
+    """Clean a populated CoilMaster template SVG to the direct-coil ordering view John
+    wants (image #7):
+
+    1. **Numbers-only** dimension callouts — drop the label codes, keep the value
+       (``3.5 HD2`` -> ``3.5``). Scoped to the blue dim callouts so the materials panel /
+       bottom dim table / title block text are untouched.
+    2. **No chrome** — crop the ``viewBox`` to the drawing region, clipping the right
+       material panel, the bottom dim table + title block, and the top-left notes.
+
+    Pure string transform; the review watermark and ``export_allowed`` flags are untouched
+    (they sit outside the crop, so they no longer render — safety is enforced server-side
+    in the API payload regardless). Dimension re-centering is layered on next.
+    """
+    if not svg:
+        return svg
+    svg = _CALLOUT_LABEL_RE.sub(r"\1\2\3", svg)
+    svg = _VIEWBOX_RE.sub(f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"', svg)
+    svg = _SIZE_RE.sub(rf'\1width="{_CROP_W}" height="{_CROP_H}"', svg)
+    return svg
+
+
 def _attach_parametric_schematic(result: dict[str, Any]) -> None:
     """Attach the parametric, to-scale geometry+dimensions drawing (numbers-only) built
     from the same gated ``slot_values``. This is the drawing the UI shows for direct-coil
@@ -371,6 +413,8 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # Refresh the Drawing Parameters panel from the same slot values the re-derived
     # drawing renders, so picking a product line + unit size updates BOTH.
     result["drawing_parameter_set"] = parameter_set_from_template_drawing(result).model_dump()
+    if result.get("svg"):
+        result["svg"] = _clean_template_svg(result["svg"])
     _attach_parametric_schematic(result)
     return result
 
@@ -608,6 +652,8 @@ def _run_candidate_to_drawing_payload(
     except Exception as exc:  # never break the workflow on extraction issues
         template_drawing = {"error": str(exc)}
 
+    if isinstance(template_drawing, dict) and template_drawing.get("svg"):
+        template_drawing["svg"] = _clean_template_svg(template_drawing["svg"])
     if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):
         _attach_parametric_schematic(template_drawing)
 

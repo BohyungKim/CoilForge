@@ -1978,26 +1978,10 @@ function templateDrawingCaption(templateDrawing) {
 }
 
 function templateDrawingBody(templateDrawing, rendered) {
-  // Direction (2026-06-16): the parametric, to-scale geometry+dimensions drawing
-  // (numbers-only, dims on leaders, no chrome) is the drawing surfaced for direct-coil
-  // ordering. It is built from the same gated slot values; for a registered case it
-  // draws that case's exact values. The template path is retired once parametric
-  // reaches EZ detail.
-  const param = templateDrawing.parametric_drawing;
-  if (param && !param.error && (param.front_svg || param.side_svg)) {
-    const omitted = (param.omitted_features || []).length
-      ? `<ul class="parametric-omitted">${param.omitted_features
-          .map((n) => `<li>${escapeHtml(n)}</li>`)
-          .join("")}</ul>`
-      : "";
-    return `
-      <div class="parametric-drawing">
-        ${param.front_svg ? `<div class="parametric-view" data-view="front">${param.front_svg}</div>` : ""}
-        ${param.side_svg ? `<div class="parametric-view" data-view="side">${param.side_svg}</div>` : ""}
-      </div>
-      ${omitted}
-    `;
-  }
+  // Short term (2026-06-17): the registered EZ/CoilMaster template (params substituted,
+  // server-side cleaned to numbers-only / no chrome) is the drawing surfaced for quotes &
+  // revised-drawing requests — its geometry is verified. The parametric engine develops in
+  // parallel and takes over once it reaches the template's accuracy. See [[drawing-direction]].
   if (rendered) {
     return templateDrawing.svg;
   }
