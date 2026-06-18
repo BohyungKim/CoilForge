@@ -29,6 +29,10 @@ from coilforge.schemas.header_prepopulate import (
 )
 from coilforge.services.distributor_slots import distributor_drawing_slots
 from coilforge.services.header_prepopulate_engine import prepopulate
+from coilforge.services.topology_slots import (
+    review_and_blocked_items,
+    topology_drawing_slots,
+)
 from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 from coilforge.services.json_drawing_link import engine_slot_bridge
 from coilforge.template_population.catalog import (
@@ -145,6 +149,8 @@ def map_engine_to_slots(
     display: Mapping[str, Any] | None = None,
     ez_headers: Sequence[Mapping[str, Any]] | None = None,
     supply_ids: Sequence[int] | None = None,
+    coil_category: str | None = None,
+    special_feature: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """HIGH engine values -> slot values; MEDIUM/blocked -> review items.
 
@@ -156,6 +162,11 @@ def map_engine_to_slots(
     :func:`distributor_drawing_slots` (Phase 4a): only its HIGH (``values``) slots merge into
     ``slot_values`` — review/blocked are surfaced as review items, never silently drawn.
     ``supply_ids`` defaults to the odd ``IsSupply`` ids in ``ez_headers`` when omitted.
+
+    When ``coil_category`` is given, the Phase-5a per-category topology slots
+    (``slot.conn_angle`` / ``slot.vent_drain`` / ``slot.HGBP`` / ``asc_orientation``) are sourced
+    UPSTREAM via :func:`topology_drawing_slots`, gated the same way: HIGH merge into
+    ``slot_values``; review/blocked become review items, never silently drawn.
     """
     slot_values: dict[str, Any] = dict(geometry_slots or {})
     for pair in engine_slot_bridge():
@@ -181,6 +192,13 @@ def map_engine_to_slots(
             for gs in dist.blocked.values():
                 review_items.append(f"blocked:{gs.slot} ({gs.reason})")
             review_items.extend(dist.notes)
+
+    if coil_category is not None:
+        topo = topology_drawing_slots(
+            engine_response=response, category=coil_category, special=special_feature,
+        )
+        slot_values.update(topo.gated_slot_values())  # HIGH only
+        review_items.extend(review_and_blocked_items(topo))
 
     for name, result in response.suggestions.items():
         review_items.append(f"suggestion:{name}={result.value} (review)")

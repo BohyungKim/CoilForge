@@ -1,0 +1,68 @@
+<svg aria-label="CoilForge parametric plan view (review aid)" role="img" viewBox="0 0 1000 780">
+  <defs>
+    <marker id="schem-arrow" markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
+      <path d="M 0 0 L 7 3.5 L 0 7 z" fill="#242092"></path>
+    </marker>
+    <style>.casing { fill: #fbfbfb; stroke: #1f2937; stroke-width: 2; } .finned { fill: #eef2ff; stroke: #4b5563; stroke-width: 1.5; } .header-pipe { fill: #e0e7ff; stroke: #1f2937; stroke-width: 1.5; } .connection { fill: #ffffff; stroke: #4b5563; stroke-width: 1.5; } .stub { stroke: #1f2937; stroke-width: 1.5; fill: none; } .nozzle { stroke: #1f2937; stroke-width: 1.5; fill: none; } .feeder { stroke: #4b5563; stroke-width: 1.1; fill: none; } .dist-ext { stroke: #1f2937; stroke-width: 1.8; fill: none; } .airflow { fill: #eef2ff; stroke: #242092; stroke-width: 1.2; } .airflow-label { fill: #242092; font: 700 13px Arial, sans-serif; } .row { stroke: #c7cce8; stroke-width: 0.8; fill: none; } .ext-line { stroke: #9aa0c4; stroke-width: 0.8; fill: none; } .dim-arrows { stroke: #242092; stroke-width: 1.2; fill: none; marker-start: url(#schem-arrow); marker-end: url(#schem-arrow); } .witness { stroke: #242092; stroke-width: 1.1; fill: none; } .leader { stroke: #242092; stroke-width: 0.9; fill: none; } .dim-label { fill: #0d0877; font: 700 13px Arial, sans-serif; } .callout { fill: #1f2937; font: 600 13px Arial, sans-serif; } .review { fill: #92400e; font: 700 13px Arial, sans-serif; } .omitted { fill: #92400e; font: 700 13px Arial, sans-serif; } .watermark { fill: #b91c1c; font: 800 16px Arial, sans-serif; } .meta { fill: #475569; font: 11px Arial, sans-serif; }</style>
+  </defs>
+  <g id="zone.plan_view">
+    <rect class="casing" data-feature="casing" height="255.00" width="93.50" x="468.55" y="262.50"></rect>
+    <line class="nozzle" data-feature="nozzle_body" x1="522.18" x2="508.41" y1="313.50" y2="313.50"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="522.18" x2="515.30" y1="313.50" y2="320.38"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="508.41" x2="515.30" y1="313.50" y2="320.38"></line>
+    <line class="feeder" data-feature="feeder_fan" x1="515.30" x2="515.30" y1="231.90" y2="313.50"></line>
+    <line class="dist-ext" data-feature="dist_extension" x1="515.30" x2="515.30" y1="313.50" y2="211.50"></line>
+    <line class="row" data-feature="tube_run" x1="515.30" x2="515.30" y1="320.38" y2="517.50"></line>
+    <line class="stub" data-feature="stub" x1="551.34" x2="551.34" y1="483.50" y2="619.50"></line>
+    <line class="stub" data-feature="stub_cap" x1="557.46" x2="545.22" y1="619.50" y2="619.50"></line>
+    <circle class="header-pipe" cx="551.34" cy="483.50" data-feature="connection_return" r="5.31"></circle>
+    <g data-direction="left_to_right" data-feature="airflow_arrow">
+      <polygon class="airflow" points="473.30,200.42 541.30,200.42 541.30,193.42 557.30,207.42 541.30,221.42 541.30,214.42 473.30,214.42"></polygon>
+      <text class="airflow-label" text-anchor="middle" x="515.30" y="189.42">AIRFLOW</text>
+    </g>
+    <g data-dim="S1" data-style="arrows">
+      <line class="ext-line" x1="562.05" x2="562.05" y1="262.50" y2="247.20"></line>
+      <line class="ext-line" x1="515.30" x2="515.30" y1="262.50" y2="247.20"></line>
+      <line class="dim-arrows" x1="562.05" x2="515.30" y1="247.20" y2="247.20"></line>
+    </g>
+    <g data-dim="CD" data-style="arrows">
+      <line class="ext-line" x1="562.05" x2="562.05" y1="262.50" y2="231.90"></line>
+      <line class="ext-line" x1="468.55" x2="468.55" y1="262.50" y2="231.90"></line>
+      <line class="dim-arrows" x1="562.05" x2="468.55" y1="231.90" y2="231.90"></line>
+    </g>
+    <g data-dim="R2" data-style="arrows">
+      <line class="ext-line" x1="562.05" x2="562.05" y1="517.50" y2="634.80"></line>
+      <line class="ext-line" x1="551.34" x2="551.34" y1="517.50" y2="634.80"></line>
+      <line class="dim-arrows" x1="562.05" x2="551.34" y1="634.80" y2="634.80"></line>
+    </g>
+    <g data-dim="I" data-style="leader">
+      <line class="witness" x1="562.05" x2="562.05" y1="262.50" y2="313.50"></line>
+    </g>
+    <g data-dim="FL" data-style="arrows">
+      <line class="ext-line" x1="562.05" x2="592.65" y1="262.50" y2="262.50"></line>
+      <line class="ext-line" x1="562.05" x2="592.65" y1="517.50" y2="517.50"></line>
+      <line class="dim-arrows" x1="592.65" x2="592.65" y1="262.50" y2="517.50"></line>
+    </g>
+    <g data-dim="O" data-style="leader">
+      <line class="witness" x1="468.55" x2="468.55" y1="483.50" y2="517.50"></line>
+    </g>
+    <path class="leader" d="M 538.67 247.20 L 538.67 202.37 L 566.05 202.37"></path>
+    <path class="leader" d="M 562.05 288.00 L 562.05 250.42 L 585.35 250.42"></path>
+    <path class="leader" d="M 468.55 500.50 L 468.55 512.92 L 445.25 512.92"></path>
+    <text class="dim-label" text-anchor="start" x="566.05" y="205.95">2.75 S1</text>
+    <text class="dim-label" text-anchor="start" x="566.05" y="222.65">5.50 CD</text>
+    <text class="dim-label" text-anchor="start" x="566.05" y="651.20">0.63 R2</text>
+    <text class="dim-label" text-anchor="start" x="585.35" y="254.00">3.00 I</text>
+    <text class="dim-label" text-anchor="start" x="600.65" y="394.00">15.00 FL</text>
+    <text class="dim-label" text-anchor="end" x="445.25" y="516.50">2.00 O</text>
+    <text class="callout" data-label="hdx_1" text-anchor="end" x="437.95" y="313.50">4.5 HDx1</text>
+    <text class="review" data-label="dist_data_1" text-anchor="end" x="437.95" y="329.15">DISTRIBUTORS 501-2 OD:0.625 (REVIEW)</text>
+    <text class="callout" data-label="sl_2" text-anchor="end" x="437.95" y="499.15">8 SL2</text>
+    <text class="callout" data-label="hd_2" text-anchor="end" x="437.95" y="483.50">3.5 HD2</text>
+    <text class="callout" data-label="return_conn" text-anchor="end" x="437.95" y="533.50">RETURN 0.625</text>
+  </g>
+  <g id="zone.review">
+    <text class="watermark" x="48" y="754">REVIEW AID - NOT FOR MANUFACTURING</text>
+    <text class="meta" x="48" y="770">REVIEW AID — NOT TO STANDARD SCALE | view=plan | px_per_inch=17 | export_allowed=false | john_review_required=true</text>
+  </g>
+</svg>

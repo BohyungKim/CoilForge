@@ -1,0 +1,60 @@
+<svg aria-label="CoilForge parametric front view (review aid)" role="img" viewBox="0 0 1000 780">
+  <defs>
+    <marker id="schem-arrow" markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
+      <path d="M 0 0 L 7 3.5 L 0 7 z" fill="#242092"></path>
+    </marker>
+    <style>.casing { fill: #fbfbfb; stroke: #1f2937; stroke-width: 2; } .finned { fill: #eef2ff; stroke: #4b5563; stroke-width: 1.5; } .header-pipe { fill: #e0e7ff; stroke: #1f2937; stroke-width: 1.5; } .connection { fill: #ffffff; stroke: #4b5563; stroke-width: 1.5; } .stub { stroke: #1f2937; stroke-width: 1.5; fill: none; } .nozzle { stroke: #1f2937; stroke-width: 1.5; fill: none; } .feeder { stroke: #4b5563; stroke-width: 1.1; fill: none; } .dist-ext { stroke: #1f2937; stroke-width: 1.8; fill: none; } .airflow { fill: #eef2ff; stroke: #242092; stroke-width: 1.2; } .airflow-label { fill: #242092; font: 700 13px Arial, sans-serif; } .row { stroke: #c7cce8; stroke-width: 0.8; fill: none; } .ext-line { stroke: #9aa0c4; stroke-width: 0.8; fill: none; } .dim-arrows { stroke: #242092; stroke-width: 1.2; fill: none; marker-start: url(#schem-arrow); marker-end: url(#schem-arrow); } .witness { stroke: #242092; stroke-width: 1.1; fill: none; } .leader { stroke: #242092; stroke-width: 0.9; fill: none; } .dim-label { fill: #0d0877; font: 700 13px Arial, sans-serif; } .callout { fill: #1f2937; font: 600 13px Arial, sans-serif; } .review { fill: #92400e; font: 700 13px Arial, sans-serif; } .omitted { fill: #92400e; font: 700 13px Arial, sans-serif; } .watermark { fill: #b91c1c; font: 800 16px Arial, sans-serif; } .meta { fill: #475569; font: 11px Arial, sans-serif; }</style>
+  </defs>
+  <g id="zone.front_view">
+    <rect class="casing" data-feature="casing" height="409.44" width="477.68" x="261.16" y="185.28"></rect>
+    <rect class="finned" data-feature="finned" height="375.32" width="443.56" x="286.75" y="202.34"></rect>
+    <g data-dim="TF" data-style="leader">
+      <line class="witness" x1="508.53" x2="508.53" y1="185.28" y2="202.34"></line>
+    </g>
+    <g data-dim="FL" data-style="arrows">
+      <line class="ext-line" x1="286.75" x2="286.75" y1="202.34" y2="127.96"></line>
+      <line class="ext-line" x1="730.31" x2="730.31" y1="202.34" y2="127.96"></line>
+      <line class="dim-arrows" x1="286.75" x2="730.31" y1="127.96" y2="127.96"></line>
+    </g>
+    <g data-dim="BF" data-style="leader">
+      <line class="witness" x1="508.53" x2="508.53" y1="577.66" y2="594.72"></line>
+    </g>
+    <g data-dim="CL" data-style="arrows">
+      <line class="ext-line" x1="261.16" x2="261.16" y1="594.72" y2="652.04"></line>
+      <line class="ext-line" x1="738.84" x2="738.84" y1="594.72" y2="652.04"></line>
+      <line class="dim-arrows" x1="261.16" x2="738.84" y1="652.04" y2="652.04"></line>
+    </g>
+    <g data-dim="HF" data-style="leader">
+      <line class="witness" x1="261.16" x2="286.75" y1="390.00" y2="390.00"></line>
+    </g>
+    <g data-dim="CH" data-style="arrows">
+      <line class="ext-line" x1="261.16" x2="203.84" y1="185.28" y2="185.28"></line>
+      <line class="ext-line" x1="261.16" x2="203.84" y1="594.72" y2="594.72"></line>
+      <line class="dim-arrows" x1="203.84" x2="203.84" y1="185.28" y2="594.72"></line>
+    </g>
+    <g data-dim="RF" data-style="leader">
+      <line class="witness" x1="730.31" x2="738.84" y1="390.00" y2="390.00"></line>
+    </g>
+    <g data-dim="FH" data-style="arrows">
+      <line class="ext-line" x1="730.31" x2="796.16" y1="202.34" y2="202.34"></line>
+      <line class="ext-line" x1="730.31" x2="796.16" y1="577.66" y2="577.66"></line>
+      <line class="dim-arrows" x1="796.16" x2="796.16" y1="202.34" y2="577.66"></line>
+    </g>
+    <path class="leader" d="M 508.53 193.81 L 508.53 150.62 L 496.73 150.62"></path>
+    <path class="leader" d="M 508.53 586.19 L 508.53 629.38 L 496.73 629.38"></path>
+    <line class="leader" x1="273.96" x2="224.50" y1="390.00" y2="390.43"></line>
+    <line class="leader" x1="734.57" x2="775.50" y1="390.00" y2="390.43"></line>
+    <text class="dim-label" text-anchor="end" x="504.53" y="147.37">TF</text>
+    <text class="dim-label" text-anchor="end" x="282.75" y="118.71">FL</text>
+    <text class="dim-label" text-anchor="end" x="504.53" y="639.78">BF</text>
+    <text class="dim-label" text-anchor="end" x="257.16" y="668.44">CL</text>
+    <text class="dim-label" text-anchor="end" x="224.50" y="394.00">HF</text>
+    <text class="dim-label" text-anchor="end" x="195.84" y="394.00">CH</text>
+    <text class="dim-label" text-anchor="start" x="775.50" y="394.00">RF</text>
+    <text class="dim-label" text-anchor="start" x="804.16" y="394.00">FH</text>
+  </g>
+  <g id="zone.review">
+    <text class="watermark" x="48" y="754">REVIEW AID - NOT FOR MANUFACTURING</text>
+    <text class="meta" x="48" y="770">REVIEW AID — NOT TO STANDARD SCALE | view=front | px_per_inch=17.0599 | export_allowed=false | john_review_required=true</text>
+  </g>
+</svg>

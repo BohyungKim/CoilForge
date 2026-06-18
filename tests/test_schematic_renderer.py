@@ -41,12 +41,15 @@ from coilforge.drawing.schematic_layout import (
     Segment,
     ViewLayout,
     build_dx_views,
+    build_views,
     layout_dx_front_view,
     layout_header_side_view,
     mirror_view_x,
 )
 from coilforge.drawing.schematic_model import CoilGeometry, HeaderSpec
 from coilforge.drawing.schematic_renderer import SchematicResult, render_scale_schematic
+from coilforge.drawing.svg_regression import normalize_svg_for_regression
+from coilforge.drawing.topology import UnknownTopologyError, resolve_topology
 
 
 # --------------------------------------------------------------------------- #
@@ -700,15 +703,20 @@ def test_model_and_layout_carry_no_pixels() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# non-DX category renders generic boxes + a Phase 3 deferral note
+# Phase 5a — a non-DX category now COMPOSES via the topology table (no longer a
+# generic-box + "phase 3" deferral). HGRH resolves to a plain_header supply; its
+# styled per-category glyphs are still deferred to 5b (phase3_deferred stays True).
 # --------------------------------------------------------------------------- #
-def test_non_dx_category_renders_box_with_phase3_note() -> None:
+def test_non_dx_category_composes_via_topology_table() -> None:
     res = render_scale_schematic(
         slots(), coil_category="HGRH", coil_hand="LH", header_type="Header 3"
     )
-    assert "<svg" in res.svg and "<svg" in res.side_svg
+    assert "<svg" in res.svg and "<svg" in res.side_svg and "<svg" in res.plan_svg
+    assert res.metadata.get("topology_resolved") is True
+    assert res.metadata.get("topology_id") == "T-HGRH"
+    assert res.metadata.get("supply_kind") == "plain_header"
+    # New-glyph rendering (supply_header_port / conn_angle_glyph) is Phase 5b.
     assert res.metadata.get("phase3_deferred") is True
-    assert any("phase 3" in note.lower() or "phase3" in note.lower() for note in res.omitted_features)
 
 
 # --------------------------------------------------------------------------- #
@@ -900,3 +908,155 @@ def test_plan_safety_flags_and_watermark() -> None:
     assert res.watermark in res.plan_svg
     assert "NOT TO STANDARD SCALE" in res.plan_svg
     assert "plan" in res.plan_svg  # the view is labelled
+
+
+# =========================================================================== #
+# Phase 5a — table-driven topology: composition + supply-kind toggle + the DX
+# byte-identical regression guard. (Sourcing/gating proofs live in
+# tests/test_topology_slots.py.)
+# =========================================================================== #
+def _features(view: ViewLayout) -> set[str]:
+    return {s.feature for s in view.segments} | {c.feature for c in view.circles}
+
+
+def _views_for(category: str, *, header_type: str, special=None, hand: str = "LH",
+               sv: dict | None = None) -> dict[str, ViewLayout]:
+    sv = slots() if sv is None else sv
+    geom = CoilGeometry.from_slot_values(
+        sv, coil_category=category, coil_hand=hand, header_type=header_type, special_feature=special
+    )
+    return build_views(geom, resolve_topology(category, header_type, special))
+
+
+# --- E1: per-category feature SET (right views + supply/return kind) -------- #
+def test_dx_feature_set_has_distributor_supply_and_three_views() -> None:
+    views = _views_for("DX", header_type="Header 1")
+    assert set(views) == {"front", "side", "plan"}
+    plan = _features(views["plan"])
+    assert {"nozzle_body", "feeder_fan"} <= plan        # distributor supply glyphs present
+    assert "connection_supply" not in plan              # not a plain header port
+
+
+@pytest.mark.parametrize(
+    "category,header_type,special",
+    [("HGRH", "Header 1", None), ("CWC", "Header 1", None),
+     ("HWC", "Header 1", None), ("DX", None, "HGBP")],
+)
+def test_each_category_renders_correct_views(category, header_type, special) -> None:
+    views = _views_for(category, header_type=header_type, special=special)
+    topo = resolve_topology(category, header_type, special)
+    assert set(views) == set(topo.views) == {"front", "side", "plan"}
+
+
+# --- E2: supply-kind toggle (distributor vs plain header port) -------------- #
+@pytest.mark.parametrize("category,header_type", [("HGRH", "Header 1"), ("CWC", "Header 1"), ("HWC", "Header 1")])
+def test_plain_header_supply_uses_existing_circle_no_distributor_glyph(category, header_type) -> None:
+    views = _views_for(category, header_type=header_type)
+    for name in ("side", "plan"):
+        feats = _features(views[name])
+        # plain supply header port = the EXISTING connection circle primitive…
+        assert "connection_supply" in feats, f"{category} {name} missing plain supply port"
+        # …and NONE of the distributor-only glyphs (deferred styled glyph is 5b).
+        assert not ({"distributor_supply", "nozzle_body", "feeder_fan", "dist_extension"} & feats), (
+            f"{category} {name} drew a distributor glyph"
+        )
+
+
+def test_dx_vs_plain_header_toggle_is_the_only_supply_difference() -> None:
+    dx_plan = _features(_views_for("DX", header_type="Header 1")["plan"])
+    hgrh_plan = _features(_views_for("HGRH", header_type="Header 1")["plan"])
+    assert "nozzle_body" in dx_plan and "nozzle_body" not in hgrh_plan
+    assert "connection_supply" in hgrh_plan and "connection_supply" not in dx_plan
+    # the return path is unchanged across the toggle
+    assert "connection_return" in dx_plan and "connection_return" in hgrh_plan
+
+
+# --- E4: the engine consumes gated slots only; blocked -> omit + annotate --- #
+def test_blocked_topo_slot_is_annotated_not_drawn() -> None:
+    res = render_scale_schematic(
+        slots(), coil_category="DX", coil_hand="LH", header_type="Header 1",
+        special_feature="HGBP", topo_blocked=["asc_orientation"],
+    )
+    assert any("asc_orientation" in n and "blocked" in n.lower() for n in res.omitted_features)
+    # no new glyph renders it in 5a (deferred to 5b)
+    assert "asc_orientation" not in res.plan_svg
+
+
+def test_review_bucket_vent_drain_is_carried_not_drawn_as_confirmed() -> None:
+    geom = CoilGeometry.from_slot_values(
+        slots(), coil_category="CWC", coil_hand="LH", header_type="Header 1",
+        special_feature=None, topo_review={"slot.vent_drain": "Connections"},
+    )
+    assert geom.vent_drain == "Connections"           # carried for 5b
+    assert "vent_drain" in geom.topo_review_labels     # flagged as review-sourced
+
+
+# --- E5: topology fail-closed (no DX fallback) ------------------------------ #
+def test_resolve_topology_raises_on_unknown() -> None:
+    with pytest.raises(UnknownTopologyError):
+        resolve_topology("NOT_A_CATEGORY", "Header 1", None)
+
+
+def test_render_is_fail_closed_on_unknown_topology() -> None:
+    res = render_scale_schematic(
+        slots(), coil_category="NOPE", coil_hand="LH", header_type="Header 1"
+    )
+    assert res.metadata.get("topology_resolved") is False
+    assert res.svg == "" and res.side_svg == "" and res.plan_svg == ""  # no DX fallback geometry
+    assert res.export_allowed is False
+    assert any("no topology" in n.lower() for n in res.omitted_features)
+
+
+# --- E6: DX REGRESSION GUARD — byte-identical vs the Phase-4 baseline ------- #
+_GOLDEN = Path(__file__).resolve().parents[1] / "tests" / "golden" / "phase5_dx_baseline"
+
+
+def _dx_high(ids: tuple[int, ...]) -> dict[str, object]:
+    sv: dict[str, object] = {"slot.AIRFLOW": "left_to_right"}
+    for i in ids:
+        sv[f"slot.DistExtension{i}"] = 6.0
+    return sv
+
+
+@pytest.mark.parametrize(
+    "name,sv_factory,hand,ids,review",
+    [
+        ("single_lh", sanitized_slots, "LH", (1,), {"slot.DistModel1": "501-2", "slot.DistOD1": 0.625}),
+        ("single_rh", sanitized_slots, "RH", (1,), {"slot.DistModel1": "501-2", "slot.DistOD1": 0.625}),
+        ("multi_lh", multi_circuit_slots, "LH", (1, 3, 5), {}),
+        ("multi_rh", multi_circuit_slots, "RH", (1, 3, 5), {}),
+    ],
+)
+def test_dx_output_byte_identical_to_phase4_baseline(name, sv_factory, hand, ids, review) -> None:
+    """The table-driven refactor must not change ANY DX byte. Baseline captured from the
+    pre-refactor engine for DX single (EZC-0001) + multi (EZC-0007) x LH/RH x V1/V2/V3."""
+    sv = dict(sv_factory(), **_dx_high(ids))
+    res = render_scale_schematic(
+        sv, coil_category="DX", coil_hand=hand, header_type="Header 1", dist_review=review,
+    )
+    for view, svg in (("front", res.svg), ("side", res.side_svg), ("plan", res.plan_svg)):
+        want = (_GOLDEN / f"{name}_{view}.svg").read_text(encoding="utf-8")
+        assert normalize_svg_for_regression(svg) == want, f"DX {name} {view} drifted from baseline"
+
+
+# --- Task D: the per-category sanitized fixtures are well-formed ------------ #
+@pytest.mark.parametrize(
+    "filename,category,special",
+    [
+        ("hgrh_header1_ezc0002_default.json", "HGRH", None),
+        ("cwc_header1_ezc0014_default.json", "CWC", None),
+        ("hwc_header1_ezc0005_default.json", "HWC", None),
+        ("dx_hgbp_ezc0013_default.json", "DX", "HGBP"),
+        ("cwc_header1_terra_v_default.json", "CWC", None),
+    ],
+)
+def test_sanitized_fixture_resolves_a_topology(filename, category, special) -> None:
+    import json
+
+    path = Path(__file__).resolve().parents[1] / "examples" / "sanitized" / filename
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["coil_category"] == category
+    assert data["fixture_status"] == "sanitized_example"
+    # every fixture must map to a real topology row (no DX fallback).
+    topo = resolve_topology(data["coil_category"], data.get("header_type"), data.get("special_feature"))
+    assert topo.id.startswith("T-")

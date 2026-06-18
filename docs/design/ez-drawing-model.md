@@ -266,9 +266,15 @@ against the real DX at 4b, per decision C.
 
 ## 7. Phase 5 — coil type → topology spec table
 
-Status: **design, 2026-06-17.** No `src/` or test changes in this step. Branch:
-`claude/phase5-topology` (new worktree off `main`). Extends §4 (type→topology) and §5
-(phase map) into an executable spec table. DESIGN ONLY.
+Status: **design 2026-06-17; 5a implemented 2026-06-18.** Branch:
+`claude/phase5-topology` (worktree off `main`). Extends §4 (type→topology) and §5
+(phase map) into an executable spec table. The §7.1 table is now realized as
+`src/coilforge/rules/drawing_topology_rules.yaml`; the loader is
+`src/coilforge/drawing/topology.py` (`resolve_topology`, fail-closed); composition is
+`schematic_layout.build_views` (supply-kind toggle); upstream sourcing is
+`src/coilforge/services/topology_slots.py`. The 4 NEW visual glyphs (§7.3) remain
+**Phase 5b** — 5a reuses existing primitives + a plain supply port. DX output is
+byte-identical to Phase 4 (regression-guarded).
 
 ### 7.0 Confirmed decisions (this step)
 - **One table, rules-as-data.** A `(category, header_type, special)` → feature-set table
@@ -432,13 +438,20 @@ review-bucket items are label-only & flagged (same rule as DX `DistModel`/`DistO
 ### 7.5 Phase split
 - **5-pre (this) — DESIGN ONLY.** This §7: the table, convention extraction, new-primitive
   list, sourcing audit, split. No `src/`/test changes.
-- **5a — table + composition + upstream sourcing (no new drawing geometry).**
-  (1) `drawing_topology_rules.yaml` + a selector mapping `(category, header_type, special)`
-  → feature spec; (2) refactor `build_dx_views` → `build_views(geom)` that branches on the
-  table — **supply kind toggle** (`distributor` vs `plain_header`, both via existing
-  primitives) is the only geometry change here; (3) UPSTREAM gated slots `slot.conn_angle`,
-  `slot.vent_drain`, `slot.HGBP` (fail-closed); (4) sanitized fixtures per category
-  (HGRH/CWC/HWC/HGBP — none exist today); (5) loader/gate/composition + mirror tests.
+- **5a — table + composition + upstream sourcing (no new drawing geometry). DONE 2026-06-18.**
+  (1) `drawing_topology_rules.yaml` + the `resolve_topology` selector mapping
+  `(category, header_type, special)` → feature spec, fail-closed (no DX fallback);
+  (2) `build_dx_views` → `build_views(geom, topology)` branching on the table — the
+  **supply kind toggle** (`distributor` vs `plain_header`, both via existing primitives; the
+  plain port reuses the `connection` circle as `connection_supply`) is the only geometry
+  change; (3) UPSTREAM gated slots `slot.conn_angle` (R-047 HIGH), `slot.vent_drain`
+  (R-066 MEDIUM / R-067 LOW→blocked), `slot.HGBP` (R-083 HIGH), `asc_orientation` (R-084
+  CONFLICT→blocked) via `topology_slots.topology_drawing_slots`, the gate re-applied by the
+  field's own confidence (mutation-proven); (4) sanitized fixtures per category
+  (`examples/sanitized/{hgrh_header1,cwc_header1,hwc_header1,dx_hgbp,cwc_header1_terra_v}_*.json`);
+  (5) loader/gate/composition/supply-toggle tests + the DX byte-identical regression guard
+  (`tests/test_topology_slots.py`, `tests/test_schematic_renderer.py`,
+  `tests/golden/phase5_dx_baseline/`).
 - **5b — per-category drawing + eyeball gate.** Implement the four new glyphs
   (`supply_header_port` manifold, `conn_angle_glyph`, `vent_port`/`drain_port`,
   `hgbp_bypass`) in layout + backend; render one EZC fixture per category; **human eyeball

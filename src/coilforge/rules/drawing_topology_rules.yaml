@@ -1,0 +1,121 @@
+schema_version: "drawing-topology.v1"
+# Phase 5 type -> topology spec table (docs/design/ez-drawing-model.md §7).
+#
+# (category, header_type, special) -> the feature set the parametric engine emits. Rows are
+# HAND-INVARIANT: LH/RH share a row; `mirror_view_x` reflects (every row is validated LH AND
+# RH). The engine reads this table; it does NOT hardcode per-category branches in Python.
+#
+# Gated-slots-only, fail-closed: the engine consumes gated `slot_values` only. None / "REVIEW
+# REQUIRED" / blocked -> feature omitted + annotated, never invented. Confidence gate unchanged
+# (HIGH->values, MEDIUM->review, LOW/CONFLICT->blocked).
+#
+# Matching: a row applies when its `category` equals the request category, its `special`
+# equals the request special (null matches null), and the request header_type is in the row's
+# `header_type` list (a null `header_type` matches any). The resolver raises on no/ambiguous
+# match (no silent DX fallback).
+#
+# `supply` is the ONLY structural geometry toggle wired in 5a:
+#   distributor   -> nozzle_body + feeder_fan + dist_extension glyphs (DX; UNCHANGED).
+#   plain_header  -> a plain supply header port at the same I/S position, reusing the existing
+#                    connection circle primitive (NO new glyph in 5a; the styled
+#                    `supply_header_port`/`conn_angle`/`vent`/`hgbp` glyphs are Phase 5b).
+# `feed_type` is meaningful only for HGRH (feed_type != header_type drives the supply port
+# spread); recorded here, wired in 5b. `circuits_from`: header_type (1/2/3) or const_1.
+
+topologies:
+  # --- DX: distributor supply + return header. Implemented Phase 1-4 (byte-identical). ---
+  - id: T-DX
+    category: DX
+    header_type: ["Header 1", "Header 2", "Header 3"]
+    special: null
+    circuits_from: header_type
+    supply: distributor
+    return: header
+    feed_type: null
+    views: [front, side, plan]
+    features: [casing, finned, row, tube_run, nozzle_body, feeder_fan,
+               dist_extension, connection_return, stub, stub_cap, airflow]
+    labels: [hdx, hd, sl, dist_data, return_conn]
+    dims: [CL, CH, FL, FH, TF, BF, HF, RF, CD, S, R, I, O, SL]
+    new_primitives: []
+    extra_slots: []
+    ref_ezc: [EZC-0001, EZC-0007, EZC-0011]
+    status: implemented
+
+  # --- DX HGBP: DX + hot-gas-bypass (ASC). bypass glyph is 5b; 5a sources the data. ---
+  - id: T-DX-HGBP
+    category: DX
+    header_type: null            # catalog: dx_{lh,rh}_hgbp, single circuit
+    special: HGBP
+    circuits_from: const_1
+    supply: distributor
+    return: header
+    feed_type: null
+    views: [front, side, plan]
+    features: [casing, finned, row, tube_run, nozzle_body, feeder_fan,
+               dist_extension, connection_return, stub, stub_cap, airflow, hgbp_bypass]
+    labels: [hdx, hd, sl, dist_data, return_conn, hgbp]
+    dims: [CL, CH, FL, FH, TF, BF, HF, RF, CD, S, R, I, O, SL]
+    new_primitives: [hgbp_bypass]            # 5b
+    # slot.HGBP (R-083 HIGH when hot_gas_bypass); asc_orientation BLOCKED (R-084 CONFLICT)
+    # -> omit + annotate. Sourced + gated upstream in 5a (topology_slots).
+    extra_slots: [HGBP]
+    ref_ezc: [EZC-0013]
+    status: phase5b
+
+  # --- HGRH: plain header supply (NO distributor) + return header; conn_angle LAS. ---
+  - id: T-HGRH
+    category: HGRH
+    header_type: ["Header 1", "Header 2", "Header 3"]
+    special: null
+    circuits_from: header_type
+    supply: plain_header
+    return: header
+    feed_type: header_type        # feed_type != header_type in general; drives port spread (5b)
+    views: [front, side, plan]
+    features: [casing, finned, row, tube_run, supply_header_port,
+               connection_return, stub, stub_cap, conn_angle_glyph]
+    labels: [hd, sl, return_conn, conn_angle]
+    dims: [CL, CH, FL, FH, TF, BF, HF, RF, CD, S, R, I, O, SL]
+    new_primitives: [supply_header_port, conn_angle_glyph]   # 5b
+    extra_slots: [conn_angle]
+    ref_ezc: [EZC-0002, EZC-0008, EZC-0016]
+    status: phase5b
+
+  # --- CWC: single circuit, plain header supply + return; vent/drain near MPT. ---
+  - id: T-CWC
+    category: CWC
+    header_type: ["Header 1"]
+    special: null
+    circuits_from: const_1
+    supply: plain_header
+    return: header
+    feed_type: null
+    views: [front, side, plan]
+    features: [casing, finned, supply_header_port, connection_return,
+               stub, stub_cap, vent_port, drain_port]
+    labels: [hd, sl, return_conn, vent_drain]
+    dims: [CL, CH, FL, FH, TF, BF, HF, RF, CD, I, O, SL]
+    new_primitives: [supply_header_port, vent_port, drain_port]
+    extra_slots: [vent_drain]
+    ref_ezc: [EZC-0014]
+    status: phase5b
+
+  # --- HWC: same drawing family as CWC (plain headers + vent/drain); differs in meaning. ---
+  - id: T-HWC
+    category: HWC
+    header_type: ["Header 1"]
+    special: null
+    circuits_from: const_1
+    supply: plain_header
+    return: header
+    feed_type: null
+    views: [front, side, plan]
+    features: [casing, finned, supply_header_port, connection_return,
+               stub, stub_cap, vent_port, drain_port]
+    labels: [hd, sl, return_conn, vent_drain]
+    dims: [CL, CH, FL, FH, TF, BF, HF, RF, CD, I, O, SL]
+    new_primitives: [supply_header_port, vent_port, drain_port]   # shared with CWC
+    extra_slots: [vent_drain]
+    ref_ezc: [EZC-0005]
+    status: phase5b

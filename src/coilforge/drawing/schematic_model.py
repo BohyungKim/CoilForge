@@ -189,6 +189,14 @@ class CoilGeometry:
     airflow: str | None = None  # slot.AIRFLOW enum (raw, NOT inches) — drives the AIRFLOW arrow
     dist_review_labels: tuple[str, ...] = ()  # dist features sourced from the review bucket (flagged)
     dist_blocked: tuple[str, ...] = ()  # blocked dist slots (e.g. conflicted DistExtension) — annotate
+    # Phase-5a per-category topology data (gated upstream; CARRIED for the 5b glyphs, not drawn in
+    # 5a). HIGH (conn_angle/hgbp_selected) ride in slot_values; vent_drain is review-bucket; blocked
+    # slots (asc_orientation CONFLICT, Terra V vent_drain LOW) are listed for omit + annotate.
+    conn_angle: str | None = None  # slot.conn_angle (HGRH, R-047 HIGH "LAS")
+    vent_drain: str | None = None  # slot.vent_drain (CWC/HWC, R-066 MEDIUM/review — flagged)
+    hgbp_selected: bool | None = None  # slot.HGBP (DX HGBP, R-083 HIGH)
+    topo_review_labels: tuple[str, ...] = ()  # topology features sourced from the review bucket
+    topo_blocked: tuple[str, ...] = ()  # blocked topology slots — omit + annotate
 
     @classmethod
     def from_slot_values(
@@ -201,12 +209,21 @@ class CoilGeometry:
         special_feature: str | None,
         dist_review: Mapping[str, Any] | None = None,
         dist_blocked: Sequence[str] | None = None,
+        topo_review: Mapping[str, Any] | None = None,
+        topo_blocked: Sequence[str] | None = None,
     ) -> CoilGeometry:
         """Build the inches model from gated slots. ``dist_review`` carries the review-bucket
         distributor values (``slot.DistModel{id}`` / ``slot.DistOD{id}``) — drawn FLAGGED, never
         as confirmed dimensions; ``dist_blocked`` lists blocked dist slots to omit + annotate. HIGH
-        distributor slots (``slot.AIRFLOW``, ``slot.DistExtension{id}``) ride in ``slot_values``."""
+        distributor slots (``slot.AIRFLOW``, ``slot.DistExtension{id}``) ride in ``slot_values``.
+
+        ``topo_review`` / ``topo_blocked`` carry the Phase-5a per-category topology data (gated
+        upstream): HIGH ``slot.conn_angle`` / ``slot.HGBP`` ride in ``slot_values``; review
+        ``slot.vent_drain`` rides in ``topo_review``; blocked slots (``asc_orientation``, Terra V
+        ``slot.vent_drain``) are listed in ``topo_blocked``. These are CARRIED for the 5b glyphs —
+        5a does not render them (no new glyph)."""
         dist_review = dist_review or {}
+        topo_review = topo_review or {}
         resolved = {label: _slot_inches(slot_values, key) for label, key in _SLOT_KEYS.items()}
         omitted = tuple(label for label, value in resolved.items() if value is None)
         # One HeaderSpec per EZ id present (odd = supply, even = return). Default to the
@@ -218,6 +235,17 @@ class CoilGeometry:
         airflow = str(airflow_raw).strip() if airflow_raw not in (None, "") else None
         review_labels = tuple(
             key.replace("slot.", "") for key in dist_review if str(key).startswith("slot.")
+        )
+        # Phase-5a topology data — HIGH ride in slot_values (raw, like airflow; the inch gate
+        # would null these non-numeric values), review rides in topo_review. Carried for 5b.
+        conn_angle_raw = slot_values.get("slot.conn_angle")
+        conn_angle = str(conn_angle_raw).strip() if conn_angle_raw not in (None, "") else None
+        hgbp_raw = slot_values.get("slot.HGBP")
+        hgbp_selected = bool(hgbp_raw) if hgbp_raw is not None else None
+        vent_drain_raw = topo_review.get("slot.vent_drain")
+        vent_drain = str(vent_drain_raw).strip() if vent_drain_raw not in (None, "") else None
+        topo_review_labels = tuple(
+            key.replace("slot.", "") for key in topo_review if str(key).startswith("slot.")
         )
         return cls(
             casing_length=resolved["CL"],
@@ -239,4 +267,9 @@ class CoilGeometry:
             airflow=airflow,
             dist_review_labels=review_labels,
             dist_blocked=tuple(dist_blocked or ()),
+            conn_angle=conn_angle,
+            vent_drain=vent_drain,
+            hgbp_selected=hgbp_selected,
+            topo_review_labels=topo_review_labels,
+            topo_blocked=tuple(topo_blocked or ()),
         )

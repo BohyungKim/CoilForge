@@ -30,6 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from coilforge.drawing.schematic_model import CoilGeometry, HeaderSpec
+from coilforge.drawing.topology import Topology, resolve_topology
 
 # Tier step as a fraction of the part's larger side, so dimension tiers scale with the
 # drawing under fit-to-canvas.
@@ -285,7 +286,7 @@ def _spread_x(casing: Rect, h: HeaderSpec) -> float | None:
     return casing.x + min(max(h.spacing, 0.0), casing.w)
 
 
-def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
+def layout_header_side_view(geom: CoilGeometry, *, supply_kind: str = "distributor") -> ViewLayout:
     """End / spread view (CH high x CD wide) — faithful to the EZ DX convention
     (EZC-0001 / EZC-0007). Circuits are positioned ALONG the depth (CD) by their spacing
     (``S{odd}`` / ``R{even}``); supply distributors sit near the TOP edge (offset ``I`` down),
@@ -359,6 +360,7 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
         # "I"); spacing S stays one per circuit (it positions them). Diameter HDx goes OUTSIDE
         # the casing (above the top edge) on a leader.
         supply_offsets: set[float] = set()
+        kept_supply: list[tuple[float, float, float]] = []  # plain-header supply ports (overlap guard)
         for h in supplies:
             sp_lab = f"S{h.index}"
             cx = _spread_x(casing, h)
@@ -376,12 +378,25 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
                     reqs.append(_DimReq("I", "offset", "left", "v", casing.x, top, casing.x, cy, h.offset))
             else:
                 notes.append(_omit(f"I{h.index}"))
-            # nozzle glyph (downward triangle) — NO sweat circle (per EZ distributor rule). The
-            # header diameter HDx is NOT labelled here (shown in the header strip — Phase 4).
-            fw, fd = 0.16 * casing.w, 0.5 * step
-            segments.append(Segment("distributor_supply", cx - fw, cy, cx + fw, cy))
-            segments.append(Segment("distributor_supply", cx - fw, cy, cx, cy + fd))
-            segments.append(Segment("distributor_supply", cx + fw, cy, cx, cy + fd))
+            if supply_kind == "plain_header":
+                # plain supply header port (HGRH/CWC/HWC): reuse the EXISTING connection circle
+                # primitive at the supply I/S position — NO distributor glyph (the styled
+                # supply_header_port glyph is Phase 5b). Sized by the supply header Ø (HDx).
+                r = h.diameter / 2.0 if h.diameter is not None else None
+                if r is None:
+                    notes.append(_omit(f"HDx{h.index} supply port size"))
+                elif any((cx - px) ** 2 + (cy - py) ** 2 < (r + pr - 0.05) ** 2 for px, py, pr in kept_supply):
+                    notes.append(f"supply {h.index} port overlaps another — review required (omitted)")
+                else:
+                    kept_supply.append((cx, cy, r))
+                    circles.append(Circle("connection_supply", cx, cy, r))
+            else:
+                # nozzle glyph (downward triangle) — NO sweat circle (per EZ distributor rule). The
+                # header diameter HDx is NOT labelled here (shown in the header strip — Phase 4).
+                fw, fd = 0.16 * casing.w, 0.5 * step
+                segments.append(Segment("distributor_supply", cx - fw, cy, cx + fw, cy))
+                segments.append(Segment("distributor_supply", cx - fw, cy, cx, cy + fd))
+                segments.append(Segment("distributor_supply", cx + fw, cy, cx, cy + fd))
 
         # --- return connections: bottom row, offset O up, spaced by R, + SL stub ---
         # Offset O dimensioned ONCE per distinct value (bare "O"); spacing R one per circuit.
@@ -440,7 +455,10 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
             segments.append(Segment("tube_run", sx, sy, rx, ry))
 
         if supplies:
-            notes.append("supply distributors: nozzle glyphs, no sweat connection (per EZ data)")
+            if supply_kind == "plain_header":
+                notes.append("supply: plain header ports (no distributor)")
+            else:
+                notes.append("supply distributors: nozzle glyphs, no sweat connection (per EZ data)")
         reqs.append(_DimReq("CD", "overall", "top", "h", casing.x, top, casing.x + casing.w, top, cd))
         reqs.append(_DimReq("CH", "overall", "right", "v", casing.x + casing.w, top, casing.x + casing.w, bottom, ch))
 
@@ -460,7 +478,7 @@ def _fmt_in(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
-def layout_plan_top_view(geom: CoilGeometry) -> ViewLayout:
+def layout_plan_top_view(geom: CoilGeometry, *, supply_kind: str = "distributor") -> ViewLayout:
     """V3 plan/top view — the distributor strip, looking down (``CD`` wide x ``FL`` deep).
 
     Orientation reproduces the real CDXC drawings (EZC-0001/-0007): the **header end is the TOP
@@ -542,6 +560,7 @@ def layout_plan_top_view(geom: CoilGeometry) -> ViewLayout:
 
         # --- supply distributors: top row, offset I down, spaced by S; funnel + fan + stem + tube ---
         supply_offsets: set[float] = set()
+        kept_supply: list[tuple[float, float, float]] = []  # plain-header supply ports (overlap guard)
         for h in supplies:
             cx = _spread_x(casing, h)
             if cx is None:
@@ -558,34 +577,49 @@ def layout_plan_top_view(geom: CoilGeometry) -> ViewLayout:
                     reqs.append(_DimReq("I", "offset", "left", "v", casing.x, top, casing.x, ny, h.offset))
             else:
                 notes.append(_omit(f"I{h.index}"))
-            # funnel glyph (simplified symbol): face bar + two tapers converging DOWN into the coil
-            segments.append(Segment("nozzle_body", cx - fw, ny, cx + fw, ny))
-            segments.append(Segment("nozzle_body", cx - fw, ny, cx, ny + fw))
-            segments.append(Segment("nozzle_body", cx + fw, ny, cx, ny + fw))
-            segments.append(Segment("feeder_fan", fan_apex[0], fan_apex[1], cx, ny))  # apex -> nozzle
-            # DistExtension stem (HIGH) — short stem UP toward the header; blocked/None omit+annotate
-            if f"DistExtension{h.index}" in geom.dist_blocked:
-                notes.append(f"DistExtension{h.index}: CONFLICT (blocked) — omitted")
-            elif h.extension_in is not None:
-                segments.append(Segment("dist_extension", cx, ny, cx, ny - h.extension_in))
+            if supply_kind == "plain_header":
+                # plain supply header port (HGRH/CWC/HWC): reuse the EXISTING connection circle
+                # primitive at the supply I/S position — NO distributor funnel/fan/stem (the styled
+                # supply_header_port glyph is Phase 5b). Sized by the supply header Ø (HDx).
+                r = h.diameter / 2.0 if h.diameter is not None else None
+                if r is None:
+                    notes.append(_omit(f"HDx{h.index} supply port size"))
+                elif any((cx - px) ** 2 + (ny - py) ** 2 < (r + pr - 0.05) ** 2 for px, py, pr in kept_supply):
+                    notes.append(f"supply {h.index} port overlaps another — review required (omitted)")
+                else:
+                    kept_supply.append((cx, ny, r))
+                    circles.append(Circle("connection_supply", cx, ny, r))
             else:
-                notes.append(_omit(f"DistExtension{h.index}"))
+                # funnel glyph (simplified symbol): face bar + two tapers converging DOWN into the coil
+                segments.append(Segment("nozzle_body", cx - fw, ny, cx + fw, ny))
+                segments.append(Segment("nozzle_body", cx - fw, ny, cx, ny + fw))
+                segments.append(Segment("nozzle_body", cx + fw, ny, cx, ny + fw))
+                segments.append(Segment("feeder_fan", fan_apex[0], fan_apex[1], cx, ny))  # apex -> nozzle
+                # DistExtension stem (HIGH) — short stem UP toward the header; blocked/None omit+annotate
+                if f"DistExtension{h.index}" in geom.dist_blocked:
+                    notes.append(f"DistExtension{h.index}: CONFLICT (blocked) — omitted")
+                elif h.extension_in is not None:
+                    segments.append(Segment("dist_extension", cx, ny, cx, ny - h.extension_in))
+                else:
+                    notes.append(_omit(f"DistExtension{h.index}"))
             segments.append(Segment("tube_run", cx, ny + fw, cx, bottom))  # supply tube runs the FL
             # deferred HDx Ø — right-margin DATA STRIP line (no leader, left-aligned into the margin)
             if h.diameter is not None:
                 labels.append(Label(f"hdx_{h.index}", data_x, ny,
                                     f"{_fmt_in(h.diameter)} HDx{h.index}", anchor="start"))
-            # deferred DISTRIBUTORS model / OD — review-bucket -> FLAGGED (label-only, data strip)
-            parts: list[str] = []
-            if h.nozzle_spec:
-                parts.append(h.nozzle_spec)  # opaque string; NO geometry parsed from it
-            if h.feeder_od_in is not None:
-                parts.append(f"OD:{_fmt_in(h.feeder_od_in)}")
-            if parts:
-                feat = f"dist_data_{h.index}"
-                labels.append(Label(feat, data_x, ny + 0.5 * step, "DISTRIBUTORS " + " ".join(parts),
-                                    anchor="start"))
-                review_labels.append(feat)
+            # deferred DISTRIBUTORS model / OD — review-bucket -> FLAGGED (label-only, data strip).
+            # Distributor-only (DX); a plain-header supply has no distributor data line.
+            if supply_kind != "plain_header":
+                parts: list[str] = []
+                if h.nozzle_spec:
+                    parts.append(h.nozzle_spec)  # opaque string; NO geometry parsed from it
+                if h.feeder_od_in is not None:
+                    parts.append(f"OD:{_fmt_in(h.feeder_od_in)}")
+                if parts:
+                    feat = f"dist_data_{h.index}"
+                    labels.append(Label(feat, data_x, ny + 0.5 * step, "DISTRIBUTORS " + " ".join(parts),
+                                        anchor="start"))
+                    review_labels.append(feat)
 
         # --- return connections: bottom row, offset O up, spaced by R, + port circle + SL stub ---
         return_offsets: set[float] = set()
@@ -700,13 +734,28 @@ def mirror_view_x(view: ViewLayout) -> ViewLayout:
     )
 
 
-def build_dx_views(geom: CoilGeometry) -> dict[str, ViewLayout]:
-    """All three views, hand-correct. The mirror is applied here, once, for a right hand."""
-    views = {
-        "front": layout_dx_front_view(geom),
-        "side": layout_header_side_view(geom),
-        "plan": layout_plan_top_view(geom),
+def build_views(geom: CoilGeometry, topology: Topology) -> dict[str, ViewLayout]:
+    """Table-driven composition (Phase 5a): build the views the ``topology`` lists, selecting the
+    supply kind from it. The mirror is applied here, once, for a right hand.
+
+    The only structural geometry toggle is ``topology.supply``: ``distributor`` (DX — the existing
+    nozzle/fan/extension path, byte-identical) vs ``plain_header`` (HGRH/CWC/HWC — a plain supply
+    port reusing the existing connection circle primitive; no new glyph in 5a). The front view is
+    category-agnostic; only side/plan consume the supply kind.
+    """
+    sk = topology.supply
+    builders = {
+        "front": lambda: layout_dx_front_view(geom),
+        "side": lambda: layout_header_side_view(geom, supply_kind=sk),
+        "plan": lambda: layout_plan_top_view(geom, supply_kind=sk),
     }
+    views = {name: builders[name]() for name in topology.views if name in builders}
     if str(geom.coil_hand).strip().upper().startswith("R"):
         views = {name: mirror_view_x(v) for name, v in views.items()}
     return views
+
+
+def build_dx_views(geom: CoilGeometry) -> dict[str, ViewLayout]:
+    """Back-compat DX entry: resolve the DX topology and compose. Identical output to the
+    pre-Phase-5 hardcoded path (distributor supply, front/side/plan)."""
+    return build_views(geom, resolve_topology(geom.coil_category, geom.header_type, geom.special_feature))

@@ -1,0 +1,114 @@
+<svg aria-label="CoilForge parametric plan view (review aid)" role="img" viewBox="0 0 1000 780">
+  <defs>
+    <marker id="schem-arrow" markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
+      <path d="M 0 0 L 7 3.5 L 0 7 z" fill="#242092"></path>
+    </marker>
+    <style>.casing { fill: #fbfbfb; stroke: #1f2937; stroke-width: 2; } .finned { fill: #eef2ff; stroke: #4b5563; stroke-width: 1.5; } .header-pipe { fill: #e0e7ff; stroke: #1f2937; stroke-width: 1.5; } .connection { fill: #ffffff; stroke: #4b5563; stroke-width: 1.5; } .stub { stroke: #1f2937; stroke-width: 1.5; fill: none; } .nozzle { stroke: #1f2937; stroke-width: 1.5; fill: none; } .feeder { stroke: #4b5563; stroke-width: 1.1; fill: none; } .dist-ext { stroke: #1f2937; stroke-width: 1.8; fill: none; } .airflow { fill: #eef2ff; stroke: #242092; stroke-width: 1.2; } .airflow-label { fill: #242092; font: 700 13px Arial, sans-serif; } .row { stroke: #c7cce8; stroke-width: 0.8; fill: none; } .ext-line { stroke: #9aa0c4; stroke-width: 0.8; fill: none; } .dim-arrows { stroke: #242092; stroke-width: 1.2; fill: none; marker-start: url(#schem-arrow); marker-end: url(#schem-arrow); } .witness { stroke: #242092; stroke-width: 1.1; fill: none; } .leader { stroke: #242092; stroke-width: 0.9; fill: none; } .dim-label { fill: #0d0877; font: 700 13px Arial, sans-serif; } .callout { fill: #1f2937; font: 600 13px Arial, sans-serif; } .review { fill: #92400e; font: 700 13px Arial, sans-serif; } .omitted { fill: #92400e; font: 700 13px Arial, sans-serif; } .watermark { fill: #b91c1c; font: 800 16px Arial, sans-serif; } .meta { fill: #475569; font: 11px Arial, sans-serif; }</style>
+  </defs>
+  <g id="zone.plan_view">
+    <rect class="casing" data-feature="casing" height="266.51" width="82.00" x="443.01" y="256.75"></rect>
+    <line class="nozzle" data-feature="nozzle_body" x1="451.19" x2="465.58" y1="287.50" y2="287.50"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="451.19" x2="458.38" y1="287.50" y2="294.69"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="465.58" x2="458.38" y1="287.50" y2="294.69"></line>
+    <line class="feeder" data-feature="feeder_fan" x1="484.01" x2="458.38" y1="192.78" y2="287.50"></line>
+    <line class="dist-ext" data-feature="dist_extension" x1="458.38" x2="458.38" y1="287.50" y2="225.99"></line>
+    <line class="row" data-feature="tube_run" x1="458.38" x2="458.38" y1="294.69" y2="523.25"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="476.81" x2="491.21" y1="287.50" y2="287.50"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="476.81" x2="484.01" y1="287.50" y2="294.69"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="491.21" x2="484.01" y1="287.50" y2="294.69"></line>
+    <line class="feeder" data-feature="feeder_fan" x1="484.01" x2="484.01" y1="192.78" y2="287.50"></line>
+    <line class="dist-ext" data-feature="dist_extension" x1="484.01" x2="484.01" y1="287.50" y2="225.99"></line>
+    <line class="row" data-feature="tube_run" x1="484.01" x2="484.01" y1="294.69" y2="523.25"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="502.44" x2="516.83" y1="287.50" y2="287.50"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="502.44" x2="509.64" y1="287.50" y2="294.69"></line>
+    <line class="nozzle" data-feature="nozzle_body" x1="516.83" x2="509.64" y1="287.50" y2="294.69"></line>
+    <line class="feeder" data-feature="feeder_fan" x1="484.01" x2="509.64" y1="192.78" y2="287.50"></line>
+    <line class="dist-ext" data-feature="dist_extension" x1="509.64" x2="509.64" y1="287.50" y2="225.99"></line>
+    <line class="row" data-feature="tube_run" x1="509.64" x2="509.64" y1="294.69" y2="523.25"></line>
+    <line class="stub" data-feature="stub" x1="453.26" x2="453.26" y1="502.75" y2="564.26"></line>
+    <line class="stub" data-feature="stub_cap" x1="446.86" x2="459.65" y1="564.26" y2="564.26"></line>
+    <line class="stub" data-feature="stub" x1="478.88" x2="478.88" y1="502.75" y2="564.26"></line>
+    <line class="stub" data-feature="stub_cap" x1="472.49" x2="485.28" y1="564.26" y2="564.26"></line>
+    <line class="stub" data-feature="stub" x1="504.51" x2="504.51" y1="502.75" y2="564.26"></line>
+    <line class="stub" data-feature="stub_cap" x1="498.11" x2="510.91" y1="564.26" y2="564.26"></line>
+    <circle class="header-pipe" cx="453.26" cy="502.75" data-feature="connection_return" r="5.13"></circle>
+    <circle class="header-pipe" cx="478.88" cy="502.75" data-feature="connection_return" r="5.13"></circle>
+    <circle class="header-pipe" cx="504.51" cy="502.75" data-feature="connection_return" r="5.13"></circle>
+    <g data-direction="left_to_right" data-feature="airflow_arrow">
+      <polygon class="airflow" points="442.01,160.20 510.01,160.20 510.01,153.20 526.01,167.20 510.01,181.20 510.01,174.20 442.01,174.20"></polygon>
+      <text class="airflow-label" text-anchor="middle" x="484.01" y="149.20">AIRFLOW</text>
+    </g>
+    <g data-dim="S1" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="256.75" y2="240.75"></line>
+      <line class="ext-line" x1="458.38" x2="458.38" y1="256.75" y2="240.75"></line>
+      <line class="dim-arrows" x1="443.01" x2="458.38" y1="240.75" y2="240.75"></line>
+    </g>
+    <g data-dim="S3" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="256.75" y2="224.76"></line>
+      <line class="ext-line" x1="484.01" x2="484.01" y1="256.75" y2="224.76"></line>
+      <line class="dim-arrows" x1="443.01" x2="484.01" y1="224.76" y2="224.76"></line>
+    </g>
+    <g data-dim="S5" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="256.75" y2="208.77"></line>
+      <line class="ext-line" x1="509.64" x2="509.64" y1="256.75" y2="208.77"></line>
+      <line class="dim-arrows" x1="443.01" x2="509.64" y1="208.77" y2="208.77"></line>
+    </g>
+    <g data-dim="CD" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="256.75" y2="192.78"></line>
+      <line class="ext-line" x1="525.01" x2="525.01" y1="256.75" y2="192.78"></line>
+      <line class="dim-arrows" x1="443.01" x2="525.01" y1="192.78" y2="192.78"></line>
+    </g>
+    <g data-dim="R2" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="523.25" y2="580.25"></line>
+      <line class="ext-line" x1="453.26" x2="453.26" y1="523.25" y2="580.25"></line>
+      <line class="dim-arrows" x1="443.01" x2="453.26" y1="580.25" y2="580.25"></line>
+    </g>
+    <g data-dim="R4" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="523.25" y2="596.24"></line>
+      <line class="ext-line" x1="478.88" x2="478.88" y1="523.25" y2="596.24"></line>
+      <line class="dim-arrows" x1="443.01" x2="478.88" y1="596.24" y2="596.24"></line>
+    </g>
+    <g data-dim="R6" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="443.01" y1="523.25" y2="612.23"></line>
+      <line class="ext-line" x1="504.51" x2="504.51" y1="523.25" y2="612.23"></line>
+      <line class="dim-arrows" x1="443.01" x2="504.51" y1="612.23" y2="612.23"></line>
+    </g>
+    <g data-dim="I" data-style="leader">
+      <line class="witness" x1="443.01" x2="443.01" y1="256.75" y2="287.50"></line>
+    </g>
+    <g data-dim="FL" data-style="arrows">
+      <line class="ext-line" x1="443.01" x2="411.03" y1="256.75" y2="256.75"></line>
+      <line class="ext-line" x1="443.01" x2="411.03" y1="523.25" y2="523.25"></line>
+      <line class="dim-arrows" x1="411.03" x2="411.03" y1="256.75" y2="523.25"></line>
+    </g>
+    <g data-dim="O" data-style="leader">
+      <line class="witness" x1="525.01" x2="525.01" y1="502.75" y2="523.25"></line>
+    </g>
+    <path class="leader" d="M 443.01 272.12 L 443.01 244.55 L 419.02 244.55"></path>
+    <path class="leader" d="M 525.01 513.00 L 525.01 588.60 L 572.40 588.60"></path>
+    <text class="dim-label" text-anchor="end" x="439.01" y="231.50">1.50 S1</text>
+    <text class="dim-label" text-anchor="end" x="439.01" y="215.51">4.00 S3</text>
+    <text class="dim-label" text-anchor="end" x="439.01" y="199.52">6.50 S5</text>
+    <text class="dim-label" text-anchor="end" x="439.01" y="183.53">8.00 CD</text>
+    <text class="dim-label" text-anchor="end" x="439.01" y="596.65">1.00 R2</text>
+    <text class="dim-label" text-anchor="end" x="439.01" y="612.64">3.50 R4</text>
+    <text class="dim-label" text-anchor="end" x="439.01" y="628.63">6.00 R6</text>
+    <text class="dim-label" text-anchor="end" x="419.02" y="248.12">3.00 I</text>
+    <text class="dim-label" text-anchor="end" x="403.03" y="394.00">26.00 FL</text>
+    <text class="dim-label" text-anchor="start" x="549.00" y="599.00">2.00 O</text>
+    <text class="callout" data-label="hdx_1" text-anchor="start" x="556.99" y="287.50">4.5 HDx1</text>
+    <text class="callout" data-label="hdx_3" text-anchor="start" x="556.99" y="303.50">4.5 HDx3</text>
+    <text class="callout" data-label="hdx_5" text-anchor="start" x="556.99" y="319.50">4.5 HDx5</text>
+    <text class="callout" data-label="sl_2" text-anchor="start" x="556.99" y="550.75">6 SL2</text>
+    <text class="callout" data-label="hd_2" text-anchor="start" x="556.99" y="502.75">3.5 HD2</text>
+    <text class="callout" data-label="sl_4" text-anchor="start" x="556.99" y="566.75">6 SL4</text>
+    <text class="callout" data-label="hd_4" text-anchor="start" x="556.99" y="518.75">3.5 HD4</text>
+    <text class="callout" data-label="sl_6" text-anchor="start" x="556.99" y="582.75">6 SL6</text>
+    <text class="callout" data-label="hd_6" text-anchor="start" x="556.99" y="534.75">3.5 HD6</text>
+    <text class="callout" data-label="return_conn" text-anchor="start" x="556.99" y="615.25">RETURN 1</text>
+  </g>
+  <g id="zone.review">
+    <text class="watermark" x="48" y="754">REVIEW AID - NOT FOR MANUFACTURING</text>
+    <text class="meta" x="48" y="770">REVIEW AID — NOT TO STANDARD SCALE | view=plan | px_per_inch=10.2504 | export_allowed=false | john_review_required=true</text>
+  </g>
+</svg>
