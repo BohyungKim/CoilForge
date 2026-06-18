@@ -17,11 +17,24 @@ from coilforge.compatibility import (
     build_reconciliation_plan,
     compare_submittal_and_ez,
 )
-from coilforge.submittal import build_po_logic_intake_summary, load_submittal_candidate_fixture
+from coilforge.submittal import (
+    build_po_logic_intake_summary,
+    default_po_logic_source_paths,
+    load_submittal_candidate_fixture,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SANITIZED_DIR = ROOT / "examples" / "sanitized"
+PO_LOGIC_FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "po_logic"
+
+
+def _po_logic_summary():
+    """Hermetic PO-logic summary built from the in-repo sanitized fixture."""
+
+    return build_po_logic_intake_summary(
+        default_po_logic_source_paths(PO_LOGIC_FIXTURE_ROOT)
+    )
 EXPECTED = json.loads(
     (
         ROOT
@@ -53,7 +66,7 @@ def _matrix(candidate=None, ez_payload=None):
 def _surface():
     return build_decision_matrix_review_surface(
         _matrix(),
-        build_po_logic_intake_summary(),
+        _po_logic_summary(),
     )
 
 
