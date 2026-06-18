@@ -264,6 +264,196 @@ connection-size callout; `DISTRIBUTORS (model) OD:x` data line.
 Distributor visual fidelity (to-scale fan/nozzle geometry vs a simplified symbol) is confirmed
 against the real DX at 4b, per decision C.
 
+## 7. Phase 5 — coil type → topology spec table
+
+Status: **design, 2026-06-17.** No `src/` or test changes in this step. Branch:
+`claude/phase5-topology` (new worktree off `main`). Extends §4 (type→topology) and §5
+(phase map) into an executable spec table. DESIGN ONLY.
+
+### 7.0 Confirmed decisions (this step)
+- **One table, rules-as-data.** A `(category, header_type, special)` → feature-set table
+  in YAML (house style: `schema_version`, per-row `id` + `evidence_refs`) is the single
+  source of truth for which features each template emits. The engine reads the table; it
+  does not hardcode per-category branches in Python.
+- **Hand-invariant.** Rows carry **no `hand`** — LH/RH share a feature set; `mirror_view_x`
+  reflects. Every row is validated LH **and** RH (mirror-covariance tests).
+- **Reuse first.** DX (V1 front / V2 spread / V3 plan) primitives are reused unchanged.
+  The only structural toggle is **supply kind**: `distributor` (DX) vs `plain_header`
+  (HGRH/CWC/HWC). New glyphs are added only where a category genuinely needs one.
+- **Gated-slots-only, fail-closed.** The engine consumes gated `slot_values` only; sourcing
+  of every new datum stays UPSTREAM (5a). `None` / "REVIEW REQUIRED" → feature omitted +
+  annotated, never invented. Confidence gate unchanged
+  (`HIGH→values`, `MEDIUM→suggestions(review)`, `LOW/CONFLICT→blocked`).
+
+### 7.1 The topology table (rules-as-data)
+Proposed file: `src/coilforge/rules/drawing_topology_rules.yaml`. Shape:
+
+```yaml
+schema_version: "drawing-topology.v1"
+# (category, header_type, special) -> feature set emitted. Hand-invariant (LH/RH via
+# mirror_view_x). Engine consumes gated slots only; None/REVIEW -> omit+annotate.
+topologies:
+  - id: T-DX
+    category: DX
+    header_type: ["Header 1", "Header 2", "Header 3"]
+    special: null
+    circuits_from: header_type        # 1 / 2 / 3
+    supply: distributor               # nozzle_body + feeder_fan + dist_extension
+    return: header                    # connection_return + stub + stub_cap + HD
+    views: [front, side, plan]
+    features: [casing, finned, row, tube_run, nozzle_body, feeder_fan,
+               dist_extension, connection_return, stub, stub_cap, airflow]
+    labels:  [hdx, hd, sl, dist_data, return_conn]
+    dims:    [CL, CH, FL, FH, TF, BF, HF, RF, CD, S, R, I, O, SL]
+    new_primitives: []
+    ref_ezc: [EZC-0001, EZC-0007, EZC-0011]
+    status: implemented               # Phase 1-4
+
+  - id: T-DX-HGBP
+    category: DX
+    header_type: null                 # catalog: dx_{lh,rh}_hgbp, single circuit
+    special: HGBP
+    circuits_from: const_1
+    supply: distributor
+    return: header
+    extra: [hot_gas_bypass]           # asc=selected (R-083 HIGH when hot_gas_bypass);
+                                       # asc_orientation BLOCKED (R-084 CONFLICT) -> omit+annotate
+    views: [front, side, plan]
+    features: [<T-DX features>, hgbp_bypass]
+    new_primitives: [hgbp_bypass]
+    ref_ezc: [EZC-0013]
+    status: phase5b
+
+  - id: T-HGRH
+    category: HGRH
+    header_type: ["Header 1", "Header 2", "Header 3"]
+    special: null
+    circuits_from: header_type
+    supply: plain_header              # NO distributor: supply header port + manifold
+    return: header
+    extra: [conn_angle]               # LAS (R-047 HIGH)
+    views: [front, side, plan]
+    features: [casing, finned, row, tube_run, supply_header_port,
+               connection_return, stub, stub_cap, conn_angle_glyph]
+    labels:  [hd, sl, return_conn, conn_angle]
+    dims:    [CL, CH, FL, FH, TF, BF, HF, RF, CD, S, R, I, O, SL]
+    new_primitives: [supply_header_port, conn_angle_glyph]
+    ref_ezc: [EZC-0002, EZC-0008, EZC-0016]
+    status: phase5b
+
+  - id: T-CWC
+    category: CWC
+    header_type: ["Header 1"]
+    special: null
+    circuits_from: const_1
+    supply: plain_header
+    return: header
+    extra: [vent_drain]               # R-066 MEDIUM(review); Terra V R-067 LOW -> blocked
+    views: [front, side, plan]
+    features: [casing, finned, supply_header_port, connection_return,
+               stub, stub_cap, vent_port, drain_port]
+    labels:  [hd, sl, return_conn, vent_drain]
+    dims:    [CL, CH, FL, FH, TF, BF, HF, RF, CD, I, O, SL]
+    new_primitives: [supply_header_port, vent_port, drain_port]
+    ref_ezc: [EZC-0014]
+    status: phase5b
+
+  - id: T-HWC
+    category: HWC
+    header_type: ["Header 1"]
+    special: null
+    circuits_from: const_1
+    supply: plain_header
+    return: header
+    extra: [vent_drain]
+    views: [front, side, plan]
+    features: [<same set as T-CWC>]
+    new_primitives: [supply_header_port, vent_port, drain_port]   # shared with CWC
+    ref_ezc: [EZC-0005]
+    status: phase5b
+```
+
+Notes: `circuits = max header index // 2` as today; `circuits_from: header_type` reads
+1/2/3 from the catalog header type, `const_1` for single-circuit categories. `features` is
+the union the composition layer emits; a feature whose slot is missing is omitted +
+annotated (not an error).
+
+### 7.2 Per-category convention extraction
+`[code]` = data path / catalog / rules; `[redacted-template]` = the seeded SVGs; validate
+real-PDF at 5b (decision C).
+
+| Category | Views | Supply | Return | Category feature | Labels | Ref EZC |
+|---|---|---|---|---|---|---|
+| **DX** | V1/V2/V3 | distributor (`HDx`, nozzle+fan+ext) | header `HD`+`SL` | AIRFLOW, DistExtension | `HDx/HD/SL/dist_data/RETURN` | 0001/0007/0011 |
+| **DX-HGBP** | V1/V2/V3 | distributor | header | **hot-gas-bypass / ASC** (orientation blocked) | DX + bypass callout | 0013 |
+| **HGRH** | V1/V2/V3 | **plain header** (`I/S`, no distributor) | header `O/R/SL/HD` | **conn_angle `LAS`** | `HD/SL/RETURN/conn_angle` | 0002/0008/0016 |
+| **CWC** | V1/V2/V3 | plain header (1) | header (1) | **vent/drain near MPT** | `HD/SL/RETURN/vent_drain` | 0014 |
+| **HWC** | V1/V2/V3 | plain header (1) | header (1) | vent/drain | as CWC | 0005 |
+
+The load-bearing difference is **DX draws the supply as a distributor** (nozzle body +
+feeder fan + downward extension), while **HGRH/CWC/HWC draw the supply as a plain header
+port** — same `I/S` offset+spacing positioning, no funnel/fan/extension. DX-HGBP is DX +
+a bypass connection. CWC and HWC are the same drawing family (plain headers + vent/drain);
+they differ in engineering meaning, not topology.
+
+### 7.3 New primitives required (everything else is reused)
+Reused unchanged: `casing`/`finned` rects, `connection_return` circle, `row`, `tube_run`,
+`stub`, `stub_cap` segments, AIRFLOW arrow, `tier_pos`/`place_dimensions`/`decollide`/
+`mirror_view_x`, all dimension/label machinery, the SVG backend frame.
+
+| New primitive | Categories | Layer-2 feature kind | Layer-3 (CSS class) | Notes |
+|---|---|---|---|---|
+| **supply_header_port** | HGRH, CWC, HWC | `supply_header_port` (Circle + short manifold Segment) | `.header-port` | plain supply: reuses `connection_return` geometry pattern, supply side; replaces nozzle/fan/ext |
+| **conn_angle_glyph** | HGRH | `conn_angle` (angled Segment + Label `LAS`) | `.conn-angle` | the LAS angled supply connection; label-only value if geometry unknown |
+| **vent_port** / **drain_port** | CWC, HWC | `vent_port` / `drain_port` (small Circle/Segment near MPT) | `.vent` / `.drain` | label-only when position unsourced → omit+annotate |
+| **hgbp_bypass** | DX-HGBP | `hgbp_bypass` (Segment path/glyph for ASC) | `.hgbp` | ASC connection; **asc_orientation omitted+annotated** (R-084 CONFLICT) |
+
+Each new kind is a 3-layer-clean addition: a `Header`/geometry field (inches) if it carries
+a dimension, a layout builder branch emitting generic primitives off datums, and one CSS
+class + (annotation-fixed) glyph in the SVG backend's `_SEGMENT_CLASS`/`_CIRCLE_CLASS`. No
+absolute coordinates; mirror-covariant placement.
+
+### 7.4 Data-sourcing audit (mirrors §6.2 — sourcing stays UPSTREAM, fail-closed)
+Already emitted by the loader/engine [code]: `I{id} O{id} S{id} R{id} HDx{id} HD{id}
+SL{id} RETURN_CONN_SIZE`, plus Phase-4a `AIRFLOW`, `DistExtension{id}`, `DistModel{id}`,
+`DistOD{id}`.
+
+| Category | Datum | In the data as… | Engine rule | Emitted today? | 5a action |
+|---|---|---|---|---|---|
+| **HGRH** | conn_angle | `SupConnAngle` notes token (single-feed); engine `conn_angle` | **R-047 HIGH** `"LAS"` | token only, no slot | NEW `slot.conn_angle` ← engine R-047 primary, JSON token cross-check → **HIGH** |
+| **HGRH** | supply/return position (multi) | indexed `Headers[]` `I/S/O/R` | R-048 MEDIUM (formula) | indexed slots exist | reuse existing `I{id}/S{id}/O{id}/R{id}` |
+| **CWC/HWC** | vent_drain | (none in geometry/notes) | **R-066 MEDIUM(review)**; **R-067 LOW** (Terra V) → blocked | **none** | NEW `slot.vent_drain` ← engine R-066 → **MEDIUM/review**; Terra V → **blocked**; position unknown → omit+annotate |
+| **DX-HGBP** | asc | `Headers[].IsASC` (L-040 STRONG) | **R-083 HIGH** `"selected"` (only_when hot_gas_bypass) | partial (`slot.ASC` from geometry) | NEW `slot.HGBP` ← engine R-083 bridge → **HIGH**; geometry override when present |
+| **DX-HGBP** | asc_orientation | `Headers[].ASCOrientation` | **R-084 CONFLICT** | deferred (L-041) | stays **DEFERRED/blocked** → orientation omitted + annotated |
+
+Confidence gate unchanged. Nothing is drawn from a `MEDIUM`/`review` string as geometry —
+review-bucket items are label-only & flagged (same rule as DX `DistModel`/`DistOD`).
+
+### 7.5 Phase split
+- **5-pre (this) — DESIGN ONLY.** This §7: the table, convention extraction, new-primitive
+  list, sourcing audit, split. No `src/`/test changes.
+- **5a — table + composition + upstream sourcing (no new drawing geometry).**
+  (1) `drawing_topology_rules.yaml` + a selector mapping `(category, header_type, special)`
+  → feature spec; (2) refactor `build_dx_views` → `build_views(geom)` that branches on the
+  table — **supply kind toggle** (`distributor` vs `plain_header`, both via existing
+  primitives) is the only geometry change here; (3) UPSTREAM gated slots `slot.conn_angle`,
+  `slot.vent_drain`, `slot.HGBP` (fail-closed); (4) sanitized fixtures per category
+  (HGRH/CWC/HWC/HGBP — none exist today); (5) loader/gate/composition + mirror tests.
+- **5b — per-category drawing + eyeball gate.** Implement the four new glyphs
+  (`supply_header_port` manifold, `conn_angle_glyph`, `vent_port`/`drain_port`,
+  `hgbp_bypass`) in layout + backend; render one EZC fixture per category; **human eyeball
+  gate**; clean LH/RH mirror; **V1/V2/V3 DX unchanged**; retire static template dependency
+  for covered categories.
+
+**Acceptance (per §5):** one fixture per category (DX / HGRH / CWC / HWC + HGBP) renders the
+correct feature set with no label collisions, every label leader-connected, clean LH/RH; the
+static template path is retired for covered categories.
+
+### 7.6 Constraints honored (Phase 5)
+3-layer split kept; model in inches, datum/offset only; engine consumes gated slots only;
+sourcing stays upstream; rules-as-data (YAML); one `mirror_view_x`; additive only (no schema
+change that breaks the confidence gate); `export_allowed: False` + watermark preserved.
+
 ## Constraints honored
 
 Three-layer split kept; model in inches, datum/offset only; engine consumes gated slots only;
