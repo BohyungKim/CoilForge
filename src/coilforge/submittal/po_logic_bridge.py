@@ -66,8 +66,37 @@ class PoLogicIntakeSummary:
         }
 
 
+_PO_PROJECT_SUBPATH = Path("PO Release Engineering Workflow") / "pdf_extractor"
+
+
+def _discover_projects_root() -> Path:
+    """Ancestor directory that contains the sibling PO project.
+
+    Robust to running from a git worktree, where ``Path.cwd().parent`` is
+    ``.claude/worktrees`` rather than the ``Projects`` root that holds the
+    sibling PO project. Searches ancestors of both this module and the current
+    working directory, and falls back to the legacy ``Path.cwd().parent`` anchor
+    when the sibling project is genuinely absent (so the ``not_found`` path is
+    preserved).
+    """
+
+    candidates: list[Path] = [
+        *Path(__file__).resolve().parents,
+        Path.cwd().resolve(),
+        *Path.cwd().resolve().parents,
+    ]
+    seen: set[Path] = set()
+    for ancestor in candidates:
+        if ancestor in seen:
+            continue
+        seen.add(ancestor)
+        if (ancestor / _PO_PROJECT_SUBPATH).is_dir():
+            return ancestor
+    return Path.cwd().parent
+
+
 def default_po_logic_source_paths(projects_root: Path | None = None) -> tuple[Path, ...]:
-    root = projects_root or Path.cwd().parent
+    root = projects_root or _discover_projects_root()
     po_root = root / "PO Release Engineering Workflow" / "pdf_extractor"
     return (
         po_root / "pdf_processing.py",
