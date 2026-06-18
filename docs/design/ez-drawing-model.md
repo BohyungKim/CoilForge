@@ -272,9 +272,10 @@ Status: **design 2026-06-17; 5a implemented 2026-06-18.** Branch:
 `src/coilforge/rules/drawing_topology_rules.yaml`; the loader is
 `src/coilforge/drawing/topology.py` (`resolve_topology`, fail-closed); composition is
 `schematic_layout.build_views` (supply-kind toggle); upstream sourcing is
-`src/coilforge/services/topology_slots.py`. The 4 NEW visual glyphs (§7.3) remain
-**Phase 5b** — 5a reuses existing primitives + a plain supply port. DX output is
-byte-identical to Phase 4 (regression-guarded).
+`src/coilforge/services/topology_slots.py`. **5a-implemented; the 4 NEW styled glyphs
+(§7.3) + real-PDF fidelity validation are pending Phase 5b** — 5a reuses existing
+primitives + a plain supply port. DX output is byte-identical to Phase 4
+(regression-guarded).
 
 ### 7.0 Confirmed decisions (this step)
 - **One table, rules-as-data.** A `(category, header_type, special)` → feature-set table

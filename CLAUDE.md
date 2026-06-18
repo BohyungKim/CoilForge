@@ -40,12 +40,11 @@ PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade g
 (alone or in a message), do exactly this, in order, and stop at the first failure:
 
 1. Run the full suite: `python -m pytest -q`.
-2. **Gate:** proceed only if the run is green. The tree currently has 4 known
-   pre-existing `phase2c` PO-logic reds — `shipit` treats the run as passing only when
-   the *only* failures are those 4 documented reds and nothing in the files you changed
-   regressed; any new/other failure → **STOP, report it, commit nothing.** (To require a
-   fully-green run instead, say `shipit strict`. To scope to the drawing work, say
-   `shipit drawing` → run only `tests/test_schematic_renderer.py`.)
+2. **Gate:** proceed only if the run is green. The tree is **fully green as of Phase 5a**
+   (the former 4 `phase2c` PO-logic reds were resolved before `phase4-landed` via a
+   sanitized fixture, so a green run is now the norm); any failure → **STOP, report it,
+   commit nothing.** (To scope to the drawing work, say `shipit drawing` → run only
+   `tests/test_schematic_renderer.py`.)
 3. Stage **only the files for the current work** — review `git status` first and `git add`
    those paths explicitly. **Never `git add -A`**: this worktree carries unrelated edits
    from a concurrent session that must not be swept into the commit.
@@ -128,6 +127,9 @@ responses deliberately assert safety flags (`raw_private_data_returned: False`,
   belong in the repo.
 
 ## Drawing engine (parametric — in progress)
+
+**Status: Phase 5a landed** (table-driven topology engine; DX byte-identical preserved).
+See `### Roadmap` below and `docs/design/ez-drawing-model.md §7`.
 
 The current submittal path fills a fixed SVG template via text substitution (static
 geometry — a coil with FL=120" draws the identical box as FL=20"). We are building a
@@ -261,7 +263,10 @@ column. The rules that keep it legible — and the precedent for any future view
 1. Engine v0 — geometry model (real units) + DX front view, **SVG** backend +
    tests.
 2. Extract layout/datum module; add header/side view (LH/RH mirror).
-3. Feature library — all 17 via a `(category, hand, header, special)` spec table.
+3. ✅ **Phase 5a landed** — table-driven topology: feature library via a
+   `(category, hand, header, special)` spec table (DX / HGRH / CWC / HWC / DX-HGBP),
+   DX byte-identical preserved. **5a-implemented; styled per-category glyphs +
+   real-PDF fidelity pending 5b.**
 4. **DXF** backend via `ezdxf` (1:1 inches, layers, dimension entities); verify
    DraftSight / SolidWorks import.
 5. **PDF** backend (submittal: title block, declared scale, dimension precision);
