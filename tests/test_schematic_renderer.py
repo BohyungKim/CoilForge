@@ -469,8 +469,8 @@ def _glyph_boxes(svg: str) -> list[tuple[float, float, float, float]]:
         cx, cy, r = (float(m.group(i)) for i in (1, 2, 3))
         boxes.append((cx - r, cy - r, cx + r, cy + r))
     for m in re.finditer(
-        r'<line data-feature="(?:distributor_supply|stub)" x1="([\d.]+)" y1="([\d.]+)" '
-        r'x2="([\d.]+)" y2="([\d.]+)"',
+        r'<line data-feature="(?:distributor_supply|stub|nozzle_body|feeder_fan|dist_extension|stub_cap)" '
+        r'x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"',
         svg,
     ):
         xs, ys = (float(m.group(1)), float(m.group(3))), (float(m.group(2)), float(m.group(4)))
@@ -507,7 +507,7 @@ def test_no_connection_glyph_overlaps_a_label(sv: dict, hand: str) -> None:
 # --------------------------------------------------------------------------- #
 # Phase 2.7 — ONE unified collision pass over ALL labels (dim + callout + note)
 # --------------------------------------------------------------------------- #
-_LABEL_CLASSES = ("dim-label", "callout", "omitted")
+_LABEL_CLASSES = ("dim-label", "callout", "omitted", "review")
 
 
 def _svg_label_boxes(svg: str) -> list[tuple[str, tuple[float, float, float, float]]]:
@@ -709,3 +709,194 @@ def test_non_dx_category_renders_box_with_phase3_note() -> None:
     assert "<svg" in res.svg and "<svg" in res.side_svg
     assert res.metadata.get("phase3_deferred") is True
     assert any("phase 3" in note.lower() or "phase3" in note.lower() for note in res.omitted_features)
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4b — V3 distributor plan/top view (the new third view). HIGH slots drawn;
+# review-bucket DistModel/DistOD drawn FLAGGED (label-only); blocked/None omitted+annotated.
+# V1 front + V2 spread stay byte-unchanged. Obstacle-complete + mirror-equivariant.
+# --------------------------------------------------------------------------- #
+def dist_slots(sv: dict[str, object], ids: tuple[int, ...]) -> dict[str, object]:
+    """Augment a slot dict with the Phase-4a HIGH distributor slots (AIRFLOW + DistExtension)."""
+    out = dict(sv)
+    out["slot.AIRFLOW"] = "left_to_right"
+    for sid in ids:
+        out[f"slot.DistExtension{sid}"] = 6.0
+    return out
+
+
+def dist_review(ids: tuple[int, ...], *, model: str = "501-2-3/16", od: float = 0.625) -> dict[str, object]:
+    """The Phase-4a review-bucket values (DistModel opaque string + DistOD inches), per supply id."""
+    rev: dict[str, object] = {}
+    for sid in ids:
+        rev[f"slot.DistModel{sid}"] = model
+        rev[f"slot.DistOD{sid}"] = od
+    return rev
+
+
+def plan_render(circuits: int = 1, *, hand: str = "LH", blocked=None, review=None, sv=None):
+    if circuits == 1:
+        ids, ht = (1,), "Header 1"
+        base = sv if sv is not None else sanitized_slots()
+    else:
+        ids, ht = (1, 3, 5), "Header 3"
+        base = sv if sv is not None else multi_circuit_slots()
+    rev = review if review is not None else dist_review(ids)
+    return render_scale_schematic(
+        dist_slots(base, ids), coil_category="DX", coil_hand=hand, header_type=ht,
+        dist_review=rev, dist_blocked=blocked,
+    ), ids
+
+
+def _plan_features(svg: str) -> set[str]:
+    return set(re.findall(r'data-feature="([a-z_]+)"', svg))
+
+
+@pytest.mark.parametrize("circuits", [1, 3])
+def test_plan_view_renders_all_v3_elements(circuits: int) -> None:
+    res, ids = plan_render(circuits)
+    svg = res.plan_svg
+    feats = _plan_features(svg)
+    # every V3 element kind is present
+    for kind in ("nozzle_body", "feeder_fan", "dist_extension", "stub", "stub_cap",
+                 "tube_run", "connection_return", "airflow_arrow", "casing"):
+        assert kind in feats, f"missing plan feature {kind}"
+    # one feeder line + one extension stem + one return ring per circuit
+    assert svg.count('data-feature="feeder_fan"') == len(ids)
+    assert svg.count('data-feature="dist_extension"') == len(ids)
+    assert svg.count('data-feature="connection_return"') == len(ids)
+    # AIRFLOW carries an explicit direction
+    assert 'data-direction="left_to_right"' in svg
+    assert res.metadata["views"] == ("front", "side", "plan")
+
+
+@pytest.mark.parametrize("circuits", [1, 3])
+def test_plan_reintroduces_deferred_labels(circuits: int) -> None:
+    res, ids = plan_render(circuits)
+    svg = res.plan_svg
+    assert "RETURN" in svg and "DISTRIBUTORS" in svg and "OD:0.625" in svg
+    for sid in ids:
+        assert f"HDx{sid}" in svg  # supply distributor Ø
+        assert f"HD{sid + 1}" in svg  # return header Ø (even id)
+        assert f"SL{sid + 1}" in svg  # return stub length
+
+
+def test_plan_review_bucket_drawn_flagged() -> None:
+    # DistModel/DistOD ride the review bucket -> value carried AND flagged (review class + marker).
+    res, _ = plan_render(1)
+    svg = res.plan_svg
+    assert 'class="review"' in svg
+    flagged = next(t for t, _ in _svg_label_boxes(svg) if "DISTRIBUTORS" in t)
+    assert "501-2-3/16" in flagged and "OD:0.625" in flagged  # value carried
+    assert "REVIEW" in flagged  # and visibly un-confirmed
+
+
+def test_plan_model_string_is_label_only_no_geometry_derived() -> None:
+    # The DistModel is an opaque string: changing it (numbers and all) must change ONLY the
+    # label text, never any geometry (segments / circles / dimensions). OD still sizes the ring.
+    a, _ = plan_render(1, review=dist_review((1,), model="501-2-3/16", od=0.625))
+    b, _ = plan_render(1, review=dist_review((1,), model="999-9-9/99", od=0.625))
+
+    def geom_only(svg: str) -> str:
+        # strip all <text> nodes; keep rects/lines/circles/paths (the drawn geometry)
+        return re.sub(r"<text[^>]*>[^<]*</text>", "", svg)
+
+    assert geom_only(a.plan_svg) == geom_only(b.plan_svg)  # geometry identical -> label-only
+    assert "999-9-9/99" in b.plan_svg  # but the new string IS shown (flagged)
+
+
+def test_plan_blocked_distextension_omitted_and_annotated() -> None:
+    res, _ = plan_render(1, blocked=["DistExtension1"])
+    assert 'data-feature="dist_extension"' not in res.plan_svg  # conflicted -> not drawn
+    assert any("DistExtension1" in n for n in res.omitted_features)  # annotated
+
+
+def test_plan_missing_distod_falls_back_to_return_conn_ring() -> None:
+    # DistOD absent (review carries only the model) -> the port ring falls back to the gated
+    # RETURN_CONN_SIZE; the value is never invented from the model string.
+    res, _ = plan_render(1, review={"slot.DistModel1": "501-2-3/16"})
+    assert res.plan_svg.count('data-feature="connection_return"') == 1
+
+
+def test_plan_missing_return_conn_omits_ring_and_annotates() -> None:
+    sv = sanitized_slots()
+    del sv["slot.RETURN_CONN_SIZE"]
+    res, _ = plan_render(1, sv=sv, review={"slot.DistModel1": "501-2-3/16"})  # no OD, no conn size
+    assert 'data-feature="connection_return"' not in res.plan_svg
+    assert any("connection size" in n for n in res.omitted_features)
+
+
+def test_plan_missing_airflow_omits_arrow_and_annotates() -> None:
+    sv = sanitized_slots()
+    res = render_scale_schematic(  # note: no slot.AIRFLOW
+        {**sv, "slot.DistExtension1": 6.0}, coil_category="DX", coil_hand="LH",
+        header_type="Header 1", dist_review=dist_review((1,)),
+    )
+    assert 'data-feature="airflow_arrow"' not in res.plan_svg
+    assert any("AIRFLOW" in n for n in res.omitted_features)
+
+
+@pytest.mark.parametrize("circuits", [1, 3])
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_plan_no_annotation_line_through_a_label(circuits: int, hand: str) -> None:
+    svg = plan_render(circuits, hand=hand)[0].plan_svg
+    boxes = _svg_label_boxes(svg)
+    segs = _annotation_segments(svg)
+    assert boxes and segs
+    for x1, y1, x2, y2 in segs:
+        for t, b in boxes:
+            shrunk = (b[0] + 2.5, b[1] + 2.5, b[2] - 2.5, b[3] - 2.5)
+            assert not _seg_hits_box(x1, y1, x2, y2, shrunk), f"{hand}: line crosses {t!r}"
+
+
+@pytest.mark.parametrize("circuits", [1, 3])
+@pytest.mark.parametrize("hand", ["LH", "RH"])
+def test_plan_no_glyph_overlaps_a_label(circuits: int, hand: str) -> None:
+    svg = plan_render(circuits, hand=hand)[0].plan_svg
+    gboxes = _glyph_boxes(svg)
+    assert gboxes
+    for t, b in _svg_label_boxes(svg):
+        for g in gboxes:
+            assert not boxes_overlap(b, g, tol=0.5), f"{hand}: glyph sits on {t!r}"
+
+
+@pytest.mark.parametrize("circuits", [1, 3])
+def test_plan_no_label_overlaps(circuits: int) -> None:
+    for hand in ("LH", "RH"):
+        boxes = _svg_label_boxes(plan_render(circuits, hand=hand)[0].plan_svg)
+        assert len(boxes) >= 6
+        for (ta, a), (tb, b) in itertools.combinations(boxes, 2):
+            assert not boxes_overlap(a, b), f"{hand}: {ta!r} overlaps {tb!r}"
+
+
+@pytest.mark.parametrize("circuits", [1, 3])
+def test_plan_mirror_equivariant_including_airflow_direction(circuits: int) -> None:
+    lh = plan_render(circuits, hand="LH")[0].plan_svg
+    rh = plan_render(circuits, hand="RH")[0].plan_svg
+
+    def key(svg: str) -> list[tuple[str, float]]:
+        return sorted((t, round((b[1] + b[3]) / 2.0, 1)) for t, b in _svg_label_boxes(svg))
+
+    assert key(lh) == key(rh)  # label (text, centre-y) multiset identical under the x-mirror
+    direction = lambda s: re.search(r'data-direction="([a-z_]+)"', s).group(1)
+    assert direction(lh) == direction(rh)  # AIRFLOW direction is mirror-INVARIANT (not flipped)
+
+
+def test_plan_view_is_additive_front_and_side_unchanged() -> None:
+    # Adding the plan view + distributor params must not change the front or side outputs.
+    sv = sanitized_slots()
+    base = render_scale_schematic(sv, coil_category="DX", coil_hand="LH", header_type="Header 1")
+    withv3 = render_scale_schematic(
+        dist_slots(sv, (1,)), coil_category="DX", coil_hand="LH", header_type="Header 1",
+        dist_review=dist_review((1,)), dist_blocked=["DistExtension1"],
+    )
+    assert withv3.svg == base.svg
+    assert withv3.side_svg == base.side_svg
+
+
+def test_plan_safety_flags_and_watermark() -> None:
+    res, _ = plan_render(1)
+    assert res.metadata["export_allowed"] is False
+    assert res.watermark in res.plan_svg
+    assert "NOT TO STANDARD SCALE" in res.plan_svg
+    assert "plan" in res.plan_svg  # the view is labelled

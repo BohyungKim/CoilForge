@@ -45,7 +45,15 @@ _RECT_CLASS = {"casing": "casing", "finned": "finned"}
 # Feature -> circle CSS class (headers vs connection bubble).
 _CIRCLE_CLASS = {"connection": "connection"}
 # Feature -> segment CSS class (tube rows / circuit tube runs are light; stub/nozzle dark).
-_SEGMENT_CLASS = {"row": "row", "tube_run": "row"}
+# V3 plan-view glyphs (simplified symbols): nozzle funnel, feeder fan, distributor stem, end cap.
+_SEGMENT_CLASS = {
+    "row": "row", "tube_run": "row",
+    "nozzle_body": "nozzle", "feeder_fan": "feeder", "dist_extension": "dist-ext",
+    "stub_cap": "stub",
+}
+# Segment features that join the de-collision obstacle set (labels must clear these glyphs).
+_GLYPH_OBSTACLE_FEATURES = ("distributor_supply", "stub", "nozzle_body", "feeder_fan",
+                            "dist_extension", "stub_cap")
 
 
 @dataclass(frozen=True)
@@ -175,6 +183,32 @@ def _leader_svg(lb: _Label) -> str:
     return f'<path d="M {cx:.2f} {cy:.2f} L {cx:.2f} {ay:.2f} L {ax:.2f} {ay:.2f}" class="leader"/>'
 
 
+AIRFLOW_PX = 84.0  # fixed block-arrow length (annotation — never scaled with geometry)
+
+
+def _airflow_svg(ax: float, ay: float, direction: str) -> str:
+    """A fixed-size outlined block arrow + "AIRFLOW" text, centered at (ax, ay) px. Points right
+    for ``left_to_right`` (air flowing rightward), left for ``right_to_left``. Direction comes
+    from the explicit enum only — it is mirror-INVARIANT, so LH and RH read the same way."""
+    points_left = str(direction).strip().lower() in ("right_to_left", "rtl", "left")
+    sign = -1.0 if points_left else 1.0
+    half, h, head = AIRFLOW_PX / 2.0, 7.0, 16.0  # shaft half-len, shaft half-height, head length
+    tip = ax + sign * half
+    neck = tip - sign * head
+    tail = ax - sign * half
+    pts = [
+        (tail, ay - h), (neck, ay - h), (neck, ay - 2 * h), (tip, ay),
+        (neck, ay + 2 * h), (neck, ay + h), (tail, ay + h),
+    ]
+    poly = " ".join(f"{px:.2f},{py:.2f}" for px, py in pts)
+    return (
+        f'<g data-feature="airflow_arrow" data-direction="{_esc(direction)}">'
+        f'<polygon points="{poly}" class="airflow"/>'
+        f'<text x="{ax:.2f}" y="{ay - 2 * h - 4:.2f}" text-anchor="middle" class="airflow-label">AIRFLOW</text>'
+        f"</g>"
+    )
+
+
 def render_view_svg(
     view: ViewLayout,
     *,
@@ -228,6 +262,11 @@ def render_view_svg(
             f'r="{c.r * ppi:.2f}" class="{cls}"/>'
         )
 
+    # AIRFLOW arrow (plan view) — a FIXED-size block arrow (annotation rule: never scaled),
+    # pointing per the explicit stored direction enum (mirror-invariant; not derived from hand).
+    if view.airflow and view.airflow_anchor is not None:
+        geom.append(_airflow_svg(x_px(view.airflow_anchor[0]), y_px(view.airflow_anchor[1]), view.airflow))
+
     # Collect EVERY text label (dim labels, EZ callouts, notes) into one list, then run a
     # single OBSTACLE-COMPLETE de-collision over all of them. The obstacle set is the fixed
     # dimension/witness lines + the connection glyphs (return circles, nozzle + stub segments),
@@ -242,14 +281,20 @@ def render_view_svg(
     for c in view.circles:
         r = c.r * ppi
         obstacles.append((x_px(c.cx) - r, y_px(c.cy) - r, x_px(c.cx) + r, y_px(c.cy) + r))
+    # Plan-view supply tubes run the full FL — they too are obstacles (gated to "plan" so the V2
+    # side view's light circuit-tie tube_runs stay non-obstacles and V2 output is unchanged).
+    glyph_features = _GLYPH_OBSTACLE_FEATURES + (("tube_run",) if view.view == "plan" else ())
     for s in view.segments:
-        if s.feature in ("distributor_supply", "stub"):  # nozzle / return-stub glyphs
+        if s.feature in glyph_features:
             obstacles.append(_seg_box(x_px(s.x1), y_px(s.y1), x_px(s.x2), y_px(s.y2)))
     for lb in view.labels:
         conn = (x_px(lb.connector[0]), y_px(lb.connector[1])) if lb.connector is not None else None
-        labels.append(
-            _Label(x_px(lb.x), y_px(lb.y), "middle", "callout", lb.text, conn, True, lb.feature)
-        )
+        # Review-bucket distributor callouts (DistModel/DistOD) are drawn FLAGGED — distinct CSS
+        # + an explicit marker so an unconfirmed value can never be mistaken for a confirmed one.
+        flagged = lb.feature in view.review_labels
+        css = "review" if flagged else "callout"
+        text = f"{lb.text} (REVIEW)" if flagged else lb.text
+        labels.append(_Label(x_px(lb.x), y_px(lb.y), lb.anchor, css, text, conn, True, lb.feature))
     omitted_y = PAD_PX + 18
     for idx, note in enumerate(view.omitted_notes):
         labels.append(_Label(float(PAD_PX), float(omitted_y + idx * (FONT_PX + 4)), "start", "omitted", note))
@@ -280,6 +325,11 @@ def render_view_svg(
       .header-pipe {{ fill: #e0e7ff; stroke: #1f2937; stroke-width: 1.5; }}
       .connection {{ fill: #ffffff; stroke: #4b5563; stroke-width: 1.5; }}
       .stub {{ stroke: #1f2937; stroke-width: 1.5; fill: none; }}
+      .nozzle {{ stroke: #1f2937; stroke-width: 1.5; fill: none; }}
+      .feeder {{ stroke: #4b5563; stroke-width: 1.1; fill: none; }}
+      .dist-ext {{ stroke: #1f2937; stroke-width: 1.8; fill: none; }}
+      .airflow {{ fill: #eef2ff; stroke: #242092; stroke-width: 1.2; }}
+      .airflow-label {{ fill: #242092; font: 700 {FONT_PX}px Arial, sans-serif; }}
       .row {{ stroke: #c7cce8; stroke-width: 0.8; fill: none; }}
       .ext-line {{ stroke: #9aa0c4; stroke-width: 0.8; fill: none; }}
       .dim-arrows {{ stroke: #242092; stroke-width: 1.2; fill: none; marker-start: url(#schem-arrow); marker-end: url(#schem-arrow); }}
@@ -287,6 +337,7 @@ def render_view_svg(
       .leader {{ stroke: #242092; stroke-width: 0.9; fill: none; }}
       .dim-label {{ fill: #0d0877; font: 700 {FONT_PX}px Arial, sans-serif; }}
       .callout {{ fill: #1f2937; font: 600 {FONT_PX}px Arial, sans-serif; }}
+      .review {{ fill: #92400e; font: 700 {FONT_PX}px Arial, sans-serif; }}
       .omitted {{ fill: #92400e; font: 700 {FONT_PX}px Arial, sans-serif; }}
       .watermark {{ fill: #b91c1c; font: 800 16px Arial, sans-serif; }}
       .meta {{ fill: #475569; font: 11px Arial, sans-serif; }}

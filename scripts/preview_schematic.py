@@ -11,6 +11,7 @@ flips, and the Phase 1.5 dimensioning still holds.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -21,6 +22,9 @@ from coilforge.drawing.backends.svg import DEFAULT_CANVAS_H, DEFAULT_CANVAS_W, P
 from coilforge.drawing.schematic_layout import build_dx_views
 from coilforge.drawing.schematic_model import CoilGeometry
 from coilforge.drawing.schematic_renderer import render_scale_schematic
+from coilforge.services.direct_coil_drawing_pipeline import build_header_request
+from coilforge.services.distributor_slots import distributor_drawing_slots
+from coilforge.services.header_prepopulate_engine import prepopulate
 
 # Synthetic front-only contrast cases (proportion sanity).
 FRONT_CASES: dict[str, dict[str, float]] = {
@@ -62,6 +66,29 @@ MULTI_CIRCUIT_DX: dict[str, float] = {
 def _fill_percent(view, ppi: float) -> float:
     avail_w, avail_h = DEFAULT_CANVAS_W - 2 * PAD_PX, DEFAULT_CANVAS_H - 2 * PAD_PX
     return max(view.extent_w * ppi / avail_w, view.extent_h * ppi / avail_h) * 100.0
+
+
+# Phase 4b: source the V3 distributor slots through the REAL 4a path (distributor_drawing_slots)
+# from each fixture's sanitized display block — Case/#3 is read for reference only, never committed.
+SANITIZED_DIR = REPO_ROOT / "examples" / "sanitized"
+
+
+def _distributor_inputs(fixture: str, supply_ids: list[int]) -> tuple[dict, dict, list[str]]:
+    """Return (HIGH dist slots, dist_review, dist_blocked) sourced from a sanitized DX fixture's
+    display block via the Phase-4a gate — exactly what the engine consumes in production."""
+    fx = json.loads((SANITIZED_DIR / fixture).read_text(encoding="utf-8"))
+    display = {k: fx.get(k) for k in ("drawing_callouts", "distributors_display", "airflow_direction")}
+    engine = prepopulate(
+        build_header_request(
+            coil_type="DX", product_type="NOVA", unit_size="B20",
+            rows=4, feeds=2, circuits=len(supply_ids), suction_conn_size=0.625, handing="LH",
+        )
+    )
+    dist = distributor_drawing_slots(engine_response=engine, supply_ids=supply_ids, display=display)
+    high = dist.gated_slot_values()  # AIRFLOW + confirmed DistExtension{id}
+    review = {gs.slot: gs.value for gs in dist.review.values()}  # DistModel/DistOD (flagged)
+    blocked = [gs.slot.replace("slot.", "") for gs in dist.blocked.values()]
+    return high, review, blocked
 
 
 def main() -> int:
@@ -115,6 +142,24 @@ def main() -> int:
             f"multi_circuit_dx_side_{hand:2s} -> {path}  "
             f"px_per_inch={ppi:.2f}  canvas_fill={_fill_percent(views['side'], ppi):.0f}%"
         )
+
+    # Phase 4b: the V3 distributor plan/top view, LH + RH, single (EZC-0001) + multi (EZC-0007).
+    plan_cases = [
+        ("single", SANITIZED_DX, "Header 1", "dx_header1_ezc0001_default.json", [1]),
+        ("multi", MULTI_CIRCUIT_DX, "Header 3", "dx_header3_ezc0007_default.json", [1, 3, 5]),
+    ]
+    for name, geom_slots, header_type, fixture, supply_ids in plan_cases:
+        high, review, blocked = _distributor_inputs(fixture, supply_ids)
+        slot_values = {**geom_slots, **high}
+        for hand in ("lh", "rh"):
+            result = render_scale_schematic(
+                slot_values, coil_category="DX", coil_hand=hand.upper(), header_type=header_type,
+                dist_review=review, dist_blocked=blocked,
+            )
+            path = out_dir / f"plan_dx_{name}_{hand}.svg"
+            path.write_text(result.plan_svg, encoding="utf-8")
+            ppi = result.metadata["plan_px_per_inch"]
+            print(f"plan_dx_{name}_{hand:2s}      -> {path}  px_per_inch={ppi:.2f}")
 
     verdict = "VISIBLY DIFFERENT" if aspects["tall_narrow"] < 1.0 < aspects["short_wide"] else "TOO SIMILAR — FAILED"
     print(f"\nProportion check: {verdict}")
