@@ -1,0 +1,45 @@
+{
+  "case_id": "SCC-SANITIZED-DX-H1-001__EZC-0001",
+  "summary": {
+    "total_fields": 52,
+    "exact_match": 8,
+    "submittal_only": 4,
+    "ez_only": 6,
+    "value_mismatch": 0,
+    "unit_mismatch": 0,
+    "status_mismatch": 0,
+    "evidence_mismatch": 0,
+    "blocked_mismatch": 0,
+    "missing_both": 34,
+    "drawing_impacting": 22,
+    "export_allowed": false,
+    "pdf_export_enabled": false,
+    "policy_status": "review_required_no_export"
+  },
+  "required_drawing_baseline_fields": {
+    "CD": {
+      "comparison_category": "ez_only",
+      "selected_policy": "review_required_source_only",
+      "drawing_impact": true,
+      "submittal_status": "missing"
+    },
+    "BF": {
+      "comparison_category": "ez_only",
+      "selected_policy": "review_required_source_only",
+      "drawing_impact": true,
+      "submittal_status": "missing"
+    },
+    "TF": {
+      "comparison_category": "ez_only",
+      "selected_policy": "review_required_source_only",
+      "drawing_impact": true,
+      "submittal_status": "missing"
+    },
+    "CH": {
+      "comparison_category": "ez_only",
+      "selected_policy": "review_required_source_only",
+      "drawing_impact": true,
+      "submittal_status": "missing"
+    }
+  }
+}

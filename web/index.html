@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CoilForge Direct Coil Draft</title>
+    <script>
+      // Apply the saved (or OS-preferred) theme before first paint to avoid a
+      // flash of the wrong theme. app.js reads back this attribute on load.
+      (function () {
+        try {
+          var saved = localStorage.getItem("coilforge-theme");
+          var dark = saved
+            ? saved === "dark"
+            : window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (dark) document.documentElement.setAttribute("data-theme", "dark");
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/style.css?v=phase2g-darkmode-20260615-001" />
+  </head>
+  <body>
+    <div class="legacy-test-labels" aria-hidden="true">
+      Parameter Editor Validation Panel SVG Preview Snapshot / Metadata
+    </div>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Project navigation">
+        <div class="brand-block">
+          <div class="brand-mark">CF</div>
+          <div>
+            <h1>CoilForge</h1>
+            <p>Engineering Draft Console</p>
+          </div>
+        </div>
+        <label class="search-label" for="project-search">Project search</label>
+        <input id="project-search" class="project-search" type="search" value="Sanitized demo" />
+        <nav id="project-tree" class="project-tree" aria-label="Project tree">
+          <button class="tree-item active" type="button">Sanitized CoilForge Demo</button>
+          <button class="tree-item child muted" type="button">DX Header 1 Draft</button>
+        </nav>
+        <nav class="side-nav" aria-label="Workspace sections">
+          <button class="side-link active" data-tab="checklist" type="button">Checklist / Input</button>
+          <button class="side-link" data-tab="performance" type="button">Performance</button>
+          <button class="side-link" data-tab="drawing" type="button">Drawing</button>
+          <button class="side-link" data-tab="compatibility" type="button">Compatibility</button>
+          <button class="side-link" data-tab="review" type="button">Review & Export</button>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <div id="breadcrumb" class="breadcrumb">CoilForge / Sanitized Demo / DX Header 1</div>
+            <h2 id="page-title">Direct Coil Draft</h2>
+          </div>
+          <div class="topbar-actions">
+            <span id="saved-status" class="saved-status">Draft saved locally</span>
+            <button id="theme-toggle" class="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Toggle dark mode">
+              <span class="theme-toggle-track" aria-hidden="true"><span id="theme-toggle-thumb" class="theme-toggle-thumb">☀</span></span>
+              <span id="theme-toggle-label" class="theme-toggle-label">Light</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="tab-strip" aria-label="Main tabs">
+          <button class="tab-button active" data-tab="checklist" type="button">Checklist / Input</button>
+          <button class="tab-button" data-tab="performance" type="button">Performance</button>
+          <button class="tab-button" data-tab="drawing" type="button">Drawing</button>
+          <button class="tab-button" data-tab="compatibility" type="button">Compatibility</button>
+          <button class="tab-button" data-tab="review" type="button">Review & Export</button>
+        </section>
+
+        <section class="status-ribbon" aria-label="Workflow status">
+          <div>
+            <span class="metric-label">Ready</span>
+            <strong id="count-ready">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Review</span>
+            <strong id="count-review">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Blocked</span>
+            <strong id="count-blocked">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Unmapped</span>
+            <strong id="count-unmapped">0</strong>
+          </div>
+        </section>
+
+        <section id="checklist-section" class="pdf-intake-panel primary-intake-panel" data-view="checklist" aria-label="PDF coil intake">
+          <div class="pdf-intake-heading">
+            <span class="intake-step">Start here</span>
+            <h3>PDF Coil Intake</h3>
+            <p>Local review-only extraction. Raw PDF is not stored or exported.</p>
+          </div>
+          <label id="pdf-drop-zone" class="pdf-drop-zone" for="pdf-intake-file">
+            <input id="pdf-intake-file" type="file" accept="application/pdf,.pdf" />
+            <span class="pdf-drop-title">Drop PDF</span>
+            <span id="pdf-file-name" class="pdf-file-name">No file selected</span>
+            <span class="pdf-browse-action">Browse PDF</span>
+          </label>
+          <label class="pdf-cover-page-input">
+            <span>Cover page for OCR</span>
+            <input id="pdf-cover-page-input" type="number" min="1" inputmode="numeric" placeholder="Page #" />
+          </label>
+          <button id="analyze-pdf" type="button">Analyze PDF</button>
+          <div id="pdf-intake-summary" class="pdf-intake-summary">No PDF analyzed.</div>
+        </section>
+
+        <section class="direct-coil-workbench" data-view="checklist" aria-label="Direct Coil software screen mirror">
+          <div class="section-heading">
+            <h3>Direct Coil Screen Mirror &mdash; Review Aid Only</h3>
+            <span class="subtle-label">Formatted for field-by-field paste review</span>
+          </div>
+          <p class="review-warning">
+            Review aid only. Not for manufacturing. Not a final Direct Coil export.
+          </p>
+          <div id="direct-coil-screen-mirror" class="direct-coil-screen-mirror"></div>
+        </section>
+
+        <section class="content-grid">
+          <div class="input-column" data-view="checklist">
+            <div class="section-heading">
+              <h3>Direct Coil Input Groups</h3>
+              <span id="draft-id" class="subtle-label">Loading draft</span>
+            </div>
+            <section class="driver-editor" aria-label="Drawing drivers">
+              <label>
+                <span>Coil name</span>
+                <input id="edit-coil-name" type="text" autocomplete="off" />
+              </label>
+              <label>
+                <span>Finned height</span>
+                <input id="edit-finned-height" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                <span>Finned length</span>
+                <input id="edit-finned-length" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                <span>Airflow</span>
+                <select id="edit-airflow-direction">
+                  <option value="left_to_right">left_to_right</option>
+                  <option value="right_to_left">right_to_left</option>
+                </select>
+              </label>
+              <label class="manual-toggle">
+                <input id="manual-drawing-mode" type="checkbox" />
+                <span>Manual drawing parameters</span>
+              </label>
+            </section>
+            <section class="paste-ready-panel" aria-label="Paste-ready Direct Coil fields">
+              <div class="section-heading">
+                <h3>Paste-ready Direct Coil Fields &mdash; Review Aid Only</h3>
+                <span id="paste-ready-count" class="subtle-label">Loading fields</span>
+              </div>
+              <p class="review-warning">
+                Review aid only. Not for manufacturing. Not a final Direct Coil export.
+              </p>
+              <div class="paste-ready-actions" aria-label="Paste-ready copy actions">
+                <button id="copy-visible-tsv" class="secondary-action" type="button">Copy visible TSV</button>
+              </div>
+              <div class="paste-ready-table-wrap">
+                <table class="paste-ready-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Direct Coil Section</th>
+                      <th scope="col">Direct Coil Field</th>
+                      <th scope="col">Value to Copy</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Notes / Evidence</th>
+                      <th scope="col">Copy</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paste-ready-fields"></tbody>
+                </table>
+              </div>
+            </section>
+            <details class="raw-fields-disclosure">
+              <summary>Show all draft fields (raw key / status)</summary>
+              <div id="direct-coil-groups" class="field-groups"></div>
+            </details>
+          </div>
+
+          <aside class="inspector-column" aria-label="Review panels">
+            <section class="inspector-card" data-view="checklist">
+              <div class="card-title-row">
+                <h3>Import Summary / Source Evidence</h3>
+                <span id="candidate-status" class="status-chip">Loading</span>
+              </div>
+              <div id="import-summary" class="summary-list"></div>
+              <details class="evidence-disclosure">
+                <summary>Show source evidence</summary>
+                <div id="source-evidence" class="evidence-list"></div>
+              </details>
+            </section>
+
+            <section id="drawing-section" class="inspector-card drawing-card" data-view="drawing">
+              <div class="card-title-row">
+                <h3>Drawing Preview</h3>
+                <span id="preview-status" class="status-chip">Review</span>
+              </div>
+              <div id="drawing-template-status" class="drawing-template-status">Loading template status</div>
+            </section>
+
+            <section class="inspector-card" data-view="drawing">
+              <h3>Drawing Parameters</h3>
+              <div id="drawing-parameters" class="parameter-grid"></div>
+              <div id="drawing-preview" class="drawing-preview">Loading preview</div>
+            </section>
+
+            <section id="compatibility-section" class="inspector-card compatibility-card" data-view="compatibility">
+              <div class="card-title-row">
+                <h3>Compatibility Review</h3>
+                <span id="compatibility-status" class="status-chip">Loading</span>
+              </div>
+              <div id="compatibility-summary" class="compatibility-summary"></div>
+              <div class="compatibility-filter" role="group" aria-label="Compatibility field filters">
+                <button class="compat-filter active" data-compat-filter="all" type="button">All</button>
+                <button class="compat-filter" data-compat-filter="exact_match" type="button">Exact</button>
+                <button class="compat-filter" data-compat-filter="source_only" type="button">Source only</button>
+                <button class="compat-filter" data-compat-filter="mismatch" type="button">Mismatch</button>
+                <button class="compat-filter" data-compat-filter="blocked" type="button">Blocked</button>
+                <button class="compat-filter" data-compat-filter="matched" type="button">Matched</button>
+                <button class="compat-filter" data-compat-filter="held" type="button">Held</button>
+                <button class="compat-filter" data-compat-filter="unmapped" type="button">Unmapped</button>
+              </div>
+              <div id="compatibility-decisions" class="compatibility-decisions"></div>
+            </section>
+
+            <section id="review-section" class="inspector-card decision-capture-card" data-view="review">
+              <div class="card-title-row">
+                <h3>John Decision Capture</h3>
+                <span class="status-chip">Disabled</span>
+              </div>
+              <p class="review-warning">
+                Proposed decisions are not applied to Direct Coil draft readiness, drawing approval,
+                PDF export, or final export.
+              </p>
+              <div id="decision-capture-summary" class="compatibility-summary"></div>
+              <div id="decision-capture-items" class="decision-capture-list"></div>
+            </section>
+
+            <section id="performance-section" class="inspector-card" data-view="performance">
+              <h3>Performance Summary</h3>
+              <div id="performance-summary" class="summary-list"></div>
+            </section>
+
+            <section class="inspector-card" data-view="review">
+              <h3>Validation</h3>
+              <div id="validation-summary" class="validation-list"></div>
+            </section>
+
+            <section class="inspector-card" data-view="review">
+              <h3>Blocked Fields</h3>
+              <div id="blocked-fields" class="blocked-list"></div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js?v=phase2g-darkmode-20260615-001" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,228 @@
+{
+  "schema_version": "mapping_lab_v1",
+  "case_id": "case_005_hgrh_condensing_image_seed",
+  "supplier": "oxygen8",
+  "source_type": "sanitized_image_transcription_draft",
+  "raw_pdf_stored": false,
+  "cover_page": {
+    "page": 1,
+    "rows": [
+      {
+        "row_number": 1,
+        "qty": 1,
+        "tag": "DOAS-1",
+        "item": "ERV",
+        "model": "H25_I_ERV",
+        "voltage": "208V/3ph/60Hz",
+        "controls_preference": "Constant Volume",
+        "installation": "Horizontal",
+        "duct_connection": "S1",
+        "handing": "RH"
+      },
+      {
+        "row_number": 2,
+        "qty": 1,
+        "tag": "CDXC-1",
+        "item": "DXC Cooling",
+        "model": "H25_I_ERV",
+        "handing": "RH"
+      },
+      {
+        "row_number": 5,
+        "qty": 1,
+        "tag": "RHHGRC-1",
+        "item": "HGRC Reheat",
+        "model": "H25_I_ERV",
+        "handing": "RH"
+      },
+      {
+        "row_number": 11,
+        "qty": 1,
+        "tag": "EKEXV-HGRC-1",
+        "item": "EKEXV Valve (HGRH Coil)",
+        "model": "EKEXVA36U"
+      }
+    ]
+  },
+  "unit_summary": {
+    "page": 2,
+    "unit_tag": "DOAS-1",
+    "unit_type": "Ventum",
+    "fields": {
+      "Model": {"value": "H25IN-ERV - (1375 - 2250 CFM)", "unit": "", "evidence_id": "case_005:p2:unit:model"},
+      "Qty": {"value": 1, "unit": "", "evidence_id": "case_005:p2:unit:qty"},
+      "Altitude (ft)": {"value": 49, "unit": "ft", "evidence_id": "case_005:p2:unit:altitude"},
+      "Orientation": {"value": "Horizontal", "unit": "", "evidence_id": "case_005:p2:unit:orientation"},
+      "Controls Preference": {"value": "Constant Volume", "unit": "", "evidence_id": "case_005:p2:unit:controls"},
+      "EKEV Valves & Controllers": {
+        "value": "Rep Supplied and Factory Installed",
+        "unit": "",
+        "evidence_id": "case_005:p2:unit:ekev"
+      }
+    }
+  },
+  "coil_instances": [
+    {
+      "tag": "RHHGRC-1",
+      "qty": 1,
+      "coil_format": "condensing",
+      "coil_type": "HGRH COIL",
+      "sequence_index": 1,
+      "handing": "RH",
+      "sections": [
+        {
+          "heading": "Reheat Hot Gas Reheat Coil",
+          "page": 3,
+          "fields": {
+            "Model": {
+              "value": "3DC-02-26.0-07-25.0-2",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:model"
+            },
+            "Fin Height (in)": {
+              "value": 26,
+              "unit": "in",
+              "evidence_id": "case_005:p3:hgrh:fin_height"
+            },
+            "Fin Length (in)": {
+              "value": 25,
+              "unit": "in",
+              "evidence_id": "case_005:p3:hgrh:fin_length"
+            },
+            "Face Area (sq.ft)": {
+              "value": 4.51,
+              "unit": "sq.ft",
+              "evidence_id": "case_005:p3:hgrh:face_area"
+            },
+            "FPI": {
+              "value": 7,
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:fpi"
+            },
+            "Rows": {
+              "value": 2,
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:rows"
+            },
+            "Total Feeds": {
+              "value": 2,
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:total_feeds"
+            },
+            "Fin Surface": {
+              "value": "Flat",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:fin_surface"
+            },
+            "Fin Material": {
+              "value": "0.010 Aluminium",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:fin_material"
+            },
+            "Tube Material": {
+              "value": "0.016 Copper",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:tube_material"
+            },
+            "Tube Surface": {
+              "value": "Smooth",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:tube_surface"
+            },
+            "Coil Weight (lbs)": {
+              "value": 36.38,
+              "unit": "lb",
+              "evidence_id": "case_005:p3:hgrh:coil_weight"
+            },
+            "Suction Size (in)": {
+              "value": 0.5,
+              "unit": "in",
+              "evidence_id": "case_005:p3:hgrh:suction_size"
+            },
+            "Coil Style": {
+              "value": "Standard",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:coil_style"
+            },
+            "Qty Conn. / Header": {
+              "value": 1,
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:qty_conn_header"
+            },
+            "Airflow (CFM)": {
+              "value": 2000,
+              "unit": "CFM",
+              "evidence_id": "case_005:p3:hgrh:airflow"
+            },
+            "DB (F)": {
+              "value": 55,
+              "unit": "degF",
+              "evidence_id": "case_005:p3:hgrh:entering_db"
+            },
+            "Refrigerant": {
+              "value": "R-32",
+              "unit": "",
+              "evidence_id": "case_005:p3:hgrh:refrigerant"
+            },
+            "Refrig. Cond. Temp (F)": {
+              "value": 115,
+              "unit": "degF",
+              "evidence_id": "case_005:p3:hgrh:refrig_cond_temp"
+            },
+            "Refrig. Subcooling Temp (F)": {
+              "value": 18,
+              "unit": "degF",
+              "evidence_id": "case_005:p3:hgrh:refrig_subcooling"
+            },
+            "Operating Setpoint DB (F)": {
+              "value": 72,
+              "unit": "degF",
+              "evidence_id": "case_005:p3:hgrh:operating_setpoint_db"
+            },
+            "Max Capacity (MBH)": {
+              "value": 44.0,
+              "unit": "MBH",
+              "evidence_id": "case_005:p3:hgrh:max_capacity"
+            },
+            "Max DB (F)": {
+              "value": 74.8,
+              "unit": "degF",
+              "evidence_id": "case_005:p3:hgrh:max_db"
+            },
+            "Air Vel (FPM)": {
+              "value": 443.08,
+              "unit": "FPM",
+              "evidence_id": "case_005:p3:hgrh:air_velocity"
+            },
+            "Air PD (IWG)": {
+              "value": 0.04,
+              "unit": "IWG",
+              "evidence_id": "case_005:p3:hgrh:air_pd"
+            },
+            "Internal Vol (cu.in)": {
+              "value": 147.74,
+              "unit": "cu.in",
+              "evidence_id": "case_005:p3:hgrh:internal_volume"
+            },
+            "Refrig. PD (psi)": {
+              "value": 7.54,
+              "unit": "psi",
+              "evidence_id": "case_005:p3:hgrh:refrig_pd"
+            }
+          }
+        }
+      ],
+      "integration_kit": {
+        "heading": "VRV Integration Kit",
+        "fields": {
+          "Type": {"value": "AHU Integration Valve Kit", "unit": ""},
+          "Manufacturer": {"value": "Daikin", "unit": ""},
+          "Model": {"value": "EKEXVA36U", "unit": ""},
+          "Qty of Valves": {"value": 1, "unit": ""},
+          "Nominal Tonnage": {"value": "3 tons x 1", "unit": ""}
+        }
+      }
+    }
+  ]
+}
+

@@ -1,0 +1,41 @@
+coil_tag,direct_field_key,direct_label,target_value,target_unit,source_section,source_label,source_value,source_unit,transform,source_type,confidence,review_note
+RHHGRC-1,coil_quantity,Coil Quantity,1,,Cover Page,Qty,1,,direct,pdf,exact_match,
+RHHGRC-1,coil_hand,Coil Hand,Right,,Cover Page,Handing,RH,,normalize_rh_to_right,pdf_normalized,normalized_match,
+RHHGRC-1,tube_diameter_standard_at_top,Tube Diameter (standard at top),3/8 1.00 x 0.866,,,,"",,engineer_selected,engineer_default,engineer_default,Direct Coil selection value visible in screenshot; not explicit in PDF section.
+RHHGRC-1,coil_type,Coil Type,Standard,,Reheat Hot Gas Reheat Coil,Coil Style,Standard,,direct,pdf,exact_match,
+RHHGRC-1,tubes_high,Tubes High,26,,Reheat Hot Gas Reheat Coil,Fin Height (in),26,in,match_tubes_high_to_fin_height_for_hgrh,pdf_normalized,needs_review,Verify if tubes high always equals fin height for this supplier and coil type.
+RHHGRC-1,finned_height,Finned Height(In),26,in,Reheat Hot Gas Reheat Coil,Fin Height (in),26,in,direct,pdf,exact_match,
+RHHGRC-1,finned_length,Finned Length(In),25,in,Reheat Hot Gas Reheat Coil,Fin Length (in),25,in,direct,pdf,exact_match,
+RHHGRC-1,rows,Rows Deep,2,,Reheat Hot Gas Reheat Coil,Rows,2,,direct,pdf,exact_match,
+RHHGRC-1,fin_density_fpi,Fins Per Inch,7,FPI,Reheat Hot Gas Reheat Coil,FPI,7,,direct,pdf,exact_match,
+RHHGRC-1,number_of_feeds,Number Of Feeds,2,,Reheat Hot Gas Reheat Coil,Total Feeds,2,,direct,pdf,exact_match,
+RHHGRC-1,tube_material,Tube Material,Copper 0.016 Plain,,Reheat Hot Gas Reheat Coil,Tube Material,0.016 Copper,,engineer_option_from_pdf_material,pdf_normalized,normalized_match,Direct Coil adds Plain option text.
+RHHGRC-1,fin_material,Fin Material,Aluminum 0.010,,Reheat Hot Gas Reheat Coil,Fin Material,0.010 Aluminium,,normalize_aluminium_to_aluminum,pdf_normalized,normalized_match,
+RHHGRC-1,fin_surface,Fin Surface,Flat,,Reheat Hot Gas Reheat Coil,Fin Surface,Flat,,direct,pdf,exact_match,
+RHHGRC-1,header_material,Header Material,Copper,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,header_wall_schedule,Header Wall Schedule,(L),,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,connection_material,Connection Material,Copper,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,connection_type,Connection Type,Sweat,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,supply_connection_size,Supply Connection Size,Calculate,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,return_connection_size,Return Connection Size,Calculate,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,casing_material,Casing Material,Galvanized Steel,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,casing_style,Casing Style,Standard,,Reheat Hot Gas Reheat Coil,Coil Style,Standard,,direct,pdf,exact_match,
+RHHGRC-1,connection_ends,Connection Ends,Same End Only,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,coil_coating,Coil Coating,Plain,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,system_type,System Type,Single-Circuit,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,airflow,Total Air Flow(CFM),2000,CFM,Reheat Hot Gas Reheat Coil,Airflow (CFM),2000,CFM,direct,pdf,exact_match,
+RHHGRC-1,airflow_input_mode,Airflow Mode,Actual,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,airflow_per_coil,Air Flow Per Coil(CFM),2000,CFM,Reheat Hot Gas Reheat Coil,Airflow (CFM),2000,CFM,same_as_total_for_qty_1,pdf_normalized,normalized_match,
+RHHGRC-1,face_velocity,Face Velocity(FPM),443.08,FPM,Reheat Hot Gas Reheat Coil,Air Vel (FPM),443.08,FPM,direct,pdf,exact_match,
+RHHGRC-1,altitude,Altitude(FT),49,ft,Unit Details,Altitude (ft),49,ft,direct,pdf,exact_match,
+RHHGRC-1,entering_db_f,Entering Dry Bulb(F),55,degF,Reheat Hot Gas Reheat Coil,DB (F),55,degF,direct,pdf,exact_match,
+RHHGRC-1,leaving_db_f,Leaving Dry Bulb(F),90,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,PDF setpoint DB is 72 and max DB is 74.8, while Direct Coil screenshot shows 90.
+RHHGRC-1,total_capacity_mbh_per_coil,Total Capacity(MBH)(Per Coil),0,MBH,Reheat Hot Gas Reheat Coil,Max Capacity (MBH),44.0,MBH,not_mapped_in_screenshot,review_required,needs_review,PDF has max capacity but Direct Coil screenshot shows 0.
+RHHGRC-1,refrigerant,Refrigerant,R32,,Reheat Hot Gas Reheat Coil,Refrigerant,R-32,,normalize_refrigerant_dash,pdf_normalized,normalized_match,
+RHHGRC-1,temperature_input,Temperature Input,Vapor Temperature,,,,"",,engineer_selected,engineer_default,engineer_default,Visible in Direct Coil screenshot; not explicit in PDF section.
+RHHGRC-1,saturated_suction_temperature_f,Saturated Suction Temperature(F),45,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,Value is visible in Direct Coil screenshot but not in shown HGRH PDF section.
+RHHGRC-1,suction_temperature_at_compressor_f,Suction Temperature at Compressor(F),68,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,Value is visible in Direct Coil screenshot but not in shown HGRH PDF section.
+RHHGRC-1,vapor_temperature_f,Vapor Temperature(F),140,degF,,,,,direct_coil_visible_no_pdf_source,review_required,needs_review,Value is visible in Direct Coil screenshot but not in shown HGRH PDF section.
+RHHGRC-1,condensing_temperature_f,Condensing Temperature(F),115,degF,Reheat Hot Gas Reheat Coil,Refrig. Cond. Temp (F),115,degF,direct,pdf,exact_match,
+RHHGRC-1,subcooling_f,Subcooling(F),18,degF,Reheat Hot Gas Reheat Coil,Refrig. Subcooling Temp (F),18,degF,direct,pdf,exact_match,
+RHHGRC-1,air_side_fouling_factor,Air Side Fouling Factor,0,,,,"",,engineer_default,engineer_default,engineer_default,Visible standard value in Direct Coil screenshot.

@@ -1,0 +1,1 @@
+"""CoilForge local MVP package."""

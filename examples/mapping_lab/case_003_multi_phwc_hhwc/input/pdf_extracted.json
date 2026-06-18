@@ -1,0 +1,126 @@
+{
+  "schema_version": "mapping_lab_v1",
+  "case_id": "case_003_multi_phwc_hhwc",
+  "supplier": "oxygen8",
+  "source_type": "sanitized_mock_pdf_extraction",
+  "raw_pdf_stored": false,
+  "cover_page": {
+    "page": 1,
+    "rows": [
+      {"row_number": 1, "qty": 1, "tag": "PHWC-1", "item": "HWC Pre-Heat", "model": "H05_I_ERV_BP", "handing": "LH"},
+      {"row_number": 2, "qty": 1, "tag": "HHWC-1", "item": "HWC Heating", "model": "H05_I_ERV_BP", "handing": "LH"},
+      {"row_number": 3, "qty": 2, "tag": "PHWC-2", "item": "HWC Pre-Heat", "model": "H05_I_ERV_BP", "handing": "LH"},
+      {"row_number": 4, "qty": 2, "tag": "HHWC-2", "item": "HWC Heating", "model": "H05_I_ERV_BP", "handing": "LH"}
+    ]
+  },
+  "coil_instances": [
+    {
+      "tag": "PHWC-1",
+      "qty": 1,
+      "coil_format": "preheat_hot_water",
+      "coil_type": "Hot Water Coil",
+      "sequence_index": 1,
+      "section_occurrence": 1,
+      "handing": "LH",
+      "sections": [
+        {
+          "heading": "Preheat HWC",
+          "page": 4,
+          "fields": {
+            "Fin Height (in)": {"value": 10.5, "unit": "in", "evidence_id": "case_003:p4:phwc1:fin_height"},
+            "Fin Length (in)": {"value": 14.25, "unit": "in", "evidence_id": "case_003:p4:phwc1:fin_length"},
+            "FPI": {"value": 6.5, "unit": "", "evidence_id": "case_003:p4:phwc1:fpi"},
+            "Rows": {"value": 2, "unit": "", "evidence_id": "case_003:p4:phwc1:rows"},
+            "Airflow (CFM)": {"value": 500, "unit": "CFM", "evidence_id": "case_003:p4:phwc1:airflow"},
+            "DB (F)": {"value": -40.2, "unit": "degF", "evidence_id": "case_003:p4:phwc1:entering_db"},
+            "Fluid Type": {"value": "Propylene Glycol", "unit": "", "evidence_id": "case_003:p4:phwc1:fluid_type"},
+            "Fluid Percent (%)": {"value": 50, "unit": "%", "evidence_id": "case_003:p4:phwc1:fluid_percent"},
+            "Fluid Ent Temp (F)": {"value": 120, "unit": "degF", "evidence_id": "case_003:p4:phwc1:fluid_entering"},
+            "Fluid Lvg Temp (F)": {"value": 100, "unit": "degF", "evidence_id": "case_003:p4:phwc1:fluid_leaving"}
+          }
+        }
+      ]
+    },
+    {
+      "tag": "HHWC-1",
+      "qty": 1,
+      "coil_format": "heating_hot_water",
+      "coil_type": "Hot Water Coil",
+      "sequence_index": 1,
+      "section_occurrence": 1,
+      "handing": "LH",
+      "sections": [
+        {
+          "heading": "Heating HWC",
+          "page": 5,
+          "fields": {
+            "Fin Height (in)": {"value": 10.5, "unit": "in", "evidence_id": "case_003:p5:hhwc1:fin_height"},
+            "Fin Length (in)": {"value": 14.25, "unit": "in", "evidence_id": "case_003:p5:hhwc1:fin_length"},
+            "FPI": {"value": 11, "unit": "", "evidence_id": "case_003:p5:hhwc1:fpi"},
+            "Rows": {"value": 3, "unit": "", "evidence_id": "case_003:p5:hhwc1:rows"},
+            "Airflow (CFM)": {"value": 500, "unit": "CFM", "evidence_id": "case_003:p5:hhwc1:airflow"},
+            "DB (F)": {"value": 50.9, "unit": "degF", "evidence_id": "case_003:p5:hhwc1:entering_db"},
+            "Fluid Type": {"value": "Propylene Glycol", "unit": "", "evidence_id": "case_003:p5:hhwc1:fluid_type"},
+            "Fluid Percent (%)": {"value": 50, "unit": "%", "evidence_id": "case_003:p5:hhwc1:fluid_percent"},
+            "Fluid Ent Temp (F)": {"value": 120, "unit": "degF", "evidence_id": "case_003:p5:hhwc1:fluid_entering"},
+            "Fluid Lvg Temp (F)": {"value": 100, "unit": "degF", "evidence_id": "case_003:p5:hhwc1:fluid_leaving"}
+          }
+        }
+      ]
+    },
+    {
+      "tag": "PHWC-2",
+      "qty": 2,
+      "coil_format": "preheat_hot_water",
+      "coil_type": "Hot Water Coil",
+      "sequence_index": 2,
+      "section_occurrence": 2,
+      "handing": "LH",
+      "sections": [
+        {
+          "heading": "Preheat HWC",
+          "page": 6,
+          "fields": {
+            "Fin Height (in)": {"value": 12.5, "unit": "in", "evidence_id": "case_003:p6:phwc2:fin_height"},
+            "Fin Length (in)": {"value": 18, "unit": "in", "evidence_id": "case_003:p6:phwc2:fin_length"},
+            "FPI": {"value": 8, "unit": "", "evidence_id": "case_003:p6:phwc2:fpi"},
+            "Rows": {"value": 2, "unit": "", "evidence_id": "case_003:p6:phwc2:rows"},
+            "Airflow (CFM)": {"value": 750, "unit": "CFM", "evidence_id": "case_003:p6:phwc2:airflow"},
+            "DB (F)": {"value": -20, "unit": "degF", "evidence_id": "case_003:p6:phwc2:entering_db"},
+            "Fluid Type": {"value": "Propylene Glycol", "unit": "", "evidence_id": "case_003:p6:phwc2:fluid_type"},
+            "Fluid Percent (%)": {"value": 40, "unit": "%", "evidence_id": "case_003:p6:phwc2:fluid_percent"},
+            "Fluid Ent Temp (F)": {"value": 110, "unit": "degF", "evidence_id": "case_003:p6:phwc2:fluid_entering"},
+            "Fluid Lvg Temp (F)": {"value": 90, "unit": "degF", "evidence_id": "case_003:p6:phwc2:fluid_leaving"}
+          }
+        }
+      ]
+    },
+    {
+      "tag": "HHWC-2",
+      "qty": 2,
+      "coil_format": "heating_hot_water",
+      "coil_type": "Hot Water Coil",
+      "sequence_index": 2,
+      "section_occurrence": 2,
+      "handing": "LH",
+      "sections": [
+        {
+          "heading": "Heating HWC",
+          "page": 7,
+          "fields": {
+            "Fin Height (in)": {"value": 12.5, "unit": "in", "evidence_id": "case_003:p7:hhwc2:fin_height"},
+            "Fin Length (in)": {"value": 18, "unit": "in", "evidence_id": "case_003:p7:hhwc2:fin_length"},
+            "FPI": {"value": 12, "unit": "", "evidence_id": "case_003:p7:hhwc2:fpi"},
+            "Rows": {"value": 4, "unit": "", "evidence_id": "case_003:p7:hhwc2:rows"},
+            "Airflow (CFM)": {"value": 750, "unit": "CFM", "evidence_id": "case_003:p7:hhwc2:airflow"},
+            "DB (F)": {"value": 55, "unit": "degF", "evidence_id": "case_003:p7:hhwc2:entering_db"},
+            "Fluid Type": {"value": "Propylene Glycol", "unit": "", "evidence_id": "case_003:p7:hhwc2:fluid_type"},
+            "Fluid Percent (%)": {"value": 40, "unit": "%", "evidence_id": "case_003:p7:hhwc2:fluid_percent"},
+            "Fluid Ent Temp (F)": {"value": 110, "unit": "degF", "evidence_id": "case_003:p7:hhwc2:fluid_entering"},
+            "Fluid Lvg Temp (F)": {"value": 90, "unit": "degF", "evidence_id": "case_003:p7:hhwc2:fluid_leaving"}
+          }
+        }
+      ]
+    }
+  ]
+}

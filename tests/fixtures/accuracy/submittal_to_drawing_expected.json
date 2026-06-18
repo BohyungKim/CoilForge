@@ -1,0 +1,186 @@
+{
+  "candidate": {
+    "blocked_field_keys": [],
+    "count": 1,
+    "review_required_count": 15,
+    "review_status": "unreviewed",
+    "selected_tag": "COIL-TAG-001",
+    "unmapped_source_keys": [
+      "SANITIZED_EXTRA_NOTE"
+    ]
+  },
+  "canonical": {
+    "blocked_fields": [
+      "drawing_parameters.BF",
+      "drawing_parameters.CD",
+      "drawing_parameters.CH",
+      "drawing_parameters.TF"
+    ],
+    "review_required_count": 16,
+    "unmapped_field_count": 1,
+    "validation_status": "blocked"
+  },
+  "direct_coil_draft": {
+    "export_status": "not_implemented",
+    "field_count": 52,
+    "summary_counts": {
+      "blocked": 4,
+      "ready": 0,
+      "review_required": 12,
+      "unmapped": 36
+    }
+  },
+  "drawing": {
+    "blocked_reasons": [],
+    "export_allowed": false,
+    "metadata": {
+      "drawing_status": "generated_with_warnings",
+      "export_allowed": false,
+      "john_review_required": true,
+      "preview_allowed": true,
+      "release_status": "review_aid_only",
+      "review_status": "review_required",
+      "template_id": "phase2a_dx_header1_review_svg",
+      "viewBox": "0 0 1600 1200"
+    },
+    "parameter_set": {
+      "blocked_parameters": [],
+      "export_allowed": false,
+      "preview_allowed": true,
+      "required_preview_parameters": [
+        "BF",
+        "CD",
+        "CH",
+        "TF"
+      ],
+      "review_required_parameters": [
+        "BF",
+        "CD",
+        "CH",
+        "HD",
+        "HF",
+        "I",
+        "O",
+        "R",
+        "RF",
+        "S",
+        "SL",
+        "TF"
+      ]
+    },
+    "preview_allowed": true,
+    "review_status": "review_required",
+    "review_watermark_present": true,
+    "svg_returned": true
+  },
+  "fixture_format_version": 1,
+  "input_policy": {
+    "ocr_expected": false,
+    "pdf_parser_expected": false,
+    "raw_private_text_expected": false,
+    "source": "sanitized_demo"
+  },
+  "readiness_report": {
+    "blocked_field_keys": [
+      "BF",
+      "CD",
+      "CH",
+      "TF"
+    ],
+    "export_status": "not_implemented",
+    "required_missing_field_keys": [
+      "BF",
+      "CD",
+      "CH",
+      "TF"
+    ],
+    "review_required_field_keys": [
+      "airflow_direction",
+      "coil_hand",
+      "entering_dry_bulb_f",
+      "finned_height",
+      "finned_length",
+      "fins_per_inch",
+      "header_type",
+      "refrigerant",
+      "return_connection_size",
+      "rows_deep",
+      "total_air_flow_cfm",
+      "total_capacity_mbh"
+    ],
+    "summary_counts": {
+      "blocked": 4,
+      "ready": 0,
+      "review_required": 12,
+      "unmapped": 36
+    },
+    "total_fields": 52,
+    "unmapped_field_keys": [
+      "HD",
+      "HF",
+      "I",
+      "O",
+      "R",
+      "RF",
+      "S",
+      "SL",
+      "ZD",
+      "altitude_ft",
+      "casing_material",
+      "casing_style",
+      "coil_coating",
+      "connection_ends",
+      "connection_material",
+      "connection_type",
+      "distributor_notes",
+      "drain_pan_type",
+      "dx_dist_capillary_size",
+      "entering_wet_bulb_f",
+      "evaporating_temp_f",
+      "face_velocity_fpm",
+      "fin_material",
+      "fin_surface",
+      "header_material",
+      "leaving_dry_bulb_f",
+      "liquid_temp_f",
+      "number_of_feeds",
+      "relative_humidity_pct",
+      "superheat_f",
+      "supply_connection_size",
+      "system_type",
+      "tube_diameter_od",
+      "tube_geometry",
+      "tube_material",
+      "tubes_high"
+    ]
+  },
+  "source_evidence": {
+    "field_keys": [
+      "airflow_direction",
+      "coil_hand",
+      "entering_dry_bulb_f",
+      "finned_height",
+      "finned_length",
+      "fins_per_inch",
+      "header_type",
+      "refrigerant",
+      "return_connection_size",
+      "rows_deep",
+      "total_air_flow_cfm",
+      "total_capacity_mbh"
+    ],
+    "fields_with_source_evidence": 12,
+    "raw_private_text_present": false,
+    "total_source_evidence_refs": 12
+  },
+  "validation": {
+    "drawing_approval_claimed": false,
+    "drawing_status": "generated_with_warnings",
+    "export_allowed": false,
+    "export_status": "not_implemented",
+    "preview_allowed": true,
+    "raw_private_data_returned": false,
+    "workflow_status": "blocked"
+  },
+  "workflow": "phase2b_submittal_to_drawing"
+}

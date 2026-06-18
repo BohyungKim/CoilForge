@@ -1,0 +1,4 @@
+coil_tag,direct_field_key,direct_label,target_value,target_unit,source_section,source_label,source_value,source_unit,transform,source_type,confidence,review_note
+CDXC-1,finned_height,Finned Height(In),24,in,Cooling DX,Fin Height (in),24,in,direct,pdf,exact_match,
+CDXC-1,coil_hand,Coil Hand,Left,,Cover Page,Handing,LH,,normalize_lh_to_left,pdf_normalized,normalized_match,
+CDXC-1,tube_material,Tube Material,Copper,,,,"",,engineer_selected,engineer_default,engineer_default,PDF does not provide this value.

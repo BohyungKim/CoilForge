@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coilforge.local/schemas/drawing_template_catalog.schema.json",
+  "title": "CoilForge Drawing Template Catalog",
+  "type": "object",
+  "required": ["catalog_id", "schema_version", "supplier", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "catalog_id": {"type": "string"},
+    "schema_version": {"type": "string"},
+    "supplier": {"type": "string"},
+    "entries": {
+      "type": "array",
+      "minItems": 22,
+      "maxItems": 22,
+      "items": {"$ref": "#/$defs/template_entry"}
+    }
+  },
+  "$defs": {
+    "template_entry": {
+      "type": "object",
+      "required": [
+        "template_id",
+        "supplier",
+        "coil_category",
+        "coil_hand",
+        "status",
+        "generation_allowed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "template_id": {"type": "string"},
+        "supplier": {"type": "string"},
+        "coil_category": {"enum": ["DX", "HGRH", "CWC", "HWC"]},
+        "coil_hand": {"enum": ["LH", "RH"]},
+        "header_type": {"type": ["string", "null"]},
+        "special_feature": {"type": ["string", "null"]},
+        "status": {
+          "enum": [
+            "seed_available",
+            "needs_pair",
+            "placeholder_blocked",
+            "active_review_aid"
+          ]
+        },
+        "generation_allowed": {"type": "boolean"},
+        "template_path": {"type": ["string", "null"]},
+        "slot_map_path": {"type": ["string", "null"]},
+        "metadata_path": {"type": ["string", "null"]},
+        "source_case_id": {"type": ["string", "null"]},
+        "reference_status": {"type": "string"},
+        "blocked_reason": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,261 @@
+{
+  "schema_version": "template-first.1",
+  "template_id": "coilmaster_dx_lh_hgbp",
+  "source_case_id": "EZC-0013",
+  "supplier": "coilmaster",
+  "coil_category": "DX",
+  "coil_hand": "LH",
+  "header_type": "HGBP",
+  "source_folder": "Case/#2/EZC-0013 - DX_HB_LH",
+  "intake_status": "seeded_review_required",
+  "review_status": "review_required",
+  "release_status": "review_aid_only",
+  "export_allowed": false,
+  "production_approved": false,
+  "pdf_export_enabled": false,
+  "source_files": [
+    {
+      "role": "ez_drawing_pdf",
+      "filename": "CDXC-1.pdf",
+      "filename_policy": "not_committed",
+      "page_count": 1,
+      "committed_copy": false,
+      "notes": "Vectorised to a slotted review template; raw PDF not copied."
+    }
+  ],
+  "slot_evidence": [
+    {
+      "slot_id": "slot.BF",
+      "value": "0.63",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CASING_MATERIAL",
+      "value": "16 Ga.",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CD",
+      "value": "6.38",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CH",
+      "value": "13.25",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CIRCUITING",
+      "value": "2 Feed / 30 Pass",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CL",
+      "value": "22.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.COIL_TUBE_FACE",
+      "value": "Tube Face = 12",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.DISTRIBUTORS",
+      "value": "(1)501-2-3/16-1.75(1 ASC)",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FH",
+      "value": "12",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL",
+      "value": "12 Fins Per Inch",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FL",
+      "value": "19",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HD2",
+      "value": "3.50",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HDx1",
+      "value": "4.50",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HEADER_MATERIAL",
+      "value": "Type L Copper",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.HF",
+      "value": "1.50",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.I1",
+      "value": "3.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.MODEL_NUMBER",
+      "value": "DX-F-F-05-12-12.00x19.00-L",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.O2",
+      "value": "2.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.OAL",
+      "value": "24.25",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.R2",
+      "value": "0.63",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RB",
+      "value": "1.75",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RETURN_CONN_SIZE",
+      "value": "0.625\" OD Header",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RF",
+      "value": "1.50",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.ROWS",
+      "value": "5.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.S1",
+      "value": "3.25",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.SL2",
+      "value": "8.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TAG",
+      "value": "CDXC-1",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TF",
+      "value": "0.63",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TUBE_MATERIAL",
+      "value": "0.375 x 0.016",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    }
+  ],
+  "observed_candidates": []
+}

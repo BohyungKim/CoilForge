@@ -1,0 +1,49 @@
+coil_tag,direct_field_key,direct_label,target_value,target_unit,source_section,source_label,source_value,source_unit,transform,source_type,confidence,review_note
+PHWC-1,coil_quantity,Coil Quantity,1,,Cover Page,Qty,1,,direct,pdf,exact_match,
+PHWC-1,coil_hand,Coil Hand,Left,,Cover Page,Handing,LH,,normalize_lh_to_left,pdf_normalized,normalized_match,
+PHWC-1,finned_height,Finned Height(In),10.5,in,Preheat HWC,Fin Height (in),10.5,in,direct,pdf,exact_match,Use first Preheat HWC occurrence.
+PHWC-1,finned_length,Finned Length(In),14.25,in,Preheat HWC,Fin Length (in),14.25,in,direct,pdf,exact_match,Use first Preheat HWC occurrence.
+PHWC-1,rows,Rows Deep,2,,Preheat HWC,Rows,2,,direct,pdf,exact_match,
+PHWC-1,fin_density_fpi,Fins Per Inch,6.5,FPI,Preheat HWC,FPI,6.5,,direct,pdf,exact_match,
+PHWC-1,airflow,Total Air Flow(CFM),500,CFM,Preheat HWC,Airflow (CFM),500,CFM,direct,pdf,exact_match,
+PHWC-1,entering_db_f,Entering Dry Bulb(F),-40.2,degF,Preheat HWC,DB (F),-40.2,degF,direct,pdf,exact_match,
+PHWC-1,fluid_type,Fluid Type,Propylene Glycol,,Preheat HWC,Fluid Type,Propylene Glycol,,direct,pdf,exact_match,
+PHWC-1,fluid_ratio_percent,Fluid Ratio(%),50,%,Preheat HWC,Fluid Percent (%),50,%,direct,pdf,exact_match,
+PHWC-1,entering_fluid_temp_f,Entering Fluid Temp(F),120,degF,Preheat HWC,Fluid Ent Temp (F),120,degF,direct,pdf,exact_match,
+PHWC-1,leaving_fluid_temp_f,Leaving Fluid Temp(F),100,degF,Preheat HWC,Fluid Lvg Temp (F),100,degF,direct,pdf,exact_match,
+HHWC-1,coil_quantity,Coil Quantity,1,,Cover Page,Qty,1,,direct,pdf,exact_match,
+HHWC-1,coil_hand,Coil Hand,Left,,Cover Page,Handing,LH,,normalize_lh_to_left,pdf_normalized,normalized_match,
+HHWC-1,finned_height,Finned Height(In),10.5,in,Heating HWC,Fin Height (in),10.5,in,direct,pdf,exact_match,Use first Heating HWC occurrence.
+HHWC-1,finned_length,Finned Length(In),14.25,in,Heating HWC,Fin Length (in),14.25,in,direct,pdf,exact_match,Use first Heating HWC occurrence.
+HHWC-1,rows,Rows Deep,3,,Heating HWC,Rows,3,,direct,pdf,exact_match,
+HHWC-1,fin_density_fpi,Fins Per Inch,11,FPI,Heating HWC,FPI,11,,direct,pdf,exact_match,
+HHWC-1,airflow,Total Air Flow(CFM),500,CFM,Heating HWC,Airflow (CFM),500,CFM,direct,pdf,exact_match,
+HHWC-1,entering_db_f,Entering Dry Bulb(F),50.9,degF,Heating HWC,DB (F),50.9,degF,direct,pdf,exact_match,
+HHWC-1,fluid_type,Fluid Type,Propylene Glycol,,Heating HWC,Fluid Type,Propylene Glycol,,direct,pdf,exact_match,
+HHWC-1,fluid_ratio_percent,Fluid Ratio(%),50,%,Heating HWC,Fluid Percent (%),50,%,direct,pdf,exact_match,
+HHWC-1,entering_fluid_temp_f,Entering Fluid Temp(F),120,degF,Heating HWC,Fluid Ent Temp (F),120,degF,direct,pdf,exact_match,
+HHWC-1,leaving_fluid_temp_f,Leaving Fluid Temp(F),100,degF,Heating HWC,Fluid Lvg Temp (F),100,degF,direct,pdf,exact_match,
+PHWC-2,coil_quantity,Coil Quantity,2,,Cover Page,Qty,2,,direct,pdf,exact_match,
+PHWC-2,coil_hand,Coil Hand,Left,,Cover Page,Handing,LH,,normalize_lh_to_left,pdf_normalized,normalized_match,
+PHWC-2,finned_height,Finned Height(In),12.5,in,Preheat HWC,Fin Height (in),12.5,in,direct,pdf,exact_match,Use second Preheat HWC occurrence.
+PHWC-2,finned_length,Finned Length(In),18,in,Preheat HWC,Fin Length (in),18,in,direct,pdf,exact_match,Use second Preheat HWC occurrence.
+PHWC-2,rows,Rows Deep,2,,Preheat HWC,Rows,2,,direct,pdf,exact_match,
+PHWC-2,fin_density_fpi,Fins Per Inch,8,FPI,Preheat HWC,FPI,8,,direct,pdf,exact_match,
+PHWC-2,airflow,Total Air Flow(CFM),750,CFM,Preheat HWC,Airflow (CFM),750,CFM,direct,pdf,exact_match,
+PHWC-2,entering_db_f,Entering Dry Bulb(F),-20,degF,Preheat HWC,DB (F),-20,degF,direct,pdf,exact_match,
+PHWC-2,fluid_type,Fluid Type,Propylene Glycol,,Preheat HWC,Fluid Type,Propylene Glycol,,direct,pdf,exact_match,
+PHWC-2,fluid_ratio_percent,Fluid Ratio(%),40,%,Preheat HWC,Fluid Percent (%),40,%,direct,pdf,exact_match,
+PHWC-2,entering_fluid_temp_f,Entering Fluid Temp(F),110,degF,Preheat HWC,Fluid Ent Temp (F),110,degF,direct,pdf,exact_match,
+PHWC-2,leaving_fluid_temp_f,Leaving Fluid Temp(F),90,degF,Preheat HWC,Fluid Lvg Temp (F),90,degF,direct,pdf,exact_match,
+HHWC-2,coil_quantity,Coil Quantity,2,,Cover Page,Qty,2,,direct,pdf,exact_match,
+HHWC-2,coil_hand,Coil Hand,Left,,Cover Page,Handing,LH,,normalize_lh_to_left,pdf_normalized,normalized_match,
+HHWC-2,finned_height,Finned Height(In),12.5,in,Heating HWC,Fin Height (in),12.5,in,direct,pdf,exact_match,Use second Heating HWC occurrence.
+HHWC-2,finned_length,Finned Length(In),18,in,Heating HWC,Fin Length (in),18,in,direct,pdf,exact_match,Use second Heating HWC occurrence.
+HHWC-2,rows,Rows Deep,4,,Heating HWC,Rows,4,,direct,pdf,exact_match,
+HHWC-2,fin_density_fpi,Fins Per Inch,12,FPI,Heating HWC,FPI,12,,direct,pdf,exact_match,
+HHWC-2,airflow,Total Air Flow(CFM),750,CFM,Heating HWC,Airflow (CFM),750,CFM,direct,pdf,exact_match,
+HHWC-2,entering_db_f,Entering Dry Bulb(F),55,degF,Heating HWC,DB (F),55,degF,direct,pdf,exact_match,
+HHWC-2,fluid_type,Fluid Type,Propylene Glycol,,Heating HWC,Fluid Type,Propylene Glycol,,direct,pdf,exact_match,
+HHWC-2,fluid_ratio_percent,Fluid Ratio(%),40,%,Heating HWC,Fluid Percent (%),40,%,direct,pdf,exact_match,
+HHWC-2,entering_fluid_temp_f,Entering Fluid Temp(F),110,degF,Heating HWC,Fluid Ent Temp (F),110,degF,direct,pdf,exact_match,
+HHWC-2,leaving_fluid_temp_f,Leaving Fluid Temp(F),90,degF,Heating HWC,Fluid Lvg Temp (F),90,degF,direct,pdf,exact_match,

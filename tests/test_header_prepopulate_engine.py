@@ -1,0 +1,467 @@
+"""Golden + invariant tests for the header prepopulation engine.
+
+Written before the engine (TDD) from the 20 golden cases (T01-T20) in section 6
+of docs/rules/coil_header_rule_extraction.md, plus the four required invariant
+tests (confidence gate, CD-table reproduction, YAML schema validation,
+never-raises).
+
+T09's ``supply_sl=6`` for HGRH/VENTUM+ was confirmed by John (2026-06-11) and is
+now backed by rule R-044c (MEDIUM suggestion), so it matches the golden case.
+
+T13 labels feeds-absent ``io``/``hd`` as ``Confidence=High``, contradicting T12
+which makes the identical feeds-absent fields MEDIUM suggestions. John confirmed
+(2026-06-11) that they stay MEDIUM suggestions, so the engine follows T12.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from coilforge.schemas.header_prepopulate import (  # noqa: E402
+    Confidence,
+    CoilType,
+    HeaderPrepopulateRequest,
+    HeaderPrepopulateResponse,
+    ProductFamily,
+)
+from coilforge.services import header_prepopulate_engine as engine  # noqa: E402
+from coilforge.services.header_prepopulate_engine import (  # noqa: E402
+    cd_cwc_hwc,
+    cd_dx_hgrh,
+    load_rule_table,
+    prepopulate,
+    roundup_eighth,
+)
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+def _req(coil: CoilType, product: ProductFamily, size: str, **kw):
+    return HeaderPrepopulateRequest(
+        type_of_coil=coil, product_type=product, unit_size=size, **kw
+    )
+
+
+def _bucket_and_result(resp: HeaderPrepopulateResponse, field: str):
+    for bucket_name in ("values", "suggestions", "blocked"):
+        bucket = getattr(resp, bucket_name)
+        if field in bucket:
+            return bucket_name, bucket[field]
+    return None, None
+
+
+def _in_values(resp, field):
+    return field in resp.values
+
+
+# A valid unit size per product family (R-076 enumerations).
+VALID_SIZE = {
+    ProductFamily.NOVA: "B20",
+    ProductFamily.TERRA: "024",
+    ProductFamily.VENTUM_H: "H15",
+    ProductFamily.VENTUM_PLUS: "V40",
+}
+
+# Coating notes are always appended to drawing notes (no coating trigger field
+# in Direct Coil selection); SOP Rev H wording (John, 2026-06-11).
+DX_COATING_NOTE = "Do Not Coat Last 5-6 inches of Distributor Extensions."
+HGRH_COATING_NOTE = "Do Not Coat Last 5-6 inches of Supply Stubouts."
+
+
+# --------------------------------------------------------------------------- #
+# Golden cases T01-T20
+# --------------------------------------------------------------------------- #
+def test_t01_dx_nova_b20_happy_path_1in() -> None:
+    r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20"))
+    assert r.values["return_bend"].value == 1.75
+    assert r.values["top_flange"].value == 0.625
+    assert r.values["bottom_flange"].value == 0.625
+    assert r.values["suction_hd"].value == 3.5
+    assert r.values["suction_sl"].value == 8
+    assert r.values["dist_i"].value == 3
+    assert r.values["dist_orientation"].value == "DOWN"
+    assert r.values["dist_extension"].value == 6
+    assert r.values["suction_io"].value == 2
+    assert r.values["collared_holes"].value is True
+    assert r.values["stacking_flanges"].value is False
+    assert r.values["notes"].value == ["Copper Straps Required.", DX_COATING_NOTE]
+    assert r.values["size_class"].value == "NOVA_1IN"
+    # Distributor HD = 4.5 (R-030); 3.5 is the suction/return HD (suction_hd).
+    assert r.values["dist_hd"].value == 4.5
+    assert r.values["suction_hd"].value == 3.5
+    assert "dist_hd" not in r.blocked
+    # listed value fields are not review_required at the field level
+    assert r.values["return_bend"].review_required is False
+    # every value field carries evidence
+    for fr in r.values.values():
+        assert fr.evidence_refs
+
+
+def test_t02_dx_nova_a18_2in() -> None:
+    r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "A18"))
+    assert r.values["size_class"].value == "NOVA_2IN"
+    assert r.values["return_bend"].value == 1.75
+    assert r.values["dist_hd"].value == 4.5
+
+
+def test_t03_dx_ventum_plus_v40() -> None:
+    r = prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_PLUS, "V40"))
+    assert r.values["top_flange"].value == 1
+    assert r.values["bottom_flange"].value == 1
+    assert r.values["suction_sl"].value == 10
+    assert r.values["dist_i"].value == 12
+    assert r.values["dist_orientation"].value == "UP"
+    assert r.values["return_bend"].value == 1.75
+    assert r.values["suction_hd"].value == 3.5
+    assert r.values["dist_extension"].value == 6
+    assert r.values["suction_io"].value == 2
+    # Both docs agree dist_hd=4.5 for Ventum+ -> HIGH, not blocked (R-030b).
+    assert r.values["dist_hd"].value == 4.5
+    assert r.values["dist_hd"].review_required is False
+    assert "dist_hd" not in r.blocked
+
+
+def test_t04_dx_ventum_h_h15() -> None:
+    r = prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_H, "H15"))
+    assert r.values["top_flange"].value == 0.625
+    assert r.values["bottom_flange"].value == 0.625
+    assert r.values["suction_sl"].value == 8
+    assert r.values["dist_i"].value == 3
+    assert r.values["dist_orientation"].value == "DOWN"
+    assert r.values["suction_io"].value == 2
+    # Distributor HD = 4.5 (R-030); 3.5 is the suction/return HD (suction_hd).
+    assert r.values["dist_hd"].value == 4.5
+    assert "dist_hd" not in r.blocked
+
+
+def test_t05_dx_terra_24_gate() -> None:
+    r = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024"))
+    # Terra-invariant constants still populate HIGH.
+    assert r.values["header_flange"].value == 1.5
+    assert r.values["return_flange"].value == 1.5
+    assert r.values["return_bend"].value == 1.75
+    assert r.values["suction_hd"].value == 3.5
+    assert r.values["dist_i"].value == 3
+    assert r.values["dist_orientation"].value == "DOWN"
+    assert r.values["dist_extension"].value == 6
+    assert r.values["notes"].value == ["Copper Straps Required.", DX_COATING_NOTE]
+    # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
+    assert r.values["suction_io"].value == 3.25  # R-021
+    assert r.values["suction_sl"].value == 10  # R-027
+    assert r.values["dist_hd"].value == 4.5  # R-030c (Terra checklist)
+    assert r.values["top_flange"].value == 1.625  # R-012
+    assert r.values["bottom_flange"].value == 0.375
+    # No longer gated on terra_variant.
+    assert r.blocked_reason is None
+
+
+def test_t06_dx_nova_cd_single_circuit() -> None:
+    r = prepopulate(
+        _req(CoilType.DX, ProductFamily.NOVA, "B20", rows=4, circuits=1,
+             suction_conn_size=0.875)
+    )
+    assert r.values["casing_depth"].value == 5.5
+    assert r.values["casing_depth"].confidence == Confidence.HIGH
+
+
+def test_t07_dx_nova_cd_multi_circuit_and_spacing() -> None:
+    r = prepopulate(
+        _req(CoilType.DX, ProductFamily.NOVA, "B20", rows=4, circuits=3,
+             suction_conn_size=1.625)
+    )
+    assert r.values["casing_depth"].value == 9.5
+    assert r.values["return_spacing"].value == [1.625, 4.75, 7.875]
+
+
+def test_distributor_s_checklist_even_spacing() -> None:
+    # R-034 resolved to checklist even-spacing: ROUND(k*CD/(circuits+1)).
+    # rows=12 -> CD=12.5 (base); circuits=3 -> [3, 6, 9].
+    r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20", rows=12, circuits=3))
+    assert r.values["dist_s"].value == [3, 6, 9]
+
+
+def test_t08_hgrh_nova_c20() -> None:
+    r = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "C20"))
+    assert r.values["supply_io"].value == 2
+    assert r.values["return_io"].value == 2
+    assert r.values["hd"].value == 3.5
+    assert r.values["return_sl"].value == 8
+    assert r.values["conn_angle"].value == "LAS"
+    assert r.values["top_flange"].value == 0.625
+    assert r.values["return_bend"].value == 1.75
+    assert r.values["notes"].value == ["Copper Straps Required.", HGRH_COATING_NOTE]
+    # supply_sl is MEDIUM (R-044a) -> suggestion only.
+    assert r.suggestions["supply_sl"].value == 6
+    assert "supply_sl" not in r.values
+
+
+def test_t09_hgrh_ventum_plus_v20() -> None:
+    r = prepopulate(_req(CoilType.HGRH, ProductFamily.VENTUM_PLUS, "V20"))
+    assert r.values["top_flange"].value == 1
+    assert r.values["bottom_flange"].value == 1
+    assert r.values["return_sl"].value == 10
+    assert r.values["hd"].value == 3.5
+    assert r.values["supply_io"].value == 2
+    # supply_sl=6 confirmed by John for Ventum+ (R-044c); MEDIUM suggestion,
+    # matching the golden case and the analogous Nova/Ventum H rule R-044a.
+    assert r.suggestions["supply_sl"].value == 6
+    assert r.suggestions["supply_sl"].review_required is True
+    assert "supply_sl" not in r.values
+
+
+def test_t10_hgrh_terra_12_gate() -> None:
+    r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "012"))
+    assert r.values["hd"].value == 3.5
+    assert r.values["conn_angle"].value == "LAS"
+    assert r.values["return_bend"].value == 1.75
+    # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
+    assert r.values["return_io"].value == 3.25  # R-042
+    assert r.values["return_sl"].value == 10  # R-045b
+    assert r.values["top_flange"].value == 1.625  # R-012
+    assert r.values["bottom_flange"].value == 0.375
+    assert r.blocked_reason is None
+
+
+def test_t11_hgrh_nova_single_feed() -> None:
+    r = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "C20", feeds=1))
+    # R-049 single-feed note is intentionally suppressed (John 2026-06-15): a
+    # single-feed HGRH is treated as a standard one-header HGRH, no note emitted.
+    assert "single_feed_note" not in r.suggestions
+    assert "single_feed_note" not in r.values
+    assert "single_feed_note" not in r.blocked
+    # R-050 single-feed extension is unaffected (separate dimension, not a note).
+    assert r.suggestions["single_feed_ext"].value == 3
+    assert r.suggestions["single_feed_ext"].confidence == Confidence.MEDIUM
+
+
+def test_t12_cwc_nova_a16_feeds_absent() -> None:
+    r = prepopulate(_req(CoilType.CWC, ProductFamily.NOVA, "A16"))
+    assert r.values["return_bend"].value == 2.25
+    assert r.values["header_flange"].value == 1.5
+    assert r.values["return_flange"].value == 1.5
+    assert r.values["sl"].value == 8
+    assert r.values["size_class"].value == "NOVA_1IN"
+    assert r.values["notes"].value[0].startswith("Vent & Drain installed")
+    # feeds absent -> io/hd are suggestions reporting missing feeds.
+    assert r.suggestions["io"].value == 2.3125
+    assert "feeds" in r.suggestions["io"].missing_inputs
+    assert r.suggestions["hd"].value == 4
+    assert "feeds" in r.suggestions["hd"].missing_inputs
+    # TF/BF resolved to checklist value 0.625 (R-013, John 2026-06-11).
+    assert r.values["top_flange"].value == 0.625
+    assert r.values["bottom_flange"].value == 0.625
+
+
+def test_t13_cwc_ventum_plus_v30() -> None:
+    r = prepopulate(_req(CoilType.CWC, ProductFamily.VENTUM_PLUS, "V30"))
+    assert r.values["top_flange"].value == 1
+    assert r.values["bottom_flange"].value == 1
+    assert r.values["return_bend"].value == 2.25
+    assert r.values["sl"].value == 10
+    # Per John (2026-06-11): feeds absent -> io/hd are MEDIUM suggestions,
+    # consistent with T12 (not T13's literal "Confidence=High").
+    assert r.suggestions["io"].value == 2.3125
+    assert r.suggestions["hd"].value == 4
+
+
+def test_t14_hwc_ventum_plus_single_feed() -> None:
+    r = prepopulate(_req(CoilType.HWC, ProductFamily.VENTUM_PLUS, "V60", feeds=1))
+    assert r.values["sl"].value == 14
+    assert r.suggestions["io"].value == "TBD"
+    assert r.suggestions["io"].review_required is True
+    assert r.suggestions["hd"].value == "N/A"
+    assert r.suggestions["hd"].review_required is True
+
+
+def test_t15_hwc_nova_multi_feed_cd() -> None:
+    r = prepopulate(
+        _req(CoilType.HWC, ProductFamily.NOVA, "C30", feeds=2, rows=2)
+    )
+    assert r.values["sl"].value == 8
+    assert r.values["io"].value == 2.3125
+    assert r.values["hd"].value == 4
+    assert r.values["casing_depth"].value == 4.625
+
+
+def test_t16_cwc_terra_18_gate() -> None:
+    r = prepopulate(_req(CoilType.CWC, ProductFamily.TERRA, "018"))
+    assert r.values["return_bend"].value == 2.25
+    assert r.values["header_flange"].value == 1.5
+    assert r.values["notes"].value[0].startswith("Vent & Drain installed")
+    # CWC/HWC have no coating process -> no coating note appended.
+    assert r.values["notes"].value == [r.values["notes"].value[0]]
+    # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
+    assert r.values["io"].value == 3.25  # R-061
+    assert r.values["sl"].value == 10  # R-065
+    assert r.values["top_flange"].value == 1.625  # R-014
+    assert r.values["bottom_flange"].value == 0.375
+    assert r.blocked_reason is None
+
+
+def test_t17_dx_coating_note_always_on_drawing_notes() -> None:
+    # Per John (2026-06-11): Direct Coil selection has no coating trigger field,
+    # so the coating note (SOP Rev H wording) is always appended to drawing
+    # notes -- regardless of any `coating` input -- never held back as a conflict.
+    with_coating = prepopulate(
+        _req(CoilType.DX, ProductFamily.NOVA, "B20", coating="HERESITE")
+    )
+    without_coating = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20"))
+    expected = ["Copper Straps Required.", DX_COATING_NOTE]
+    assert with_coating.values["notes"].value == expected
+    assert without_coating.values["notes"].value == expected
+    assert "coating_note" not in with_coating.blocked
+
+
+def test_t18_dx_nova_hot_gas_bypass() -> None:
+    r = prepopulate(
+        _req(CoilType.DX, ProductFamily.NOVA, "B20", hot_gas_bypass=True,
+             handing="LH")
+    )
+    assert r.values["asc"].value == "selected"
+    assert "asc_orientation" in r.blocked  # R-084 CONFLICT
+    assert r.blocked["asc_orientation"].value is None
+
+
+def test_t19_dx_ventum_h_invalid_size() -> None:
+    r = prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_H, "H99"))
+    assert r.blocked_reason == "unknown_unit_size"
+    assert not r.values
+    assert not r.suggestions
+    assert not r.blocked
+
+
+def test_t20_cwc_nova_casing_lookup() -> None:
+    r = prepopulate(
+        _req(CoilType.CWC, ProductFamily.NOVA, "A16", application="DECOUPLED")
+    )
+    assert r.suggestions["casing_width"].value == 34
+    assert r.suggestions["casing_height"].value == 20
+    assert r.suggestions["casing_width"].review_required is True
+
+
+@pytest.mark.parametrize(
+    "coil,product,size,application,width,height",
+    [
+        # DX/CWC/HGRH share the "DX/CWC" application columns.
+        (CoilType.CWC, ProductFamily.NOVA, "A16", "DECOUPLED", 34, 20),
+        (CoilType.DX, ProductFamily.NOVA, "C70", "DECOUPLED", 76, 46),
+        (CoilType.DX, ProductFamily.TERRA, "024", "INTEGRATED", 62, 21),
+        (CoilType.HGRH, ProductFamily.VENTUM_H, "H15", "CPLD EXT", 37, 21),
+        (CoilType.DX, ProductFamily.VENTUM_PLUS, "V150", "INTEGRATED", 115.75, 106),
+        # HWC uses its own application columns.
+        (CoilType.HWC, ProductFamily.NOVA, "A16", "CPLD/DCPLD VERT", 16, 20.625),
+        (CoilType.HWC, ProductFamily.VENTUM_H, "H20", "CPLD/DCPLD STD", 39.375, 21),
+    ],
+)
+def test_casing_dims_lookup_from_units_sheet(
+    coil, product, size, application, width, height
+) -> None:
+    r = prepopulate(_req(coil, product, size, application=application))
+    assert r.suggestions["casing_width"].value == width
+    assert r.suggestions["casing_height"].value == height
+
+
+def test_casing_dims_missing_without_application() -> None:
+    r = prepopulate(_req(CoilType.CWC, ProductFamily.NOVA, "A16"))
+    assert "casing_width" not in r.suggestions
+    assert "application" in r.missing_inputs
+
+
+# --------------------------------------------------------------------------- #
+# Invariant: confidence gate (constraint #3)
+# --------------------------------------------------------------------------- #
+def test_confidence_gate_routing_table() -> None:
+    """No MEDIUM/LOW/CONFLICT rule may ever route into `values`."""
+    rules = load_rule_table()
+    for rule in rules:
+        conf = rule["confidence"]
+        bucket = engine.bucket_for_confidence(Confidence(conf))
+        if conf == "HIGH":
+            assert bucket == "values", rule["rule_id"]
+        else:
+            assert bucket != "values", rule["rule_id"]
+
+
+def test_confidence_gate_holds_across_requests() -> None:
+    """Across a broad input sweep, each bucket only holds its confidence tier."""
+    coils = list(CoilType)
+    products = list(ProductFamily)
+    extras = [
+        {},
+        {"feeds": 1},
+        {"feeds": 2},
+        {"rows": 4, "circuits": 3, "suction_conn_size": 1.625},
+        {"coating": "HERESITE"},
+        {"hot_gas_bypass": True, "handing": "LH"},
+        {"application": "DECOUPLED"},
+    ]
+    for coil in coils:
+        for product in products:
+            for extra in extras:
+                r = prepopulate(_req(coil, product, VALID_SIZE[product], **extra))
+                for fr in r.values.values():
+                    assert fr.confidence == Confidence.HIGH
+                for fr in r.suggestions.values():
+                    assert fr.confidence == Confidence.MEDIUM
+                    assert fr.review_required is True
+                for fr in r.blocked.values():
+                    assert fr.confidence in (Confidence.LOW, Confidence.CONFLICT)
+                    assert fr.value is None
+                    assert fr.blocked_reason
+
+
+# --------------------------------------------------------------------------- #
+# Invariant: CD table reproduction (24 values)
+# --------------------------------------------------------------------------- #
+DX_HGRH_CD = [2.875, 3.75, 4.625, 5.5, 6.375, 7.25, 8.125, 9.0, 9.875, 10.75,
+              11.625, 12.5]
+CWC_HWC_CD = [3.375, 4.625, 6.0, 7.25, 8.5, 9.875, 11.125, 12.5, 13.75, 15.0,
+              16.375, 17.625]
+
+
+@pytest.mark.parametrize("rows,expected", list(zip(range(1, 13), DX_HGRH_CD)))
+def test_cd_table_dx_hgrh(rows: int, expected: float) -> None:
+    assert cd_dx_hgrh(rows) == expected
+
+
+@pytest.mark.parametrize("rows,expected", list(zip(range(1, 13), CWC_HWC_CD)))
+def test_cd_table_cwc_hwc(rows: int, expected: float) -> None:
+    assert cd_cwc_hwc(rows) == expected
+
+
+def test_roundup_eighth() -> None:
+    assert roundup_eighth(0.866) == 0.875
+    assert roundup_eighth(1.0) == 1.0
+    assert roundup_eighth(1.001) == 1.125
+
+
+# --------------------------------------------------------------------------- #
+# Invariant: YAML schema validation
+# --------------------------------------------------------------------------- #
+def test_yaml_schema_validation() -> None:
+    rules = load_rule_table()
+    seen = set()
+    for rule in rules:
+        assert rule.get("rule_id"), rule
+        assert rule["rule_id"] not in seen, f"duplicate {rule['rule_id']}"
+        seen.add(rule["rule_id"])
+        assert rule.get("evidence_refs"), rule["rule_id"]
+        assert rule["confidence"] in {"HIGH", "MEDIUM", "LOW", "CONFLICT"}
+
+
+# --------------------------------------------------------------------------- #
+# Invariant: prepopulate never raises on valid enum inputs / all-None optionals
+# --------------------------------------------------------------------------- #
+def test_prepopulate_never_raises() -> None:
+    for coil in CoilType:
+        for product in ProductFamily:
+            # valid size
+            prepopulate(_req(coil, product, VALID_SIZE[product]))
+            # invalid size (must return unknown_unit_size, not raise)
+            prepopulate(_req(coil, product, "ZZZ999"))

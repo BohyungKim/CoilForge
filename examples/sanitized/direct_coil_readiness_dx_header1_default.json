@@ -1,0 +1,1027 @@
+{
+  "draft_id": "DCI-SANITIZED-DX-H1-001",
+  "source_canonical_record_id": "CCR-SANITIZED-DX-H1-001",
+  "total_fields": 52,
+  "summary_counts": {
+    "ready": 0,
+    "review_required": 12,
+    "blocked": 4,
+    "unmapped": 36,
+    "manual_override": 0
+  },
+  "ready_fields": [],
+  "review_required_fields": [
+    {
+      "field_key": "rows_deep",
+      "label": "Rows deep",
+      "group": "Coil Geometry",
+      "required": true,
+      "value": 4,
+      "unit": "rows",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-ROWS-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "rows_deep",
+          "source_value": 4,
+          "normalized_value": 4,
+          "unit": "rows",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "fins_per_inch",
+      "label": "Fins per inch",
+      "group": "Coil Geometry",
+      "required": true,
+      "value": 13.0,
+      "unit": "fpi",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-FPI-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "fins_per_inch",
+          "source_value": 13.0,
+          "normalized_value": 13.0,
+          "unit": "fpi",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "finned_height",
+      "label": "Finned height",
+      "group": "Coil Geometry",
+      "required": true,
+      "value": 12.0,
+      "unit": "in",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-FH-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "finned_height",
+          "source_value": 12.0,
+          "normalized_value": 12.0,
+          "unit": "in",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "finned_length",
+      "label": "Finned length",
+      "group": "Coil Geometry",
+      "required": true,
+      "value": 15.0,
+      "unit": "in",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-FL-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-geometry-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "finned_length",
+          "source_value": 15.0,
+          "normalized_value": 15.0,
+          "unit": "in",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "airflow_direction",
+      "label": "Airflow direction",
+      "group": "Coil Geometry",
+      "required": true,
+      "value": "left_to_right",
+      "unit": null,
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-GEOM-AIRFLOW-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-airflow-marker",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "geometry",
+          "source_key": "airflow_direction",
+          "source_value": "left_to_right",
+          "normalized_value": "left_to_right",
+          "unit": null,
+          "confidence": "inferred",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "header_type",
+      "label": "Header type",
+      "group": "Coil Geometry",
+      "required": true,
+      "value": "Header 1",
+      "unit": null,
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-HEADER-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-schedule-row-1",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "coil_schedule",
+          "source_key": "header_type",
+          "source_value": "Header 1",
+          "normalized_value": "Header 1",
+          "unit": null,
+          "confidence": "inferred",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": [
+            "Supported header remains review-required until confirmed."
+          ]
+        }
+      ]
+    },
+    {
+      "field_key": "return_connection_size",
+      "label": "Return connection size",
+      "group": "Materials & Construction",
+      "required": true,
+      "value": 0.625,
+      "unit": "in",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-CONN-RETURN-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-connection-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "connections",
+          "source_key": "return_connection_size",
+          "source_value": 0.625,
+          "normalized_value": 0.625,
+          "unit": "in",
+          "confidence": "ambiguous",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": [
+            "Connection role needs review."
+          ]
+        }
+      ]
+    },
+    {
+      "field_key": "coil_hand",
+      "label": "Coil hand",
+      "group": "Materials & Construction",
+      "required": true,
+      "value": "Left",
+      "unit": null,
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-CONN-HAND-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-connection-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "connections",
+          "source_key": "coil_hand",
+          "source_value": "Left",
+          "normalized_value": "Left",
+          "unit": null,
+          "confidence": "inferred",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "total_air_flow_cfm",
+      "label": "Total air flow",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": 1200,
+      "unit": "cfm",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-AIR-CFM-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "total_air_flow_cfm",
+          "source_value": 1200,
+          "normalized_value": 1200,
+          "unit": "cfm",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "entering_dry_bulb_f",
+      "label": "Entering dry bulb",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": 78.0,
+      "unit": "degF",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-AIR-EDB-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "entering_dry_bulb_f",
+          "source_value": 78.0,
+          "normalized_value": 78.0,
+          "unit": "degF",
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    },
+    {
+      "field_key": "total_capacity_mbh",
+      "label": "Total capacity",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": 36.0,
+      "unit": "MBH",
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-PERF-CAPACITY-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "total_capacity_mbh",
+          "source_value": 36.0,
+          "normalized_value": 36.0,
+          "unit": "MBH",
+          "confidence": "ambiguous",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": [
+            "Capacity basis requires review."
+          ]
+        }
+      ]
+    },
+    {
+      "field_key": "refrigerant",
+      "label": "Refrigerant",
+      "group": "Refrigerant Conditions",
+      "required": false,
+      "value": "R410A",
+      "unit": null,
+      "status": "review_required",
+      "blocked_reason": null,
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": [
+        {
+          "evidence_id": "EV-REF-001",
+          "source_type": "submittal_pdf_candidate",
+          "source_id": "SANITIZED-SOURCE-DOC-001",
+          "source_location": "sanitized-page-1-performance-columns",
+          "source_page": 1,
+          "source_section": "sanitized_schedule",
+          "source_table": "performance",
+          "source_key": "refrigerant",
+          "source_value": "R410A",
+          "normalized_value": "R410A",
+          "unit": null,
+          "confidence": "confirmed",
+          "review_status": "unreviewed",
+          "evidence_status": "candidate",
+          "notes": []
+        }
+      ]
+    }
+  ],
+  "blocked_fields": [
+    {
+      "field_key": "CD",
+      "label": "CD",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "BF",
+      "label": "BF",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "TF",
+      "label": "TF",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "CH",
+      "label": "CH",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    }
+  ],
+  "unmapped_fields": [
+    {
+      "field_key": "tube_diameter_od",
+      "label": "Tube diameter OD",
+      "group": "Coil Geometry",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "tube_geometry",
+      "label": "Tube geometry",
+      "group": "Coil Geometry",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "tubes_high",
+      "label": "Tubes high",
+      "group": "Coil Geometry",
+      "required": false,
+      "value": null,
+      "unit": "tubes",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "number_of_feeds",
+      "label": "Number of feeds",
+      "group": "Coil Geometry",
+      "required": false,
+      "value": null,
+      "unit": "feeds",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "tube_material",
+      "label": "Tube material",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "fin_material",
+      "label": "Fin material",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "fin_surface",
+      "label": "Fin surface",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "header_material",
+      "label": "Header material",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "connection_material",
+      "label": "Connection material",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "connection_type",
+      "label": "Connection type",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "supply_connection_size",
+      "label": "Supply connection size",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "casing_material",
+      "label": "Casing material",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "casing_style",
+      "label": "Casing style",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "connection_ends",
+      "label": "Connection ends",
+      "group": "Materials & Construction",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "face_velocity_fpm",
+      "label": "Face velocity",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": null,
+      "unit": "fpm",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "altitude_ft",
+      "label": "Altitude",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": null,
+      "unit": "ft",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "entering_wet_bulb_f",
+      "label": "Entering wet bulb",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": null,
+      "unit": "degF",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "leaving_dry_bulb_f",
+      "label": "Leaving dry bulb",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": null,
+      "unit": "degF",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "relative_humidity_pct",
+      "label": "Relative humidity",
+      "group": "Airside Conditions",
+      "required": false,
+      "value": null,
+      "unit": "pct",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "evaporating_temp_f",
+      "label": "Evaporating temperature",
+      "group": "Refrigerant Conditions",
+      "required": false,
+      "value": null,
+      "unit": "degF",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "liquid_temp_f",
+      "label": "Liquid temperature",
+      "group": "Refrigerant Conditions",
+      "required": false,
+      "value": null,
+      "unit": "degF",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "superheat_f",
+      "label": "Superheat",
+      "group": "Refrigerant Conditions",
+      "required": false,
+      "value": null,
+      "unit": "degF",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "dx_dist_capillary_size",
+      "label": "DX distributor capillary size",
+      "group": "Refrigerant Conditions",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "drain_pan_type",
+      "label": "Drain pan type",
+      "group": "Manufacturing Options",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "coil_coating",
+      "label": "Coil coating",
+      "group": "Manufacturing Options",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "system_type",
+      "label": "System type",
+      "group": "Manufacturing Options",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "distributor_notes",
+      "label": "Distributor notes",
+      "group": "Manufacturing Options",
+      "required": false,
+      "value": null,
+      "unit": null,
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "I",
+      "label": "I",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "S",
+      "label": "S",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "O",
+      "label": "O",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "R",
+      "label": "R",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "HD",
+      "label": "HD",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "HF",
+      "label": "HF",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "RF",
+      "label": "RF",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "SL",
+      "label": "SL",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "ZD",
+      "label": "ZD",
+      "group": "Drawing Parameters",
+      "required": false,
+      "value": null,
+      "unit": "in",
+      "status": "unmapped",
+      "blocked_reason": null,
+      "review_required": false,
+      "manual_override": false,
+      "source_evidence": []
+    }
+  ],
+  "required_missing_fields": [
+    {
+      "field_key": "CD",
+      "label": "CD",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "BF",
+      "label": "BF",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "TF",
+      "label": "TF",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    },
+    {
+      "field_key": "CH",
+      "label": "CH",
+      "group": "Drawing Parameters",
+      "required": true,
+      "value": null,
+      "unit": "in",
+      "status": "blocked",
+      "blocked_reason": "required canonical field missing",
+      "review_required": true,
+      "manual_override": false,
+      "source_evidence": []
+    }
+  ],
+  "source_evidence_summary": {
+    "fields_with_source_evidence": 12,
+    "total_source_evidence_refs": 12,
+    "evidence_ids_by_field": {
+      "rows_deep": [
+        "EV-GEOM-ROWS-001"
+      ],
+      "fins_per_inch": [
+        "EV-GEOM-FPI-001"
+      ],
+      "finned_height": [
+        "EV-GEOM-FH-001"
+      ],
+      "finned_length": [
+        "EV-GEOM-FL-001"
+      ],
+      "airflow_direction": [
+        "EV-GEOM-AIRFLOW-001"
+      ],
+      "header_type": [
+        "EV-HEADER-001"
+      ],
+      "return_connection_size": [
+        "EV-CONN-RETURN-001"
+      ],
+      "coil_hand": [
+        "EV-CONN-HAND-001"
+      ],
+      "total_air_flow_cfm": [
+        "EV-AIR-CFM-001"
+      ],
+      "entering_dry_bulb_f": [
+        "EV-AIR-EDB-001"
+      ],
+      "total_capacity_mbh": [
+        "EV-PERF-CAPACITY-001"
+      ],
+      "refrigerant": [
+        "EV-REF-001"
+      ]
+    }
+  },
+  "drawing_parameter_summary": {
+    "total": 13,
+    "ready": 0,
+    "review_required": 0,
+    "blocked": 4,
+    "unmapped": 9,
+    "blocked_fields": [
+      "CD",
+      "BF",
+      "TF",
+      "CH"
+    ]
+  },
+  "export_status": "not_implemented"
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": "mapping_lab_v1",
+  "case_id": "case_001_dx_hgrh",
+  "engineer_output_type": "sanitized_mock_direct_coil_filled",
+  "coils": [
+    {
+      "tag": "CDXC-1",
+      "direct_coil_format": "dx",
+      "fields": {
+        "coil_quantity": {"value": 1, "unit": ""},
+        "coil_hand": {"value": "Left", "unit": ""},
+        "finned_height": {"value": 24, "unit": "in"},
+        "finned_length": {"value": 48, "unit": "in"},
+        "rows": {"value": 6, "unit": ""},
+        "fin_density_fpi": {"value": 11, "unit": "FPI"},
+        "number_of_feeds_total": {"value": 18, "unit": ""},
+        "airflow": {"value": 3735, "unit": "CFM"},
+        "altitude": {"value": 0, "unit": "ft"},
+        "entering_db_f": {"value": 95, "unit": "degF"},
+        "entering_wb_f": {"value": 78, "unit": "degF"},
+        "refrigerant": {"value": "R-32", "unit": ""},
+        "total_capacity_mbh_per_coil": {"value": 329.48, "unit": "MBH"},
+        "tube_material": {"value": "Copper", "unit": ""}
+      }
+    },
+    {
+      "tag": "RHHGRC-1",
+      "direct_coil_format": "condensing",
+      "fields": {
+        "coil_quantity": {"value": 1, "unit": ""},
+        "coil_hand": {"value": "Left", "unit": ""},
+        "finned_height": {"value": 24, "unit": "in"},
+        "finned_length": {"value": 48, "unit": "in"},
+        "rows": {"value": 1, "unit": ""},
+        "fin_density_fpi": {"value": 11, "unit": "FPI"},
+        "airflow": {"value": 3735, "unit": "CFM"},
+        "entering_db_f": {"value": 55, "unit": "degF"},
+        "refrigerant": {"value": "R-32", "unit": ""},
+        "total_capacity_mbh_per_coil": {"value": 60.85, "unit": "MBH"},
+        "tube_material": {"value": "Copper", "unit": ""}
+      }
+    }
+  ]
+}
