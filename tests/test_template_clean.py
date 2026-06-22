@@ -37,9 +37,37 @@ def test_clean_does_not_touch_non_callout_text() -> None:
 
 def test_clean_crops_viewbox_and_size_to_drawing() -> None:
     out = _clean_template_svg(_SVG)
-    assert 'viewBox="40 128 527 372"' in out
-    assert 'width="527" height="372"' in out
+    assert 'viewBox="110 19 542 473"' in out
+    assert 'width="542" height="473"' in out
     assert 'viewBox="0 0 792 612"' not in out
+
+
+_SVG_WITH_INTRUDING_CHROME = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="792" height="612" viewBox="0 0 792 612">'
+    # top-left fabrication-notes block: bold, anchored far-left in the top band
+    '<text font-family="Arial,Bold" font-weight="bold">'
+    '<tspan y="-562.5" x="47.99 54.78 62.09">COLLARED HOLES REQUIRED</tspan>'
+    '<tspan y="-535.5" x="47.99 54.78">DISTRIBUTOR 1 HAS 6&quot; EXTENSION</tspan></text>'
+    # bottom metadata line whose glyph tops poke into the crop
+    '<text font-family="Arial"><tspan y="-113.5" x="578.3 50.9">'
+    'Coil ID = 543681Casing Style: FlangedStacking Flanges: False</tspan></text>'
+    # a real blue dimension callout that must survive
+    '<text fill="#1c0a80" transform="matrix(-1 0 0 1 0 0)"><tspan x="300" y="200">12 FH</tspan></text>'
+    # DIST LIST distributor annotation must survive (drawing data, inside the frame)
+    '<text font-family="Arial"><tspan y="-552.6" x="561.9 567.4">DIST LIST</tspan></text>'
+    "</svg>"
+)
+
+
+def test_clean_strips_intruding_chrome_keeps_geometry() -> None:
+    out = _clean_template_svg(_SVG_WITH_INTRUDING_CHROME)
+    # top-left fabrication notes + bottom metadata line removed
+    assert "COLLARED HOLES REQUIRED" not in out
+    assert "DISTRIBUTOR 1 HAS" not in out
+    assert "Coil ID" not in out and "Casing Style" not in out
+    # geometry dimension value + distributor list kept
+    assert ">12</tspan>" in out
+    assert "DIST LIST" in out
 
 
 def test_clean_handles_empty() -> None:

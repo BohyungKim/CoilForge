@@ -334,13 +334,55 @@ def _clean_callout(m: "re.Match[str]") -> str:
             attrs = f'{attrs[: xm.start()]}x="{new_x:.2f}"{attrs[xm.end():]}'
     return f"{head}{attrs}{gt}{value}{close}"
 
-# Crop window (CoilMaster sheet is 792x612; all templates share this layout). Selecting
-# just the drawing region clips away the sheet chrome that lives outside it — the right
-# material panel, the bottom dim table + title block, and the top-left notes — leaving the
-# geometry + dimensions only (image #7). Tuned against the blue dim-callout bounds.
-_CROP_X, _CROP_Y, _CROP_W, _CROP_H = 40, 128, 527, 372
+# Crop the CoilMaster sheet down to the geometry+dimensions section only (John's
+# target view). Derived from the UNION of the visible-geometry bounding box across
+# all 22 seeded templates (x[116,616] y[25,489]), clamped so the right edge stops
+# just before the spec panel (x>=657) and the bottom stops just before the
+# "Casing Style…" chrome line (y~495). This frames every category/hand/header —
+# including the wider/taller 2HD/3HD/4HD multi-header layouts — without clipping
+# geometry, while leaving the panel / dim table / title block / notes off-frame
+# (still present in the SVG, just outside the viewBox = invisible).
+_CROP_X, _CROP_Y, _CROP_W, _CROP_H = 110, 19, 542, 473
 _VIEWBOX_RE = re.compile(r'viewBox="0 0 792 612"')
 _SIZE_RE = re.compile(r'(<svg[^>]*?)width="792" height="612"')
+
+# Two chrome blocks sit *inside* the geometry crop rectangle and so cannot be removed
+# by the viewBox crop alone — they have to be dropped at the element level (still on the
+# rendered copy only; the template file is untouched):
+#   1. the top-left fabrication-notes block (COLLARED HOLES / LIFTING LUGS /
+#      "DISTRIBUTOR N HAS 6\" EXTENSION") — the only bold text anchored far-left/top, and
+#      on multi-header sheets it shares the geometry's vertical band so a rectangle can't
+#      exclude it without clipping the drawing; it would otherwise render clipped mid-word.
+#   2. the "Coil ID = … / Casing Style: … / Stacking Flanges: …" metadata line, whose
+#      glyph tops poke just above the crop's bottom edge.
+# Both are sheet metadata, not dimensional drawing data, and are absent from John's target
+# geometry-only view.
+_CHROME_TEXT_TOKENS = ("Coil ID", "Casing Style", "Stacking Flanges")
+_TEXT_ELEMENT_RE = re.compile(r"<text\b[^>]*>.*?</text>", re.DOTALL)
+# NB: tspan x/y attributes can hold multiple space-separated coordinates
+# (e.g. x="47.99 54.78 62.09 …"); capture only the first number of each.
+_FIRST_TSPAN_RE = re.compile(r'<tspan\b[^>]*\by="(-?\d+(?:\.\d+)?)[^"]*"[^>]*\bx="(-?\d+(?:\.\d+)?)')
+
+
+def _is_intruding_chrome(text_el: str) -> bool:
+    """True if a ``<text>`` element is sheet chrome that lands inside the geometry crop."""
+    if any(tok in text_el for tok in _CHROME_TEXT_TOKENS):
+        return True
+    # Top-left fabrication-notes block: bold + anchored far-left in the top band.
+    if 'font-weight="bold"' in text_el or "Arial,Bold" in text_el:
+        m = _FIRST_TSPAN_RE.search(text_el)
+        if m:
+            y_screen = float(m.group(1)) + 612.0  # text transform translate(0, 612)
+            x = float(m.group(2))
+            if x < 130.0 and y_screen < 160.0:
+                return True
+    return False
+
+
+def _strip_intruding_chrome(svg: str) -> str:
+    return _TEXT_ELEMENT_RE.sub(
+        lambda m: "" if _is_intruding_chrome(m.group(0)) else m.group(0), svg
+    )
 
 
 def _clean_template_svg(svg: str) -> str:
@@ -352,6 +394,9 @@ def _clean_template_svg(svg: str) -> str:
        bottom dim table / title block text are untouched.
     2. **No chrome** — crop the ``viewBox`` to the drawing region, clipping the right
        material panel, the bottom dim table + title block, and the top-left notes.
+    3. **Drop intruding chrome** — remove the two chrome blocks that fall *inside* the
+       crop rectangle (the top-left fabrication notes and the Coil ID / Casing Style
+       metadata line) so only the geometry + dimensions remain.
 
     Pure string transform; the review watermark and ``export_allowed`` flags are untouched
     (they sit outside the crop, so they no longer render — safety is enforced server-side
@@ -360,6 +405,7 @@ def _clean_template_svg(svg: str) -> str:
     if not svg:
         return svg
     svg = _CALLOUT_RE.sub(_clean_callout, svg)
+    svg = _strip_intruding_chrome(svg)
     svg = _VIEWBOX_RE.sub(f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"', svg)
     svg = _SIZE_RE.sub(rf'\1width="{_CROP_W}" height="{_CROP_H}"', svg)
     return svg
