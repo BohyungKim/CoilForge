@@ -1,5 +1,5 @@
 {
-  "template_id": "coilmaster_dx_rh_header3",
+  "template_id": "coilmaster_dx_lh_header4",
   "schema_version": "template-first.1",
   "source_policy": [
     "reviewed_canonical_value",
@@ -112,6 +112,16 @@
     {
       "slot_id": "slot.DISTRIBUTORS",
       "label": "DISTRIBUTORS",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.DISTRIBUTORS_2",
+      "label": "DISTRIBUTORS_2",
       "required_for_preview": false,
       "review_status": "review_required",
       "source_candidates": [
@@ -260,6 +270,16 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.I7",
+      "label": "I7",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.MODEL_NUMBER",
       "label": "MODEL_NUMBER",
       "required_for_preview": true,
@@ -300,6 +320,16 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.O8",
+      "label": "O8",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.OAL",
       "label": "OAL",
       "required_for_preview": false,
@@ -332,6 +362,16 @@
     {
       "slot_id": "slot.R6",
       "label": "R6",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.R8",
+      "label": "R8",
       "required_for_preview": false,
       "review_status": "review_required",
       "source_candidates": [
@@ -412,6 +452,16 @@
     {
       "slot_id": "slot.S5",
       "label": "S5",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.S7",
+      "label": "S7",
       "required_for_preview": false,
       "review_status": "review_required",
       "source_candidates": [

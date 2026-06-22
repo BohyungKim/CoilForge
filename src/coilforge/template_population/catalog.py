@@ -52,6 +52,22 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
     "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
     "coilmaster_hwc_lh": ("hwc", "EZC-0005", _SEEDED),
+    # 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now seeded
+    # from real per-hand EZ drawing PDFs (Case/feed/), so every bucket is active.
+    # Mirroring is retired; source_case_id is a provenance token (FEED-*) until
+    # real EZC IDs are supplied. Catalog is now 22/22 active review aids.
+    "coilmaster_dx_rh_header1": ("dx", "FEED-DX_1_RH", _SEEDED),
+    "coilmaster_dx_lh_header2": ("dx", "FEED-DX_2_LH", _SEEDED),
+    "coilmaster_dx_rh_header3": ("dx", "FEED-DX_3_RH", _SEEDED),
+    "coilmaster_dx_rh_hgbp": ("dx", "FEED-DX_HB_RH", _SEEDED),
+    "coilmaster_hgrh_rh_header2": ("hgrh", "FEED-HG_2_RH", _SEEDED),
+    "coilmaster_hgrh_lh_header3": ("hgrh", "FEED-HG_3_LH", _SEEDED),
+    "coilmaster_cwc_rh": ("cwc", "FEED-CW_RH", _SEEDED),
+    "coilmaster_hwc_rh": ("hwc", "FEED-HW_RH", _SEEDED),
+    "coilmaster_dx_lh_header4": ("dx", "FEED-DX_4_LH", _SEEDED),
+    "coilmaster_dx_rh_header4": ("dx", "FEED-DX_4_RH", _SEEDED),
+    "coilmaster_hgrh_lh_header4": ("hgrh", "FEED-HG_4_LH", _SEEDED),
+    "coilmaster_hgrh_rh_header4": ("hgrh", "FEED-HG_4_RH", _SEEDED),
 }
 
 

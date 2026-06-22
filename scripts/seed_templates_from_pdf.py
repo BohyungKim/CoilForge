@@ -511,19 +511,39 @@ BUCKETS = [
      "Case/#2/EZC-0005 - HW_LH/PHWC-1.pdf", "EZC-0005"),
     ("coilmaster_dx_lh_hgbp", "dx", "DX", "LH", None, "HGBP",
      "Case/#2/EZC-0013 - DX_HB_LH/CDXC-1.pdf", "EZC-0013"),
+    # --- 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now
+    # seeded from real per-hand EZ drawing PDFs provided in Case/feed/. Mirroring
+    # is retired (it smeared callouts); MIRRORS is now empty. source_case_id is a
+    # provenance token until real EZC IDs are supplied.
+    ("coilmaster_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
+     "Case/feed/DX_1_RH/DX_1_RH.pdf", "FEED-DX_1_RH"),
+    ("coilmaster_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
+     "Case/feed/DX_2_LH/DX_2_LH.pdf", "FEED-DX_2_LH"),
+    ("coilmaster_dx_rh_header3", "dx", "DX", "RH", "Header 3", None,
+     "Case/feed/DX_3_RH/DX_3_RH.pdf", "FEED-DX_3_RH"),
+    ("coilmaster_dx_rh_hgbp", "dx", "DX", "RH", None, "HGBP",
+     "Case/feed/DX_HB_RH/DX_HB_RH.pdf", "FEED-DX_HB_RH"),
+    ("coilmaster_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,
+     "Case/feed/HG_2_RH/HG_2_RH.pdf", "FEED-HG_2_RH"),
+    ("coilmaster_hgrh_lh_header3", "hgrh", "HGRH", "LH", "Header 3", None,
+     "Case/feed/HG_3_LH/HG_3_LH.pdf", "FEED-HG_3_LH"),
+    ("coilmaster_cwc_rh", "cwc", "CWC", "RH", "Header 1", None,
+     "Case/feed/CW_RH/CW_RH.pdf", "FEED-CW_RH"),
+    ("coilmaster_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
+     "Case/feed/HW_RH/HW_RH.pdf", "FEED-HW_RH"),
+    ("coilmaster_dx_lh_header4", "dx", "DX", "LH", "Header 4", None,
+     "Case/feed/DX_4_LH/DX_4_LH.pdf", "FEED-DX_4_LH"),
+    ("coilmaster_dx_rh_header4", "dx", "DX", "RH", "Header 4", None,
+     "Case/feed/DX_4_RH/DX_4_RH.pdf", "FEED-DX_4_RH"),
+    ("coilmaster_hgrh_lh_header4", "hgrh", "HGRH", "LH", "Header 4", None,
+     "Case/feed/HG_4_LH/HG_4_LH.pdf", "FEED-HG_4_LH"),
+    ("coilmaster_hgrh_rh_header4", "hgrh", "HGRH", "RH", "Header 4", None,
+     "Case/feed/HG_4_RH/HG_4_RH.pdf", "FEED-HG_4_RH"),
 ]
-MIRRORS = [
-    # rh/opposite template_id, category_dir, mirror_of (already-seeded id)
-    ("coilmaster_dx_rh_header1", "dx", "coilmaster_dx_lh_header1"),
-    ("coilmaster_dx_lh_header2", "dx", "coilmaster_dx_rh_header2"),
-    ("coilmaster_dx_rh_header3", "dx", "coilmaster_dx_lh_header3"),
-    ("coilmaster_hgrh_rh_header2", "hgrh", "coilmaster_hgrh_lh_header2"),
-    # RH seeded from EZC-0016 -> LH is the mirror (create_mirror handles RH->LH).
-    ("coilmaster_hgrh_lh_header3", "hgrh", "coilmaster_hgrh_rh_header3"),
-    ("coilmaster_cwc_rh", "cwc", "coilmaster_cwc_lh"),
-    ("coilmaster_hwc_rh", "hwc", "coilmaster_hwc_lh"),
-    ("coilmaster_dx_rh_hgbp", "dx", "coilmaster_dx_lh_hgbp"),
-]
+# Mirroring retired (John, 2026-06-17/2026-06-21): every hand is now seeded from
+# its own real PDF. The mirror.py helper is retained for possible future use but
+# activates no template.
+MIRRORS: list[tuple[str, str, str]] = []
 
 
 def _slot_map(template_id: str, slot_ids: set[str]) -> dict:

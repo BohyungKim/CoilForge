@@ -1,13 +1,13 @@
 {
   "schema_version": "template-first.1",
   "template_id": "coilmaster_hwc_rh",
-  "source_case_id": "EZC-0005",
+  "source_case_id": "FEED-HW_RH",
   "supplier": "coilmaster",
   "coil_category": "HWC",
   "coil_hand": "RH",
   "header_type": "Header 1",
-  "source_folder": "Case/#2/EZC-0005 - HW_LH",
-  "intake_status": "mirrored_review_required",
+  "source_folder": "Case/feed/HW_RH",
+  "intake_status": "seeded_review_required",
   "review_status": "review_required",
   "release_status": "review_aid_only",
   "export_allowed": false,
@@ -16,7 +16,7 @@
   "source_files": [
     {
       "role": "ez_drawing_pdf",
-      "filename": "PHWC-1.pdf",
+      "filename": "HW_RH.pdf",
       "filename_policy": "not_committed",
       "page_count": 1,
       "committed_copy": false,
@@ -41,6 +41,14 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.CASING_MATERIAL_2",
+      "value": "Galvanized Steel",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.CD",
       "value": "4.63",
       "source_channels": [
@@ -50,7 +58,7 @@
     },
     {
       "slot_id": "slot.CH",
-      "value": "20.75",
+      "value": "19.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -58,7 +66,7 @@
     },
     {
       "slot_id": "slot.CIRCUITING",
-      "value": "1 Feed/ 12 Pass",
+      "value": "2 Feed/ 12 Pass",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -66,7 +74,7 @@
     },
     {
       "slot_id": "slot.CL",
-      "value": "15.50",
+      "value": "33.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -74,7 +82,23 @@
     },
     {
       "slot_id": "slot.COIL_TUBE_FACE",
-      "value": "Tube Face = 13",
+      "value": "Tube Face = 12",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.DRY_WEIGHT",
+      "value": "35.1 Lbs. Per Coil",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FASTENER_TYPE",
+      "value": "Rivets",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -82,7 +106,7 @@
     },
     {
       "slot_id": "slot.FH",
-      "value": "19.5",
+      "value": "18",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -90,7 +114,23 @@
     },
     {
       "slot_id": "slot.FIN_MATERIAL",
-      "value": "6.5 Fins Per Inch",
+      "value": "7 Fins Per Inch",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_2",
+      "value": "0.0075 Aluminum",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_3",
+      "value": "Flat",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -98,7 +138,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "12.5",
+      "value": "30",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -106,7 +146,7 @@
     },
     {
       "slot_id": "slot.HD2",
-      "value": "3",
+      "value": "3.5",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -137,8 +177,16 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.INTERNAL_VOLUME",
+      "value": "1.08 Gal Per Coil",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.MODEL_NUMBER",
-      "value": "HW-A-F-02-06.5-19.50x12.50-L",
+      "value": "HW-A-F-02-07-18.00x30.00-R",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -154,7 +202,7 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "17.38",
+      "value": "35.50",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -170,15 +218,7 @@
     },
     {
       "slot_id": "slot.RB",
-      "value": "1.88",
-      "source_channels": [
-        "ez_drawing_pdf"
-      ],
-      "review_status": "review_required"
-    },
-    {
-      "slot_id": "slot.RETURN_CONN_SIZE",
-      "value": "0.875\" OD Header",
+      "value": "2.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -210,7 +250,23 @@
     },
     {
       "slot_id": "slot.SL2",
-      "value": "12.00",
+      "value": "8.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE",
+      "value": "0.875\" OD Header",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
+      "value": "0.75\" MPT-Copper",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -218,7 +274,7 @@
     },
     {
       "slot_id": "slot.TAG",
-      "value": "PHWC-1",
+      "value": "HHWC-1",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -235,6 +291,14 @@
     {
       "slot_id": "slot.TUBE_MATERIAL",
       "value": "0.625 x 0.020",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TUBE_MATERIAL_2",
+      "value": "Copper Smooth",
       "source_channels": [
         "ez_drawing_pdf"
       ],

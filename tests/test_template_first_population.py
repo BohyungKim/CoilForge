@@ -39,7 +39,10 @@ def test_template_catalog_contains_22_buckets_and_validates_schema() -> None:
     jsonschema.validate(payload, schema)
 
 
-def test_missing_reference_buckets_are_placeholder_blocked() -> None:
+def test_header4_buckets_now_seeded_active() -> None:
+    # Header-4 (DX + HGRH) were placeholder_blocked while no reference drawing
+    # existed. Real per-hand reference PDFs were provided (2026-06-21), so they are
+    # now seeded active review aids and no bucket remains placeholder_blocked.
     catalog = load_drawing_template_catalog()
     by_id = catalog.by_template_id()
 
@@ -50,14 +53,10 @@ def test_missing_reference_buckets_are_placeholder_blocked() -> None:
         "coilmaster_hgrh_rh_header4",
     ):
         entry = by_id[template_id]
-        assert entry.status == "placeholder_blocked"
-        assert entry.generation_allowed is False
+        assert entry.status == "active_review_aid"
+        assert entry.generation_allowed is True
 
-    assert all(
-        entry.generation_allowed is False
-        for entry in catalog.entries
-        if entry.status == "placeholder_blocked"
-    )
+    assert not [e for e in catalog.entries if e.status == "placeholder_blocked"]
 
 
 def test_selector_chooses_dx_lh_header1_seed_template() -> None:
@@ -77,7 +76,7 @@ def test_selector_chooses_dx_lh_header1_seed_template() -> None:
     assert result.generation_allowed is True
 
 
-def test_selector_blocks_dx_header4_and_hgrh_header4() -> None:
+def test_selector_allows_seeded_dx_header4_and_hgrh_header4() -> None:
     dx = select_drawing_template(
         TemplateSelectionRequest(
             supplier="coilmaster",
@@ -96,17 +95,17 @@ def test_selector_blocks_dx_header4_and_hgrh_header4() -> None:
     )
 
     assert dx.template_id == "coilmaster_dx_rh_header4"
-    assert dx.template_status == "placeholder_blocked"
-    assert dx.generation_allowed is False
+    assert dx.template_status == "active_review_aid"
+    assert dx.generation_allowed is True
     assert hgrh.template_id == "coilmaster_hgrh_lh_header4"
-    assert hgrh.template_status == "placeholder_blocked"
-    assert hgrh.generation_allowed is False
+    assert hgrh.template_status == "active_review_aid"
+    assert hgrh.generation_allowed is True
 
 
-def test_selector_chooses_hgrh_header3_seed_mirror_forbidden() -> None:
-    # HGRH Header 3 RH is seeded from EZC-0016. Its LH partner was a mirror; mirror
-    # generation is now DISABLED (John, 2026-06-17), so LH is "template not
-    # registered" (needs_pair) until seeded from its own PDF.
+def test_selector_chooses_hgrh_header3_both_hands_seeded() -> None:
+    # HGRH Header 3 RH is seeded from EZC-0016. Its LH partner was a disabled mirror
+    # until a real LH reference PDF was provided (2026-06-21); both hands are now
+    # seeded active review aids.
     rh = select_drawing_template(
         TemplateSelectionRequest(
             supplier="coilmaster",
@@ -129,8 +128,8 @@ def test_selector_chooses_hgrh_header3_seed_mirror_forbidden() -> None:
     assert rh.template_status == "active_review_aid"
     assert rh.generation_allowed is True
     assert lh.template_id == "coilmaster_hgrh_lh_header3"
-    assert lh.template_status == "needs_pair"
-    assert lh.generation_allowed is False
+    assert lh.template_status == "active_review_aid"
+    assert lh.generation_allowed is True
 
 
 def test_hgbp_selects_special_feature_template_not_normal_header1() -> None:

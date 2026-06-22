@@ -1,9 +1,11 @@
-"""DX RH Header 1 was a horizontal mirror of the LH seed. Mirror generation is now
-DISABLED (John, 2026-06-17): the flip moves cleaned dimension callouts off their
-leader lines. Each hand must be seeded from its own PDF, so the RH bucket is
-"template not registered" (needs_pair, generation_allowed=False) until then. The
-mirror SVG artwork and the `mirror.py` helper are retained for future use but no
-longer activate a template."""
+"""DX RH Header 1 is seeded from its own real EZ drawing PDF (2026-06-21).
+
+It was previously a horizontal mirror of the LH seed, but mirroring moved cleaned
+dimension callouts off their leader lines, so every hand is now seeded from its own
+PDF. The `mirror.py` helper is retained as a pure utility but no longer activates a
+template -- and must never be run against a live seeded bucket, since create_mirror
+writes into the bucket dir and would overwrite the real seed.
+"""
 
 from __future__ import annotations
 
@@ -20,46 +22,46 @@ REPO = Path(__file__).resolve().parents[1]
 RH_SVG = REPO / "templates/drawing/coilmaster/dx/coilmaster_dx_rh_header1/template.svg"
 
 
-def test_rh_mirror_template_is_disabled_not_registered() -> None:
-    # Mirror generation is forbidden: the RH bucket exists but is not active.
+def test_rh_header1_is_seeded_active() -> None:
+    # The RH bucket is now a real seed (not a disabled mirror).
     entry = get_template_entry("coilmaster_dx_rh_header1")
     assert entry is not None
     assert entry.coil_hand == "RH"
-    assert entry.status == "needs_pair"
-    assert entry.generation_allowed is False
+    assert entry.status == "active_review_aid"
+    assert entry.generation_allowed is True
     assert entry.reference_status != "mirrored_from_seeded_pair_review_required"
 
 
-def test_rh_svg_is_valid_and_has_flip_transform() -> None:
-    import re
-
+def test_rh_svg_is_valid_review_aid() -> None:
     xml.dom.minidom.parse(str(RH_SVG))  # raises if malformed
     svg = RH_SVG.read_text(encoding="utf-8")
-    assert re.search(r"matrix\(-1 0 0 1 [\d.]+ 0\)", svg)  # horizontal mirror
     assert "coilmaster_dx_rh_header1" in svg
     assert "coilmaster_dx_lh_header1" not in svg  # identity fully rewritten
+    assert "REVIEW AID - NOT FOR MANUFACTURING" in svg
 
 
-def test_mirror_helper_reusable_for_any_seed(tmp_path) -> None:
-    # The helper regenerates the RH pair deterministically from the LH seed.
-    from coilforge.template_population.mirror import create_rh_mirror, mirror_svg
+def test_mirror_helper_is_pure_and_non_destructive() -> None:
+    # The mirror helper is retained as a pure utility. mirror_svg returns a new
+    # string (no disk writes); id derivation is deterministic. We deliberately do
+    # NOT call create_rh_mirror here -- it writes into the live RH bucket dir and
+    # would clobber the real seed.
+    from coilforge.template_population.mirror import _opposite_hand_id, mirror_svg
 
     lh_svg = (REPO / "templates/drawing/coilmaster/dx/coilmaster_dx_lh_header1"
               / "template.svg").read_text(encoding="utf-8")
     mirrored = mirror_svg(lh_svg)
     assert mirrored != lh_svg
     xml.dom.minidom.parseString(mirrored.replace("{{", "0").replace("}}", ""))
-    # idempotent id derivation
-    assert create_rh_mirror("coilmaster_dx_lh_header1") == "coilmaster_dx_rh_header1"
+    assert _opposite_hand_id("coilmaster_dx_lh_header1") == "coilmaster_dx_rh_header1"
+    assert _opposite_hand_id("coilmaster_cwc_rh") == "coilmaster_cwc_lh"
 
 
-def test_dx_rh_selection_links_but_is_not_generation_allowed() -> None:
-    # Selection still classifies the coil to the RH bucket, but mirror generation
-    # is forbidden, so generation_allowed is False (UI -> "template not registered").
+def test_dx_rh_selection_links_and_is_generation_allowed() -> None:
+    # Selection classifies the coil to the RH bucket, which is now seeded and active.
     out = link_drawing_template(
         coil_type="DX",
         ez_json={"Geometry": {"NumCircuits": 1, "CoilHand": 0,
                               "Headers": [{"ID": 1, "IsSupply": True}]}},
     )
     assert out["template_id"] == "coilmaster_dx_rh_header1"
-    assert out["generation_allowed"] is False
+    assert out["generation_allowed"] is True

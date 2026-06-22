@@ -1,13 +1,13 @@
 {
   "schema_version": "template-first.1",
   "template_id": "coilmaster_dx_rh_header3",
-  "source_case_id": "EZC-0007",
+  "source_case_id": "FEED-DX_3_RH",
   "supplier": "coilmaster",
   "coil_category": "DX",
   "coil_hand": "RH",
   "header_type": "Header 3",
-  "source_folder": "Case/#2/EZC-0007 - DX_3_LH",
-  "intake_status": "mirrored_review_required",
+  "source_folder": "Case/feed/DX_3_RH",
+  "intake_status": "seeded_review_required",
   "review_status": "review_required",
   "release_status": "review_aid_only",
   "export_allowed": false,
@@ -16,7 +16,7 @@
   "source_files": [
     {
       "role": "ez_drawing_pdf",
-      "filename": "CDXC-1.pdf",
+      "filename": "DX_3_RH.pdf",
       "filename_policy": "not_committed",
       "page_count": 1,
       "committed_copy": false,
@@ -35,6 +35,14 @@
     {
       "slot_id": "slot.CASING_MATERIAL",
       "value": "16 Ga.",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CASING_MATERIAL_2",
+      "value": "Galvanized Steel",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -65,6 +73,22 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.CIRCUITING_2",
+      "value": "C1: 5 Feed C2: 5 Feed",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CIRCUITING_3",
+      "value": "C3: 7 Feed",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.CL",
       "value": "55.00",
       "source_channels": [
@@ -89,6 +113,22 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.DRY_WEIGHT",
+      "value": "159.9 Lbs. Per Coil",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FASTENER_TYPE",
+      "value": "Bolts",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.FH",
       "value": "34",
       "source_channels": [
@@ -99,6 +139,22 @@
     {
       "slot_id": "slot.FIN_MATERIAL",
       "value": "12 Fins Per Inch",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_2",
+      "value": "0.0075 Aluminum",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_3",
+      "value": "Flat",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -163,6 +219,14 @@
     {
       "slot_id": "slot.I5",
       "value": "3.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.MODEL_NUMBER",
+      "value": "DX-F-F-05-12-34.00x52.00-R",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -241,6 +305,14 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.RETURN_CONN_SIZE_2",
+      "value": "1.125\" SWT-Copper",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.RF",
       "value": "1.50",
       "source_channels": [
@@ -307,6 +379,14 @@
     {
       "slot_id": "slot.TUBE_MATERIAL",
       "value": "0.375 x 0.016",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TUBE_MATERIAL_2",
+      "value": "Copper Smooth",
       "source_channels": [
         "ez_drawing_pdf"
       ],

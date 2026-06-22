@@ -1,13 +1,13 @@
 {
   "schema_version": "template-first.1",
   "template_id": "coilmaster_dx_rh_hgbp",
-  "source_case_id": "EZC-0013",
+  "source_case_id": "FEED-DX_HB_RH",
   "supplier": "coilmaster",
   "coil_category": "DX",
   "coil_hand": "RH",
   "header_type": "HGBP",
-  "source_folder": "Case/#2/EZC-0013 - DX_HB_LH",
-  "intake_status": "mirrored_review_required",
+  "source_folder": "Case/feed/DX_HB_RH",
+  "intake_status": "seeded_review_required",
   "review_status": "review_required",
   "release_status": "review_aid_only",
   "export_allowed": false,
@@ -16,7 +16,7 @@
   "source_files": [
     {
       "role": "ez_drawing_pdf",
-      "filename": "CDXC-1.pdf",
+      "filename": "DX_HB_RH.pdf",
       "filename_policy": "not_committed",
       "page_count": 1,
       "committed_copy": false,
@@ -35,6 +35,14 @@
     {
       "slot_id": "slot.CASING_MATERIAL",
       "value": "16 Ga.",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CASING_MATERIAL_2",
+      "value": "Galvanized Steel",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -65,8 +73,16 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.CIRCUITING_2",
+      "value": "0 Dropped Tubes",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.CL",
-      "value": "22.00",
+      "value": "18.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -89,6 +105,30 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.DISTRIBUTORS_2",
+      "value": "OD:5/8",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.DRY_WEIGHT",
+      "value": "23.6 Lbs. Per Coil",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FASTENER_TYPE",
+      "value": "Rivets",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.FH",
       "value": "12",
       "source_channels": [
@@ -98,7 +138,23 @@
     },
     {
       "slot_id": "slot.FIN_MATERIAL",
-      "value": "12 Fins Per Inch",
+      "value": "14 Fins Per Inch",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_2",
+      "value": "0.0075 Aluminum",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_3",
+      "value": "Flat",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -106,7 +162,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "19",
+      "value": "15",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -154,7 +210,7 @@
     },
     {
       "slot_id": "slot.MODEL_NUMBER",
-      "value": "DX-F-F-05-12-12.00x19.00-L",
+      "value": "DX-F-F-05-14-12.00x15.00-R",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -170,7 +226,7 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "24.25",
+      "value": "20.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -194,7 +250,15 @@
     },
     {
       "slot_id": "slot.RETURN_CONN_SIZE",
-      "value": "0.625\" OD Header",
+      "value": "0.875\" OD Header",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RETURN_CONN_SIZE_2",
+      "value": "0.625\" SWT-Copper",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -251,6 +315,14 @@
     {
       "slot_id": "slot.TUBE_MATERIAL",
       "value": "0.375 x 0.016",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TUBE_MATERIAL_2",
+      "value": "Copper Smooth",
       "source_channels": [
         "ez_drawing_pdf"
       ],

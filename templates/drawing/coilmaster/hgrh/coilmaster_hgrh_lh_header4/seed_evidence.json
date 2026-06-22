@@ -1,12 +1,12 @@
 {
   "schema_version": "template-first.1",
-  "template_id": "coilmaster_cwc_rh",
-  "source_case_id": "FEED-CW_RH",
+  "template_id": "coilmaster_hgrh_lh_header4",
+  "source_case_id": "FEED-HG_4_LH",
   "supplier": "coilmaster",
-  "coil_category": "CWC",
-  "coil_hand": "RH",
-  "header_type": "Header 1",
-  "source_folder": "Case/feed/CW_RH",
+  "coil_category": "HGRH",
+  "coil_hand": "LH",
+  "header_type": "Header 4",
+  "source_folder": "Case/feed/HG_4_LH",
   "intake_status": "seeded_review_required",
   "review_status": "review_required",
   "release_status": "review_aid_only",
@@ -16,7 +16,7 @@
   "source_files": [
     {
       "role": "ez_drawing_pdf",
-      "filename": "CW_RH.pdf",
+      "filename": "HG_4_LH.pdf",
       "filename_policy": "not_committed",
       "page_count": 1,
       "committed_copy": false,
@@ -50,7 +50,7 @@
     },
     {
       "slot_id": "slot.CD",
-      "value": "6.00",
+      "value": "10.75",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -58,7 +58,7 @@
     },
     {
       "slot_id": "slot.CH",
-      "value": "38.75",
+      "value": "25.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -66,7 +66,23 @@
     },
     {
       "slot_id": "slot.CIRCUITING",
-      "value": "5 Feed/ 4 Pass",
+      "value": "6 Passes per Feed",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CIRCUITING_2",
+      "value": "C1: 1 Feed C2: 1 Feed",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CIRCUITING_3",
+      "value": "C3: 1 Feed C4: 1 Feed",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -74,7 +90,7 @@
     },
     {
       "slot_id": "slot.CL",
-      "value": "66.00",
+      "value": "63.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -82,7 +98,7 @@
     },
     {
       "slot_id": "slot.COIL_TUBE_FACE",
-      "value": "Tube Face = 25",
+      "value": "Tube Face = 24",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -90,7 +106,7 @@
     },
     {
       "slot_id": "slot.DRY_WEIGHT",
-      "value": "165.6 Lbs. Per Coil",
+      "value": "47.0 Lbs. Per Coil",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -106,7 +122,7 @@
     },
     {
       "slot_id": "slot.FH",
-      "value": "37.5",
+      "value": "24",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -114,7 +130,7 @@
     },
     {
       "slot_id": "slot.FIN_MATERIAL",
-      "value": "12 Fins Per Inch",
+      "value": "13 Fins Per Inch",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -138,7 +154,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "63",
+      "value": "60",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -146,7 +162,7 @@
     },
     {
       "slot_id": "slot.HD2",
-      "value": "4",
+      "value": "3.50",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -170,15 +186,31 @@
     },
     {
       "slot_id": "slot.I1",
-      "value": "2.31",
+      "value": "2.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
       "review_status": "review_required"
     },
     {
-      "slot_id": "slot.INTERNAL_VOLUME",
-      "value": "6.71 Gal Per Coil",
+      "slot_id": "slot.I3",
+      "value": "9.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.I5",
+      "value": "15.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.I7",
+      "value": "21.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -186,7 +218,7 @@
     },
     {
       "slot_id": "slot.MODEL_NUMBER",
-      "value": "CW-A-F-03-12-37.50x63.00-R",
+      "value": "CD-F-F-01-13-24.00x60.00-L",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -194,7 +226,31 @@
     },
     {
       "slot_id": "slot.O2",
-      "value": "2.31",
+      "value": "2.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.O4",
+      "value": "2.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.O6",
+      "value": "2.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.O8",
+      "value": "2.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -202,7 +258,7 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "69.25",
+      "value": "65.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -210,7 +266,31 @@
     },
     {
       "slot_id": "slot.R2",
-      "value": "1.70",
+      "value": "2.19",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.R4",
+      "value": "4.31",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.R6",
+      "value": "6.44",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.R8",
+      "value": "8.31",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -218,7 +298,23 @@
     },
     {
       "slot_id": "slot.RB",
-      "value": "2.25",
+      "value": "1.75",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RETURN_CONN_SIZE",
+      "value": "0.625\" OD Header",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.RETURN_CONN_SIZE_2",
+      "value": "0.625\" SWT-Copper",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -234,7 +330,7 @@
     },
     {
       "slot_id": "slot.ROWS",
-      "value": "3.00",
+      "value": "1.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -242,7 +338,7 @@
     },
     {
       "slot_id": "slot.S1",
-      "value": "1.70",
+      "value": "0.94",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -258,7 +354,7 @@
     },
     {
       "slot_id": "slot.SUPPLY_CONN_SIZE",
-      "value": "1.375\" OD Header",
+      "value": "0.875\" OD Header",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -266,7 +362,7 @@
     },
     {
       "slot_id": "slot.SUPPLY_CONN_SIZE_2",
-      "value": "1.25\" MPT-Copper",
+      "value": "0.875\" SWT-Copper",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -274,7 +370,7 @@
     },
     {
       "slot_id": "slot.TAG",
-      "value": "CCWC-2",
+      "value": "RHHGRC-1",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -290,7 +386,7 @@
     },
     {
       "slot_id": "slot.TUBE_MATERIAL",
-      "value": "0.625 x 0.020",
+      "value": "0.375 x 0.016",
       "source_channels": [
         "ez_drawing_pdf"
       ],

@@ -1,13 +1,13 @@
 {
   "schema_version": "template-first.1",
   "template_id": "coilmaster_hgrh_lh_header3",
-  "source_case_id": "EZC-0016",
+  "source_case_id": "FEED-HG_3_LH",
   "supplier": "coilmaster",
   "coil_category": "HGRH",
   "coil_hand": "LH",
   "header_type": "Header 3",
-  "source_folder": "Case/#3/EZC-0016 - HG_3_RH",
-  "intake_status": "mirrored_review_required",
+  "source_folder": "Case/feed/HG_3_LH",
+  "intake_status": "seeded_review_required",
   "review_status": "review_required",
   "release_status": "review_aid_only",
   "export_allowed": false,
@@ -16,7 +16,7 @@
   "source_files": [
     {
       "role": "ez_drawing_pdf",
-      "filename": "RHHGRC-1.pdf",
+      "filename": "HG_3_LH.pdf",
       "filename_policy": "not_committed",
       "page_count": 1,
       "committed_copy": false,
@@ -50,7 +50,7 @@
     },
     {
       "slot_id": "slot.CD",
-      "value": "5.50",
+      "value": "8.13",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -66,7 +66,7 @@
     },
     {
       "slot_id": "slot.CIRCUITING",
-      "value": "16 Passes per Feed",
+      "value": "8 Passes per Feed",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -90,7 +90,7 @@
     },
     {
       "slot_id": "slot.CL",
-      "value": "39.00",
+      "value": "51.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -106,7 +106,7 @@
     },
     {
       "slot_id": "slot.DRY_WEIGHT",
-      "value": "35.5 Lbs. Per Coil",
+      "value": "40.0 Lbs. Per Coil",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -130,7 +130,7 @@
     },
     {
       "slot_id": "slot.FIN_MATERIAL",
-      "value": "8 Fins Per Inch",
+      "value": "12.5 Fins Per Inch",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -154,7 +154,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "36",
+      "value": "48",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -194,7 +194,7 @@
     },
     {
       "slot_id": "slot.I3",
-      "value": "10.00",
+      "value": "11.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -202,7 +202,15 @@
     },
     {
       "slot_id": "slot.I5",
-      "value": "18.00",
+      "value": "19.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.MODEL_NUMBER",
+      "value": "CD-F-F-01-12.5-24.00x48.00-L",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -234,7 +242,7 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "41.25",
+      "value": "53.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -242,7 +250,7 @@
     },
     {
       "slot_id": "slot.R2",
-      "value": "0.63",
+      "value": "1.94",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -250,7 +258,7 @@
     },
     {
       "slot_id": "slot.R4",
-      "value": "2.75",
+      "value": "4.06",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -258,7 +266,7 @@
     },
     {
       "slot_id": "slot.R6",
-      "value": "4.88",
+      "value": "5.81",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -282,7 +290,15 @@
     },
     {
       "slot_id": "slot.ROWS",
-      "value": "2.00",
+      "value": "1.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.S1",
+      "value": "0.69",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -314,7 +330,7 @@
     },
     {
       "slot_id": "slot.TAG",
-      "value": "RHHGRC-1",
+      "value": "RHHGRC-2",
       "source_channels": [
         "ez_drawing_pdf"
       ],
