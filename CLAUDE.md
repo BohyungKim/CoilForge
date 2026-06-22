@@ -90,6 +90,123 @@ The browser UI is vanilla JS in `web/` (`index.html` / `app.js` / `style.css`). 
 responses deliberately assert safety flags (`raw_private_data_returned: False`,
 `export_allowed: False`, `production_drawing_approval_claimed: False`).
 
+## CoilForge MVP taxonomy (confirmed 2026-06-21)
+
+The EZ-coil drawing-template tool follows a four-level decision tree
+(category → product type → header count → drawing), plus a deferred Nova/Ventum-H
+casing split. The rules below are the **confirmed MVP taxonomy**. Where a rule states a
+**target** that the code does not yet implement, that is flagged explicitly in
+*Current code state vs confirmed target* at the end of this section — do not assume the
+target already exists in code.
+
+### Coil category detection
+
+PDF intake derives the coil **category** from the unit/coil tag prefix
+(`submittal/pdf_intake.py::_COIL_TYPE_BY_PREFIX` / `_COIL_FORMAT_BY_PREFIX`):
+
+- `CDXC` → **DX**
+- `RHHGRC` (alias `HGRC`) → **HGRH**
+- `HHWC` / `PHWC` → **HWC** (Hot Water Coil)
+- `CCWC` → **CWC** (Chilled Water Coil)
+
+### Product family rules
+
+First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
+
+- **Nova + Ventum H share one header-rule set** and diverge only at casing-size
+  population: `R-074` casing-dims lookup has distinct `NOVA|…` / `VENTUM_H|…` keys,
+  `R-075` is a Nova-only size class, and `R-076` carries separate size sets. This is the
+  "Later Step: split Nova vs Ventum H for casing size population" — **already implemented**.
+- **Terra H and Terra V are distinct product types** (not one Terra family).
+  **Terra H C** is a sub-variant *under* Terra H.
+- Drawing **values** are always selected by product type (the YAML engine).
+- Template **selection** is product-family-agnostic **except Ventum+**, which forks its
+  own template set. *Target:* a full parallel Ventum+ bucket matrix selected via a catalog
+  `product_family` discriminator, replacing the current downstream
+  `_UNREGISTERED_PRODUCT_LINES` hard-block in `workflows/submittal_to_drawing.py`.
+
+### Header count rules
+
+- **DX / HGRH:** header counts **1HD–4HD** are all first-class. 4HD is buildable **only
+  after a real 4HD reference PDF is seeded** — never via surrogate or mirror generation,
+  never invented.
+- **HWC / CWC:** **1HD only**.
+- Header count drives **template selection** (`template_population/catalog.py`), **not**
+  the rule engine. The engine handles multi-header geometry via `circuits` / `feeds`
+  formula inputs (`R-022`, `R-034`, `R-048`, `R-072`/`R-073`).
+
+### Manual review rules
+
+- The **confidence gate** is the central invariant: `HIGH` → `values` (auto-drawn);
+  `MEDIUM` → `suggestions` (always `review_required`, never silently drawn);
+  `LOW` / `CONFLICT` → `blocked` (`value=None` + `blocked_reason`).
+- Inferred mappings stay **review-required** until John / engineering confirm them.
+- Generated drawings are **review aids** (`export_allowed: False`) until formally approved.
+- **No surrogate / mirror template generation** — each hand/header must be seeded from its
+  own real reference PDF.
+- **Terra V** is largely SOP-only (single-source) across categories, so it routes to
+  `LOW` / blocked (`R-023` DX spacing, `R-046` HGRH, `R-067` CWC/HWC vent-drain).
+
+### MVP checklist
+
+Coverage = which `(category, hand, header, product family)` template buckets are **seeded**
+vs **unseeded**. Unseeded buckets (`needs_pair` / `placeholder_blocked`,
+`generation_allowed=False`) are tracked work items. Currently **10 of 22** buckets are
+active review aids; the rest await seeding. Coverage is surfaced today via the
+hand-authored `docs/coverage_dashboard.html` (a point-in-time snapshot; a generator is a
+follow-up item).
+
+### Corrected taxonomy diagram
+
+```mermaid
+flowchart TD
+    PDF[PDF Intake] --> DETECT{Coil Category Detection}
+    DETECT -->|CDXC| DX[DX]
+    DETECT -->|RHHGRC| HGRH[HGRH]
+    DETECT -->|HHWC / PHWC| HWC[Hot Water Coil]
+    DETECT -->|CCWC| CWC[Chilled Water Coil]
+
+    DX & HGRH & HWC & CWC --> PT{Product Type}
+
+    %% Terra H / Terra V are first-class; Terra H C is a sub-variant of Terra H
+    PT --> NOVA[Nova]
+    PT --> VH[Ventum H]
+    PT --> VP[Ventum+]
+    PT --> TH[Terra H<br/>sub-variant: Terra H C]
+    PT --> TV[Terra V]
+    NOVA & VH -.->|shared header rule| SHARED[Shared Header Rule]
+
+    %% Two parallel routings (the architectural seam — kept separate)
+    PT --> TPL[Template Selection<br/>= category + hand + header count]
+    PT --> PARAM[Drawing Parameters<br/>= product type -- YAML engine]
+    %% Ventum+ forks its own template set; Nova/VH/Terra share
+    VP -.->|own template set| TPL
+
+    %% Header count 1-4 first-class; 4HD buildable once a real PDF is seeded
+    TPL --> HC{Header Count}
+    HC -->|DX / HGRH| HD14[1HD / 2HD / 3HD / 4HD]
+    HC -->|HWC / CWC| HD1[1HD only]
+    HD14 -.->|status when no seed yet| CHECK
+
+    %% Every unseeded category/hand/header/Ventum+ combo is tracked
+    TPL -.-> CHECK[Coverage Checklist<br/>unseeded combos incl. 4HD, RH/LH pairs, Ventum+]
+
+    %% 'Later step' — already implemented
+    SHARED -.-> CASING[Later Step: Split Nova vs Ventum H<br/>for Casing Size Population<br/>ALREADY in R-074 / R-075 / R-076]
+```
+
+### Current code state vs confirmed target
+
+The taxonomy above is the **target**. Code alignment is a separate, John-requested plan.
+Until then, the code differs as follows — do not assume the target is implemented:
+
+| Area | Current code | Confirmed target |
+| --- | --- | --- |
+| Product family enum | `ProductFamily {NOVA, TERRA, VENTUM_H, VENTUM_PLUS}` + `TerraVariant {TERRA_H, TERRA_H_C, TERRA_V}` (`schemas/header_prepopulate.py`) | Split `TERRA` → `TERRA_H` + `TERRA_V`; demote `TERRA_H_C` to a sub-variant of Terra H |
+| 4HD buckets | `placeholder_blocked` (permanent dead-end) in `template_population/catalog.py` | `needs_pair` — buildable once a real 4HD reference PDF is seeded |
+| Ventum+ | Downstream hard-block via `_UNREGISTERED_PRODUCT_LINES` in `workflows/submittal_to_drawing.py` | Catalog `product_family` discriminator + full parallel Ventum+ bucket matrix |
+| Coverage checklist | Hand-authored `docs/coverage_dashboard.html` snapshot | Generated from `template_population/catalog.list_template_entries()` |
+
 ## Conventions
 
 - Python 3.11+, `from __future__ import annotations`, full type hints, Pydantic v2
