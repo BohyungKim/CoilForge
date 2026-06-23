@@ -145,12 +145,17 @@ def run_submittal_to_direct_draft_workflow(payload: dict[str, Any]) -> dict[str,
 
 
 def _inject_extra_drawing_params(parameter_set: Any, engine_values: list[Any]) -> None:
-    """Add drawing-output params beyond the registry (e.g. HDx1 distributor HD)."""
+    """Add drawing-output params beyond the registry: the distributor HD (HDx1) and
+    the logical header-2+ assemblies (I2/S2/O2/R2/HD2/ZD2, ...) which are not
+    registry fields. All stay review-required (never auto-drawn)."""
     from coilforge.drawing.parameters import DrawingParameter
-    from coilforge.services.drawing_param_resolver import EXTRA_DRAWING_PARAMS
+    from coilforge.services.drawing_param_resolver import (
+        EXTRA_DRAWING_PARAMS,
+        is_multi_header_param_key,
+    )
 
     for value in engine_values:
-        if value.key in EXTRA_DRAWING_PARAMS:
+        if value.key in EXTRA_DRAWING_PARAMS or is_multi_header_param_key(value.key):
             parameter_set.parameters[value.key] = DrawingParameter(
                 key=value.key,
                 label=value.key,
@@ -508,8 +513,11 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     }
     result = pdf_text_to_template_drawing("", cover_text="", header_context=ctx)
     # Refresh the Drawing Parameters panel from the same slot values the re-derived
-    # drawing renders, so picking a product line + unit size updates BOTH.
-    result["drawing_parameter_set"] = parameter_set_from_template_drawing(result).model_dump()
+    # drawing renders, so picking a product line + unit size updates BOTH. Pass the
+    # circuit count so multi-header assemblies (I2/S2/...) surface for 2HD+ coils.
+    result["drawing_parameter_set"] = parameter_set_from_template_drawing(
+        result, circuits=ctx.get("circuits")
+    ).model_dump()
     _gate_unregistered_product_line(result)
     if result.get("svg"):
         result["svg"] = _clean_template_svg(result["svg"])
@@ -766,7 +774,9 @@ def _run_candidate_to_drawing_payload(
             parameter_set_from_template_drawing,
         )
 
-        panel_parameter_set = parameter_set_from_template_drawing(template_drawing)
+        panel_parameter_set = parameter_set_from_template_drawing(
+            template_drawing, circuits=ctx.get("circuits")
+        )
     else:
         panel_parameter_set = parameter_set
 

@@ -192,6 +192,10 @@ const DC_SECTIONS = {
   ],
 };
 
+// Header assembly 1 (the casing/fin column + the supply/return column). Header
+// assemblies 2..N (I2/S2/O2/R2/HD2/ZD2, ...) are generated dynamically from the
+// resolved parameter set by dcHeaderColumns(), so a 1HD coil shows no extra column
+// while a 2HD/3HD/4HD coil grows one column per derived header.
 const DC_DRAWING_COLUMNS = [
   [
     ["CD", true],
@@ -210,14 +214,27 @@ const DC_DRAWING_COLUMNS = [
     ["HD", false],
     ["ZD", false],
   ],
-  [
-    ["I2", true],
-    ["S2", true],
-    ["O2", true],
-    ["R2", true],
-    ["HD2", false],
-    ["ZD2", false],
-  ],
+];
+
+// Checkbox flag per logical dimension base, mirroring header-1's column above
+// (positions I/S/O/R carry a checkbox; HD/ZD do not).
+const DC_HEADER_ROW_FLAGS = [
+  ["I", true],
+  ["S", true],
+  ["O", true],
+  ["R", true],
+  ["HD", false],
+  ["ZD", false],
+];
+
+// Submittal Drawing-tab parameter layout: two Direct-Coil dimension columns
+// (left = casing/fin, right = supply/return/header). Mirrors the Direct Coil
+// software's panel so the same coil reads the same way in both. Any parameter
+// resolved upstream but not listed here (e.g. HDx1) is appended to the right
+// column so nothing is silently dropped.
+const DRAWING_PARAM_COLUMNS = [
+  ["CD", "BF", "TF", "RF", "HF", "CH", "SL"],
+  ["I", "S", "O", "R", "HD", "ZD"],
 ];
 
 const TAB_SECTION_TARGETS = {
@@ -635,7 +652,7 @@ function addDxOptionsFallbackFields(fieldsByLabel, candidate) {
   }
   const optionRules = [
     ["Header Material", "Copper", "Direct Coil company rule for DX PDF review."],
-    ["Header Wall Schedule", "(K)", "Direct Coil company rule for DX PDF review."],
+    ["Header Wall Schedule", "(L)", "Direct Coil company rule for DX PDF review."],
     ["Connection Material", "Copper", "Direct Coil company rule for DX PDF review."],
     ["Connection Type", "Sweat", "Direct Coil company rule for DX PDF review."],
     ["Casing Style", "Standard", "Direct Coil company rule for DX PDF review."],
@@ -1295,10 +1312,28 @@ function renderDcCalculatedPanel(rows, fieldsByLabel, uiState) {
   `;
 }
 
+// Build one column per header assembly n>=2 present in the resolved parameter set.
+// The resolver emits logical keys (I2/S2/O2/R2/HD2/ZD2, ...); we group by the
+// trailing number so 2HD -> 1 extra column, 4HD -> 3 extra columns, 1HD -> none.
+function dcHeaderColumns(uiState) {
+  const params = uiState.drawing_parameters?.parameters || {};
+  const headerNums = new Set();
+  for (const key of Object.keys(params)) {
+    const match = /^(?:I|S|O|R|HD|ZD)(\d+)$/.exec(key);
+    if (match && Number(match[1]) >= 2) {
+      headerNums.add(Number(match[1]));
+    }
+  }
+  return [...headerNums]
+    .sort((a, b) => a - b)
+    .map((n) => DC_HEADER_ROW_FLAGS.map(([base, hasCheckbox]) => [`${base}${n}`, hasCheckbox]));
+}
+
 function renderDcDrawingParameters(uiState, fieldsByLabel) {
+  const columns = [...DC_DRAWING_COLUMNS, ...dcHeaderColumns(uiState)];
   return `
     <div class="dc-drawing-grid">
-      ${DC_DRAWING_COLUMNS.map((column) => `
+      ${columns.map((column) => `
         <div class="dc-drawing-column">
           ${column.map(([label, hasCheckbox]) => renderDcDrawingRow(label, hasCheckbox, uiState, fieldsByLabel)).join("")}
         </div>
@@ -2017,24 +2052,51 @@ function templateDrawingBody(templateDrawing, rendered) {
 }
 
 function renderDrawingParameters(uiState) {
-  elements.drawingParameters.innerHTML = "";
-  Object.values(uiState.drawing_parameters.parameters).forEach((parameter) => {
-    const item = document.createElement("label");
-    item.className = `parameter-item ${statusClass(parameter.status)}`;
-    item.innerHTML = `
-      <span>${parameter.key}</span>
+  const parameters = uiState.drawing_parameters?.parameters || {};
+  const covered = new Set(DRAWING_PARAM_COLUMNS.flat());
+  // Any resolved parameter not placed by the fixed two-column layout (e.g. HDx1)
+  // rides along at the bottom of the right column so nothing is dropped.
+  const leftovers = Object.keys(parameters).filter((key) => !covered.has(key));
+  const columns = [
+    DRAWING_PARAM_COLUMNS[0],
+    [...DRAWING_PARAM_COLUMNS[1], ...leftovers],
+  ];
+  elements.drawingParameters.innerHTML = columns
+    .map(
+      (column) => `
+        <div class="dc-drawing-column">
+          ${column
+            .map((key) => parameters[key])
+            .filter(Boolean)
+            .map((parameter) => renderParameterRow(parameter))
+            .join("")}
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function renderParameterRow(parameter) {
+  const hasValue =
+    parameter.value !== null && parameter.value !== undefined && parameter.value !== "";
+  // data-drawing-param / data-unit stay present in both modes so the derive
+  // round-trip (collectDrawingPreviewValues) always finds the value; `readonly`
+  // locks the field outside manual mode while keeping the Direct-Coil look.
+  return `
+    <label class="dc-dimension-row ${statusClass(parameter.status)}">
+      <span>${escapeHtml(parameter.key)}</span>
+      <input class="dc-dimension-check" type="checkbox" ${hasValue ? "checked" : ""} disabled />
       <input
-        data-drawing-param="${parameter.key}"
-        data-unit="${parameter.unit || "in"}"
+        class="dc-control ${statusClass(parameter.status)}"
+        data-drawing-param="${escapeHtml(parameter.key)}"
+        data-unit="${escapeHtml(parameter.unit || "in")}"
         type="number"
         step="0.01"
         value="${parameter.value ?? ""}"
-        ${state.manualDrawingMode ? "" : "disabled"}
+        ${state.manualDrawingMode ? "" : "readonly"}
       />
-      <em>${parameter.mode}</em>
-    `;
-    elements.drawingParameters.append(item);
-  });
+    </label>
+  `;
 }
 
 function currentDrawingTemplateState(uiState) {

@@ -8,12 +8,16 @@ Drawing parameter set (DIRECT_COIL_FIELD_REGISTRY "Drawing Parameters"):
 
 Mapping status (DX):
     GENERATED (HIGH engine value):  CD, TF, BF, HF, RF, HD, SL, I, O, (R when circuits+conn known)
-    NOT CONNECTED (missing logic):  S, CH, ZD  -- see UNCONNECTED_PARAMS
+    CONSTANT (owner rule):          ZD = 4.5 (and ZD{n})
+    NOT CONNECTED (missing logic):  S, CH  -- see UNCONNECTED_PARAMS
+Header assemblies 2..N (I2/S2/O2/R2/HD2/ZD2 ...) are translated from the engine's
+parity-encoded per-header slots; see multi_header_logical_values.
 Only HIGH engine values are emitted as generated; MEDIUM/blocked stay review.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from coilforge.direct_coil.draft import DirectCoilInputDraft
@@ -81,8 +85,82 @@ PARAM_TO_SLOT: dict[str, str] = {
 UNCONNECTED_PARAMS: dict[str, str] = {
     "S": "Distributor S position: single-circuit = CD/(circuits+1) (generated below); "
          "multi-circuit is EZ layout geometry -> exact list in Geometry.Headers[].SR.",
-    "ZD": "No rule in SOP, checklist, or EZ JSON -> dimension unused.",
 }
+
+# ZD (zone depth) is a fixed constant per owner rule (John 2026-06-22), applied to
+# every header assembly (ZD, ZD2, ZD3, ...). It is NOT an engine slot or selection
+# value -- it is surfaced review-required like every other panel dimension.
+ZD_CONSTANT: float = 4.5
+ZD_REASON: str = "ZD fixed constant 4.5 (owner rule John 2026-06-22)"
+
+# Logical drawing-parameter bases that repeat per header assembly in the UI grid.
+_MULTI_HEADER_BASES: tuple[str, ...] = ("I", "S", "O", "R", "HD")
+
+
+def _header_slot(base: str, n: int) -> str | None:
+    """Logical UI header key base + header index -> engine parity-encoded slot.
+
+    UI header column ``n`` == engine circuit ``n``: the supply/distributor header
+    has odd id ``2n-1`` (carries I/S) and the return/suction header has even id
+    ``2n`` (carries O/R/HD). This parity<->logical bridge lives ONLY here -- parity
+    ids (I3, O4) never leak to the UI, logical ids (I2) never leak to the slots.
+    """
+    supply_id, return_id = 2 * n - 1, 2 * n
+    return {
+        "I": f"slot.I{supply_id}",
+        "S": f"slot.S{supply_id}",
+        "O": f"slot.O{return_id}",
+        "R": f"slot.R{return_id}",
+        "HD": f"slot.HD{return_id}",
+    }.get(base)
+
+
+# Parity-encoded per-header slot ids the resolver inspects to learn how many header
+# assemblies the engine actually produced (so the panel degrades: 1HD -> no extra
+# columns, 4HD -> headers 2/3/4 appear only when the engine derived them).
+_SLOT_HEADER_RE = re.compile(r"^slot\.(?:I|S|O|R|HD|SL|HDx)(\d+)$")
+# Logical multi-header UI key for header assembly n>=2, e.g. "I2", "O3", "ZD4".
+_MULTI_HEADER_KEY_RE = re.compile(r"^(?:I|S|O|R|HD|ZD)(\d+)$")
+
+
+def _max_header_count(slot_values: dict[str, Any]) -> int:
+    """Highest header-assembly index present in the parity-encoded slot ids."""
+    n_max = 1
+    for key in slot_values:
+        match = _SLOT_HEADER_RE.match(str(key))
+        if match:
+            n_max = max(n_max, (int(match.group(1)) + 1) // 2)  # ceil(id/2)
+    return n_max
+
+
+def is_multi_header_param_key(key: str) -> bool:
+    """True for a logical header-2+ drawing-parameter key (I2, O3, ZD4, ...)."""
+    match = _MULTI_HEADER_KEY_RE.match(str(key))
+    return bool(match) and int(match.group(1)) >= 2
+
+
+def multi_header_logical_values(
+    slot_values: dict[str, Any], *, circuits: int | None = None
+) -> list[tuple[str, Any]]:
+    """Translate parity-encoded per-header slots into logical (key, value) pairs for
+    header assemblies n>=2, plus the ``ZD{n}`` constant.
+
+    Header 1 is emitted by the base loops as the unsuffixed I/S/O/R/HD/ZD, so this
+    starts at n=2. The header count is inferred from the slots the engine produced;
+    an explicit ``circuits`` hint only raises it (never fabricates beyond what the
+    engine derived per dimension). A value is ``None`` when the engine did not derive
+    that slot -> the panel shows review-required, never a guessed number.
+    """
+    n_max = _max_header_count(slot_values)
+    if circuits:
+        n_max = max(n_max, int(circuits))
+    pairs: list[tuple[str, Any]] = []
+    for n in range(2, n_max + 1):
+        for base in _MULTI_HEADER_BASES:
+            slot = _header_slot(base, n)
+            pairs.append((f"{base}{n}", _coerce_float(slot_values.get(slot)) if slot else None))
+        pairs.append((f"ZD{n}", ZD_CONSTANT))
+    return pairs
 
 
 def _casing_height(draft: DirectCoilInputDraft, response: Any) -> float | None:
@@ -192,9 +270,39 @@ def engine_preview_values(
             emit("S", round(cd / (circuits + 1), 4), "rule_engine/generated",
                  "S = CD/(circuits+1) (single-circuit distributor center)")
             continue
+        if key == "ZD":
+            emit("ZD", ZD_CONSTANT, "rule_engine/generated", ZD_REASON)
+            continue
         not_connected[key] = UNCONNECTED_PARAMS.get(
             key, f"no engine value (field {engine_field} not HIGH for this coil)"
         )
+
+    # Header assemblies 2..N: translate the engine's parity-encoded per-header slots
+    # into logical UI keys (I2/S2/O2/R2/HD2 + ZD2 constant). Sourced from the SAME
+    # build_drawing_slots the template drawing renders, so this path and the live
+    # template path stay in sync. A local import avoids an import cycle.
+    from coilforge.services.direct_coil_drawing_pipeline import build_drawing_slots
+
+    multi_slots, _ = build_drawing_slots(
+        coil_type=coil_type,
+        product_type=product_type,
+        unit_size=unit_size,
+        rows=int(rows) if rows is not None else None,
+        feeds=int(feeds) if feeds is not None else None,
+        circuits=circuits,
+        suction_conn_size=conn,
+        finned_height=_draft_number(draft, "finned_height"),
+        finned_length=_draft_number(draft, "finned_length"),
+        ez_json=ez_json,
+    )
+    for mkey, mvalue in multi_header_logical_values(multi_slots, circuits=circuits):
+        if mvalue is None:
+            # Engine did not derive this header dimension (e.g. HGRH MEDIUM position
+            # gated out). Leave it ungenerated so the report is not misreported as
+            # connected; the live panel path still surfaces it as review-required.
+            continue
+        reason = ZD_REASON if mkey.startswith("ZD") else f"engine-derived header assembly {mkey} (review-required)"
+        emit(mkey, mvalue, "rule_engine/generated", reason)
 
     return generated, {
         "source": "ez_json+rule_engine" if json_sourced else "rule_engine",
@@ -220,7 +328,9 @@ def _coerce_float(value: Any) -> float | None:
     return None
 
 
-def parameter_set_from_template_drawing(template_drawing: dict[str, Any]) -> DrawingParameterSet:
+def parameter_set_from_template_drawing(
+    template_drawing: dict[str, Any], *, circuits: int | None = None
+) -> DrawingParameterSet:
     """Build the Drawing Parameters panel from the SAME slot values the template
     drawing renders, so the panel and the drawing never diverge.
 
@@ -229,7 +339,12 @@ def parameter_set_from_template_drawing(template_drawing: dict[str, Any]) -> Dra
     missing slot (e.g. the engine is gated until a product line + unit size are
     chosen) -> ``value=None`` so the panel reads review-required, mirroring the
     drawing's REVIEW REQUIRED text. ``HDx1`` (distributor HD) is included so the
-    panel shows it alongside ``HD``. ``ZD`` has no slot and stays unmapped.
+    panel shows it alongside ``HD``. ``ZD`` is the owner-fixed constant 4.5.
+
+    Header assemblies 2..N (logical ``I2/S2/O2/R2/HD2/ZD2`` ...) are appended for
+    multi-circuit coils by translating the engine's parity-encoded per-header slots
+    (``multi_header_logical_values``). The count is inferred from the slots present;
+    an explicit ``circuits`` hint only raises it. 1HD coils get no extra header keys.
     """
     slot_values = (template_drawing or {}).get("slot_values") or {}
 
@@ -238,9 +353,17 @@ def parameter_set_from_template_drawing(template_drawing: dict[str, Any]) -> Dra
     blocked: list[str] = []
 
     for key in (*DRAWING_PARAMETER_KEYS, *EXTRA_DRAWING_PARAMS):
+        if key == "ZD":
+            # ZD is the owner-fixed constant (no engine slot); surface review-required.
+            parameters[key] = DrawingParameter(
+                key=key, label=key, value=ZD_CONSTANT, unit="in",
+                mode="default", status="review_required", review_required=True,
+            )
+            review_required.append(key)
+            continue
         slot = PARAM_TO_SLOT.get(key)
         if slot is None:
-            # No slot for this dimension (e.g. ZD): unmapped, as before.
+            # No slot for this dimension: unmapped, as before.
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
                 mode="unmapped", status="unmapped", review_required=False,
@@ -260,6 +383,22 @@ def parameter_set_from_template_drawing(template_drawing: dict[str, Any]) -> Dra
             key=key, label=key, value=value, unit="in",
             mode="default", status="review_required", review_required=True,
         )
+        review_required.append(key)
+
+    # Header assemblies 2..N (logical I2/S2/O2/R2/HD2/ZD2, ...). The parity<->logical
+    # bridge and degrade-to-present logic live in multi_header_logical_values.
+    for key, value in multi_header_logical_values(slot_values, circuits=circuits):
+        if value is None and not key.startswith("ZD"):
+            parameters[key] = DrawingParameter(
+                key=key, label=key, value=None, unit="in",
+                mode="blocked", status="review_required", review_required=True,
+                blocked_reason="Engine did not derive this header dimension; review required.",
+            )
+        else:
+            parameters[key] = DrawingParameter(
+                key=key, label=key, value=value, unit="in",
+                mode="default", status="review_required", review_required=True,
+            )
         review_required.append(key)
 
     return DrawingParameterSet(

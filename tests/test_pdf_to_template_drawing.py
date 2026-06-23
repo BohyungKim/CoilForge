@@ -84,8 +84,8 @@ def test_panel_mirrors_template_drawing_slots() -> None:
         assert params[key].value == float(slots[slot]), f"{key} != {slot}"
     # Distributor HD (HDx1) is distinct from the return header HD and is shown.
     assert params["HDx1"].value == 4.5 and params["HD"].value != params["HDx1"].value
-    # ZD has no slot -> stays unmapped (as before).
-    assert params["ZD"].value is None and params["ZD"].mode == "unmapped"
+    # ZD is the owner-fixed constant 4.5 (review-required like every panel value).
+    assert params["ZD"].value == 4.5 and params["ZD"].status == "review_required"
 
 
 def test_panel_reads_review_required_before_engine_runs() -> None:
@@ -226,6 +226,35 @@ def test_multi_header_positions_are_logic_derived() -> None:
     # R = return_spacing R-022 list: D=1.125 -> R2=1.125, R4=2D+1.5=3.75.
     assert abs(float(sv["slot.R2"]) - 1.125) < 0.01
     assert abs(float(sv["slot.R4"]) - 3.75) < 0.01
+
+
+def test_panel_surfaces_logical_header2_for_two_circuit_dx() -> None:
+    """The Drawing Parameters panel exposes the second header assembly with LOGICAL
+    keys (I2/S2/O2/R2/HD2/ZD2), translated from the engine's parity slots (I3/O4...).
+    Parity ids never leak to the panel; values stay review-aid only."""
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    out = pdf_text_to_template_drawing(DX2_LH_CONN_TEXT, cover_text=DX2_LH_COVER)
+    pset = parameter_set_from_template_drawing(out, circuits=out["extracted"]["circuits"])
+    params = pset.parameters
+
+    sv = out["slot_values"]
+    # logical header-2 keys present; parity ids absent from the panel.
+    for key in ("I2", "S2", "O2", "R2", "HD2", "ZD2"):
+        assert key in params, key
+        assert params[key].status == "review_required"
+    assert "I3" not in params and "O4" not in params
+    # header-2 values mirror the parity slots (circuit 2 = slot ids 3/4).
+    assert params["I2"].value == float(sv["slot.I3"])
+    assert params["S2"].value == float(sv["slot.S3"])
+    assert params["O2"].value == float(sv["slot.O4"])
+    assert params["R2"].value == float(sv["slot.R4"])
+    assert params["HD2"].value == float(sv["slot.HD4"])
+    # ZD constant on both header assemblies; safety flag preserved.
+    assert params["ZD"].value == 4.5 and params["ZD2"].value == 4.5
+    assert pset.export_allowed is False
 
 
 # --- Real-submittal path: a submittal has no embedded as-built CoilMaster

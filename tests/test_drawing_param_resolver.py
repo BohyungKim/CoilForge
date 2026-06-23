@@ -32,17 +32,20 @@ def test_drawing_params_are_engine_generated_not_hardcoded() -> None:
     assert params["I"]["value"] == 3 and src("I") == "rule_engine/generated"
     assert params["O"]["value"] == 2 and src("O") == "rule_engine/generated"
     assert params["SL"]["value"] == 8 and src("SL") == "rule_engine/generated"
+    # ZD is the owner-fixed constant 4.5 (and is engine-sourced, not invented copy).
+    assert params["ZD"]["value"] == 4.5 and src("ZD") == "rule_engine/generated"
 
 
 def test_generation_report_lists_connected_and_unconnected() -> None:
     out = _run_demo()
     gen = out["drawing_parameter_generation"]
     assert gen["source"] == "rule_engine"
-    # Engine connects these (incl. recovered logic: CH=FH+TF+BF, S=CD/(C+1)).
-    for key in ("CD", "TF", "BF", "HF", "RF", "HD", "SL", "I", "O", "CH", "S"):
+    # Engine connects these (incl. recovered logic: CH=FH+TF+BF, S=CD/(C+1), and the
+    # owner-fixed ZD constant).
+    for key in ("CD", "TF", "BF", "HF", "RF", "HD", "SL", "I", "O", "CH", "S", "ZD"):
         assert key in gen["connected"], key
-    # ZD has no rule anywhere (SOP/checklist/JSON) -> reported, not invented.
-    assert "ZD" in gen["not_connected"]
+    # ZD is now the owner-fixed constant 4.5, not an unconnected dimension.
+    assert "ZD" not in gen["not_connected"]
 
 
 def test_recovered_ch_and_s_match_asbuilt() -> None:

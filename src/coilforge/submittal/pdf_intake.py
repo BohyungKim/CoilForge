@@ -198,6 +198,12 @@ _COIL_FORMAT_BY_PREFIX = {
     "CCWC": "cooling_chilled_water",
 }
 _COIL_TAG_PREFIXES = tuple(_COIL_TYPE_BY_PREFIX)
+# Accessory line items that must never be detected as coils, even when their
+# description mentions a coil keyword (e.g. an electronic expansion valve kit
+# tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"). Tag-prefix signal +
+# item-token signal; both are checked before the coil-keyword fallthrough.
+_NON_COIL_TAG_PREFIXES = {"EKEXV", "EEV", "EXV"}
+_NON_COIL_ITEM_TOKENS = ("valve", "ekexv", "eev", "expansionvalve")
 _UNIT_PREFIXES = (
     r"(?:ERV|DOAS|AHU|RTU|MAU|FCU|WSHP|TV|TH|NV|NH|VH|VV|PU|"
     + "|".join(_COIL_TAG_PREFIXES)
@@ -266,6 +272,7 @@ _FIELD_PATTERNS: tuple[_FieldPattern, ...] = (
     _FieldPattern("FIN_MATERIAL", ("Fin Material",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("FIN_SURFACE", ("Fin Surface",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("HEADER_MATERIAL", ("Header Material",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
+    _FieldPattern("HEADER_WALL_SCHEDULE", ("Header Wall Schedule", "Wall Schedule"), r"(?P<value>[A-Za-z0-9 ().\"/-]+)"),
     _FieldPattern("CONNECTION_MATERIAL", ("Connection Material",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("CONNECTION_TYPE", ("Connection Type",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("RETURN_CONNECTION_SIZE", ("Return Connection Size",), r"(?P<value>\d+\s*/\s*\d+|\d+(?:\.\d+)?)"),
@@ -304,6 +311,13 @@ PDF_INTAKE_FIELD_RULES: dict[str, SubmittalFieldRule] = {
     "NUMBER_OF_FEEDS": SubmittalFieldRule("NUMBER_OF_FEEDS", "geometry", "number_of_feeds", "feeds"),
     "NUMBER_OF_FEEDS_TOTAL": SubmittalFieldRule("NUMBER_OF_FEEDS_TOTAL", "geometry", "number_of_feeds", "feeds"),
     "CIRCUITS": SubmittalFieldRule("CIRCUITS", "geometry", "circuits"),
+    "CIRCUITS_FROM_STYLE": SubmittalFieldRule(
+        "CIRCUITS_FROM_STYLE",
+        "geometry",
+        "circuits",
+        confidence="inferred",
+        review_note="Circuit count derived from 'Coil Style' description; confirm before use.",
+    ),
     "FACE_AREA_SQFT": SubmittalFieldRule("FACE_AREA_SQFT", "geometry", "face_area_sqft", "sqft"),
     "FIN_THICKNESS_IN": SubmittalFieldRule("FIN_THICKNESS_IN", "geometry", "fin_thickness_in", "in"),
     "COIL_DEPTH_IN": SubmittalFieldRule("COIL_DEPTH_IN", "geometry", "coil_depth_in", "in"),
@@ -350,8 +364,24 @@ PDF_INTAKE_FIELD_RULES: dict[str, SubmittalFieldRule] = {
     ),
     "TUBE_MATERIAL": SubmittalFieldRule("TUBE_MATERIAL", "materials_construction", "tube_material"),
     "FIN_MATERIAL": SubmittalFieldRule("FIN_MATERIAL", "materials_construction", "fin_material"),
-    "FIN_SURFACE": SubmittalFieldRule("FIN_SURFACE", "materials_construction", "fin_surface"),
+    "FIN_SURFACE": SubmittalFieldRule(
+        "FIN_SURFACE",
+        "materials_construction",
+        "fin_surface",
+        confidence="inferred",
+        review_note="Fin surface normalized to Direct Coil candidate; confirm before use.",
+    ),
     "HEADER_MATERIAL": SubmittalFieldRule("HEADER_MATERIAL", "materials_construction", "header_material"),
+    # The fixed confidence here is only a fallback; the real per-value tier
+    # (confirmed for explicit L/K, inferred for the default, ambiguous + blocked for
+    # unknown) is resolved in extract._build_field_value.
+    "HEADER_WALL_SCHEDULE": SubmittalFieldRule(
+        "HEADER_WALL_SCHEDULE",
+        "materials_construction",
+        "header_wall_schedule",
+        confidence="inferred",
+        review_note="Header wall schedule normalized to Direct Coil (L)/(K) candidate; confirm before use.",
+    ),
     "TUBE_SURFACE": SubmittalFieldRule("TUBE_SURFACE", "materials_construction", "tube_surface"),
     "CASING_MATERIAL": SubmittalFieldRule("CASING_MATERIAL", "materials_construction", "casing_material"),
     "CASING_STYLE": SubmittalFieldRule("CASING_STYLE", "materials_construction", "casing_style"),
@@ -919,6 +949,14 @@ def extract_coil_lines_from_pdf_text(
             order,
             "Default current CoilForge Header 1 workflow candidate",
         )
+    if "HEADER_WALL_SCHEDULE" not in extracted:
+        order = _add_default_line(
+            extracted,
+            "HEADER_WALL_SCHEDULE",
+            "",
+            order,
+            "Direct Coil software default header wall schedule (L)",
+        )
 
     return list(extracted.values())
 
@@ -1166,6 +1204,35 @@ def _add_cover_row_lines(
     return order
 
 
+# Circuit count is sometimes stated only inside the "Coil Style" prose, e.g.
+# "Interlaced 2 Circuits" or "Dual Circuit", with no discrete "Circuits:" cell. Parse
+# the count out so multi-circuit coils resolve their second/Nth header instead of
+# silently defaulting to 1. A bare "Intertwined"/"Interlaced" with no number is NOT
+# counted -- we never guess a count that the source does not state.
+_COIL_STYLE_CIRCUIT_NUM_RE = re.compile(r"(\d+)\s*[- ]?\s*Circuit", re.IGNORECASE)
+_COIL_STYLE_CIRCUIT_WORDS: dict[str, int] = {
+    "single": 1, "dual": 2, "double": 2, "triple": 3, "quad": 4,
+}
+
+
+def _circuits_from_coil_style(text: str | None) -> int | None:
+    """Circuit count embedded in a 'Coil Style' value.
+
+    'Interlaced 2 Circuits' / '2-Circuit' -> 2; 'Dual Circuit' -> 2; 'Single Circuit'
+    -> 1. Returns None when no count is stated (a bare 'Intertwined'/'Interlaced' is
+    never assumed to be 2).
+    """
+    s = str(text or "")
+    if (match := _COIL_STYLE_CIRCUIT_NUM_RE.search(s)):
+        n = int(match.group(1))
+        return n if 1 <= n <= 8 else None
+    if re.search(r"circuit", s, re.IGNORECASE):
+        for word, n in _COIL_STYLE_CIRCUIT_WORDS.items():
+            if re.search(rf"\b{word}\b", s, re.IGNORECASE):
+                return n
+    return None
+
+
 def _candidate_from_cover_row(
     row: _CoverRow,
     *,
@@ -1176,6 +1243,22 @@ def _candidate_from_cover_row(
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = _add_cover_row_lines(extracted, row, 1)
     order = _append_detail_lines(extracted, detail_lines, order)
+    # Derive the circuit count from the "Coil Style" prose when no discrete "Circuits"
+    # cell was extracted (e.g. "Coil Style: Interlaced 2 Circuits"). Inferred ->
+    # review-required; the explicit CIRCUITS label, when present, wins.
+    if "CIRCUITS" not in extracted and "COIL_STYLE" in extracted:
+        style_line = extracted["COIL_STYLE"]
+        circuits_from_style = _circuits_from_coil_style(style_line.source_value)
+        if circuits_from_style is not None:
+            order = _add_line(
+                extracted,
+                "CIRCUITS_FROM_STYLE",
+                str(circuits_from_style),
+                order,
+                _TextPage(page_number=style_line.source_page or 0, text=""),
+                style_line.line_number,
+                f"Circuit count derived from Coil Style '{style_line.source_value}'",
+            )
     order = _add_default_line(
         extracted,
         "HEADER_TYPE",
@@ -1192,12 +1275,20 @@ def _candidate_from_cover_row(
             "Cover-page product type fallback",
         )
     if "COIL_TYPE" not in extracted:
-        _add_default_line(
+        order = _add_default_line(
             extracted,
             "COIL_TYPE",
             _derive_coil_type(row.tag, row.item) or "DX_HEADER1_WORKFLOW_CANDIDATE",
             order,
             "Cover-page coil type fallback",
+        )
+    if "HEADER_WALL_SCHEDULE" not in extracted:
+        order = _add_default_line(
+            extracted,
+            "HEADER_WALL_SCHEDULE",
+            "",
+            order,
+            "Direct Coil software default header wall schedule (L)",
         )
     candidate = extract_submittal_candidate_from_structured(
         list(extracted.values()),
@@ -1828,9 +1919,15 @@ def _extract_qty(raw: Any) -> int | None:
 def _is_cover_coil_row(tag: str, item: str) -> bool:
     normalized_tag = _normalize_tag(tag)
     tag_prefix = normalized_tag.split("-", 1)[0]
+    normalized_item = _normalize_header_token(item)
+    # Reject valves / EEV kits / accessories before the coil-keyword fallthrough so a
+    # description like "EKEXV Valve (DX Coil)" can't sneak through on the "dxcoil" token.
+    if tag_prefix in _NON_COIL_TAG_PREFIXES:
+        return False
+    if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
+        return False
     if tag_prefix in _COIL_TAG_PREFIXES:
         return True
-    normalized_item = _normalize_header_token(item)
     return any(
         token in normalized_item
         for token in (
@@ -1993,7 +2090,16 @@ def _match_field_value(line: str, field_pattern: _FieldPattern) -> str | None:
             continue
         value = _clean_value(match.group("value"))
         if value:
-            return _normalize_handing(value) if field_pattern.source_key in {"HANDING", "HAND", "COIL_HAND"} else value
+            if field_pattern.source_key in {"HANDING", "HAND", "COIL_HAND"}:
+                return _normalize_handing(value)
+            if field_pattern.source_key == "FIN_SURFACE":
+                return _normalize_fin_surface(value)
+            if field_pattern.source_key == "HEADER_WALL_SCHEDULE":
+                # Recognized source -> "(L)"/"(K)"; unknown returns the raw value (kept
+                # non-empty so the guard below doesn't drop it) and is blocked downstream
+                # in extract._build_field_value.
+                return _normalize_header_wall_schedule(value) or value
+            return value
     return None
 
 
@@ -2081,6 +2187,54 @@ def _normalize_handing(value: str) -> str:
     if normalized in {"R", "RH", "RIGHT HAND", "RIGHT HANDING"}:
         return "Right"
     return value.strip().title()
+
+
+# Submittal fin-surface terms -> Direct Coil dropdown candidate. Case-insensitive
+# keyword match so compound source values ("Sine Wave") resolve; unknown surfaces
+# fail closed to a review flag rather than being guessed.
+_FIN_SURFACE_KEYWORD_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("sine", "wavy", "wave", "sinusoidal", "corrugat"), "Corrugated"),
+    (("lanced", "louver"), "Lanced"),
+    (("flat", "plain"), "Flat"),
+)
+
+
+def _normalize_fin_surface(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        return value
+    for keywords, mapped in _FIN_SURFACE_KEYWORD_MAP:
+        if any(keyword in normalized for keyword in keywords):
+            return mapped
+    return "Manual Review Required"
+
+
+# Submittal header-wall-schedule terms -> Direct Coil dropdown candidate. Source rarely
+# states this field, so the blank case (the dominant path) yields the company default "(L)".
+# An unrecognized value returns None so the caller can block it rather than guess.
+_HW_SCHEDULE_L_TERMS = frozenset({"l", "type l", "copper type l", "(l)"})
+_HW_SCHEDULE_K_TERMS = frozenset({"k", "type k", "copper type k", "heavy wall", "(k)"})
+_HW_SCHEDULE_DEFAULT = "(L)"
+
+
+def _normalize_header_wall_schedule(value: str | None) -> str | None:
+    normalized = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    if not normalized:
+        return _HW_SCHEDULE_DEFAULT
+    if normalized in _HW_SCHEDULE_L_TERMS:
+        return "(L)"
+    if normalized in _HW_SCHEDULE_K_TERMS:
+        return "(K)"
+    return None  # unknown -> caller blocks
+
+
+def header_wall_schedule_confidence(value: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    if not normalized:
+        return "inferred"
+    if normalized in _HW_SCHEDULE_L_TERMS or normalized in _HW_SCHEDULE_K_TERMS:
+        return "confirmed"
+    return "ambiguous"
 
 
 def _clean_line(value: Any) -> str:

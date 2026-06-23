@@ -16,6 +16,9 @@ from coilforge.submittal.pdf_intake import (
     _candidate_from_cover_row,
     _CoverRow,
     _cover_row_summary,
+    _detail_lines_by_cover_row,
+    _is_cover_coil_row,
+    _normalize_fin_surface,
     _OcrPageResult,
     _TextPage,
     _extract_detail_lines_from_page,
@@ -359,7 +362,10 @@ def test_each_cover_coil_links_to_its_drawing_template_from_classification() -> 
     hgrh = pages[1]["workflow"]["template_drawing"]
 
     assert dx["template_found"] is True
-    assert dx["template_id"] == "coilmaster_dx_lh_header1"
+    # The DX coil's Coil Style is "Interlaced 4 Circuits", so the circuit count is
+    # derived (was silently defaulting to 1) and selects the 4-circuit template.
+    assert dx["extracted"]["circuits"] == 4
+    assert dx["template_id"] == "coilmaster_dx_lh_header4"
     assert dx["extracted"]["coil_category"] == "DX"
     assert dx["extracted"]["tag"] == "CDXC-1"
 
@@ -1464,6 +1470,101 @@ def test_cover_row_product_code_flows_into_drawing_context() -> None:
     ctx = _template_header_context_from_candidate(candidate)
     assert ctx["product_type"] == "TERRA V"   # engine product line, from the code
     assert ctx["unit_size"] == "012"
+
+
+# --------------------------------------------------------------------------- #
+# Valve / EEV accessory rows must NOT be detected as coils. An electronic
+# expansion valve kit tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"
+# previously slipped through the coil filter on the "dxcoil" substring and then
+# stole the second DX detail block, leaving CDXC-2 empty.
+# --------------------------------------------------------------------------- #
+def test_is_cover_coil_row_rejects_eev_valve_accessory_rows() -> None:
+    assert _is_cover_coil_row("CDXC-1", "DXC Cooling") is True
+    assert _is_cover_coil_row("CDXC-2", "DXC Cooling") is True
+    # EKEXV tag prefix is rejected even when the item text mentions a DX coil.
+    assert _is_cover_coil_row("EKEXV-CDXC-1", "EKEXV Valve (DX Coil)") is False
+    assert _is_cover_coil_row("EKEXV-CDXC-1", "DX Coil") is False
+    # A plain valve item is rejected via the item-token guard.
+    assert _is_cover_coil_row("PHWCV-2", "HWC Pre-Heat Valve") is False
+
+
+def test_eev_valve_dropped_and_second_dx_section_reaches_cdxc_2() -> None:
+    pdf_bytes = _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes()
+
+    pages = detect_cover_page_from_pdf_pages(_pages_from_pdf_text(pdf_bytes))
+    # EKEXV-CDXC-1 is dropped; only the two real coils survive.
+    assert [row.tag for row in pages.rows] == ["CDXC-1", "CDXC-2"]
+
+    workflow = run_pdf_to_drawing_workflow(pdf_bytes)
+    coil_pages = workflow["pdf_coil_pages"]
+    assert [page["tag"] for page in coil_pages] == ["CDXC-1", "CDXC-2"]
+
+    cdxc1_fields = coil_pages[0]["workflow"]["direct_coil_input_draft"]["fields"]
+    cdxc2_fields = coil_pages[1]["workflow"]["direct_coil_input_draft"]["fields"]
+    # CDXC-1 keeps the first DX section; CDXC-2 now receives the second section
+    # (the block the phantom EKEXV row used to steal) instead of coming back empty.
+    assert cdxc1_fields["rows_deep"]["value"] == 6
+    assert cdxc1_fields["finned_height"]["value"] == 24
+    assert cdxc2_fields["rows_deep"]["value"] == 4
+    assert cdxc2_fields["finned_height"]["value"] == 18
+    # Header wall schedule defaults to "(L)" for both coils (review-required) on the
+    # canonical candidate.
+    cdxc1_candidate = coil_pages[0]["workflow"]["candidates"][0]
+    cdxc2_candidate = coil_pages[1]["workflow"]["candidates"][0]
+    assert cdxc1_candidate["materials_construction"]["header_wall_schedule"]["value"] == "(L)"
+    assert cdxc2_candidate["materials_construction"]["header_wall_schedule"]["value"] == "(L)"
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        ("Sine", "Corrugated"),
+        ("Sine Wave", "Corrugated"),
+        ("wavy", "Corrugated"),
+        ("Sinusoidal", "Corrugated"),
+        ("Lanced", "Lanced"),
+        ("Louvered", "Lanced"),
+        ("Flat", "Flat"),
+        ("Plain", "Flat"),
+        ("Aluminum Mystery", "Manual Review Required"),
+    ],
+)
+def test_normalize_fin_surface_maps_source_terms(source: str, expected: str) -> None:
+    assert _normalize_fin_surface(source) == expected
+
+
+def _pages_from_pdf_text(pdf_bytes: bytes) -> list[_TextPage]:
+    from coilforge.submittal.pdf_intake import extract_text_pages_from_pdf_bytes
+
+    pages, _engine = extract_text_pages_from_pdf_bytes(pdf_bytes)
+    return pages
+
+
+def _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Unit Details",
+            "Altitude (ft): 0",
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_040 LH",
+            "1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH",
+            "1 CDXC-2 DXC Cooling TR_C_041 LH",
+            "Cooling DX",
+            "Coil",
+            "Fin Height (in): 24",
+            "Fin Length (in): 48",
+            "FPI: 11",
+            "Rows: 6",
+            "Total Feeds: 18",
+            "Cooling DX",
+            "Coil",
+            "Fin Height (in): 18",
+            "Fin Length (in): 36",
+            "FPI: 13",
+            "Rows: 4",
+            "Total Feeds: 9",
+        ]
+    )
 
 
 def test_unrecognised_model_code_leaves_product_line_blank() -> None:

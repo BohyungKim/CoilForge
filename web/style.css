@@ -1628,10 +1628,14 @@ h4 {
   color: var(--text-muted);
 }
 
+/* Direct-Coil two-column dimension layout (left = casing/fin, right =
+   supply/return/header). Children are .dc-drawing-column blocks of
+   .dc-dimension-row rows, reusing the .dc-* styling shared with the
+   paste-ready mirror. */
 .parameter-grid {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr);
   margin-top: 12px;
 }
 
@@ -1981,7 +1985,7 @@ h4 {
   }
 
   .parameter-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .compatibility-summary {
