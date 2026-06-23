@@ -27,7 +27,7 @@ _SVG = (
 def test_clean_strips_dim_labels_to_numbers_only() -> None:
     out = _clean_template_svg(_SVG)
     assert ">3.5</tspan>" in out and ">12</tspan>" in out
-    assert ">REVIEW REQUIRED</tspan>" in out  # value kept, label dropped
+    assert "REVIEW REQUIRED" not in out  # blank-slot placeholder dropped entirely
     assert "HD2</tspan>" not in out and " FH</tspan>" not in out and " OAL</tspan>" not in out
 
 
@@ -53,8 +53,9 @@ _SVG_WITH_INTRUDING_CHROME = (
     'Coil ID = 543681Casing Style: FlangedStacking Flanges: False</tspan></text>'
     # a real blue dimension callout that must survive
     '<text fill="#1c0a80" transform="matrix(-1 0 0 1 0 0)"><tspan x="300" y="200">12 FH</tspan></text>'
-    # DIST LIST distributor annotation must survive (drawing data, inside the frame)
+    # DIST LIST heading + its distributor-part entries: sheet metadata, removed
     '<text font-family="Arial"><tspan y="-552.6" x="561.9 567.4">DIST LIST</tspan></text>'
+    '<text font-family="Arial"><tspan y="-539.1" x="527.0 529.5">(1)501-4-3/16-4 OD:5/8</tspan></text>'
     "</svg>"
 )
 
@@ -65,9 +66,10 @@ def test_clean_strips_intruding_chrome_keeps_geometry() -> None:
     assert "COLLARED HOLES REQUIRED" not in out
     assert "DISTRIBUTOR 1 HAS" not in out
     assert "Coil ID" not in out and "Casing Style" not in out
-    # geometry dimension value + distributor list kept
+    # geometry dimension value kept; DIST LIST heading + distributor entries removed
     assert ">12</tspan>" in out
-    assert "DIST LIST" in out
+    assert "DIST LIST" not in out
+    assert "501-" not in out and "OD:5/8" not in out
 
 
 def test_clean_handles_empty() -> None:

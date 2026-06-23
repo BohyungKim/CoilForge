@@ -28,6 +28,7 @@ from coilforge.schemas.header_prepopulate import (  # noqa: E402
     HeaderPrepopulateRequest,
     HeaderPrepopulateResponse,
     ProductFamily,
+    TerraVariant,
 )
 from coilforge.services import header_prepopulate_engine as engine  # noqa: E402
 from coilforge.services.header_prepopulate_engine import (  # noqa: E402
@@ -72,6 +73,29 @@ VALID_SIZE = {
 # in Direct Coil selection); SOP Rev H wording (John, 2026-06-11).
 DX_COATING_NOTE = "Do Not Coat Last 5-6 inches of Distributor Extensions."
 HGRH_COATING_NOTE = "Do Not Coat Last 5-6 inches of Supply Stubouts."
+
+
+def test_r022_return_spacing_fires_for_terra_h_not_terra_v() -> None:
+    """R-022 (product_family ["*"]) must fire for Terra H — only Terra V is the
+    SOP-only exception. Regression: the engine gate excluded ALL Terra, so Terra H
+    multi-circuit coils lost their second-header return spacing (R2/R4)."""
+    common = dict(circuits=2, suction_conn_size=1.125)
+    resp_h = prepopulate(
+        _req(CoilType.DX, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_H, **common)
+    )
+    assert _in_values(resp_h, "return_spacing")
+    assert resp_h.values["return_spacing"].value == [1.125, 3.75]  # Rn = n*D + (n-1)*1.5
+    assert resp_h.values["return_spacing"].confidence == Confidence.HIGH
+
+    # Terra V stays SOP-only (single-source) -> R-022 does not fire.
+    resp_v = prepopulate(
+        _req(CoilType.DX, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_V, **common)
+    )
+    assert not _in_values(resp_v, "return_spacing")
+
+    # Non-Terra families are unaffected (NOVA still fires).
+    resp_nova = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20", **common))
+    assert _in_values(resp_nova, "return_spacing")
 
 
 # --------------------------------------------------------------------------- #

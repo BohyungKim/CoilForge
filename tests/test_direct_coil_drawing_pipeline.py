@@ -186,6 +186,25 @@ def test_hgrh_per_header_slots_resolved_from_category_fields() -> None:
     assert s["slot.HDx1"] == 3.5      # supply header depth = hd (dimensioned too)
 
 
+def test_terra_h_multi_circuit_return_spacing_all_circuits() -> None:
+    """Terra H DX populates R for EVERY circuit from R-022 (Rn = n*D + (n-1)*1.5),
+    not just the first. Regression: the second-header R (slot.R4) was blank."""
+    s2, _ = build_drawing_slots(
+        coil_type="DX", product_type="TERRA H", unit_size="024",
+        rows=5, feeds=9, circuits=2, suction_conn_size=1.125,
+        finned_height=15.0, finned_length=47.0,
+    )
+    assert s2["slot.R2"] == 1.125          # circuit 1: 1*1.125
+    assert s2["slot.R4"] == 3.75           # circuit 2: 2*1.125 + 1.5
+
+    s3, _ = build_drawing_slots(
+        coil_type="DX", product_type="TERRA H", unit_size="024",
+        rows=5, feeds=9, circuits=3, suction_conn_size=1.125,
+        finned_height=15.0, finned_length=47.0,
+    )
+    assert (s3["slot.R2"], s3["slot.R4"], s3["slot.R6"]) == (1.125, 3.75, 6.375)
+
+
 def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
     """CWC/HWC carry a single shared header geometry (io/hd/sl); no distributor, so
     the supply header depth HDx1 = HD2 = hd (both headers dimensioned)."""

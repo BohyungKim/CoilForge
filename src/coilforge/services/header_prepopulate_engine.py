@@ -29,6 +29,7 @@ from coilforge.schemas.header_prepopulate import (
     HeaderPrepopulateRequest,
     HeaderPrepopulateResponse,
     ProductFamily,
+    TerraVariant,
 )
 
 _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules.yaml"
@@ -329,9 +330,12 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     _emit_casing_depth(request, place, add_missing)
 
     # --- return_spacing (R-022 / R-023) ---
+    # R-022 (product_family ["*"]) applies to every DX family EXCEPT Terra V, which is
+    # SOP-only/single-source and routes to R-023 (LOW) per the MVP taxonomy. The prior
+    # gate excluded ALL Terra, so Terra H/Terra H C lost their HIGH return spacing.
     if coil == CoilType.DX:
         rule = index["R-022"]
-        if _applies(rule, request) and request.product_type != ProductFamily.TERRA:
+        if _applies(rule, request) and request.terra_variant != TerraVariant.TERRA_V:
             if request.suction_conn_size is not None and request.circuits is not None:
                 place(
                     "return_spacing",

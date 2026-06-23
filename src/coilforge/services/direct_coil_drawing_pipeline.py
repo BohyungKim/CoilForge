@@ -296,8 +296,13 @@ def build_drawing_slots(
                 slots[f"slot.SL{return_id}"] = hdr_sl
             if isinstance(return_spacing, list) and k <= len(return_spacing):
                 slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)
-            elif suction_conn_size is not None and k == 1:
-                slots[f"slot.R{return_id}"] = suction_conn_size         # fallback: R2 only
+            elif suction_conn_size is not None:
+                # Safety net when the engine list is absent: the documented R-022
+                # formula Rn = n*D + (n-1)*1.5 for every circuit (not just k==1), so
+                # R4/R6 populate instead of leaving the second/third header blank.
+                slots[f"slot.R{return_id}"] = round(
+                    k * suction_conn_size + (k - 1) * 1.5, 4
+                )
 
     # 3. EZ JSON as-built override for per-header positions (exact; multi-circuit).
     if ez_json:

@@ -331,6 +331,10 @@ _CALLOUT_RE = re.compile(
 
 def _clean_callout(m: "re.Match[str]") -> str:
     head, sign, attrs, gt, value, label, close = m.groups()
+    if value.strip() == "REVIEW REQUIRED":
+        # Drop the blank-slot placeholder from the review-aid drawing (the dim simply
+        # reads empty). Safety stays server-side: export_allowed=False + the watermark.
+        return f"{head}{attrs}{gt}{close}"
     if sign == "-1":  # mirrored hand — value is offset left by the pair width; shift right
         xm = re.search(r'x="(-?\d+(?:\.\d+)?)"', attrs)
         if xm:
@@ -362,7 +366,11 @@ _SIZE_RE = re.compile(r'(<svg[^>]*?)width="792" height="612"')
 #      glyph tops poke just above the crop's bottom edge.
 # Both are sheet metadata, not dimensional drawing data, and are absent from John's target
 # geometry-only view.
-_CHROME_TEXT_TOKENS = ("Coil ID", "Casing Style", "Stacking Flanges")
+# "DIST LIST" is the distributor-schedule heading; its companion entries are literal
+# "(1)501-4-3/16-4 OD:5/8" part-number lines. Both are sheet metadata (and un-redacted
+# as-built data), not dimensional drawing data, so they are dropped from the review view.
+_CHROME_TEXT_TOKENS = ("Coil ID", "Casing Style", "Stacking Flanges", "DIST LIST")
+_DIST_ENTRY_RE = re.compile(r"\(\s*\d+\s*\)\d{2,}-\d")  # distributor entry "(1)501-4-..."
 _TEXT_ELEMENT_RE = re.compile(r"<text\b[^>]*>.*?</text>", re.DOTALL)
 # NB: tspan x/y attributes can hold multiple space-separated coordinates
 # (e.g. x="47.99 54.78 62.09 …"); capture only the first number of each.
@@ -372,6 +380,8 @@ _FIRST_TSPAN_RE = re.compile(r'<tspan\b[^>]*\by="(-?\d+(?:\.\d+)?)[^"]*"[^>]*\bx
 def _is_intruding_chrome(text_el: str) -> bool:
     """True if a ``<text>`` element is sheet chrome that lands inside the geometry crop."""
     if any(tok in text_el for tok in _CHROME_TEXT_TOKENS):
+        return True
+    if _DIST_ENTRY_RE.search(text_el):  # distributor-schedule entry block
         return True
     # Top-left fabrication-notes block: bold + anchored far-left in the top band.
     if 'font-weight="bold"' in text_el or "Arial,Bold" in text_el:
@@ -410,6 +420,10 @@ def _clean_template_svg(svg: str) -> str:
     if not svg:
         return svg
     svg = _CALLOUT_RE.sub(_clean_callout, svg)
+    # Drop every blank-slot "REVIEW REQUIRED" placeholder from the review-aid drawing.
+    # All such text is slot-placeholder output (the source template carries no literal
+    # watermark); the export gate (export_allowed=False) is enforced server-side.
+    svg = svg.replace("REVIEW REQUIRED", "")
     svg = _strip_intruding_chrome(svg)
     svg = _VIEWBOX_RE.sub(f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"', svg)
     svg = _SIZE_RE.sub(rf'\1width="{_CROP_W}" height="{_CROP_H}"', svg)
