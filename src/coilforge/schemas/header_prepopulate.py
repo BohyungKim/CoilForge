@@ -87,6 +87,7 @@ class HeaderPrepopulateRequest(BaseModel):
     application: str | None = None
     rows: int | None = None
     feeds: int | None = None
+    header_count: int | None = None  # drawing header count (1HD-4HD); drives R-090
     qty_conn_per_header: int | None = None
     circuits: int | None = None
     suction_conn_size: float | None = None

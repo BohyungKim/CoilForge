@@ -52,6 +52,7 @@ _OTHER_SPECIAL_IDS = {
     "R-074",  # casing dims lookup
     "R-075",  # size_class
     "R-076",  # unit-size validation
+    "R-090",  # copper straps required (header_count * per-header multiplier)
 }
 _SPECIAL_IDS = (
     _NOTES_BASE_IDS
@@ -133,6 +134,36 @@ def _dx_cd_value(request: HeaderPrepopulateRequest) -> float:
             multi = (c + 1) * d + (c - 1) * 1.5
         return max(base, multi)
     return base
+
+
+def copper_strap_requirement(
+    coil_type: CoilType, header_count: int | None
+) -> FieldResult | None:
+    """R-090: copper straps required = ``header_count * multiplier(coil_type)``.
+
+    DX -> 1 strap/header, HGRH -> 2 straps/header (John, 2026-06-23). Coil types
+    with no confirmed multiplier (CWC/HWC) return a LOW/blocked ``FieldResult``
+    rather than a guess. ``header_count`` absent returns ``None`` so the caller
+    can report it as a missing input. Single source of the R-090 logic shared by
+    the full engine and the drawing-package route.
+    """
+    rule = _rule_index()["R-090"]
+    multiplier = rule.get("strap_multiplier", {}).get(coil_type.value)
+    if multiplier is None:
+        return FieldResult(
+            value=None,
+            confidence=Confidence.LOW,
+            evidence_refs=rule["evidence_refs"],
+            review_required=True,
+            blocked_reason=rule["blocked_reason"],
+        )
+    if header_count is None:
+        return None
+    return FieldResult(
+        value=header_count * multiplier,
+        confidence=Confidence.HIGH,
+        evidence_refs=rule["evidence_refs"],
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -421,6 +452,9 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
         else:
             add_missing(["circuits", "conn_size", "rows"])
 
+    # --- copper straps required (R-090) ---
+    _emit_copper_straps(request, place, add_missing)
+
     review_required = bool(suggestions) or bool(blocked)
 
     return HeaderPrepopulateResponse(
@@ -436,6 +470,25 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
 # --------------------------------------------------------------------------- #
 # Phase helpers
 # --------------------------------------------------------------------------- #
+def _emit_copper_straps(request, place, add_missing) -> None:  # type: ignore[no-untyped-def]
+    """R-090: copper straps = header_count * per-header multiplier.
+
+    DX -> 1 strap/header, HGRH -> 2 straps/header (John, 2026-06-23). CWC/HWC
+    have no confirmed multiplier, so they route to the blocked bucket rather
+    than guessing. ``header_count`` absent -> reported as a missing input.
+
+    Confidence here is HIGH for the deterministic DX/HGRH case; if the upstream
+    coil_type / header_count were themselves inferred, the contract layer that
+    wraps this output re-gates it to review_required (same pattern as the rest
+    of the engine — the pure function only sees confirmed enum inputs).
+    """
+    result = copper_strap_requirement(request.type_of_coil, request.header_count)
+    if result is None:
+        add_missing(["header_count"])
+    else:
+        place("copper_straps_required", result)
+
+
 def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-untyped-def]
     coil = request.type_of_coil
     index = _rule_index()

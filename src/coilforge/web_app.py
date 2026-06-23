@@ -26,6 +26,7 @@ from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
     derive_coil_template_drawing,
+    run_drawing_package_workflow,
     run_pdf_to_direct_draft_workflow,
     run_pdf_to_drawing_workflow,
     run_submittal_to_direct_draft_workflow,
@@ -223,6 +224,18 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
     """Re-derive a coil's template drawing with an engineer-chosen product line +
     unit size so the engine fills the dimensions. Review-aid only."""
     return jsonable_encoder(derive_coil_template_drawing(request or {}))
+
+
+@app.post("/api/package/assemble")
+async def package_assemble(request: dict[str, Any] = Body(default_factory=dict)):
+    """Combine the Direct Coil drawing PDF with our CoilForge drawing appended
+    right after it, stamped with the copper-strap requirement (R-090) and any
+    uncertain-mapping callouts. Returns a base64 watermarked review-aid PDF;
+    never flips export_allowed or claims production approval."""
+    try:
+        return jsonable_encoder(run_drawing_package_workflow(request or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _build_compatibility_payload(

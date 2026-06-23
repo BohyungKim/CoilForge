@@ -1809,9 +1809,143 @@ function renderTemplateDrawingPreview(templateDrawing) {
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
       ${templateDrawingPicker(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
+      ${packageAssemblerSection(templateDrawing)}
     </div>
   `;
   attachCoilDrawingPicker(templateDrawing);
+  attachPackageAssembler(templateDrawing);
+}
+
+// Outgoing-package assembler (workflow steps 9-12): the engineer drops the
+// Direct Coil drawing PDF, and CoilForge appends our drawing right after it,
+// stamping the copper-strap requirement (R-090: DX = 1/header, HG = 2/header)
+// and any uncertain-mapping callouts. Output is a watermarked review aid.
+function collectReviewMarkups(templateDrawing) {
+  const markups = [];
+  const mismatches = templateDrawing.validation_mismatches || {};
+  Object.keys(mismatches).forEach((slot) => {
+    markups.push(`${slot}: ${mismatches[slot]}`);
+  });
+  (templateDrawing.review_items || []).forEach((item) => markups.push(String(item)));
+  return markups;
+}
+
+function packageAssemblerSection(templateDrawing) {
+  const svg = templateDrawing.svg;
+  const ex = templateDrawing.extracted || {};
+  if (!svg) {
+    return `
+      <div class="package-assembler is-locked">
+        <strong>Drawing package</strong>
+        <span class="package-hint">Generate the CoilForge drawing first, then drop the Direct Coil drawing here to build the combined package.</span>
+      </div>`;
+  }
+  const result = state.lastPackageResult;
+  const fileName = state.directCoilPackageFile?.name || "No Direct Coil drawing selected";
+  const coil = ex.coil_category || templateDrawing.coil_category || "?";
+  const headers = ex.circuits ?? templateDrawing.circuits ?? "?";
+  let resultHtml = "";
+  if (result) {
+    const cs = result.copper_straps || {};
+    const strapClass = cs.status === "required" ? "status-review-required" : "status-blocked";
+    resultHtml = `
+      <div class="package-result">
+        <div class="package-strap ${strapClass}">${escapeHtml(cs.note || "")}</div>
+        <div class="package-meta">Combined PDF: ${result.package.page_count} pages
+          (Direct Coil ${result.package.direct_coil_page_count} + CoilForge 1) · review aid, watermarked</div>
+        <button type="button" id="package-download" class="secondary-button">Download package PDF</button>
+      </div>`;
+  }
+  return `
+    <div class="package-assembler">
+      <strong>Drawing package <span class="package-hint">(steps 9-12)</span></strong>
+      <span class="package-hint">Coil ${escapeHtml(String(coil))} · ${escapeHtml(String(headers))} header(s) → copper straps computed on assemble.</span>
+      <label class="package-drop" for="package-dc-file">
+        <span class="package-file-name">${escapeHtml(fileName)}</span>
+        <input type="file" id="package-dc-file" accept="application/pdf" hidden />
+      </label>
+      <button type="button" id="package-build" class="primary-button"${state.directCoilPackageFile ? "" : " disabled"}>Build package</button>
+      ${resultHtml}
+    </div>`;
+}
+
+function attachPackageAssembler(templateDrawing) {
+  const fileInput = document.querySelector("#package-dc-file");
+  const buildButton = document.querySelector("#package-build");
+  const downloadButton = document.querySelector("#package-download");
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (file && isPdfFile(file)) {
+        state.directCoilPackageFile = file;
+        state.lastPackageResult = null;
+        renderTemplateDrawingPreview(templateDrawing);
+      }
+    });
+  }
+  if (buildButton) {
+    buildButton.addEventListener("click", () => assembleDrawingPackage(templateDrawing));
+  }
+  if (downloadButton && state.lastPackageResult) {
+    downloadButton.addEventListener("click", () =>
+      downloadBase64Pdf(state.lastPackageResult.package.pdf_base64, "coilforge-drawing-package.pdf"));
+  }
+}
+
+async function assembleDrawingPackage(templateDrawing) {
+  const file = state.directCoilPackageFile;
+  if (!file || !templateDrawing.svg) {
+    return;
+  }
+  const buildButton = document.querySelector("#package-build");
+  if (buildButton) {
+    buildButton.disabled = true;
+    buildButton.textContent = "Building...";
+  }
+  try {
+    const bytes = await file.arrayBuffer();
+    const ex = templateDrawing.extracted || {};
+    const result = await requestJson("/api/package/assemble", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        direct_coil_pdf_base64: arrayBufferToBase64(bytes),
+        coilforge_drawing_svg: templateDrawing.svg,
+        coil_type: ex.coil_category || templateDrawing.coil_category,
+        header_count: ex.circuits ?? templateDrawing.circuits ?? null,
+        review_markups: collectReviewMarkups(templateDrawing),
+      }),
+    });
+    state.lastPackageResult = result;
+    elements.savedStatus.textContent = "Drawing package assembled (review aid)";
+  } catch (error) {
+    elements.savedStatus.textContent = `Package failed: ${error.message || error}`;
+  } finally {
+    renderTemplateDrawingPreview(templateDrawing);
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function downloadBase64Pdf(base64, fileName) {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 // Per-coil product line + unit size picker. A submittal does not state the

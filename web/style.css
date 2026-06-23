@@ -1482,6 +1482,58 @@ h4 {
   overflow: auto;
 }
 
+.package-assembler {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.package-assembler.is-locked {
+  opacity: 0.75;
+}
+
+.package-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.package-drop {
+  align-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  padding: 10px 12px;
+}
+
+.package-drop:hover {
+  border-color: var(--text-muted);
+}
+
+.package-file-name {
+  color: var(--text-heading);
+  font-size: 12px;
+}
+
+.package-result {
+  display: grid;
+  gap: 6px;
+}
+
+.package-strap {
+  border-radius: 6px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.package-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .template-drawing-canvas svg {
   background: var(--drawing-paper);
   max-width: 100%;
