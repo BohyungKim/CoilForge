@@ -318,6 +318,66 @@
         "pdf_drawing_value_redacted_to_slot"
       ],
       "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.I1",
+      "label": "I1",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.O2",
+      "label": "O2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.R2",
+      "label": "R2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.S1",
+      "label": "S1",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
+      "label": "SUPPLY_CONN_SIZE_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.X",
+      "label": "X",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
     }
   ]
 }

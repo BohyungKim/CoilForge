@@ -27,12 +27,17 @@ import fitz  # PyMuPDF
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Dimension callout labels (longest first so HDx1 wins over HD).
+# Dimension callout labels (longest first so HDx1 wins over HD). The regex sorts
+# by length, so list order here is not significant.
+# "X" (uppercase, single char) is the tube-projection callout; it is case-
+# sensitive so it never matches the lowercase "x" in tube specs (e.g.
+# "0.375 x 0.016"). Added 2026-06-23 (John) so "1.13 X" redacts to {{slot.X}}.
 _DIM_LABELS = [
     "HDx1", "HDx3", "HDx5", "HD2", "HD4", "HD6", "SL2", "SL4", "SL6", "OAL",
     "CH", "CL", "CD", "FH", "FL", "HF", "RF", "TF", "BF", "RB",
     "I1", "I3", "I5", "I7", "S1", "S3", "S5", "S7",
     "O2", "O4", "O6", "O8", "R2", "R4", "R6", "R8",
+    "X",
 ]
 _CALLOUT_RE = re.compile(
     r"^([\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
@@ -497,8 +502,12 @@ BUCKETS = [
      "Case/#2/EZC-0011 - DX_2_RH/CDXC-2.pdf", "EZC-0011"),
     ("coilmaster_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
      "Case/#2/EZC-0007 - DX_3_LH/CDXC-1.pdf", "EZC-0007"),
+    # 2026-06-23: re-seeded from a more complete HG_1_LH reference (John). The
+    # original EZC-0002 drawing lacked header/stubout dimension callouts, so
+    # I1/S1/O2/R2/HD2/SL2 baked into the NOTES text instead of slotting; the new
+    # reference carries them as real callouts -> they redact to slots cleanly.
     ("coilmaster_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
-     "Case/#2/EZC-0002 - HG_1_LH/RHHGRC-1.pdf", "EZC-0002"),
+     "Case/feed/HG_1_LH/HG_1_LH.pdf", "FEED-HG_1_LH"),
     ("coilmaster_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
      "Case/#2/EZC-0012 - HG_1_RH/RHHGRC-2.pdf", "EZC-0012"),
     ("coilmaster_hgrh_lh_header2", "hgrh", "HGRH", "LH", "Header 2", None,
