@@ -22,6 +22,10 @@ from coilforge.package import (  # noqa: E402
     assemble_drawing_package,
     svg_to_pdf_bytes,
 )
+from coilforge.package.assembler import (  # noqa: E402
+    MultiCoilPackageResult,
+    assemble_multi_coil_package,
+)
 
 _SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200">'
@@ -93,3 +97,75 @@ def test_package_rejects_unreadable_direct_coil_pdf() -> None:
             coilforge_drawing_svg=_SVG,
             copper_strap_note="COPPER STRAPS REQUIRED: 1",
         )
+
+
+# --------------------------------------------------------------------------- #
+# Multi-coil quote package: per-coil drawing insertion + quote price notes.
+# --------------------------------------------------------------------------- #
+def _make_text_pdf(pages: list[str]) -> bytes:
+    """A multi-page PDF with the given per-page text (one line per ``\\n``)."""
+    doc = fitz.open()
+    for text in pages:
+        page = doc.new_page()
+        y = 60.0
+        for line in text.split("\n"):
+            page.insert_text((40, y), line)
+            y += 18.0
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_multi_coil_inserts_after_drawing_page_and_notes_quote() -> None:
+    # p0 quote, p1 textual REPORT (not the drawing), p2 drawing (F.L./FIN markers).
+    source = _make_text_pdf(
+        [
+            "COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00",
+            "DX COIL REPORT\nCDXC-1\nspecs",
+            "CDXC-1\n47 F.L.\n4.33 FIN",
+        ]
+    )
+    coils = [
+        {
+            "tag": "CDXC-1",
+            "coil_type": "DX",
+            "our_svg": _SVG,
+            "price_note": "Copper straps adder (review aid): +CAD$25.00",
+            "price_total": 25.0,
+            "price_status": "required",
+        }
+    ]
+    result = assemble_multi_coil_package(source_pdf=source, coils=coils)
+    assert isinstance(result, MultiCoilPackageResult)
+    assert result.source_page_count == 3
+    assert result.page_count == 4  # 3 source + 1 inserted
+    assert result.inserted_coil_count == 1
+    # The drawing page is the F.L./FIN page (index 2), NOT the REPORT page (index 1).
+    assert result.coils[0]["drawing_page_source_index"] == 2
+
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    assert doc.page_count == 4
+    # Our drawing sits right after the source drawing page -> output index 3.
+    assert "REVIEW AID - NOT FOR MANUFACTURING" in doc[3].get_text()
+    # Quote page keeps the ORIGINAL price (note-only) and gains the note.
+    quote_text = doc[0].get_text()
+    assert "CAD$100.00" in quote_text  # source number unchanged
+    assert "Copper straps adder" in quote_text  # note stamped above the price
+    doc.close()
+
+
+def test_multi_coil_safety_flags_never_relaxed() -> None:
+    source = _make_text_pdf(["COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$1.00", "CDXC-1\nF.L."])
+    result = assemble_multi_coil_package(
+        source_pdf=source,
+        coils=[{"tag": "CDXC-1", "coil_type": "DX", "our_svg": _SVG, "price_note": "x"}],
+    )
+    assert result.export_allowed is False
+    assert result.production_drawing_approval_claimed is False
+    assert result.raw_private_data_returned is False
+    assert result.watermarked is True
+
+
+def test_multi_coil_rejects_empty_source() -> None:
+    with pytest.raises(ValueError):
+        assemble_multi_coil_package(source_pdf=b"", coils=[])

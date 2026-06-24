@@ -109,3 +109,79 @@ def run_drawing_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
         "production_drawing_approval_claimed": False,
         "raw_private_data_returned": False,
     }
+
+
+def run_quote_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
+    """Multi-coil quote package from ONE Direct Coil quote+report+drawing PDF.
+
+    CoilForge extracts every coil (tag + per-coil drawing), inserts our drawing right
+    after each coil's source drawing page, and stamps a copper-strap price note above
+    each coil's quoted price (note-only — the original quote numbers are never changed).
+
+    Request keys:
+      ``source_pdf_base64`` (str, required) — the Direct Coil quote+drawing PDF.
+      ``source_id``         (str)           — provenance id for the intake.
+
+    Output is a watermarked review aid; ``export_allowed`` stays False. Raises
+    ``ValueError`` on missing/invalid input (the route maps it to 400).
+    """
+    from coilforge.package.assembler import assemble_multi_coil_package
+    from coilforge.package.copper_strap_pricing import copper_strap_price
+    from coilforge.workflows.submittal_to_drawing import run_pdf_to_drawing_workflow
+
+    request = request or {}
+    pdf_b64 = request.get("source_pdf_base64") or request.get("direct_coil_pdf_base64")
+    if not pdf_b64:
+        raise ValueError("source_pdf_base64 is required")
+    try:
+        source_pdf = base64.b64decode(pdf_b64, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"source_pdf_base64 is not valid base64 ({exc})") from exc
+
+    drawing_result = run_pdf_to_drawing_workflow(
+        source_pdf, source_id=str(request.get("source_id") or "QUOTE-PACKAGE-INTAKE")
+    )
+    coil_pages = drawing_result.get("pdf_coil_pages") or []
+
+    _PRICEABLE = {"DX", "HGRH", "CWC", "HWC"}
+    coils: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
+    for entry in coil_pages:
+        template_drawing = (entry.get("workflow") or {}).get("template_drawing") or {}
+        extracted = template_drawing.get("extracted") or {}
+        tag = entry.get("tag")
+        category = extracted.get("coil_category")
+        header_count = extracted.get("circuits") or 1
+        price: dict[str, Any] = {}
+        if category in _PRICEABLE:
+            price = copper_strap_price(CoilType(category), header_count)
+        coils.append(
+            {
+                "tag": tag,
+                "coil_type": category,
+                "our_svg": template_drawing.get("svg"),
+                "price_note": price.get("note"),
+                "price_total": price.get("total"),
+                "price_status": price.get("status"),
+            }
+        )
+        summaries.append(
+            {
+                "tag": tag,
+                "coil_type": category,
+                "header_count": header_count,
+                "copper_straps": price,
+            }
+        )
+
+    package = assemble_multi_coil_package(source_pdf=source_pdf, coils=coils)
+
+    return {
+        "package": package.model_dump(),
+        "coils": summaries,
+        "coil_count": len(summaries),
+        # Safety contract surfaced at the workflow boundary (mirrors other routes).
+        "export_allowed": False,
+        "production_drawing_approval_claimed": False,
+        "raw_private_data_returned": False,
+    }

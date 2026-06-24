@@ -846,6 +846,11 @@ def detect_cover_page_from_pdf_pages(
         if text_detection.detected:
             return _with_continuation_cover_rows(pages, text_detection)
 
+    for page in pages:
+        dc_quote_detection = _detect_cover_page_from_direct_coil_quote(page)
+        if dc_quote_detection.detected:
+            return _with_continuation_cover_rows(pages, dc_quote_detection)
+
     if cover_page_hint is not None:
         return _CoverPageDetection(
             detected=False,
@@ -1008,6 +1013,87 @@ def _detect_cover_page_from_text(page: _TextPage) -> _CoverPageDetection:
         detected_headers=COVER_PAGE_REQUIRED_HEADERS,
         rows=rows,
         review_note="Cover page detected by required header signature in extracted page text.",
+    )
+
+
+# Item marker: "1." alone (fitz layout) or "1. <model> ..." inline (pdfplumber layout).
+_RE_DC_QUOTE_ITEM_NO = re.compile(r"^\s*(\d+)\.(?:\s+(.+))?$")
+
+
+def _dc_quote_value_after_label(lines: list[str], label: str, start: int, end: int) -> str:
+    """Value for a ``label:`` field within ``lines[start:end]``.
+
+    Handles both Direct Coil quote layouts: ``Tagged: CDXC-1`` inline on one line
+    (pdfplumber) and ``Tagged:`` followed by ``CDXC-1`` on the next line (fitz)."""
+    want = label.strip().rstrip(":").upper()
+    inline = re.compile(rf"^\s*{re.escape(want)}\s*:\s*(\S.*)$", re.IGNORECASE)
+    for k in range(start, end):
+        cleaned = _clean_line(lines[k])
+        if (match := inline.match(cleaned)) is not None:
+            return match.group(1).strip()
+        if cleaned.rstrip(":").strip().upper() == want:
+            for j in range(k + 1, end):
+                value = _clean_line(lines[j])
+                if value:
+                    return value
+            return ""
+    return ""
+
+
+def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDetection:
+    """Direct Coil ``COIL QUOTE`` format: a numbered item list where each item carries a
+    ``Tagged:`` coil code, a model/description line, handing and quantity.
+
+    Additive — tried only after the table/text cover detectors fail (the Oxygen8
+    submittal path returns ``detected=False`` for this layout), so existing detection
+    is untouched. No values are invented: each row is built straight from the quote
+    text and stays review-required downstream."""
+    if "COIL QUOTE" not in (page.text or "").upper():
+        return _CoverPageDetection(detected=False)
+    lines = page.text.splitlines()
+    item_starts = [i for i, ln in enumerate(lines) if _RE_DC_QUOTE_ITEM_NO.match(ln)]
+    if not item_starts:
+        return _CoverPageDetection(detected=False)
+    rows: list[_CoverRow] = []
+    for idx, start in enumerate(item_starts):
+        end = item_starts[idx + 1] if idx + 1 < len(item_starts) else len(lines)
+        tag = _normalize_tag(_dc_quote_value_after_label(lines, "Tagged", start, end))
+        if not tag:
+            continue
+        # Model/description: inline on the "N. <model>" marker (pdfplumber) or the
+        # first non-empty line after a bare "N." marker (fitz).
+        marker = _RE_DC_QUOTE_ITEM_NO.match(lines[start])
+        model_line = (marker.group(2) or "").strip()
+        if not model_line:
+            for j in range(start + 1, end):
+                model_line = _clean_line(lines[j])
+                if model_line:
+                    break
+        if not _is_cover_coil_row(tag, model_line):
+            continue
+        rows.extend(
+            _expand_cover_row(
+                page_number=page.page_number,
+                row_number=int(marker.group(1)),
+                qty=_extract_qty(_dc_quote_value_after_label(lines, "Quantity", start, end)),
+                tag=tag,
+                item=model_line,
+                model=model_line,
+                handing=_normalize_handing(
+                    _dc_quote_value_after_label(lines, "Handing", start, end)
+                ),
+            )
+        )
+    if not rows:
+        return _CoverPageDetection(detected=False)
+    return _CoverPageDetection(
+        detected=True,
+        page_number=page.page_number,
+        detection_method="direct_coil_quote_numbered_items",
+        rows=tuple(rows),
+        review_note=(
+            "Cover page detected as a Direct Coil quote (numbered 'Tagged:' coil items)."
+        ),
     )
 
 

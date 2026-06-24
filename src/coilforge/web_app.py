@@ -29,6 +29,7 @@ from coilforge.workflows import (
     run_drawing_package_workflow,
     run_pdf_to_direct_draft_workflow,
     run_pdf_to_drawing_workflow,
+    run_quote_package_workflow,
     run_submittal_to_direct_draft_workflow,
     run_submittal_to_drawing_workflow,
 )
@@ -234,6 +235,19 @@ async def package_assemble(request: dict[str, Any] = Body(default_factory=dict))
     never flips export_allowed or claims production approval."""
     try:
         return jsonable_encoder(run_drawing_package_workflow(request or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/package/quote")
+async def package_quote(request: dict[str, Any] = Body(default_factory=dict)):
+    """Multi-coil quote package: ONE Direct Coil quote+report+drawing PDF in.
+    CoilForge identifies each coil (CDXC-1, RHHGRC-1, ...), inserts our drawing
+    right after that coil's drawing page, and stamps a copper-strap price note
+    above each coil's quoted price (note-only — quote numbers unchanged). Returns
+    a base64 watermarked review-aid PDF; never flips export_allowed."""
+    try:
+        return jsonable_encoder(run_quote_package_workflow(request or {}))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -2903,6 +2903,44 @@ elements.pdfDropZone.addEventListener("drop", (event) => {
   setSelectedPdfFile(file);
 });
 
+// Multi-coil quote package: send the selected Direct Coil quote+drawing PDF to
+// /api/package/quote, show the per-coil copper-strap price summary, and download
+// the combined review-aid PDF (our drawing inserted after each coil's drawing).
+document.querySelector("#build-quote-package")?.addEventListener("click", () => {
+  buildQuotePackage().catch((error) => {
+    const summary = document.querySelector("#quote-package-summary");
+    if (summary) summary.textContent = error.message;
+  });
+});
+
+async function buildQuotePackage() {
+  const summary = document.querySelector("#quote-package-summary");
+  const file = state.selectedPdfFile;
+  if (!isPdfFile(file)) {
+    if (summary) summary.textContent = "Select a Direct Coil quote+drawing PDF first.";
+    return;
+  }
+  if (summary) summary.textContent = "Building quote package…";
+  const bytes = await file.arrayBuffer();
+  const result = await requestJson("/api/package/quote", {
+    method: "POST",
+    body: JSON.stringify({ source_pdf_base64: arrayBufferToBase64(bytes) }),
+  });
+  const pkg = result.package || {};
+  const lines = (result.coils || []).map((coil) => {
+    const straps = coil.copper_straps || {};
+    const price = straps.total != null ? `+CAD$${Number(straps.total).toFixed(2)}` : (straps.status || "review required");
+    return `${coil.tag} (${coil.coil_type || "?"}): copper straps ${price}`;
+  });
+  if (summary) {
+    summary.innerHTML =
+      `<strong>${pkg.inserted_coil_count}/${result.coil_count} coil drawing(s) inserted</strong> &middot; `
+      + `${pkg.source_page_count}→${pkg.page_count} pages &middot; review aid, watermarked<br>`
+      + lines.map((line) => `<span class="quote-package-coil">${escapeHtml(line)}</span>`).join("<br>");
+  }
+  downloadBase64Pdf(pkg.pdf_base64, "coilforge-quote-package.pdf");
+}
+
 document.querySelector("#apply-draft")?.addEventListener("click", () => {
   elements.savedStatus.textContent = "Direct Coil draft refreshed from sanitized workflow";
 });

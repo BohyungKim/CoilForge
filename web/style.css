@@ -2049,3 +2049,27 @@ h4 {
     width: 100%;
   }
 }
+
+/* Multi-coil quote package control (PDF intake panel). */
+.quote-package {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.quote-package-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.quote-package-summary {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.quote-package-coil {
+  color: var(--text-muted);
+}
