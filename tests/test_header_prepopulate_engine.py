@@ -252,6 +252,18 @@ def test_t10_hgrh_terra_12_gate() -> None:
     assert r.blocked_reason is None
 
 
+def test_hgrh_terra_h_supply_io_resolves() -> None:
+    """R-040b: TERRA H / Terra H C HGRH supply I/O = 2 (HIGH), so the drawing's
+    `I` populates instead of staying blank. Terra V keeps R-046's blocked status."""
+    for variant in (TerraVariant.TERRA_H, TerraVariant.TERRA_H_C):
+        r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "024", terra_variant=variant))
+        assert r.values["supply_io"].value == 2  # R-040b HIGH
+        assert r.values["supply_io"].review_required is False
+    # Terra V supply_io is SOP-only -> stays review-required (R-046), never HIGH.
+    rv = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_V))
+    assert "supply_io" not in rv.values
+
+
 def test_t11_hgrh_nova_single_feed() -> None:
     r = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "C20", feeds=1))
     # R-049 single-feed note is intentionally suppressed (John 2026-06-15): a
