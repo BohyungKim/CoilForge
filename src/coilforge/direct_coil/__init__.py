@@ -6,10 +6,18 @@ from coilforge.direct_coil.draft import (
     DirectCoilInputDraft,
 )
 from coilforge.direct_coil.from_canonical import map_canonical_to_direct_coil_draft
+from coilforge.direct_coil.page_reader import (
+    direct_coil_page_coverage,
+    parse_direct_coil_page,
+)
 from coilforge.direct_coil.paste_ready_fields import (
     DirectCoilPasteField,
     DirectCoilPasteReadySurface,
     build_direct_coil_paste_ready_surface,
+)
+from coilforge.direct_coil.verify import (
+    verify_entered_against_candidate,
+    verify_entered_values,
 )
 
 __all__ = [
@@ -19,5 +27,9 @@ __all__ = [
     "DirectCoilPasteField",
     "DirectCoilPasteReadySurface",
     "build_direct_coil_paste_ready_surface",
+    "direct_coil_page_coverage",
     "map_canonical_to_direct_coil_draft",
+    "parse_direct_coil_page",
+    "verify_entered_against_candidate",
+    "verify_entered_values",
 ]

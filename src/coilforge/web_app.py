@@ -5,6 +5,10 @@ from fastapi import Body, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 
 from coilforge.adapters import load_sanitized_ez_json
+from coilforge.direct_coil import (
+    parse_direct_coil_page,
+    verify_entered_against_candidate,
+)
 from coilforge.compatibility import (
     build_compatibility_diff_review_packet,
     build_decision_capture_template,
@@ -250,6 +254,67 @@ async def package_quote(request: dict[str, Any] = Body(default_factory=dict)):
         return jsonable_encoder(run_quote_package_workflow(request or {}))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/direct-coil/verify")
+async def direct_coil_verify(request: dict[str, Any] = Body(default_factory=dict)):
+    """Read-and-alert step 6: compare what John entered into the Direct Coil web form
+    against CoilForge's canonical record for that coil and highlight discrepancies.
+
+    Request keys:
+      ``page_text`` (str) — captured Direct Coil page text (browser-read or pasted), OR
+      ``entered``   (dict) — already-parsed {normalized_key: value}.
+      ``candidate`` (dict) — a per-coil SubmittalCoilCandidate (CoilForge side), OR
+      ``source_pdf_base64`` (str) + ``coil_tag`` (str) — extract the coil from a PDF.
+
+    CoilForge never edits the website; this only reads and alerts. Review aid only.
+    Raises ``ValueError`` on missing/invalid input (mapped to 400)."""
+    try:
+        return jsonable_encoder(_run_direct_coil_verify(request or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _run_direct_coil_verify(request: dict[str, Any]) -> dict[str, Any]:
+    entered = request.get("entered")
+    if not entered:
+        page_text = request.get("page_text")
+        if not page_text or not str(page_text).strip():
+            raise ValueError("provide either 'entered' values or 'page_text'")
+        entered = parse_direct_coil_page(str(page_text))
+    if not entered:
+        raise ValueError("no Direct Coil fields could be read from the page text")
+
+    coil_tag = request.get("coil_tag")
+    candidate = request.get("candidate")
+    if not candidate:
+        source_pdf_b64 = request.get("source_pdf_base64")
+        if not source_pdf_b64:
+            raise ValueError("provide 'candidate' or 'source_pdf_base64' for the CoilForge side")
+        candidate = _verify_candidate_from_pdf(source_pdf_b64, coil_tag)
+    return verify_entered_against_candidate(entered, candidate, coil_tag=coil_tag)
+
+
+def _verify_candidate_from_pdf(pdf_b64: str, coil_tag: str | None) -> dict[str, Any]:
+    import base64
+
+    try:
+        pdf_bytes = base64.b64decode(pdf_b64, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"source_pdf_base64 is not valid base64 ({exc})") from exc
+    result = run_pdf_to_drawing_workflow(pdf_bytes, source_id="DIRECT-COIL-VERIFY-INTAKE")
+    candidates = result.get("candidates") or []
+    if not candidates:
+        raise ValueError("no coil candidates were found in the PDF")
+    if coil_tag:
+        wanted = str(coil_tag).upper()
+        for candidate in candidates:
+            tag_field = candidate.get("tag") or {}
+            tag_value = tag_field.get("value") if isinstance(tag_field, dict) else None
+            if tag_value and str(tag_value).upper() == wanted:
+                return candidate
+        raise ValueError(f"coil_tag {coil_tag!r} was not found in the PDF")
+    return candidates[0]
 
 
 def _build_compatibility_payload(

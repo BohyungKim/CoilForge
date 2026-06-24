@@ -2941,6 +2941,90 @@ async function buildQuotePackage() {
   downloadBase64Pdf(pkg.pdf_base64, "coilforge-quote-package.pdf");
 }
 
+// Read-and-alert step 6: send the pasted (or browser-read) Direct Coil page text +
+// the loaded PDF to /api/direct-coil/verify and highlight only the discrepancies,
+// color-coded by severity. CoilForge never edits the website — this only alerts.
+document.querySelector("#dc-verify-run")?.addEventListener("click", () => {
+  runDirectCoilVerify().catch((error) => {
+    const summary = document.querySelector("#dc-verify-summary");
+    if (summary) summary.textContent = error.message;
+  });
+});
+
+async function runDirectCoilVerify() {
+  const summary = document.querySelector("#dc-verify-summary");
+  const file = state.selectedPdfFile;
+  if (!isPdfFile(file)) {
+    if (summary) summary.textContent = "Analyze a Direct Coil PDF first, then verify your web entry against it.";
+    return;
+  }
+  const pageText = document.querySelector("#dc-verify-page-text")?.value || "";
+  if (!pageText.trim()) {
+    if (summary) summary.textContent = "Paste the Direct Coil entry page text (or use browser-read) first.";
+    return;
+  }
+  if (summary) summary.textContent = "Verifying entry…";
+  const bytes = await file.arrayBuffer();
+  const coilTag = document.querySelector("#dc-verify-coil-tag")?.value.trim() || undefined;
+  const report = await requestJson("/api/direct-coil/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      source_pdf_base64: arrayBufferToBase64(bytes),
+      page_text: pageText,
+      coil_tag: coilTag,
+    }),
+  });
+  renderDirectCoilVerify(report);
+}
+
+function renderDirectCoilVerify(report) {
+  const summary = document.querySelector("#dc-verify-summary");
+  if (!summary) return;
+  const rows = report.discrepancies || [];
+  const parts = [];
+
+  if (report.low_coverage_warning) {
+    parts.push(
+      `<div class="dc-verify-banner dc-verify-banner-warn">&#9888; Only ${report.fields_read} of `
+      + `${report.fields_expected} fields were read &mdash; the paste/browser-read looks incomplete. `
+      + `Do NOT treat a clean result as verified.</div>`
+    );
+  }
+
+  const tag = report.coil_tag ? `${escapeHtml(report.coil_tag)} &middot; ` : "";
+  parts.push(
+    `<div class="dc-verify-counts">${tag}`
+    + `<strong>${report.match_count} matched</strong> (read ${report.fields_read} of ${report.fields_expected}) &middot; `
+    + `${report.mismatch_count} mismatch &middot; ${report.unverifiable_count} unverifiable</div>`
+  );
+
+  if (!rows.length) {
+    parts.push(
+      report.low_coverage_warning
+        ? `<div class="dc-verify-row dc-verify-info">No conflicts in the few fields read &mdash; but coverage is too low to call this verified.</div>`
+        : `<div class="dc-verify-row dc-verify-ok">No discrepancies found in the fields read.</div>`
+    );
+  } else {
+    rows.forEach((row) => {
+      parts.push(
+        `<div class="dc-verify-row dc-verify-${escapeHtml(row.severity)}">`
+        + `<div class="dc-verify-field"><strong>${escapeHtml(row.label)}</strong>`
+        + `<span>${escapeHtml(row.section)}</span></div>`
+        + `<div class="dc-verify-values">CoilForge: <strong>${escapeHtml(formatVerifyValue(row.coilforge_value))}</strong>`
+        + ` &nbsp;vs&nbsp; Entered: <strong>${escapeHtml(formatVerifyValue(row.entered_value))}</strong></div>`
+        + `<div class="dc-verify-note">${escapeHtml(row.note)}</div>`
+        + `</div>`
+      );
+    });
+  }
+  summary.innerHTML = parts.join("");
+}
+
+function formatVerifyValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
+
 document.querySelector("#apply-draft")?.addEventListener("click", () => {
   elements.savedStatus.textContent = "Direct Coil draft refreshed from sanitized workflow";
 });

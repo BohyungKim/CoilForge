@@ -2073,3 +2073,89 @@ h4 {
 .quote-package-coil {
   color: var(--text-muted);
 }
+
+/* Read-and-alert: Direct Coil entry verifier (PDF intake panel). */
+.dc-verify {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.dc-verify-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dc-verify textarea,
+.dc-verify input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.dc-verify-summary {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.dc-verify-counts {
+  color: var(--text);
+}
+
+.dc-verify-banner {
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.dc-verify-banner-warn {
+  background: color-mix(in srgb, var(--status-blocked) 18%, transparent);
+  border: 1px solid var(--status-blocked);
+  color: var(--text);
+}
+
+.dc-verify-row {
+  border-left: 3px solid var(--border);
+  border-radius: 3px;
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+}
+
+.dc-verify-row .dc-verify-field span {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.dc-verify-note {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dc-verify-high {
+  border-left-color: var(--status-blocked);
+  background: color-mix(in srgb, var(--status-blocked) 10%, transparent);
+}
+
+.dc-verify-medium {
+  border-left-color: var(--status-review);
+  background: color-mix(in srgb, var(--status-review) 10%, transparent);
+}
+
+.dc-verify-info {
+  border-left-color: var(--status-unmapped);
+}
+
+.dc-verify-ok {
+  border-left-color: var(--status-ready);
+  color: var(--text-muted);
+}
