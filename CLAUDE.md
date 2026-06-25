@@ -28,8 +28,15 @@ is no install step or `pyproject.toml`.
 - Single file: `python -m pytest tests/test_header_prepopulate_engine.py -q`
 - Single test: `python -m pytest tests/test_header_prepopulate_engine.py::test_name -x`
 - Run the local web app (Windows, port 8011): double-click / run `run_server.bat`
+  (NOTE: `run_server.bat` runs uvicorn WITHOUT `--reload` — restart it after any `src/`
+  edit, and re-analyze the PDF in the browser since `pdfCoilPages` is cached client-side,
+  or your change won't show. The manual `--reload` entrypoint below auto-reloads.)
 - Run the web app manually: `python -m uvicorn coilforge.web_app:app --app-dir src --reload`
   (the README's `coilforge.phase2a.app:app` entrypoint also works; `web_app` extends it)
+- Re-seed ONE drawing template from a corrected reference PDF:
+  `python scripts/seed_templates_from_pdf.py build-one <template_id>` (delete that bucket's 4
+  artifacts first for a clean regen — `build_bucket` won't rewrite existing metadata/evidence
+  and only merges `slot_map`).
 
 Runtime deps that may need installing: `python -m pip install fastapi uvicorn pyyaml pydantic`.
 PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade gracefully.

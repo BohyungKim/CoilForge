@@ -6,9 +6,11 @@ const state = {
   compatibilityFilter: "all",
   pdfIntakeSummary: null,
   selectedPdfFile: null,
+  selectedQuotePdfFile: null,
   coverPageHint: "",
   pdfCoilPages: [],
   activePdfCoilPageIndex: -1,
+  reviewedCoils: new Set(),
   productOptions: null,
   loadingProductOptions: false,
   lastTemplateDrawing: null,
@@ -99,6 +101,9 @@ const elements = {
   pdfIntakePanel: document.querySelector(".pdf-intake-panel"),
   pdfDropZone: document.querySelector("#pdf-drop-zone"),
   pdfFileName: document.querySelector("#pdf-file-name"),
+  quotePdfFile: document.querySelector("#quote-pdf-file"),
+  quotePdfDropZone: document.querySelector("#quote-pdf-drop-zone"),
+  quotePdfFileName: document.querySelector("#quote-pdf-file-name"),
   pdfCoverPageInput: document.querySelector("#pdf-cover-page-input"),
   analyzePdf: document.querySelector("#analyze-pdf"),
   pdfIntakeSummary: document.querySelector("#pdf-intake-summary"),
@@ -298,6 +303,8 @@ function renderShell(uiState) {
   renderValidation(uiState);
   renderBlockedFields(uiState);
   renderProjectTree(uiState);
+  renderCoilReviewNav();
+  updateQuoteGate();
   updateTabVisibility();
 }
 
@@ -332,11 +339,12 @@ function renderProjectTree(uiState) {
 
   state.pdfCoilPages.forEach((page, index) => {
     const pageButton = document.createElement("button");
+    const reviewed = state.reviewedCoils.has(index);
     pageButton.className = `tree-item child ${index === state.activePdfCoilPageIndex ? "active" : ""}`;
     pageButton.type = "button";
     pageButton.dataset.coilPageIndex = String(index);
     pageButton.innerHTML = `
-      <span>${escapeHtml(page.tag || `Coil ${index + 1}`)} x ${escapeHtml(page.quantity ?? "review")}</span>
+      <span>${reviewed ? "✓ " : ""}${escapeHtml(page.tag || `Coil ${index + 1}`)} x ${escapeHtml(page.quantity ?? "review")}</span>
       <em>${escapeHtml(page.coil_type || page.product_type || "current draft")}</em>
     `;
     pageButton.addEventListener("click", () => {
@@ -354,6 +362,77 @@ function selectPdfCoilPage(index) {
   state.activePdfCoilPageIndex = index;
   renderShell(workflowToUiState(state.ui, page.workflow, null));
   elements.savedStatus.textContent = `Showing ${page.tag || `coil ${index + 1}`} x ${page.quantity ?? "review"}`;
+}
+
+// Per-coil review footer: shows progress, lets John mark the active coil reviewed,
+// and steps to the next one. The quote package is gated until every coil is reviewed.
+function markActiveCoilReviewed() {
+  if (state.activePdfCoilPageIndex < 0) {
+    return;
+  }
+  state.reviewedCoils.add(state.activePdfCoilPageIndex);
+  renderCoilReviewNav();
+  renderProjectTree(state.ui);
+  updateQuoteGate();
+}
+
+function renderCoilReviewNav() {
+  const nav = document.querySelector("#coil-review-nav");
+  if (!nav) {
+    return;
+  }
+  const total = state.pdfCoilPages.length;
+  if (!total) {
+    nav.innerHTML = "";
+    return;
+  }
+  const idx = state.activePdfCoilPageIndex;
+  const active = state.pdfCoilPages[idx] || {};
+  const reviewed = state.reviewedCoils.has(idx);
+  const hasNext = idx + 1 < total;
+  nav.innerHTML = `
+    <div class="coil-review-progress">
+      Coil ${idx + 1} of ${total} &middot; ${escapeHtml(active.tag || `Coil ${idx + 1}`)}
+      &middot; ${state.reviewedCoils.size}/${total} reviewed
+    </div>
+    <button type="button" id="coil-mark-reviewed" class="secondary-action${reviewed ? " is-reviewed" : ""}">
+      ${reviewed ? "Reviewed ✓" : "Mark reviewed ✓"}
+    </button>
+    <button type="button" id="coil-next" class="primary-button"${hasNext ? "" : " disabled"}>Next coil &rarr;</button>
+  `;
+  document.querySelector("#coil-mark-reviewed")?.addEventListener("click", markActiveCoilReviewed);
+  document.querySelector("#coil-next")?.addEventListener("click", () => {
+    if (hasNext) {
+      selectPdfCoilPage(idx + 1);
+    }
+  });
+}
+
+// "Build quote package" is the single end action: enabled only once every detected
+// coil is reviewed. With no detected coils, it stays enabled (extraction fallback).
+function updateQuoteGate() {
+  const button = document.querySelector("#build-quote-package");
+  if (!button) {
+    return;
+  }
+  const total = state.pdfCoilPages.length;
+  const allReviewed = !(total > 0 && state.reviewedCoils.size < total);
+  const hasQuotePdf = isPdfFile(state.selectedQuotePdfFile);
+  const blocked = !allReviewed || !hasQuotePdf;
+  button.disabled = blocked;
+  const hint = document.querySelector("#quote-package-section .quote-package-hint");
+  let message = "";
+  if (!allReviewed) {
+    message = `Review all ${total} coil(s) above, then drop the quote PDF to build.`;
+  } else if (!hasQuotePdf) {
+    message = "All coils reviewed — drop the quote PDF below to build.";
+  } else {
+    message = "Ready to build the quote package.";
+  }
+  button.title = blocked ? message : "";
+  if (hint) {
+    hint.textContent = message;
+  }
 }
 
 function renderPasteReadyFields(uiState) {
@@ -1809,121 +1888,14 @@ function renderTemplateDrawingPreview(templateDrawing) {
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
       ${templateDrawingPicker(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
-      ${packageAssemblerSection(templateDrawing)}
     </div>
   `;
   attachCoilDrawingPicker(templateDrawing);
-  attachPackageAssembler(templateDrawing);
 }
 
-// Outgoing-package assembler (workflow steps 9-12): the engineer drops the
-// Direct Coil drawing PDF, and CoilForge appends our drawing right after it,
-// stamping the copper-strap requirement (R-090: DX = 1/header, HG = 2/header)
-// and any uncertain-mapping callouts. Output is a watermarked review aid.
-function collectReviewMarkups(templateDrawing) {
-  const markups = [];
-  const mismatches = templateDrawing.validation_mismatches || {};
-  Object.keys(mismatches).forEach((slot) => {
-    markups.push(`${slot}: ${mismatches[slot]}`);
-  });
-  (templateDrawing.review_items || []).forEach((item) => markups.push(String(item)));
-  return markups;
-}
-
-function packageAssemblerSection(templateDrawing) {
-  const svg = templateDrawing.svg;
-  const ex = templateDrawing.extracted || {};
-  if (!svg) {
-    return `
-      <div class="package-assembler is-locked">
-        <strong>Drawing package</strong>
-        <span class="package-hint">Generate the CoilForge drawing first, then drop the Direct Coil drawing here to build the combined package.</span>
-      </div>`;
-  }
-  const result = state.lastPackageResult;
-  const fileName = state.directCoilPackageFile?.name || "No Direct Coil drawing selected";
-  const coil = ex.coil_category || templateDrawing.coil_category || "?";
-  const headers = ex.circuits ?? templateDrawing.circuits ?? "?";
-  let resultHtml = "";
-  if (result) {
-    const cs = result.copper_straps || {};
-    const strapClass = cs.status === "required" ? "status-review-required" : "status-blocked";
-    resultHtml = `
-      <div class="package-result">
-        <div class="package-strap ${strapClass}">${escapeHtml(cs.note || "")}</div>
-        <div class="package-meta">Combined PDF: ${result.package.page_count} pages
-          (Direct Coil ${result.package.direct_coil_page_count} + CoilForge 1) · review aid, watermarked</div>
-        <button type="button" id="package-download" class="secondary-button">Download package PDF</button>
-      </div>`;
-  }
-  return `
-    <div class="package-assembler">
-      <strong>Drawing package <span class="package-hint">(steps 9-12)</span></strong>
-      <span class="package-hint">Coil ${escapeHtml(String(coil))} · ${escapeHtml(String(headers))} header(s) → copper straps computed on assemble.</span>
-      <label class="package-drop" for="package-dc-file">
-        <span class="package-file-name">${escapeHtml(fileName)}</span>
-        <input type="file" id="package-dc-file" accept="application/pdf" hidden />
-      </label>
-      <button type="button" id="package-build" class="primary-button"${state.directCoilPackageFile ? "" : " disabled"}>Build package</button>
-      ${resultHtml}
-    </div>`;
-}
-
-function attachPackageAssembler(templateDrawing) {
-  const fileInput = document.querySelector("#package-dc-file");
-  const buildButton = document.querySelector("#package-build");
-  const downloadButton = document.querySelector("#package-download");
-  if (fileInput) {
-    fileInput.addEventListener("change", () => {
-      const file = fileInput.files?.[0];
-      if (file && isPdfFile(file)) {
-        state.directCoilPackageFile = file;
-        state.lastPackageResult = null;
-        renderTemplateDrawingPreview(templateDrawing);
-      }
-    });
-  }
-  if (buildButton) {
-    buildButton.addEventListener("click", () => assembleDrawingPackage(templateDrawing));
-  }
-  if (downloadButton && state.lastPackageResult) {
-    downloadButton.addEventListener("click", () =>
-      downloadBase64Pdf(state.lastPackageResult.package.pdf_base64, "coilforge-drawing-package.pdf"));
-  }
-}
-
-async function assembleDrawingPackage(templateDrawing) {
-  const file = state.directCoilPackageFile;
-  if (!file || !templateDrawing.svg) {
-    return;
-  }
-  const buildButton = document.querySelector("#package-build");
-  if (buildButton) {
-    buildButton.disabled = true;
-    buildButton.textContent = "Building...";
-  }
-  try {
-    const bytes = await file.arrayBuffer();
-    const ex = templateDrawing.extracted || {};
-    const result = await requestJson("/api/package/assemble", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        direct_coil_pdf_base64: arrayBufferToBase64(bytes),
-        coilforge_drawing_svg: templateDrawing.svg,
-        coil_type: ex.coil_category || templateDrawing.coil_category,
-        header_count: ex.circuits ?? templateDrawing.circuits ?? null,
-        review_markups: collectReviewMarkups(templateDrawing),
-      }),
-    });
-    state.lastPackageResult = result;
-    elements.savedStatus.textContent = "Drawing package assembled (review aid)";
-  } catch (error) {
-    elements.savedStatus.textContent = `Package failed: ${error.message || error}`;
-  } finally {
-    renderTemplateDrawingPreview(templateDrawing);
-  }
-}
+// NOTE: the per-coil "Drawing package (steps 9-12)" card (single-coil
+// /api/package/assemble) was retired. The one end action is now "Build quote
+// package" in the PDF-intake panel, which assembles every reviewed coil at once.
 
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -2498,7 +2470,10 @@ function updateTabVisibility() {
   });
   // Real tabs: show only the blocks tagged for the active view.
   document.querySelectorAll("[data-view]").forEach((block) => {
-    block.classList.toggle("is-hidden-view", block.dataset.view !== activeView);
+    // data-view may list several views (space-separated) so one block can appear
+    // under more than one tab (e.g. the drawing shows in both Checklist and Drawing).
+    const views = (block.dataset.view || "").split(/\s+/).filter(Boolean);
+    block.classList.toggle("is-hidden-view", !views.includes(activeView));
   });
   // Within the checklist view, every draft field row stays visible.
   document.querySelectorAll(".draft-field").forEach((row) => {
@@ -2681,6 +2656,8 @@ async function runWorkflowFromPdf() {
     state.pdfIntakeSummary = workflow.pdf_intake_summary;
     state.pdfCoilPages = workflow.pdf_coil_pages || [];
     state.activePdfCoilPageIndex = state.pdfCoilPages.length ? 0 : -1;
+    state.reviewedCoils = new Set();  // fresh PDF -> nothing reviewed yet
+    setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
     renderShell(workflowToUiState(state.ui, workflow, null));
     elements.savedStatus.textContent = "PDF candidate pre-populated for review";
   } finally {
@@ -2734,6 +2711,21 @@ function setSelectedPdfFile(file) {
   elements.pdfFileName.textContent = file.name;
   elements.pdfDropZone.classList.add("has-file");
   elements.pdfIntakeSummary.textContent = "PDF ready for local analysis.";
+}
+
+// Dedicated quote-PDF input at the bottom of the review scroll (separate from the top
+// submittal drop). Re-checks the build gate so picking the PDF enables the button.
+function setSelectedQuotePdfFile(file) {
+  if (!isPdfFile(file)) {
+    state.selectedQuotePdfFile = null;
+    if (elements.quotePdfFileName) elements.quotePdfFileName.textContent = "No file selected";
+    elements.quotePdfDropZone?.classList.remove("has-file");
+  } else {
+    state.selectedQuotePdfFile = file;
+    if (elements.quotePdfFileName) elements.quotePdfFileName.textContent = file.name;
+    elements.quotePdfDropZone?.classList.add("has-file");
+  }
+  updateQuoteGate();
 }
 
 function isPdfFile(file) {
@@ -2903,6 +2895,35 @@ elements.pdfDropZone.addEventListener("drop", (event) => {
   setSelectedPdfFile(file);
 });
 
+// Dedicated bottom quote-PDF drop + file input.
+elements.quotePdfFile?.addEventListener("change", () => {
+  setSelectedQuotePdfFile(elements.quotePdfFile.files?.[0] || null);
+});
+
+if (elements.quotePdfDropZone) {
+  ["dragenter", "dragover"].forEach((eventName) => {
+    elements.quotePdfDropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      elements.quotePdfDropZone.classList.add("is-drag-active");
+    });
+  });
+  ["dragleave", "drop"].forEach((eventName) => {
+    elements.quotePdfDropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      elements.quotePdfDropZone.classList.remove("is-drag-active");
+    });
+  });
+  elements.quotePdfDropZone.addEventListener("drop", (event) => {
+    const file = event.dataTransfer?.files?.[0] || null;
+    if (!isPdfFile(file)) {
+      const summary = document.querySelector("#quote-package-summary");
+      if (summary) summary.textContent = "Only PDF files can be used for the quote package.";
+      return;
+    }
+    setSelectedQuotePdfFile(file);
+  });
+}
+
 // Multi-coil quote package: send the selected Direct Coil quote+drawing PDF to
 // /api/package/quote, show the per-coil copper-strap price summary, and download
 // the combined review-aid PDF (our drawing inserted after each coil's drawing).
@@ -2915,22 +2936,41 @@ document.querySelector("#build-quote-package")?.addEventListener("click", () => 
 
 async function buildQuotePackage() {
   const summary = document.querySelector("#quote-package-summary");
-  const file = state.selectedPdfFile;
+  const file = state.selectedQuotePdfFile;
   if (!isPdfFile(file)) {
-    if (summary) summary.textContent = "Select a Direct Coil quote+drawing PDF first.";
+    if (summary) summary.textContent = "Drop the Direct Coil quote+drawing PDF below first.";
     return;
   }
   if (summary) summary.textContent = "Building quote package…";
   const bytes = await file.arrayBuffer();
+  // Build from the reviewed per-coil state so John's adjustments (and the reviewed
+  // header count) drive pricing — not a blind re-extract of the PDF.
+  const coils = state.pdfCoilPages
+    .map((page) => {
+      const td = (page.workflow || {}).template_drawing || {};
+      const ex = td.extracted || {};
+      return {
+        tag: page.tag,
+        coil_type: ex.coil_category || td.coil_category || null,
+        our_svg: td.svg || null,
+        header_count: ex.circuits ?? td.circuits ?? null,
+      };
+    })
+    .filter((coil) => coil.tag);
+  const body = { source_pdf_base64: arrayBufferToBase64(bytes) };
+  if (coils.length) {
+    body.coils = coils;
+  }
   const result = await requestJson("/api/package/quote", {
     method: "POST",
-    body: JSON.stringify({ source_pdf_base64: arrayBufferToBase64(bytes) }),
+    body: JSON.stringify(body),
   });
   const pkg = result.package || {};
   const lines = (result.coils || []).map((coil) => {
     const straps = coil.copper_straps || {};
-    const price = straps.total != null ? `+CAD$${Number(straps.total).toFixed(2)}` : (straps.status || "review required");
-    return `${coil.tag} (${coil.coil_type || "?"}): copper straps ${price}`;
+    const label = straps.note || straps.status || "review required";
+    const detail = straps.detail ? ` — ${straps.detail}` : "";
+    return `${coil.tag} (${coil.coil_type || "?"}): ${label}${detail}`;
   });
   if (summary) {
     summary.innerHTML =
@@ -2941,89 +2981,9 @@ async function buildQuotePackage() {
   downloadBase64Pdf(pkg.pdf_base64, "coilforge-quote-package.pdf");
 }
 
-// Read-and-alert step 6: send the pasted (or browser-read) Direct Coil page text +
-// the loaded PDF to /api/direct-coil/verify and highlight only the discrepancies,
-// color-coded by severity. CoilForge never edits the website — this only alerts.
-document.querySelector("#dc-verify-run")?.addEventListener("click", () => {
-  runDirectCoilVerify().catch((error) => {
-    const summary = document.querySelector("#dc-verify-summary");
-    if (summary) summary.textContent = error.message;
-  });
-});
-
-async function runDirectCoilVerify() {
-  const summary = document.querySelector("#dc-verify-summary");
-  const file = state.selectedPdfFile;
-  if (!isPdfFile(file)) {
-    if (summary) summary.textContent = "Analyze a Direct Coil PDF first, then verify your web entry against it.";
-    return;
-  }
-  const pageText = document.querySelector("#dc-verify-page-text")?.value || "";
-  if (!pageText.trim()) {
-    if (summary) summary.textContent = "Paste the Direct Coil entry page text (or use browser-read) first.";
-    return;
-  }
-  if (summary) summary.textContent = "Verifying entry…";
-  const bytes = await file.arrayBuffer();
-  const coilTag = document.querySelector("#dc-verify-coil-tag")?.value.trim() || undefined;
-  const report = await requestJson("/api/direct-coil/verify", {
-    method: "POST",
-    body: JSON.stringify({
-      source_pdf_base64: arrayBufferToBase64(bytes),
-      page_text: pageText,
-      coil_tag: coilTag,
-    }),
-  });
-  renderDirectCoilVerify(report);
-}
-
-function renderDirectCoilVerify(report) {
-  const summary = document.querySelector("#dc-verify-summary");
-  if (!summary) return;
-  const rows = report.discrepancies || [];
-  const parts = [];
-
-  if (report.low_coverage_warning) {
-    parts.push(
-      `<div class="dc-verify-banner dc-verify-banner-warn">&#9888; Only ${report.fields_read} of `
-      + `${report.fields_expected} fields were read &mdash; the paste/browser-read looks incomplete. `
-      + `Do NOT treat a clean result as verified.</div>`
-    );
-  }
-
-  const tag = report.coil_tag ? `${escapeHtml(report.coil_tag)} &middot; ` : "";
-  parts.push(
-    `<div class="dc-verify-counts">${tag}`
-    + `<strong>${report.match_count} matched</strong> (read ${report.fields_read} of ${report.fields_expected}) &middot; `
-    + `${report.mismatch_count} mismatch &middot; ${report.unverifiable_count} unverifiable</div>`
-  );
-
-  if (!rows.length) {
-    parts.push(
-      report.low_coverage_warning
-        ? `<div class="dc-verify-row dc-verify-info">No conflicts in the few fields read &mdash; but coverage is too low to call this verified.</div>`
-        : `<div class="dc-verify-row dc-verify-ok">No discrepancies found in the fields read.</div>`
-    );
-  } else {
-    rows.forEach((row) => {
-      parts.push(
-        `<div class="dc-verify-row dc-verify-${escapeHtml(row.severity)}">`
-        + `<div class="dc-verify-field"><strong>${escapeHtml(row.label)}</strong>`
-        + `<span>${escapeHtml(row.section)}</span></div>`
-        + `<div class="dc-verify-values">CoilForge: <strong>${escapeHtml(formatVerifyValue(row.coilforge_value))}</strong>`
-        + ` &nbsp;vs&nbsp; Entered: <strong>${escapeHtml(formatVerifyValue(row.entered_value))}</strong></div>`
-        + `<div class="dc-verify-note">${escapeHtml(row.note)}</div>`
-        + `</div>`
-      );
-    });
-  }
-  summary.innerHTML = parts.join("");
-}
-
-function formatVerifyValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  return String(value);
-}
+// NOTE: the "Verify Direct Coil entry" panel was unmounted pending completion of
+// the read-and-alert feature; it will be re-added (correctly placed) in a later
+// phase. The /api/direct-coil/verify route remains available for that work.
 
 document.querySelector("#apply-draft")?.addEventListener("click", () => {
   elements.savedStatus.textContent = "Direct Coil draft refreshed from sanitized workflow";

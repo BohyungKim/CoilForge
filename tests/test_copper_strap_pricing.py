@@ -24,7 +24,9 @@ def test_dx_one_header_is_25() -> None:
     assert price["status"] == "required"
     assert price["strap_count"] == 1
     assert price["total"] == 25.0
-    assert "DX" in price["note"] and "CAD$25.00" in price["note"]
+    # The stamped note stays terse; the breakdown lives in ``detail``.
+    assert price["note"] == "Copper Strap Adder CAD$25.00"
+    assert "DX" in price["detail"] and "1 header" in price["detail"]
 
 
 def test_hgrh_one_header_is_50() -> None:
@@ -32,7 +34,15 @@ def test_hgrh_one_header_is_50() -> None:
     assert price["status"] == "required"
     assert price["strap_count"] == 2  # 2 straps/header
     assert price["total"] == 50.0
-    assert "CAD$50.00" in price["note"]
+    assert price["note"] == "Copper Strap Adder CAD$50.00"
+
+
+def test_two_header_hgrh_is_100() -> None:
+    # John's worked example: 2 headers x 2 straps/header x $25 = $100.
+    price = copper_strap_price(CoilType.HGRH, 2)
+    assert price["strap_count"] == 4
+    assert price["total"] == 100.0
+    assert price["note"] == "Copper Strap Adder CAD$100.00"
 
 
 def test_price_scales_with_header_count() -> None:

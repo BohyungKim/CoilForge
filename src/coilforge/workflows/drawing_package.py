@@ -17,6 +17,17 @@ from coilforge.schemas.header_prepopulate import CoilType
 from coilforge.services.header_prepopulate_engine import copper_strap_requirement
 
 
+def _coerce_header_count(value: Any) -> int | None:
+    """Best-effort int for a header/circuit count; unknown -> None (flags review)."""
+    if value is None:
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    return count if count > 0 else None
+
+
 def _compose_copper_strap_summary(coil_type: CoilType, header_count: int | None) -> dict[str, Any]:
     """Turn the R-090 result into a stampable note + a traceable summary."""
     result = copper_strap_requirement(coil_type, header_count)
@@ -138,28 +149,52 @@ def run_quote_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
     except (ValueError, TypeError) as exc:
         raise ValueError(f"source_pdf_base64 is not valid base64 ({exc})") from exc
 
-    drawing_result = run_pdf_to_drawing_workflow(
-        source_pdf, source_id=str(request.get("source_id") or "QUOTE-PACKAGE-INTAKE")
-    )
-    coil_pages = drawing_result.get("pdf_coil_pages") or []
+    # Prefer the reviewed per-coil state the UI sends after John reviews each coil;
+    # only re-extract from the PDF when the caller supplies nothing (back-compat).
+    reviewed = request.get("coils")
+    if reviewed:
+        per_coil = [
+            {
+                "tag": c.get("tag"),
+                "coil_type": c.get("coil_type"),
+                "our_svg": c.get("our_svg"),
+                "header_count": c.get("header_count"),
+            }
+            for c in reviewed
+        ]
+    else:
+        drawing_result = run_pdf_to_drawing_workflow(
+            source_pdf, source_id=str(request.get("source_id") or "QUOTE-PACKAGE-INTAKE")
+        )
+        per_coil = []
+        for entry in drawing_result.get("pdf_coil_pages") or []:
+            template_drawing = (entry.get("workflow") or {}).get("template_drawing") or {}
+            extracted = template_drawing.get("extracted") or {}
+            per_coil.append(
+                {
+                    "tag": entry.get("tag"),
+                    "coil_type": extracted.get("coil_category"),
+                    "our_svg": template_drawing.get("svg"),
+                    # No silent ``or 1`` default: an unknown count must flag review,
+                    # never be priced as a single header (R-090 / never-invent).
+                    "header_count": extracted.get("circuits"),
+                }
+            )
 
     _PRICEABLE = {"DX", "HGRH", "CWC", "HWC"}
     coils: list[dict[str, Any]] = []
     summaries: list[dict[str, Any]] = []
-    for entry in coil_pages:
-        template_drawing = (entry.get("workflow") or {}).get("template_drawing") or {}
-        extracted = template_drawing.get("extracted") or {}
-        tag = entry.get("tag")
-        category = extracted.get("coil_category")
-        header_count = extracted.get("circuits") or 1
+    for coil in per_coil:
+        category = coil.get("coil_type")
+        header_count = _coerce_header_count(coil.get("header_count"))
         price: dict[str, Any] = {}
         if category in _PRICEABLE:
             price = copper_strap_price(CoilType(category), header_count)
         coils.append(
             {
-                "tag": tag,
+                "tag": coil.get("tag"),
                 "coil_type": category,
-                "our_svg": template_drawing.get("svg"),
+                "our_svg": coil.get("our_svg"),
                 "price_note": price.get("note"),
                 "price_total": price.get("total"),
                 "price_status": price.get("status"),
@@ -167,7 +202,7 @@ def run_quote_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
         )
         summaries.append(
             {
-                "tag": tag,
+                "tag": coil.get("tag"),
                 "coil_type": category,
                 "header_count": header_count,
                 "copper_straps": price,

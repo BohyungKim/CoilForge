@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 fitz = pytest.importorskip("fitz")
 
 from coilforge.workflows import run_drawing_package_workflow  # noqa: E402
+from coilforge.workflows.drawing_package import run_quote_package_workflow  # noqa: E402
 
 _SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200">'
@@ -121,3 +122,53 @@ def test_route_rejects_bad_input() -> None:
     client = TestClient(app)
     resp = client.post("/api/package/assemble", json={"coil_type": "DX"})  # no pdf, no svg
     assert resp.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# Multi-coil quote workflow: build from the reviewed per-coil state the UI sends
+# (no blind re-extract), and never invent a header count.
+# --------------------------------------------------------------------------- #
+def _quote_pdf_b64() -> str:
+    """A 2-page PDF: a COIL QUOTE page + a drawing page bearing the coil tag."""
+    doc = fitz.open()
+    quote = doc.new_page()
+    for i, line in enumerate(["COIL QUOTE", "Tagged: RHHGRC-1", "Cost Each: CAD$960.00"]):
+        quote.insert_text((40, 60 + i * 18), line)
+    drawing = doc.new_page()
+    for i, line in enumerate(["RHHGRC-1", "47 F.L.", "4.33 FIN"]):
+        drawing.insert_text((40, 60 + i * 18), line)
+    data = doc.tobytes()
+    doc.close()
+    return base64.b64encode(data).decode("ascii")
+
+
+def test_quote_workflow_prices_from_reviewed_coils() -> None:
+    # John's worked example: a 2-header HGRH -> 2 x 2 x $25 = $100, priced from the
+    # reviewed header count the UI supplies (not re-extracted from the PDF).
+    out = run_quote_package_workflow(
+        {
+            "source_pdf_base64": _quote_pdf_b64(),
+            "coils": [
+                {"tag": "RHHGRC-1", "coil_type": "HGRH", "our_svg": _SVG, "header_count": 2}
+            ],
+        }
+    )
+    coil = out["coils"][0]
+    assert coil["copper_straps"]["total"] == 100.0
+    assert coil["copper_straps"]["note"] == "Copper Strap Adder CAD$100.00"
+    assert out["package"]["inserted_coil_count"] == 1
+    assert out["export_allowed"] is False
+
+
+def test_quote_workflow_unknown_header_count_flags_review() -> None:
+    out = run_quote_package_workflow(
+        {
+            "source_pdf_base64": _quote_pdf_b64(),
+            "coils": [
+                {"tag": "RHHGRC-1", "coil_type": "HGRH", "our_svg": _SVG, "header_count": None}
+            ],
+        }
+    )
+    straps = out["coils"][0]["copper_straps"]
+    assert straps["status"] == "review_required"
+    assert straps["total"] is None  # no invented price

@@ -66,8 +66,10 @@ def copper_strap_price(coil_type: CoilType, header_count: int | None) -> dict[st
     total = round(strap_count * COPPER_STRAP_UNIT_PRICE, 2)
     straps_word = "strap" if strap_count == 1 else "straps"
     header_word = "header" if header_count == 1 else "headers"
-    note = (
-        f"Copper straps adder (review aid): +{COPPER_STRAP_CURRENCY}${total:,.2f} - "
+    # ``note`` is what gets stamped in red above the coil's price — keep it terse.
+    # ``detail`` carries the full breakdown for the UI summary line.
+    note = f"Copper Strap Adder {COPPER_STRAP_CURRENCY}${total:,.2f}"
+    detail = (
         f"{coil_type.value}, {header_count} {header_word} "
         f"({strap_count} {straps_word} x ${COPPER_STRAP_UNIT_PRICE:.0f})"
     )
@@ -77,4 +79,5 @@ def copper_strap_price(coil_type: CoilType, header_count: int | None) -> dict[st
         "total": total,
         "status": "required",
         "note": note,
+        "detail": detail,
     }

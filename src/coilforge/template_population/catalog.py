@@ -45,7 +45,7 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_dx_lh_header1": ("dx", "EZC-0001", _SEEDED),
     "coilmaster_dx_rh_header2": ("dx", "EZC-0011", _SEEDED),
     "coilmaster_dx_lh_header3": ("dx", "EZC-0007", _SEEDED),
-    "coilmaster_hgrh_lh_header1": ("hgrh", "EZC-0002", _SEEDED),
+    "coilmaster_hgrh_lh_header1": ("hgrh", "FEED-HG_1_LH-2572-BOWIE", _SEEDED),
     "coilmaster_hgrh_rh_header1": ("hgrh", "EZC-0012", _SEEDED),
     "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
     "coilmaster_hgrh_rh_header3": ("hgrh", "EZC-0016", _SEEDED),

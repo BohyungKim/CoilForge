@@ -90,6 +90,26 @@ def test_package_safety_flags_never_relaxed() -> None:
     assert "return_spacing: review required" in result.review_markups
 
 
+def test_review_markups_carried_but_not_stamped() -> None:
+    # The markups remain in the result for the on-screen review surface, but the
+    # noisy "! suggestion / ! missing_input" lines are NOT drawn on the drawing.
+    result = assemble_drawing_package(
+        direct_coil_pdf=_make_pdf(1),
+        coilforge_drawing_svg=_SVG,
+        copper_strap_note="COPPER STRAPS REQUIRED: 2",
+        review_markups=["suggestion:lifting_lugs=False (review)", "missing_input:header_count"],
+        watermark=True,
+    )
+    assert "missing_input:header_count" in result.review_markups  # carried in the payload
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    our_page_text = doc[result.coilforge_page_index].get_text()
+    assert "REVIEW AID - NOT FOR MANUFACTURING" in our_page_text  # watermark kept
+    assert "COPPER STRAPS REQUIRED: 2" in our_page_text  # copper line kept
+    assert "missing_input" not in our_page_text  # noise NOT stamped
+    assert "suggestion:" not in our_page_text
+    doc.close()
+
+
 def test_package_rejects_unreadable_direct_coil_pdf() -> None:
     with pytest.raises(ValueError):
         assemble_drawing_package(

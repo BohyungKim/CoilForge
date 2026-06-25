@@ -87,6 +87,14 @@ UNCONNECTED_PARAMS: dict[str, str] = {
          "multi-circuit is EZ layout geometry -> exact list in Geometry.Headers[].SR.",
 }
 
+# When a product line + unit size ARE chosen (the engine ran) but a dimension slot is
+# still empty, the generic "pick a product line" message is misleading. These reasons
+# name the actual missing input so a blank reads as "what to supply", not "is it broken".
+# R = return spacing = circuits*conn + (circuits-1)*1.5, so it needs the return conn size.
+_BLANK_REASON_AFTER_PRODUCT: dict[str, str] = {
+    "R": "Needs the return connection size — not found in the submittal extract.",
+}
+
 # ZD (zone depth) is a fixed constant per owner rule (John 2026-06-22), applied to
 # every header assembly (ZD, ZD2, ZD3, ...). It is NOT an engine slot or selection
 # value -- it is surfaced review-required like every other panel dimension.
@@ -347,6 +355,11 @@ def parameter_set_from_template_drawing(
     an explicit ``circuits`` hint only raises it. 1HD coils get no extra header keys.
     """
     slot_values = (template_drawing or {}).get("slot_values") or {}
+    # Did the engineer already pick a product line + unit size? If so the engine has
+    # run and an empty slot is a missing *input* (e.g. connection size), not "pick a
+    # product line"; choose a reason that names the real gap (see _BLANK_REASON...).
+    td = template_drawing or {}
+    product_chosen = bool(td.get("product_type") and td.get("unit_size"))
 
     parameters: dict[str, DrawingParameter] = {}
     review_required: list[str] = []
@@ -371,11 +384,19 @@ def parameter_set_from_template_drawing(
             continue
         value = _coerce_float(slot_values.get(slot))
         if value is None:
-            # Mappable, but the drawing has not derived it yet (engine gated).
+            # Mappable, but the drawing has not derived it yet. Before a product line +
+            # unit size are chosen the engine is gated; after, an empty slot is a missing
+            # input — name it so the blank explains itself instead of reading as a bug.
+            if product_chosen:
+                reason = _BLANK_REASON_AFTER_PRODUCT.get(
+                    key, "Engine did not derive this dimension; review required."
+                )
+            else:
+                reason = "Pick a product line + unit size to derive this dimension."
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
                 mode="blocked", status="review_required", review_required=True,
-                blocked_reason="Pick a product line + unit size to derive this dimension.",
+                blocked_reason=reason,
             )
             review_required.append(key)
             continue

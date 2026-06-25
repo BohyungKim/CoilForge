@@ -97,3 +97,48 @@ def test_unconnected_params_fall_back_so_preview_still_allowed() -> None:
     # from the static fallback so the preview is not blocked.
     assert params["CH"]["value"] == 13.25
     assert out["drawing_parameter_set"]["preview_allowed"] is True
+
+
+def test_blank_r_after_product_chosen_names_the_return_connection_size() -> None:
+    """Once a product line + unit size are chosen, a blank R must explain that it
+    needs the return connection size -- NOT the misleading "pick a product line"."""
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    # Engine ran (product line + unit size present) but no R slot was derived
+    # because the connection size was missing from the extract.
+    td = {"product_type": "TERRA H", "unit_size": "024", "slot_values": {}}
+    params = parameter_set_from_template_drawing(td, circuits=1).model_dump()["parameters"]
+    assert params["R"]["value"] is None
+    assert "return connection size" in params["R"]["blocked_reason"].lower()
+    assert "pick a product line" not in params["R"]["blocked_reason"].lower()
+
+
+def test_blank_r_before_product_chosen_keeps_pick_product_message() -> None:
+    """Before a product line + unit size are chosen the engine is gated, so the
+    pre-selection guidance stays unchanged."""
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    td = {"slot_values": {}}  # no product line / unit size chosen yet
+    params = parameter_set_from_template_drawing(td, circuits=1).model_dump()["parameters"]
+    assert params["R"]["value"] is None
+    assert "pick a product line" in params["R"]["blocked_reason"].lower()
+
+
+def test_present_r_slot_carries_its_value_after_product_chosen() -> None:
+    """With the R slot derived, R carries its value (no blocked reason)."""
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    td = {
+        "product_type": "TERRA H",
+        "unit_size": "024",
+        "slot_values": {"slot.R2": 0.5},
+    }
+    params = parameter_set_from_template_drawing(td, circuits=1).model_dump()["parameters"]
+    assert params["R"]["value"] == 0.5
+    assert params["R"]["blocked_reason"] is None

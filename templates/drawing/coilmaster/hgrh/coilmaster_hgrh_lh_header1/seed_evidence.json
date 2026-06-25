@@ -1,7 +1,7 @@
 {
   "schema_version": "template-first.1",
   "template_id": "coilmaster_hgrh_lh_header1",
-  "source_case_id": "FEED-HG_1_LH",
+  "source_case_id": "FEED-HG_1_LH-2572-BOWIE",
   "supplier": "coilmaster",
   "coil_category": "HGRH",
   "coil_hand": "LH",
@@ -16,7 +16,7 @@
   "source_files": [
     {
       "role": "ez_drawing_pdf",
-      "filename": "HG_1_LH.pdf",
+      "filename": "Coils_2572_Bowie_state.pdf",
       "filename_policy": "not_committed",
       "page_count": 1,
       "committed_copy": false,
@@ -58,7 +58,7 @@
     },
     {
       "slot_id": "slot.CH",
-      "value": "27.25",
+      "value": "19.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -66,7 +66,7 @@
     },
     {
       "slot_id": "slot.CIRCUITING",
-      "value": "3 Feed / 16 Pass",
+      "value": "2 Feed / 18 Pass",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -74,7 +74,7 @@
     },
     {
       "slot_id": "slot.CIRCUITING_2",
-      "value": "4 Dropped Tubes",
+      "value": "0 Dropped Tubes",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -82,7 +82,7 @@
     },
     {
       "slot_id": "slot.CL",
-      "value": "37.00",
+      "value": "39.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -90,7 +90,7 @@
     },
     {
       "slot_id": "slot.COIL_TUBE_FACE",
-      "value": "Tube Face = 26",
+      "value": "Tube Face = 18",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -98,7 +98,7 @@
     },
     {
       "slot_id": "slot.DRY_WEIGHT",
-      "value": "33.0 Lbs. Per Coil",
+      "value": "26.9 Lbs. Per Coil",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -114,7 +114,7 @@
     },
     {
       "slot_id": "slot.FH",
-      "value": "26",
+      "value": "18",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -146,7 +146,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "34",
+      "value": "36",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -178,7 +178,7 @@
     },
     {
       "slot_id": "slot.I1",
-      "value": "1.19",
+      "value": "2.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -186,7 +186,7 @@
     },
     {
       "slot_id": "slot.MODEL_NUMBER",
-      "value": "CD-F-F-02-08-26.00x34.00-L",
+      "value": "CD-F-F-02-08-18.00x36.00-L",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -194,7 +194,7 @@
     },
     {
       "slot_id": "slot.O2",
-      "value": "1.19",
+      "value": "2.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -202,7 +202,7 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "39.25",
+      "value": "41.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -210,7 +210,7 @@
     },
     {
       "slot_id": "slot.R2",
-      "value": "1.31",
+      "value": "1.88",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -242,7 +242,7 @@
     },
     {
       "slot_id": "slot.S1",
-      "value": "1.31",
+      "value": "0.63",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -250,7 +250,7 @@
     },
     {
       "slot_id": "slot.SL2",
-      "value": "4.00",
+      "value": "8.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -306,7 +306,7 @@
     },
     {
       "slot_id": "slot.X",
-      "value": "1.13",
+      "value": "1.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],

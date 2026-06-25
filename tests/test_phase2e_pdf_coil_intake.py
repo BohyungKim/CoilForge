@@ -790,12 +790,23 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert "Start here" in index
     assert "Drop PDF" in index
     assert "Browse PDF" in index
+    # Single-scroll per-coil review order: PDF intake first, then spec/performance,
+    # then drawing parameters + drawing, then the paste-ready fields (collapsed below).
     assert index.index('class="pdf-intake-panel primary-intake-panel"') < index.index(
-        'class="direct-coil-workbench"'
+        'id="direct-coil-screen-mirror"'
     )
-    assert index.index('class="pdf-intake-panel primary-intake-panel"') < index.index(
-        'class="content-grid"'
+    assert index.index('id="direct-coil-screen-mirror"') < index.index('id="drawing-parameters"')
+    assert index.index('id="drawing-parameters"') < index.index('id="paste-ready-fields"')
+    # Build quote package is the FINAL step: a dedicated quote-PDF input at the very
+    # bottom (after the paste-ready fields), NOT inside the top intake panel.
+    assert 'id="quote-pdf-file"' in index
+    assert 'id="quote-package-section"' in index
+    assert index.index('id="paste-ready-fields"') < index.index('id="quote-package-section"')
+    assert index.index('id="checklist-section"') < index.index('id="build-quote-package"')
+    assert (
+        index.index('id="build-quote-package"') > index.index('id="quote-package-section"')
     )
+    assert ".quote-package-section" in style
     assert "runWorkflowFromPdf" in app_js
     assert '"/api/workflow/pdf-to-drawing"' in app_js
     # Per-coil product line + unit size picker that unlocks the engine dims.
@@ -855,7 +866,7 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert "Review-aid only — never manufacturing-approved." in app_js
     assert "templateDrawingBody" in app_js
     assert 'id="drawing-template-status"' in index
-    assert index.index("<h3>Drawing Parameters</h3>") < index.index('id="drawing-preview"')
+    assert index.index('id="drawing-parameters"') < index.index('id="drawing-preview"')
     assert "addDxAirFallbackFields" in app_js
     assert "pdf_entering_airflow_to_direct_coil_airflow" in app_js
     assert "pdf_airflow_geometry_to_direct_coil_face_velocity" in app_js
@@ -921,8 +932,9 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert ".pdf-loading-indicator" in style
     assert ".pdf-loading-spinner" in style
     assert "@keyframes pdf-loading-spin" in style
-    assert "body.is-init-stage .direct-coil-workbench" in style
-    assert "body.is-init-stage .content-grid" in style
+    # Init stage hides the per-coil review flow until a PDF is analyzed.
+    assert "body.is-init-stage .review-flow" in style
+    assert ".coil-review-nav" in style
     assert "body.is-init-stage .status-ribbon" in style
 
 

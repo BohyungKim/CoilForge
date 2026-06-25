@@ -525,13 +525,98 @@ body[data-active-view]:not([data-active-view="checklist"]) .content-grid {
 
 body.is-init-stage .tab-strip,
 body.is-init-stage .status-ribbon,
-body.is-init-stage .direct-coil-workbench,
-body.is-init-stage .content-grid,
+body.is-init-stage .review-flow,
 body.is-init-stage .side-nav,
 body.is-init-stage .project-tree,
 body.is-init-stage .search-label,
 body.is-init-stage .project-search {
   display: none;
+}
+
+/* Per-coil review scroll: a clear "next coil" footer + a quiet bottom collapse
+   for the paste-ready fields and source evidence (review aids, not the focus). */
+.coil-review-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.coil-review-nav .coil-review-progress {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  margin-right: auto;
+}
+
+.coil-review-nav button {
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.coil-review-nav .is-reviewed {
+  color: var(--status-ready, #1a7f4b);
+}
+
+/* Final step: dedicated quote-PDF input + build, at the very bottom of the scroll. */
+.quote-package-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.quote-package-section .quote-package {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.quote-package-section #build-quote-package:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.review-collapse {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.review-collapse > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  list-style: none;
+  user-select: none;
+}
+
+.review-collapse > summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-collapse > summary::before {
+  content: "▸ ";
+  color: var(--text-muted);
+}
+
+.review-collapse[open] > summary::before {
+  content: "▾ ";
+}
+
+.review-collapse > * + * {
+  margin-top: 12px;
 }
 
 body.is-init-stage .workspace {

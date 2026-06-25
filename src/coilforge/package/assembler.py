@@ -46,10 +46,12 @@ class PackageResult(BaseModel):
 
 
 def _stamp_pages(doc, copper_strap_note: str, review_markups: list[str], watermark: bool) -> None:
-    """Stamp the copper-strap banner, markups, and watermark on every page of ``doc``.
+    """Stamp the copper-strap banner and watermark on every page of ``doc``.
 
     Stamps sit inside an opaque banner (like a drawing's revision band) so they
-    stay legible regardless of the underlying drawing geometry.
+    stay legible regardless of the underlying drawing geometry. ``review_markups``
+    (engine suggestion/missing-input bucket dumps) are intentionally NOT stamped —
+    they belong in the on-screen review surface, not on the outgoing drawing.
     """
     import fitz
 
@@ -57,8 +59,6 @@ def _stamp_pages(doc, copper_strap_note: str, review_markups: list[str], waterma
     if watermark:
         lines.append((REVIEW_WATERMARK, 9, (0.80, 0.0, 0.0)))
     lines.append((copper_strap_note, 11, (0.0, 0.0, 0.55)))
-    for line in review_markups:
-        lines.append((f"! {line}", 8, (0.60, 0.30, 0.0)))
 
     pad = 8.0
     band_height = pad + sum(size + 5 for _, size, _ in lines)

@@ -502,12 +502,12 @@ BUCKETS = [
      "Case/#2/EZC-0011 - DX_2_RH/CDXC-2.pdf", "EZC-0011"),
     ("coilmaster_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
      "Case/#2/EZC-0007 - DX_3_LH/CDXC-1.pdf", "EZC-0007"),
-    # 2026-06-23: re-seeded from a more complete HG_1_LH reference (John). The
-    # original EZC-0002 drawing lacked header/stubout dimension callouts, so
-    # I1/S1/O2/R2/HD2/SL2 baked into the NOTES text instead of slotting; the new
-    # reference carries them as real callouts -> they redact to slots cleanly.
+    # 2026-06-24: re-seeded from the correct LH 1-header reference (John). The prior
+    # HG_1_LH.pdf was the wrong coil's drawing (wrongly imported geometry); the Bowie
+    # State 2572 drawing (tag RHHGRC-2, 1-header HGRH LH) is the right reference and
+    # carries the header/stubout callouts (I1/S1/O2/R2/HD2/SL2) for clean slotting.
     ("coilmaster_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
-     "Case/feed/HG_1_LH/HG_1_LH.pdf", "FEED-HG_1_LH"),
+     "Case/feed/HG_1_LH/Coils_2572_Bowie_state.pdf", "FEED-HG_1_LH-2572-BOWIE"),
     ("coilmaster_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
      "Case/#2/EZC-0012 - HG_1_RH/RHHGRC-2.pdf", "EZC-0012"),
     ("coilmaster_hgrh_lh_header2", "hgrh", "HGRH", "LH", "Header 2", None,
@@ -660,6 +660,18 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "build-all":
         sys.path.insert(0, str(REPO_ROOT / "src"))
         build_all()
+        raise SystemExit(0)
+
+    # Re-seed a single bucket into its template folder (surgical; avoids re-seeding
+    # the other 21 templates). Usage: build-one <template_id>
+    if len(sys.argv) > 2 and sys.argv[1] == "build-one":
+        sys.path.insert(0, str(REPO_ROOT / "src"))
+        target = sys.argv[2]
+        spec = next((s for s in BUCKETS if s[0] == target), None)
+        if spec is None:
+            raise SystemExit(f"unknown template_id: {target}")
+        ids = build_bucket(spec)
+        print(f"seeded {target:32} slots={len(ids)}")
         raise SystemExit(0)
 
     src = sys.argv[1] if len(sys.argv) > 1 else "Case/#2/EZC-0001 - DX_1_LH/CDXC-1.pdf"
