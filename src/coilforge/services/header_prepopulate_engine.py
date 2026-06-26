@@ -38,7 +38,7 @@ _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules
 _NOTES_BASE_IDS = {"R-007", "R-008"}
 _NOTES_APPEND_IDS = {"R-080", "R-081"}
 _CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
-_RETURN_SPACING_IDS = {"R-022", "R-023"}
+_RETURN_SPACING_IDS = {"R-022", "R-023", "R-052"}
 _CWC_IO_HD_SL_IDS = {
     "R-060", "R-061", "R-062", "R-063a", "R-063b",
     "R-064-sl", "R-064-io", "R-064-hd", "R-065",
@@ -117,6 +117,20 @@ def _return_spacing(suction_conn_size: float, circuits: int) -> list[float]:
     return [n * suction_conn_size + (n - 1) * 1.5 for n in range(1, circuits + 1)]
 
 
+def _hgrh_return_spacing(
+    conn_size: float, n_conn: int, product: ProductFamily
+) -> list[float]:
+    """R-052: HGRH return spacing for n_conn connections per header.
+
+    VENTUM+ uses the connection size as a flat location for every R (CHK branch);
+    all other families use the running-edge formula Rn = n*D + (n-1)*1.5. At n=1
+    both reduce to D, so a single-connection header is identical either way.
+    """
+    if product == ProductFamily.VENTUM_PLUS:
+        return [conn_size for _ in range(1, n_conn + 1)]
+    return [n * conn_size + (n - 1) * 1.5 for n in range(1, n_conn + 1)]
+
+
 def _excel_round(value: float) -> int:
     """Excel ROUND to nearest integer (half away from zero)."""
     return math.floor(value + 0.5) if value >= 0 else math.ceil(value - 0.5)
@@ -193,6 +207,11 @@ def _applies(rule: dict[str, Any], req: HeaderPrepopulateRequest) -> bool:
     if not _matches_list(req.type_of_coil.value, applies_to.get("coil_type")):
         return False
     if not _matches_list(req.product_type.value, applies_to.get("product_family")):
+        return False
+    # size_pattern scopes a rule to specific unit sizes (e.g. [H05, H10]). Declared on every
+    # rule but null by default; _matches_list(token, None) -> True, so null keeps matching all
+    # sizes (backward-compatible). Activated 2026-06-26 for the Ventum H H05/H10 SL override.
+    if not _matches_list(req.unit_size, applies_to.get("size_pattern")):
         return False
     variant = applies_to.get("terra_variant")
     if variant is not None:
@@ -451,6 +470,28 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                 )
         else:
             add_missing(["circuits", "conn_size", "rows"])
+
+    # --- HGRH return spacing R (R-052) ---
+    # Product-branched per John 2026-06-25 / CHK HGRH. MEDIUM -> suggestions, so
+    # the confidence gate is preserved (the review-aid drawing reads it as a
+    # review-required value; it is never auto-promoted to a HIGH `values` entry).
+    # The per-header connection count gates how many R slots fill; absent it we
+    # fall back to `circuits` so a single emission still occurs.
+    if coil == CoilType.HGRH:
+        rule = index["R-052"]
+        n_conn = request.qty_conn_per_header or request.circuits
+        if request.conn_size is not None and n_conn is not None:
+            place(
+                "return_spacing",
+                FieldResult(
+                    value=_hgrh_return_spacing(request.conn_size, n_conn, product),
+                    confidence=Confidence.MEDIUM,
+                    evidence_refs=rule["evidence_refs"],
+                    review_required=True,
+                ),
+            )
+        else:
+            add_missing(["conn_size", "qty_conn_per_header"])
 
     # --- copper straps required (R-090) ---
     _emit_copper_straps(request, place, add_missing)

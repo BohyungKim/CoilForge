@@ -174,6 +174,43 @@ def test_multi_coil_inserts_after_drawing_page_and_notes_quote() -> None:
     doc.close()
 
 
+def test_multi_coil_stamps_superseded_watermark_on_source_drawing_page() -> None:
+    # p0 quote, p1 report, p2 drawing. Our drawing inserts at output index 3; the
+    # source drawing page (output index 2) gets the large "revised next page" stamp.
+    source = _make_text_pdf(
+        [
+            "COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00",
+            "DX COIL REPORT\nCDXC-1\nspecs",
+            "CDXC-1\n47 F.L.\n4.33 FIN",
+        ]
+    )
+    coils = [{"tag": "CDXC-1", "coil_type": "DX", "our_svg": _SVG}]
+    result = assemble_multi_coil_package(source_pdf=source, coils=coils)
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    # Source drawing page (index 2) is marked superseded, pointing to the next page.
+    assert "SUPERSEDED" in doc[2].get_text()
+    assert "next page" in doc[2].get_text()
+    # Quote page (0) and our inserted drawing (3) are NOT marked superseded.
+    assert "SUPERSEDED" not in doc[0].get_text()
+    assert "SUPERSEDED" not in doc[3].get_text()
+    assert "REVIEW AID - NOT FOR MANUFACTURING" in doc[3].get_text()
+    doc.close()
+
+
+def test_multi_coil_superseded_watermark_can_be_disabled() -> None:
+    source = _make_text_pdf(
+        ["COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$1.00", "report", "CDXC-1\nF.L."]
+    )
+    result = assemble_multi_coil_package(
+        source_pdf=source,
+        coils=[{"tag": "CDXC-1", "coil_type": "DX", "our_svg": _SVG}],
+        mark_source_superseded=False,
+    )
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    assert "SUPERSEDED" not in doc[2].get_text()
+    doc.close()
+
+
 def test_multi_coil_safety_flags_never_relaxed() -> None:
     source = _make_text_pdf(["COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$1.00", "CDXC-1\nF.L."])
     result = assemble_multi_coil_package(

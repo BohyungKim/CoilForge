@@ -65,7 +65,10 @@ function with one I/O (loading the cached YAML rule table). Rules are identified
 `_SPECIAL_IDS` (casing depth, return spacing, CWC/HWC io/hd/sl, notes assembly, etc.)
 are handled by dedicated phase helpers. Formulas use explicit safe helpers — **never
 `eval`**. When changing engineering behavior, edit the YAML rule and/or its helper, not
-ad-hoc code elsewhere.
+ad-hoc code elsewhere. Rules can scope to specific unit sizes via `applies_to.size_pattern`
+(e.g. `[H05, H10]`), now matched in `_applies` (null = all sizes). Combine with last-writer-wins
+(rules applied in YAML order; the generic emitter's `place()` overwrites per field) for
+size/variant overrides — e.g. R-025b/R-044d (size) and R-012v (Terra-V).
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):
@@ -297,6 +300,10 @@ anchored to datums. Scaling text or arrowheads is a defect.
 - Tests: `tests/test_schematic_renderer.py`
 - Existing template path — **DO NOT TOUCH**: `slot_population.py::populate_template_slots`,
   the 17 `template.svg` files, `pdf_to_template_drawing.py`.
+- The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
+  at render time by `drawing/label_authority.py::direct_coil_label` (applied in
+  `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded
+  `template.svg` text.
 - Reuse from `phase2a/renderer.py`: the clamp idiom, `REVIEW_WATERMARK`,
   `_esc` / `_text_line` / `_fmt`. Do **not** reuse its x18 / x16 scaling.
   Note: `_conn_float` lives in the frozen `submittal/pdf_to_template_drawing.py`,

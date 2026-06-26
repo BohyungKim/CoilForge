@@ -1750,6 +1750,11 @@ _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
         # match the typo (and the unit-less form) so the connection size is read.
         ("Sunction Size (in)", "RETURN_CONNECTION_SIZE"),
         ("Sunction Size", "RETURN_CONNECTION_SIZE"),
+        # "Suntion" is a further mis-spelling seen on the HGRH reheat coil tables
+        # (John 2026-06-25); without it the connection size (and thus drawing "R")
+        # is dropped because the label match is exact.
+        ("Suntion Size (in)", "RETURN_CONNECTION_SIZE"),
+        ("Suntion Size", "RETURN_CONNECTION_SIZE"),
         ("Suction Size", "RETURN_CONNECTION_SIZE"),
         ("Inlet Conn. Size (in)", "INLET_CONNECTION_SIZE"),
         ("Inlet Conn. Size", "INLET_CONNECTION_SIZE"),

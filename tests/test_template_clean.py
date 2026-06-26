@@ -1,5 +1,5 @@
-"""`_clean_template_svg` — short-term cleanup of the populated CoilMaster template to the
-direct-coil ordering view (image #7): numbers-only dim callouts + viewBox cropped to the
+"""`_clean_template_svg` — cleanup of the populated CoilMaster template to the direct-coil
+view: value+label dim callouts (John 2026-06-25 "valuemap" style) + viewBox cropped to the
 drawing region (clips the panel / dim table / title block / notes chrome)."""
 
 from __future__ import annotations
@@ -24,11 +24,13 @@ _SVG = (
 )
 
 
-def test_clean_strips_dim_labels_to_numbers_only() -> None:
+def test_clean_keeps_value_and_label_on_callouts() -> None:
     out = _clean_template_svg(_SVG)
-    assert ">3.5</tspan>" in out and ">12</tspan>" in out
-    assert "REVIEW REQUIRED" not in out  # blank-slot placeholder dropped entirely
-    assert "HD2</tspan>" not in out and " FH</tspan>" not in out and " OAL</tspan>" not in out
+    # value + label kept together (existing drawing style)
+    assert ">3.5 HD2</tspan>" in out and ">12 FH</tspan>" in out
+    # blank-slot placeholder: value gone, label kept so the dim stays identified
+    assert "REVIEW REQUIRED" not in out
+    assert ">OAL</tspan>" in out
 
 
 def test_clean_does_not_touch_non_callout_text() -> None:
@@ -66,11 +68,45 @@ def test_clean_strips_intruding_chrome_keeps_geometry() -> None:
     assert "COLLARED HOLES REQUIRED" not in out
     assert "DISTRIBUTOR 1 HAS" not in out
     assert "Coil ID" not in out and "Casing Style" not in out
-    # geometry dimension value kept; DIST LIST heading + distributor entries removed
-    assert ">12</tspan>" in out
+    # geometry dimension value+label kept; DIST LIST heading + distributor entries removed
+    assert ">12 FH</tspan>" in out
     assert "DIST LIST" not in out
     assert "501-" not in out and "OD:5/8" not in out
 
 
 def test_clean_handles_empty() -> None:
     assert _clean_template_svg("") == ""
+
+
+# Literal EZ-baked callouts (no {{slot}}): a hardcoded EZ value + EZ/bare label, as found in
+# the CWC/HWC/HGRH templates. The Direct Coil label authority (John 2026-06-26) normalizes
+# the LABEL only — bare I/S/O/R -> parity-indexed I1/S1/O2/R2, EZ HD1/SL1 -> HD2/SL2 — and
+# keeps the EZ value (cleared only when those templates are re-seeded).
+_SVG_EZ_RESIDUE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="792" height="612" viewBox="0 0 792 612">'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">2.31 I</tspan></text>'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">1.63 S</tspan></text>'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">2.31 O</tspan></text>'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">1.63 R</tspan></text>'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">3.50 HD1</tspan></text>'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">8.00 SL1</tspan></text>'
+    '<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)"><tspan x="1" y="-2">0.63 BF</tspan></text>'
+    "</svg>"
+)
+
+
+def test_clean_normalizes_ez_residue_labels_keeps_values() -> None:
+    out = _clean_template_svg(_SVG_EZ_RESIDUE)
+    # bare EZ connection labels -> Direct Coil parity-indexed; EZ value preserved.
+    assert ">2.31 I1</tspan>" in out
+    assert ">1.63 S1</tspan>" in out
+    assert ">2.31 O2</tspan>" in out
+    assert ">1.63 R2</tspan>" in out
+    # EZ header-1 forms -> Direct Coil return-header index.
+    assert ">3.50 HD2</tspan>" in out
+    assert ">8.00 SL2</tspan>" in out
+    # already-canonical label is unchanged.
+    assert ">0.63 BF</tspan>" in out
+    # the bare/EZ originals are gone.
+    for stale in (">2.31 I<", ">1.63 S<", ">2.31 O<", ">1.63 R<", ">3.50 HD1<", ">8.00 SL1<"):
+        assert stale not in out

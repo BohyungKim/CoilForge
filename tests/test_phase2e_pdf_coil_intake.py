@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from coilforge.submittal.pdf_intake import (
     _candidate_from_cover_row,
     _CoverRow,
+    _match_detail_label,
     _cover_row_summary,
     _detail_lines_by_cover_row,
     _is_cover_coil_row,
@@ -1586,3 +1587,14 @@ def test_unrecognised_model_code_leaves_product_line_blank() -> None:
     )
     assert summary.product_line == ""
     assert summary.unit_size == ""
+
+
+def test_suntion_size_misspelling_maps_to_return_connection_size() -> None:
+    """HGRH reheat tables mis-spell "Suction" as "Suntion" (John 2026-06-25). The
+    detail-label match is exact, so without the variant the connection size is
+    dropped and the drawing "R" (= conn size) renders blank. Lock the mapping."""
+    for label in ("Suntion Size (in)", "Suntion Size"):
+        assert _match_detail_label(label, "coil") == "RETURN_CONNECTION_SIZE"
+    # The known-good spellings still resolve.
+    assert _match_detail_label("Suction Size (in)", "coil") == "RETURN_CONNECTION_SIZE"
+    assert _match_detail_label("Sunction Size (in)", "coil") == "RETURN_CONNECTION_SIZE"

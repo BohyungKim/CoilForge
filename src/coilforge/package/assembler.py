@@ -196,15 +196,61 @@ def _stamp_watermark_banner(page) -> None:
     page.insert_text((10, 11), REVIEW_WATERMARK, fontsize=8, color=(0.80, 0.0, 0.0))
 
 
-def _stamp_quote_price_notes(page, coils: list[dict]) -> None:
-    """Draw each coil's copper-strap price note just above its 'Cost Each' line.
+def _stamp_superseded_watermark(page) -> None:
+    """Large translucent diagonal watermark on a source Direct Coil drawing page that
+    has a CoilForge drawing inserted right after it.
 
-    Pairs a coil to the first 'Cost Each' occurrence at/below its tag, so the note
-    lands above the right price. Uses an opaque band so the note stays legible. The
-    source quote numbers are never modified.
+    Marks the original as the drawing being revised and points the reviewer to the
+    next page (our drawing) as the basis for the revised drawing. Drawn OVER the page
+    at low opacity so the original stays readable for comparison — the source content
+    is never edited. Review aid only.
     """
     import fitz
 
+    rect = page.rect
+    red = (0.80, 0.0, 0.0)
+    text = "REVISED DRAWING - SEE NEXT PAGE"
+    fs = max(26.0, min(48.0, rect.width / 12.0))
+    placed = False
+    try:  # diagonal banner across the page centre (preferred)
+        tlen = fitz.get_text_length(text, fontsize=fs)
+        pivot = fitz.Point(rect.width / 2.0, rect.height / 2.0)
+        writer = fitz.TextWriter(rect, color=red)
+        writer.append(fitz.Point(pivot.x - tlen / 2.0, pivot.y), text, fontsize=fs)
+        writer.write_text(page, morph=(pivot, fitz.Matrix(45)), opacity=0.22)
+        placed = True
+    except Exception:  # noqa: BLE001 — fall back to a horizontal stamp
+        placed = False
+    if not placed:
+        tlen = fitz.get_text_length(text, fontsize=fs)
+        x = max(4.0, (rect.width - tlen) / 2.0)
+        try:
+            page.insert_text((x, rect.height / 2.0), text, fontsize=fs,
+                             color=red, fill_opacity=0.22)
+        except TypeError:  # older PyMuPDF without fill_opacity
+            page.insert_text((x, rect.height / 2.0), text, fontsize=fs,
+                             color=(0.93, 0.62, 0.62))
+    # Unambiguous top header band (always rendered, opaque, small).
+    page.draw_rect(fitz.Rect(0, 0, rect.width, 16),
+                   color=(0.70, 0.70, 0.70), fill=(1.0, 1.0, 1.0), width=0.5)
+    page.insert_text((10, 11),
+                     "SUPERSEDED - CoilForge revised drawing on the next page (review aid)",
+                     fontsize=8, color=red)
+
+
+def _stamp_quote_price_notes(page, coils: list[dict]) -> None:
+    """Draw each coil's copper-strap price note right above its 'Item Total' price.
+
+    Pairs a coil to the first 'Cost Each' occurrence at/below its tag (a stable
+    per-coil anchor), then places the note above the right-hand 'Item N Total'
+    figure on that same line. John 2026-06-25: the left-anchored note used to land
+    on the blank 'Header:' row directly above 'Cost Each' and read like a header
+    spec; anchoring it over the total puts it unambiguously above the pricing. A
+    tight opaque band keeps it legible. The source quote numbers are never modified.
+    """
+    import fitz
+
+    fs = 7.2
     cost_rects = sorted(page.search_for("Cost Each"), key=lambda r: r.y0)
     used: set[int] = set()
     for coil in coils:
@@ -226,19 +272,32 @@ def _stamp_quote_price_notes(page, coils: list[dict]) -> None:
         if target is None:
             continue
         used.add(target_idx)
-        band = fitz.Rect(target.x0, target.y0 - 12, target.x0 + 380, target.y0 - 1)
+        # Right-column anchor: the 'Total' label on the SAME line as this coil's
+        # 'Cost Each'. Place the note above that price; fall back to the left
+        # 'Cost Each' x if the quote has no per-item Total on the line.
+        total_rects = [r for r in page.search_for("Total") if abs(r.y0 - target.y0) <= 3]
+        anchor_x = min((r.x0 for r in total_rects), default=target.x0)
+        note_w = fitz.get_text_length(note, fontsize=fs)
+        x = min(anchor_x, page.rect.width - note_w - 6)
+        x = max(x, target.x0)
+        band = fitz.Rect(x - 2, target.y0 - 11, x + note_w + 4, target.y0 - 1)
         page.draw_rect(band, color=(0.80, 0.0, 0.0), fill=(1.0, 1.0, 1.0), width=0.4)
-        page.insert_text((target.x0 + 2, target.y0 - 3), note, fontsize=7.2, color=(0.80, 0.0, 0.0))
+        page.insert_text((x, target.y0 - 3), note, fontsize=fs, color=(0.80, 0.0, 0.0))
 
 
-def assemble_multi_coil_package(*, source_pdf: bytes, coils: list[dict]) -> MultiCoilPackageResult:
+def assemble_multi_coil_package(
+    *, source_pdf: bytes, coils: list[dict], mark_source_superseded: bool = True
+) -> MultiCoilPackageResult:
     """Insert each coil's CoilForge drawing after its source drawing page and stamp a
     copper-strap price note above each coil's quoted price.
 
     ``coils`` entries: ``{tag, coil_type, our_svg, price_note, price_total, price_status}``
     (price_* optional). Coils without a drawing page or SVG are reported but not
-    inserted. Raises ``ValueError`` on unreadable input. The raw source file on disk
-    is never written; only an in-memory copy is annotated.
+    inserted. When ``mark_source_superseded`` is set, each source Direct Coil drawing
+    page that gets a drawing inserted after it is stamped with a large "revised drawing
+    next page" watermark so the reviewer compares it against the inserted drawing.
+    Raises ``ValueError`` on unreadable input. The raw source file on disk is never
+    written; only an in-memory copy is annotated.
     """
     if not source_pdf:
         raise ValueError("assemble_multi_coil_package: source_pdf is empty")
@@ -278,7 +337,12 @@ def assemble_multi_coil_package(*, source_pdf: bytes, coils: list[dict]) -> Mult
 
         for i in range(src.page_count):
             out.insert_pdf(src, from_page=i, to_page=i)
-            for coil in by_drawing_page.get(i, []):
+            coils_here = by_drawing_page.get(i, [])
+            if coils_here and mark_source_superseded:
+                # The source Direct Coil drawing page is now the last page in `out`;
+                # stamp the large "revised drawing next page" watermark on it.
+                _stamp_superseded_watermark(out[out.page_count - 1])
+            for coil in coils_here:
                 our_doc = fitz.open(stream=svg_to_pdf_bytes(coil["our_svg"]), filetype="pdf")
                 try:
                     for page in our_doc:

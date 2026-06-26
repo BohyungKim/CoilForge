@@ -212,6 +212,13 @@ def engine_preview_values(
     rows = _draft_number(draft, "rows_deep")
     feeds = _draft_number(draft, "number_of_feeds")
     conn = _draft_number(draft, "return_connection_size")
+    qty_conn = _draft_number(draft, "qty_connections_per_header")
+    qty_conn_per_header = int(qty_conn) if qty_conn is not None else None
+    # HGRH names its single connection `conn_size` (R-048 positions, R-052 return
+    # spacing); DX uses `suction_conn_size`. Route the read connection size to the
+    # field this coil category's rules consume so HGRH "R" can resolve.
+    is_hgrh = str(coil_type or "").strip().upper() == "HGRH"
+    conn_size = conn if is_hgrh else None
 
     request = build_header_request(
         coil_type=coil_type,
@@ -221,6 +228,8 @@ def engine_preview_values(
         feeds=int(feeds) if feeds is not None else None,
         circuits=circuits,
         suction_conn_size=conn,
+        conn_size=conn_size,
+        qty_conn_per_header=qty_conn_per_header,
     )
     response = prepopulate(request)
 
@@ -299,6 +308,8 @@ def engine_preview_values(
         feeds=int(feeds) if feeds is not None else None,
         circuits=circuits,
         suction_conn_size=conn,
+        conn_size=conn_size,
+        qty_conn_per_header=qty_conn_per_header,
         finned_height=_draft_number(draft, "finned_height"),
         finned_length=_draft_number(draft, "finned_length"),
         ez_json=ez_json,

@@ -71,6 +71,7 @@ def build_header_request(
     circuits: int | None = None,
     suction_conn_size: float | None = None,
     conn_size: float | None = None,
+    qty_conn_per_header: int | None = None,
     handing: str | None = None,
     coating: str | None = None,
     with_hgrh: bool | None = None,
@@ -100,6 +101,7 @@ def build_header_request(
         circuits=circuits,
         suction_conn_size=suction_conn_size,
         conn_size=conn_size,
+        qty_conn_per_header=qty_conn_per_header,
         handing=handing,
         coating=coating,
         with_hgrh=with_hgrh,
@@ -219,6 +221,8 @@ def build_drawing_slots(
     feeds: int | None = None,
     circuits: int | None = None,
     suction_conn_size: float | None = None,
+    conn_size: float | None = None,
+    qty_conn_per_header: int | None = None,
     finned_height: float | None = None,
     finned_length: float | None = None,
     tag: str | None = None,
@@ -228,6 +232,7 @@ def build_drawing_slots(
     request = build_header_request(
         coil_type=coil_type, product_type=product_type, unit_size=unit_size,
         rows=rows, feeds=feeds, circuits=circuits, suction_conn_size=suction_conn_size,
+        conn_size=conn_size, qty_conn_per_header=qty_conn_per_header,
     )
     response = prepopulate(request)
     slots: dict[str, Any] = {}
@@ -244,6 +249,12 @@ def build_drawing_slots(
 
     # 2. Recovered formulas (confirmed against reference cases).
     tf, bf, cd, rb = val("top_flange"), val("bottom_flange"), val("casing_depth"), val("return_bend")
+    if cd is None:
+        # HGRH multi-circuit casing_depth is MEDIUM (R-073, suggestions) when conn_size is
+        # given. Surface it so supply S / SL populate — same review-aid policy as the
+        # return_spacing R-052 fallback below (cd feeds only slot.S/slot.SL here).
+        sug = response.suggestions.get("casing_depth")
+        cd = sug.value if sug is not None else None
     if finned_height is not None:
         slots["slot.FH"] = finned_height
         if tf is not None and bf is not None:
@@ -273,12 +284,20 @@ def build_drawing_slots(
     field_map = _PER_HEADER_ENGINE_FIELDS.get(
         str(coil_type or "").strip().upper(), _PER_HEADER_ENGINE_FIELDS["DX"]
     )
+    is_hgrh = str(coil_type or "").strip().upper() == "HGRH"
     hdr_i = val(field_map["i"]) if "i" in field_map else None
     hdr_hdx = val(field_map["hdx"]) if "hdx" in field_map else None
     hdr_o = val(field_map["o"]) if "o" in field_map else None
     hdr_hd = val(field_map["hd"]) if "hd" in field_map else None
     hdr_sl = val(field_map["sl"]) if "sl" in field_map else None
     return_spacing = val("return_spacing")  # R-022 per-circuit list (HIGH) or None
+    if return_spacing is None:
+        # HGRH R-052 emits return_spacing at MEDIUM (suggestions). John 2026-06-25:
+        # display it on the review-aid drawing as a review-required value. This does
+        # not touch the confidence gate — the drawing layer is choosing to surface a
+        # suggestion (export_allowed stays False; the value is already a review item).
+        sug = response.suggestions.get("return_spacing")
+        return_spacing = sug.value if sug is not None else None
     if circuits:
         for k in range(1, circuits + 1):
             supply_id, return_id = 2 * k - 1, 2 * k
@@ -288,6 +307,14 @@ def build_drawing_slots(
                 slots[f"slot.HDx{supply_id}"] = hdr_hdx
             if cd is not None:
                 slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
+                # HGRH supply-side (odd) SL = stub POSITION = 6 + return_conn/2 - S
+                # (John 2026-06-26). Sn is the per-slot drawing S just computed (differs
+                # per slot). The even SL (length) stays the return_sl clearance. HGRH only;
+                # conn_size carries the return connection size.
+                if is_hgrh and conn_size is not None:
+                    slots[f"slot.SL{supply_id}"] = round(
+                        6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
+                    )
             if hdr_o is not None:
                 slots[f"slot.O{return_id}"] = hdr_o
             if hdr_hd is not None:
@@ -303,6 +330,14 @@ def build_drawing_slots(
                 slots[f"slot.R{return_id}"] = round(
                     k * suction_conn_size + (k - 1) * 1.5, 4
                 )
+
+    # Single-feed HGRH exception (John 2026-06-26): the first SL pair is fixed at 3 —
+    # SL1 (supply position) and SL2 (return length). Trigger = feeds == 1 (the engine's
+    # existing single-feed concept). NOTE: NOT circuits == 1 — circuits=1 is the ordinary
+    # one-header-pair case (e.g. feeds=2/circuits=1) and must keep the normal SL length.
+    if is_hgrh and feeds == 1:
+        slots["slot.SL1"] = 3
+        slots["slot.SL2"] = 3
 
     # 3. EZ JSON as-built override for per-header positions (exact; multi-circuit).
     if ez_json:
@@ -407,6 +442,8 @@ def run_direct_coil_drawing_pipeline(
         feeds=request_inputs.get("feeds"),
         circuits=request_inputs.get("circuits"),
         suction_conn_size=request_inputs.get("suction_conn_size"),
+        conn_size=request_inputs.get("conn_size"),
+        qty_conn_per_header=request_inputs.get("qty_conn_per_header"),
         finned_height=geo.get("slot.FH"),
         finned_length=geo.get("slot.FL"),
         tag=geo.get("slot.TAG"),

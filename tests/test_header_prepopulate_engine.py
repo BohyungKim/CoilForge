@@ -98,12 +98,52 @@ def test_r022_return_spacing_fires_for_terra_h_not_terra_v() -> None:
     assert _in_values(resp_nova, "return_spacing")
 
 
+def test_r052_hgrh_return_spacing_is_review_required_and_product_branched() -> None:
+    """R-052: HGRH return spacing R, keyed on conn_size (the "Suction Size"), count
+    gated by qty_conn_per_header. MEDIUM -> suggestions (never auto-drawn HIGH).
+    TERRA/NOVA/VENTUM_H use the running-edge formula; VENTUM+ uses scalar conn_size.
+    """
+    # TERRA H, 2 connections per header: Rn = n*D + (n-1)*1.5 => [0.625, 2.75].
+    resp = prepopulate(
+        _req(
+            CoilType.HGRH, ProductFamily.TERRA, "024",
+            terra_variant=TerraVariant.TERRA_H, rows=2,
+            conn_size=0.625, qty_conn_per_header=2,
+        )
+    )
+    bucket, result = _bucket_and_result(resp, "return_spacing")
+    assert bucket == "suggestions"  # MEDIUM never lands in `values`
+    assert result.review_required is True
+    assert result.confidence == Confidence.MEDIUM
+    assert result.value == [0.625, 2.75]
+
+    # qty_conn_per_header gates how many R positions emit (single connection -> R2 only).
+    resp1 = prepopulate(
+        _req(
+            CoilType.HGRH, ProductFamily.TERRA, "024",
+            terra_variant=TerraVariant.TERRA_H, rows=2,
+            conn_size=0.625, qty_conn_per_header=1,
+        )
+    )
+    assert resp1.suggestions["return_spacing"].value == [0.625]
+
+    # Missing conn_size -> reported as a missing input, not invented.
+    resp_missing = prepopulate(
+        _req(
+            CoilType.HGRH, ProductFamily.TERRA, "024",
+            terra_variant=TerraVariant.TERRA_H, rows=2, qty_conn_per_header=2,
+        )
+    )
+    assert "conn_size" in resp_missing.missing_inputs
+    assert "return_spacing" not in resp_missing.suggestions
+
+
 # --------------------------------------------------------------------------- #
 # Golden cases T01-T20
 # --------------------------------------------------------------------------- #
 def test_t01_dx_nova_b20_happy_path_1in() -> None:
     r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20"))
-    assert r.values["return_bend"].value == 1.75
+    assert r.values["return_bend"].value == 1.5
     assert r.values["top_flange"].value == 0.625
     assert r.values["bottom_flange"].value == 0.625
     assert r.values["suction_hd"].value == 3.5
@@ -130,7 +170,7 @@ def test_t01_dx_nova_b20_happy_path_1in() -> None:
 def test_t02_dx_nova_a18_2in() -> None:
     r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "A18"))
     assert r.values["size_class"].value == "NOVA_2IN"
-    assert r.values["return_bend"].value == 1.75
+    assert r.values["return_bend"].value == 1.5
     assert r.values["dist_hd"].value == 4.5
 
 
@@ -141,7 +181,7 @@ def test_t03_dx_ventum_plus_v40() -> None:
     assert r.values["suction_sl"].value == 10
     assert r.values["dist_i"].value == 12
     assert r.values["dist_orientation"].value == "UP"
-    assert r.values["return_bend"].value == 1.75
+    assert r.values["return_bend"].value == 1.5
     assert r.values["suction_hd"].value == 3.5
     assert r.values["dist_extension"].value == 6
     assert r.values["suction_io"].value == 2
@@ -164,12 +204,39 @@ def test_t04_dx_ventum_h_h15() -> None:
     assert "dist_hd" not in r.blocked
 
 
+def test_r025b_dx_ventum_h_h05_h10_sl_is_17() -> None:
+    """John 2026-06-26: DX Ventum H H05/H10 even-slot SL clearance = 17 (R-025b overrides
+    R-025's 8 via the now-active size_pattern match). H15+ keep 8 (test_t04)."""
+    for size in ("H05", "H10"):
+        r = prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_H, size))
+        assert r.values["suction_sl"].value == 17, size
+        assert r.values["suction_sl"].confidence == Confidence.HIGH
+        assert r.values["suction_sl"].review_required is False
+
+
+def test_r044d_hgrh_ventum_h_h05_h10_return_sl_is_17() -> None:
+    for size in ("H05", "H10"):
+        r = prepopulate(_req(CoilType.HGRH, ProductFamily.VENTUM_H, size))
+        assert r.values["return_sl"].value == 17, size
+        assert r.values["return_sl"].confidence == Confidence.HIGH
+        assert r.values["return_sl"].review_required is False
+
+
+def test_sl_17_override_is_size_scoped() -> None:
+    """The override is H05/H10-only: other Ventum H sizes and NOVA keep the default 8 —
+    proves the size_pattern gate is precise and backward-compatible."""
+    assert prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_H, "H15")).values["suction_sl"].value == 8
+    assert prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_H, "H20")).values["suction_sl"].value == 8
+    assert prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20")).values["suction_sl"].value == 8
+    assert prepopulate(_req(CoilType.HGRH, ProductFamily.VENTUM_H, "H15")).values["return_sl"].value == 8
+
+
 def test_t05_dx_terra_24_gate() -> None:
     r = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024"))
     # Terra-invariant constants still populate HIGH.
     assert r.values["header_flange"].value == 1.5
     assert r.values["return_flange"].value == 1.5
-    assert r.values["return_bend"].value == 1.75
+    assert r.values["return_bend"].value == 1.5
     assert r.values["suction_hd"].value == 3.5
     assert r.values["dist_i"].value == 3
     assert r.values["dist_orientation"].value == "DOWN"
@@ -180,7 +247,7 @@ def test_t05_dx_terra_24_gate() -> None:
     assert r.values["suction_sl"].value == 10  # R-027
     assert r.values["dist_hd"].value == 4.5  # R-030c (Terra checklist)
     assert r.values["top_flange"].value == 1.625  # R-012
-    assert r.values["bottom_flange"].value == 0.375
+    assert r.values["bottom_flange"].value == 0.5  # R-012 (Terra H C default; John 2026-06-25)
     # No longer gated on terra_variant.
     assert r.blocked_reason is None
 
@@ -218,7 +285,7 @@ def test_t08_hgrh_nova_c20() -> None:
     assert r.values["return_sl"].value == 8
     assert r.values["conn_angle"].value == "LAS"
     assert r.values["top_flange"].value == 0.625
-    assert r.values["return_bend"].value == 1.75
+    assert r.values["return_bend"].value == 1.5
     assert r.values["notes"].value == ["Copper Straps Required.", HGRH_COATING_NOTE]
     # supply_sl is MEDIUM (R-044a) -> suggestion only.
     assert r.suggestions["supply_sl"].value == 6
@@ -243,12 +310,12 @@ def test_t10_hgrh_terra_12_gate() -> None:
     r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "012"))
     assert r.values["hd"].value == 3.5
     assert r.values["conn_angle"].value == "LAS"
-    assert r.values["return_bend"].value == 1.75
+    assert r.values["return_bend"].value == 1.5
     # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
     assert r.values["return_io"].value == 3.25  # R-042
     assert r.values["return_sl"].value == 10  # R-045b
     assert r.values["top_flange"].value == 1.625  # R-012
-    assert r.values["bottom_flange"].value == 0.375
+    assert r.values["bottom_flange"].value == 0.5  # R-012 (Terra H C default; John 2026-06-25)
     assert r.blocked_reason is None
 
 
@@ -336,8 +403,26 @@ def test_t16_cwc_terra_18_gate() -> None:
     assert r.values["io"].value == 3.25  # R-061
     assert r.values["sl"].value == 10  # R-065
     assert r.values["top_flange"].value == 1.625  # R-014
-    assert r.values["bottom_flange"].value == 0.375
+    assert r.values["bottom_flange"].value == 0.5  # R-014 (Terra H C default; John 2026-06-25)
     assert r.blocked_reason is None
+
+
+def test_terra_bottom_flange_is_05_for_h_c_and_0375_for_v_all_coil_types() -> None:
+    """John 2026-06-25: Terra H C BF=0.5; Terra V stays 0.375. TF=1.625 for both.
+    R-012/R-014 set 0.5 for the Terra-H-C default; R-012v/R-014v override Terra V."""
+    sizes = {CoilType.DX: "024", CoilType.HGRH: "012", CoilType.CWC: "018", CoilType.HWC: "018"}
+    for coil, size in sizes.items():
+        h_c = prepopulate(
+            _req(coil, ProductFamily.TERRA, size, terra_variant=TerraVariant.TERRA_H_C)
+        )
+        assert h_c.values["bottom_flange"].value == 0.5, coil
+        assert h_c.values["top_flange"].value == 1.625, coil
+
+        terra_v = prepopulate(
+            _req(coil, ProductFamily.TERRA, size, terra_variant=TerraVariant.TERRA_V)
+        )
+        assert terra_v.values["bottom_flange"].value == 0.375, coil  # R-012v / R-014v
+        assert terra_v.values["top_flange"].value == 1.625, coil
 
 
 def test_t17_dx_coating_note_always_on_drawing_notes() -> None:

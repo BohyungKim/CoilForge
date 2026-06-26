@@ -14,6 +14,7 @@ from coilforge.drawing import (
     render_direct_coil_svg_preview,
     resolve_drawing_parameters,
 )
+from coilforge.drawing.label_authority import direct_coil_label
 from coilforge.submittal import extract_submittal_candidates_from_text
 from coilforge.submittal.pdf_intake import (
     _normalize_handing,
@@ -312,17 +313,14 @@ def run_pdf_to_drawing_workflow(
 
 
 # CoilMaster dim callouts print "value LABEL" (e.g. "3.5 HD2", "4.13 SL1", "1.25 X").
-# For direct-coil ordering John wants numbers only, so the cleaner drops the trailing
-# label code from the blue dim callouts (fill="#1c0a80"), keeping the value (number /
-# fraction / "REVIEW REQUIRED"). The label is the final uppercase-led token (<=5 chars).
-#
-# Mirror correction: seeded templates (one hand per category) have normal text
-# (matrix(1 ...)) — dropping the label leaves the value on its leader. The mirrored hand
-# (matrix(-1 ...)) flips the value+label bounding box, so the value lands offset LEFT by
-# the full pair width; we shift those callouts right by the pair width (estimated from the
-# character count at the callout font size) to put the value back on the leader. Seeded
-# callouts are not shifted. Generic across categories — no per-template list.
-_DIM_CHAR_W = 5.9  # ~Arial advance per char at the callout font-size (~11.2)
+# John 2026-06-25 ("valuemap" view): keep the value AND its label together, in the existing
+# drawing style, so each dimension reads "this number is for this label" — making it easy to
+# check positions. This reverses the earlier numbers-only strip. Keeping the full pair
+# preserves the original callout bounding box, so the mirrored-hand (matrix(-1 ...)) x-shift
+# the numbers-only mode needed is no longer required — the text renders at its seeded
+# position. The label is the final uppercase-led token (<=5 chars); for a blank slot the
+# value is "REVIEW REQUIRED", which we replace with the label alone so the dim stays
+# identified (no value yet).
 _CALLOUT_RE = re.compile(
     r'(fill="#1c0a80"[^>]*\btransform="matrix\(\s*(-?1)\b[^"]*"[^>]*><tspan)([^>]*)(>)'
     r"([^<]*?) ([A-Za-z][A-Za-z0-9]{0,4})(</tspan>)"
@@ -330,18 +328,25 @@ _CALLOUT_RE = re.compile(
 
 
 def _clean_callout(m: "re.Match[str]") -> str:
-    head, sign, attrs, gt, value, label, close = m.groups()
+    head, _sign, attrs, gt, value, label, close = m.groups()
+    # Direct Coil label authority (John 2026-06-26): rewrite the baked EZ label to its
+    # Direct Coil form (e.g. "I" -> "I1", "HD1" -> "HD2"); identity for already-canonical
+    # labels. Labels only — the value is never touched (EZ numbers stay until re-seed).
+    label = direct_coil_label(label)
     if value.strip() == "REVIEW REQUIRED":
-        # Drop the blank-slot placeholder from the review-aid drawing (the dim simply
-        # reads empty). Safety stays server-side: export_allowed=False + the watermark.
-        return f"{head}{attrs}{gt}{close}"
-    if sign == "-1":  # mirrored hand — value is offset left by the pair width; shift right
-        xm = re.search(r'x="(-?\d+(?:\.\d+)?)"', attrs)
-        if xm:
-            shift = (len(value) + 1 + len(label)) * _DIM_CHAR_W
-            new_x = float(xm.group(1)) + shift
-            attrs = f'{attrs[: xm.start()]}x="{new_x:.2f}"{attrs[xm.end():]}'
-    return f"{head}{attrs}{gt}{value}{close}"
+        # No value yet — show just the label so the dimension is still identified.
+        return f"{head}{attrs}{gt}{label}{close}"
+    # Keep "value label" (existing CoilMaster style) at the original position.
+    return f"{head}{attrs}{gt}{value} {label}{close}"
+
+
+def apply_label_authority(svg: str) -> str:
+    """Rewrite blue dim-callout labels to their Direct Coil form (labels only; values and
+    positions untouched). Shared by ``_clean_template_svg`` (the live drawing) and the
+    preview generator so both stay in sync. Pure string transform."""
+    if not svg:
+        return svg
+    return _CALLOUT_RE.sub(_clean_callout, svg)
 
 # Crop the CoilMaster sheet down to the geometry+dimensions section only (John's
 # target view). Derived from the UNION of the visible-geometry bounding box across
@@ -404,9 +409,9 @@ def _clean_template_svg(svg: str) -> str:
     """Clean a populated CoilMaster template SVG to the direct-coil ordering view John
     wants (image #7):
 
-    1. **Numbers-only** dimension callouts — drop the label codes, keep the value
-       (``3.5 HD2`` -> ``3.5``). Scoped to the blue dim callouts so the materials panel /
-       bottom dim table / title block text are untouched.
+    1. **Value + label** dimension callouts — keep the value next to its label code
+       (``3.5 HD2`` stays ``3.5 HD2``; a blank slot reads as just the label). Scoped to the
+       blue dim callouts so the materials panel / bottom dim table / title block are untouched.
     2. **No chrome** — crop the ``viewBox`` to the drawing region, clipping the right
        material panel, the bottom dim table + title block, and the top-left notes.
     3. **Drop intruding chrome** — remove the two chrome blocks that fall *inside* the
@@ -419,7 +424,7 @@ def _clean_template_svg(svg: str) -> str:
     """
     if not svg:
         return svg
-    svg = _CALLOUT_RE.sub(_clean_callout, svg)
+    svg = apply_label_authority(svg)
     # Drop every blank-slot "REVIEW REQUIRED" placeholder from the review-aid drawing.
     # All such text is slot-placeholder output (the source template carries no literal
     # watermark); the export gate (export_allowed=False) is enforced server-side.

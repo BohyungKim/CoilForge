@@ -65,7 +65,7 @@ def test_step2_header_values_match_ezc0001_asbuilt() -> None:
     assert v["casing_depth"].value == 5.5          # as-built CD
     assert v["top_flange"].value == 0.625          # as-built TF
     assert v["bottom_flange"].value == 0.625       # as-built BF
-    assert v["return_bend"].value == 1.75          # as-built RB
+    assert v["return_bend"].value == 1.5           # engine default RB (R-005; John 2026-06-25). EZC-0001 as-built was 1.75
     assert v["dist_hd"].value == 4.5               # as-built HDx1 (distributor)
     assert v["suction_hd"].value == 3.5            # as-built HD2 (return/suction)
     assert v["dist_i"].value == 3                  # as-built I1
@@ -81,7 +81,7 @@ def test_step3_engine_values_mapped_to_slots() -> None:
     assert s["slot.CD"] == 5.5
     assert s["slot.TF"] == 0.625
     assert s["slot.BF"] == 0.625
-    assert s["slot.RB"] == 1.75
+    assert s["slot.RB"] == 1.5   # engine default RB (R-005; John 2026-06-25)
     assert s["slot.HDx1"] == 4.5
     assert s["slot.HD2"] == 3.5
     assert s["slot.I1"] == 3
@@ -117,7 +117,59 @@ def test_all_dimension_labels_are_value_driven() -> None:
     assert r.slot_values["slot.CH"] == 13.25   # FH+TF+BF
     assert r.slot_values["slot.CL"] == 18.0     # FL+3
     assert r.slot_values["slot.S1"] == 2.75     # CD/2
-    assert r.slot_values["slot.RB"] == 1.75
+    assert r.slot_values["slot.RB"] == 1.5      # engine default RB (R-005; John 2026-06-25)
+
+
+def test_slot_sl2_is_17_for_dx_ventum_h_h05() -> None:
+    """R-025b SL=17 override propagates to the even drawing slot slot.SL2 (John 2026-06-26).
+    slot.SL{even} = suction_sl per build_drawing_slots' per-circuit loop."""
+    slots, _ = build_drawing_slots(
+        coil_type="DX", product_type="VENTUM_H", unit_size="H05",
+        rows=4, circuits=1, suction_conn_size=0.625,
+    )
+    assert slots["slot.SL2"] == 17
+
+
+def test_hgrh_supply_sl_odd_position_formula_differs_per_slot() -> None:
+    """HGRH odd SL (supply position) = 6 + return_conn/2 - S{odd}; differs per slot
+    (John 2026-06-26). circuits=2/feeds=2 so the single-feed exception does not fire."""
+    conn = 0.625
+    slots, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="C20",
+        rows=4, circuits=2, feeds=2, conn_size=conn,
+    )
+    assert slots["slot.SL1"] == round(6 + conn / 2 - slots["slot.S1"], 4)
+    assert slots["slot.SL3"] == round(6 + conn / 2 - slots["slot.S3"], 4)
+    assert slots["slot.SL1"] != slots["slot.SL3"]
+
+
+def test_hgrh_single_feed_fixes_first_sl_pair_to_3() -> None:
+    slots, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="C20",
+        rows=4, circuits=1, feeds=1, conn_size=0.625,
+    )
+    assert slots["slot.SL1"] == 3
+    assert slots["slot.SL2"] == 3
+
+
+def test_hgrh_supply_sl_gated_by_circuit_count() -> None:
+    # circuits=3 (no single feed) -> SL1/SL3/SL5 present, SL7 absent.
+    slots, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="C20",
+        rows=4, circuits=3, feeds=3, conn_size=0.625,
+    )
+    assert {"slot.SL1", "slot.SL3", "slot.SL5"} <= slots.keys()
+    assert "slot.SL7" not in slots
+
+
+def test_dx_emits_no_supply_odd_sl() -> None:
+    # DX has no supply header -> no odd slot.SL1/3/5/7 (only even slot.SL2 from suction_sl).
+    slots, _ = build_drawing_slots(
+        coil_type="DX", product_type="NOVA", unit_size="B20",
+        rows=4, circuits=2, feeds=2, conn_size=0.625, suction_conn_size=0.625,
+    )
+    assert "slot.SL1" not in slots and "slot.SL3" not in slots
+    assert "slot.SL2" in slots  # even/return SL still present
 
 
 def test_material_and_title_slots_wired_from_coil_data() -> None:

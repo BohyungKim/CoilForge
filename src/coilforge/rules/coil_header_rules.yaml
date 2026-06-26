@@ -79,12 +79,12 @@ rules:
   - rule_id: R-005
     applies_to: { coil_type: [DX, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_bend
-    value: 1.75
+    value: 1.5
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "SOP §HGRH-TNVH", "CHK DX!C29", "CHK HGRH!C32"]
+    evidence_refs: ["John 2026-06-25: RB default 1.5 for direct-coil selection across all product lines (was 1.75 per SOP §DX/HGRH-TNVH; OAL = FL+3+RB drops 0.25)"]
 
   - rule_id: R-006
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -139,16 +139,32 @@ rules:
 
   # R-012/R-013/R-014: TF/BF conflicts resolved in favor of the checklist
   # values (John, 2026-06-11: "checklist is typically the most accurate").
-  # The Terra asymmetry (TF=1.625, BF=0.375) is intentional per the checklist.
+  # The Terra asymmetry (TF=1.625, BF) is intentional per the checklist.
+  # terra_variant: null = "Terra defaults to Terra H C" (engine has no variant gate
+  # for null); John 2026-06-25 set the Terra H C bottom flange to 0.5. Terra V keeps
+  # the old 0.375 via the R-012v exception below (last-writer-wins by file order).
   - rule_id: R-012
     applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: null, size_pattern: null }
     field: [top_flange, bottom_flange]
-    field_values: { top_flange: 1.625, bottom_flange: 0.375 }
+    field_values: { top_flange: 1.625, bottom_flange: 0.5 }
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["CHK TERRA TF=1.625", "CHK TERRA BF=0.375", "John confirmation 2026-06-11 (checklist wins)"]
+    evidence_refs: ["CHK TERRA TF=1.625", "John 2026-06-25: Terra H C BF=0.5 (was 0.375)"]
+
+  # R-012v: Terra V keeps BF=0.375. Must follow R-012 — the generic emitter writes
+  # bottom_flange last-writer-wins in file order, so for a Terra V request R-012
+  # sets 0.5 and this overwrites it back to 0.375. TF stays 1.625 (from R-012).
+  - rule_id: R-012v
+    applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: [bottom_flange]
+    field_values: { bottom_flange: 0.375 }
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK TERRA BF=0.375", "John 2026-06-25: Terra V BF unchanged at 0.375"]
 
   - rule_id: R-013
     applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
@@ -163,12 +179,23 @@ rules:
   - rule_id: R-014
     applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: null, size_pattern: null }
     field: [top_flange, bottom_flange]
-    field_values: { top_flange: 1.625, bottom_flange: 0.375 }
+    field_values: { top_flange: 1.625, bottom_flange: 0.5 }
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["CHK TERRA TF=1.625", "CHK TERRA BF=0.375", "John confirmation 2026-06-11 (checklist wins)"]
+    evidence_refs: ["CHK TERRA TF=1.625", "John 2026-06-25: Terra H C BF=0.5 (was 0.375)"]
+
+  # R-014v: Terra V keeps BF=0.375 for water coils (mirrors R-012v; must follow R-014).
+  - rule_id: R-014v
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: [bottom_flange]
+    field_values: { bottom_flange: 0.375 }
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["CHK TERRA BF=0.375", "John 2026-06-25: Terra V BF unchanged at 0.375"]
 
   # --- 2.3 Connection / stubout geometry --------------------------------------
   - rule_id: R-020
@@ -236,6 +263,18 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §DX-TNVH", "CHK DX!C42:C45"]
+
+  # Size-specific override: Ventum H H05/H10 use SL=17 (even-slot clearance). Placed after
+  # R-025 so the generic emitter's last-writer-wins (place(), YAML order) overrides the 8.
+  - rule_id: R-025b
+    applies_to: { coil_type: [DX], product_family: [VENTUM_H], terra_variant: null, size_pattern: [H05, H10] }
+    field: suction_sl
+    value: 17
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-26: DX Ventum H H05/H10 SL = 17 (overrides R-025 default 8; even-slot SL2/4/6/8 clearance)"]
 
   - rule_id: R-026
     applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
@@ -439,6 +478,18 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH return SL=8", "CHK HGRH!C59"]
 
+  # Size-specific override: Ventum H H05/H10 use return SL=17 (even-slot clearance). Placed
+  # after R-044b so last-writer-wins overrides the 8.
+  - rule_id: R-044d
+    applies_to: { coil_type: [HGRH], product_family: [VENTUM_H], terra_variant: null, size_pattern: [H05, H10] }
+    field: return_sl
+    value: 17
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-26: HGRH Ventum H H05/H10 return SL = 17 (overrides R-044b default 8; even-slot SL2/4/6/8 clearance)"]
+
   - rule_id: R-045a
     applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
     field: return_sl
@@ -533,6 +584,28 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH DX FH/FL equality warning"]
+
+  # R-052: HGRH return-stubout spacing R. Keyed on conn_size (the HGRH "Suction
+  # Size"; HGRH has no separate suction conn). Product-branched (John 2026-06-25,
+  # CHK HGRH): VENTUM+ -> every R = conn_size (scalar); TERRA / NOVA / VENTUM_H ->
+  # running-edge formula Rn = n*D + (n-1)*1.5 (n = 1..qty_conn_per_header). At n=1
+  # both branches give D, so a single-connection header is identical either way.
+  # MEDIUM / review_required: SOP general formula vs CHK per-platform branch are
+  # mixed (same basis as R-048). The count gates R4/R6/R8 (qty_conn_per_header).
+  - rule_id: R-052
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: return_spacing
+    value: null
+    formula: "TERRA/NOVA/VENTUM_H: Rn = n*D + (n-1)*1.5; VENTUM+: Rn = D (D=conn_size, n=1..qty_conn_per_header)"
+    kind: formula_return_spacing_hgrh
+    requires_inputs: [conn_size, qty_conn_per_header]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs:
+      - "John 2026-06-25: product-branched HGRH R (VENTUM+ scalar conn_size vs general running-edge)"
+      - "CHK HGRH!C42:C49"
+      - "docs/rules/coil_header_rule_extraction.md R-048 (Return X = X*D + (X-1)*1.5)"
 
   # --- 2.5 CWC / HWC-specific -------------------------------------------------
   - rule_id: R-060
