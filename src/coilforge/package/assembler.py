@@ -272,14 +272,17 @@ def _stamp_quote_price_notes(page, coils: list[dict]) -> None:
         if target is None:
             continue
         used.add(target_idx)
-        # Right-column anchor: the 'Total' label on the SAME line as this coil's
-        # 'Cost Each'. Place the note above that price; fall back to the left
-        # 'Cost Each' x if the quote has no per-item Total on the line.
-        total_rects = [r for r in page.search_for("Total") if abs(r.y0 - target.y0) <= 3]
-        anchor_x = min((r.x0 for r in total_rects), default=target.x0)
+        # Right-EDGE anchor: align the note's right edge to the rightmost text on
+        # this coil's pricing line — the 'Item N Total' figure (e.g. CAD$1,952.00).
+        # John 2026-06-26: the previous left-edge-over-'Total'-label anchor still sat
+        # mid-page (too far left); aligning right edges puts the note's trailing
+        # 'NN.00' directly above the total's trailing 'NN.00'. Fall back to the line's
+        # rightmost word, then to 'Cost Each' x, if no Total figure is present.
+        line_x1 = [w[2] for w in page.get_text("words") if abs(w[1] - target.y0) <= 3]
         note_w = fitz.get_text_length(note, fontsize=fs)
-        x = min(anchor_x, page.rect.width - note_w - 6)
-        x = max(x, target.x0)
+        right_edge = max(line_x1, default=target.x0 + note_w)
+        x = right_edge - note_w
+        x = max(target.x0, min(x, page.rect.width - note_w - 4))
         band = fitz.Rect(x - 2, target.y0 - 11, x + note_w + 4, target.y0 - 1)
         page.draw_rect(band, color=(0.80, 0.0, 0.0), fill=(1.0, 1.0, 1.0), width=0.4)
         page.insert_text((x, target.y0 - 3), note, fontsize=fs, color=(0.80, 0.0, 0.0))

@@ -24,6 +24,7 @@ from coilforge.package import (  # noqa: E402
 )
 from coilforge.package.assembler import (  # noqa: E402
     MultiCoilPackageResult,
+    _stamp_quote_price_notes,
     assemble_multi_coil_package,
 )
 
@@ -208,6 +209,32 @@ def test_multi_coil_superseded_watermark_can_be_disabled() -> None:
     )
     doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
     assert "SUPERSEDED" not in doc[2].get_text()
+    doc.close()
+
+
+def test_quote_note_right_edge_aligns_with_item_total_figure() -> None:
+    # A pricing line with a far-right 'Item 1 Total' figure (mirrors the real quote
+    # layout). The stamped note's right edge must align with that figure's right edge
+    # so its trailing 'NN.00' sits directly above the total's trailing 'NN.00'.
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((40, 80), "Tagged: CDXC-1")
+    page.insert_text((40, 120), "Cost Each: CAD$1,952.00")
+    page.insert_text((300, 120), "Item 1 Total:")
+    page.insert_text((480, 120), "CAD$1,952.00")  # far-right total figure
+
+    note = "Copper Strap Adder CAD$50.00"
+    _stamp_quote_price_notes(page, [{"tag": "CDXC-1", "price_note": note}])
+
+    words = page.get_text("words")  # (x0, y0, x1, y1, word, ...)
+    # The far-right total figure on the pricing line (y0 ~ 120 baseline region).
+    price_x1 = max(w[2] for w in words if w[4] == "CAD$1,952.00")
+    # The note is stamped on its own band just above the line; find its rightmost word.
+    note_words = [w for w in words if w[1] < 118 and "50.00" in w[4]]
+    assert note_words, "note '50.00' token not found above the pricing line"
+    note_x1 = max(w[2] for w in note_words)
+    # Right edges coincide within a couple points (glyph-extent vs text-length slack).
+    assert abs(note_x1 - price_x1) <= 3.0, (note_x1, price_x1)
     doc.close()
 
 
