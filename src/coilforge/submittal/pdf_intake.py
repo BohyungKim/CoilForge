@@ -177,6 +177,10 @@ _COIL_TYPE_BY_PREFIX = {
     "CDXC": "DX COIL",
     "RHHGRC": "HGRH COIL",
     "HGRC": "HGRH COIL",
+    # RHHGRH/HGRH: alternate hot-gas-reheat tag spelling seen in Oxygen8 submittals
+    # (e.g. 2766 Olympic-Broadway uses RHHGRH-1/-2); same HGRH category as RHHGRC.
+    "RHHGRH": "HGRH COIL",
+    "HGRH": "HGRH COIL",
     "HHWC": "Hot Water Coil",
     "PHWC": "Hot Water Coil",
     "CCWC": "Chilled Water Coil",
@@ -185,6 +189,8 @@ _PRODUCT_TYPE_BY_PREFIX = {
     "CDXC": "DX",
     "RHHGRC": "HGRC",
     "HGRC": "HGRC",
+    "RHHGRH": "HGRC",
+    "HGRH": "HGRC",
     "HHWC": "HW",
     "PHWC": "HW",
     "CCWC": "CHW",
@@ -193,6 +199,8 @@ _COIL_FORMAT_BY_PREFIX = {
     "CDXC": "dx",
     "RHHGRC": "condensing",
     "HGRC": "condensing",
+    "RHHGRH": "condensing",
+    "HGRH": "condensing",
     "HHWC": "heating_hot_water",
     "PHWC": "preheat_hot_water",
     "CCWC": "cooling_chilled_water",
@@ -222,7 +230,8 @@ _RE_QTY_TAG_ROW = re.compile(
     re.IGNORECASE,
 )
 _RE_COMPONENT_COIL = re.compile(
-    r"\b(?P<qty>\d+)\s+(?P<tag>CDXC-\d+|RHHGRC-\d+|HGRC-\d+|PHWC-\d+|HHWC-\d+|CCWC-\d+)\b",
+    r"\b(?P<qty>\d+)\s+(?P<tag>CDXC-\d+|RHHGRC-\d+|RHHGRH-\d+|HGRC-\d+|HGRH-\d+"
+    r"|PHWC-\d+|HHWC-\d+|CCWC-\d+)\b",
     re.IGNORECASE,
 )
 _RE_EZ_DX_MODEL_NUMBER = re.compile(

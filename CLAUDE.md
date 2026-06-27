@@ -115,7 +115,9 @@ PDF intake derives the coil **category** from the unit/coil tag prefix
 (`submittal/pdf_intake.py::_COIL_TYPE_BY_PREFIX` / `_COIL_FORMAT_BY_PREFIX`):
 
 - `CDXC` → **DX**
-- `RHHGRC` (alias `HGRC`) → **HGRH**
+- `RHHGRC` (aliases `HGRC`, `RHHGRH`, `HGRH`) → **HGRH** — Oxygen8 submittals use both
+  the `…RC` and `…RH` reheat-tag spellings (e.g. 2766 Olympic uses `RHHGRH-1`); all map
+  to the same HGRH category
 - `HHWC` / `PHWC` → **HWC** (Hot Water Coil)
 - `CCWC` → **CWC** (Chilled Water Coil)
 

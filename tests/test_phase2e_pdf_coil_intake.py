@@ -211,6 +211,58 @@ def test_cover_page_rows_generate_separate_pdf_coil_candidates() -> None:
     ]
 
 
+def test_cover_page_detects_rhhgrh_reheat_tag_spelling() -> None:
+    # Regression for the 2766 Olympic-Broadway submittal: the two reheat coils are tagged
+    # RHHGRH-1/-2 (trailing ...RH), not the RHHGRC spelling the table previously knew, so
+    # they were silently dropped while CDXC-1/-2 were detected. RHHGRH is the same HGRH
+    # category as RHHGRC (John-confirmed 2026-06-26).
+    pdf = _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_015 LH",
+            "1 RHHGRH-1 Hot Gas Reheat TR_C_015 LH",
+            "1 CDXC-2 DXC Cooling TR_C_016 LH",
+            "1 RHHGRH-2 Hot Gas Reheat TR_C_016 LH",
+        ]
+    )
+    result = extract_coil_candidate_from_pdf_bytes(pdf)
+
+    assert [row.tag for row in result.summary.cover_page_rows] == [
+        "CDXC-1",
+        "RHHGRH-1",
+        "CDXC-2",
+        "RHHGRH-2",
+    ]
+    # The RHHGRH rows classify into the existing HGRH path (same as RHHGRC).
+    rhhgrh = [row for row in result.summary.cover_page_rows if row.tag.startswith("RHHGRH-")]
+    assert [row.product_type for row in rhhgrh] == ["HGRC", "HGRC"]
+    assert [row.coil_format for row in rhhgrh] == ["condensing", "condensing"]
+    assert [c.coil_type.value for c in result.cover_candidates if c.coil_type] == [
+        "DX COIL",
+        "HGRH COIL",
+        "DX COIL",
+        "HGRH COIL",
+    ]
+
+
+def test_cover_page_detects_bare_hgrh_alias() -> None:
+    # The bare HGRH-N alias (mirroring how HGRC aliases RHHGRC) also classifies as HGRH.
+    pdf = _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 CDXC-1 DXC Cooling TR_C_015 LH",
+            "1 HGRH-1 Hot Gas Reheat TR_C_015 LH",
+        ]
+    )
+    result = extract_coil_candidate_from_pdf_bytes(pdf)
+
+    assert [row.tag for row in result.summary.cover_page_rows] == ["CDXC-1", "HGRH-1"]
+    assert [c.coil_type.value for c in result.cover_candidates if c.coil_type] == [
+        "DX COIL",
+        "HGRH COIL",
+    ]
+
+
 def test_cover_page_rows_classify_four_direct_coil_formats() -> None:
     result = extract_coil_candidate_from_pdf_bytes(_four_format_cover_page_pdf_bytes())
 
