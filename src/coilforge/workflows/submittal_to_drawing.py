@@ -593,14 +593,24 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
     )
     hand_raw = _candidate_field_value(candidate, "connections", "coil_hand")
     header_type = _candidate_attr_value(candidate, "header_type")
+    category = _coil_category_from_type(coil_type)
     circuits = (
         _candidate_field_value(candidate, "geometry", "circuits")
         or _header_count_from_type(header_type)
         or 1
     )
+    # ``circuits`` drives the "Header N" template key downstream. For water coils
+    # that is wrong: CWC/HWC are 1HD only (MVP taxonomy), and their
+    # geometry.circuits is electrical circuiting (e.g. "Circuits: 4"), NOT a
+    # header count. Left as-is it produces a non-existent "Header 4" bucket and
+    # the drawing fails template selection. Force the single header (also the
+    # correct single supply/return connection geometry for a water coil); the
+    # true circuiting is still surfaced via the spec panel / paste fields.
+    if category in ("CWC", "HWC"):
+        circuits = 1
 
     ctx: dict[str, Any] = {
-        "coil_category": _coil_category_from_type(coil_type),
+        "coil_category": category,
         "circuits": circuits,
         "tag": _candidate_attr_value(candidate, "tag"),
         "rows": _candidate_field_value(candidate, "geometry", "rows_deep"),
@@ -717,6 +727,27 @@ def _safe_pdf_text(pdf_bytes: bytes) -> str:
     return "".join((page.extract_text() or "") for page in reader.pages)
 
 
+# Logical drawing-dimension keys with a paste-ready "DRAWING / DIMENSION" review
+# field (mirrors to_canonical._REVIEWABLE_DRAWING_DIMS / the canonical_rules map).
+_REVIEWABLE_DRAWING_DIMS: tuple[str, ...] = (
+    "CD", "BF", "TF", "CH", "RF", "HF", "SL", "I", "S", "O", "R", "HD", "ZD",
+)
+
+
+def _engine_drawing_dims(parameter_set: Any) -> dict[str, Any]:
+    """Engine-derived drawing dimensions (from the SAME slot values the SVG renders)
+    that have a Direct Coil review field. Only dimensions the engine actually
+    produced are returned; surfaced review-required downstream, never confirmed."""
+    params = getattr(parameter_set, "parameters", None) or {}
+    out: dict[str, Any] = {}
+    for key in _REVIEWABLE_DRAWING_DIMS:
+        param = params.get(key)
+        value = getattr(param, "value", None) if param is not None else None
+        if value is not None:
+            out[key] = value
+    return out
+
+
 def _run_candidate_to_drawing_payload(
     selected_candidate,
     *,
@@ -799,6 +830,26 @@ def _run_candidate_to_drawing_payload(
     else:
         panel_parameter_set = parameter_set
 
+    # Surface the engine-computed drawing dimensions (already rendered on the SVG)
+    # in the paste-ready "DRAWING / DIMENSION" review table by wiring them through
+    # the canonical record. Rebuild ONLY the review surface; the drawing and its
+    # parameter panel are unchanged. Every value stays review-required.
+    engine_dims = _engine_drawing_dims(panel_parameter_set)
+    if engine_dims:
+        augmented = _run_candidate_to_direct_draft_workflow(
+            selected_candidate,
+            pdf_intake_summary=pdf_intake_summary,
+            engine_dims=engine_dims,
+        )
+        for key in (
+            "canonical_summary",
+            "direct_coil_input_draft",
+            "readiness_report",
+            "direct_coil_paste_ready",
+            "validation",
+        ):
+            direct_result[key] = augmented[key]
+
     return {
         **direct_result,
         "drawing_parameter_set": panel_parameter_set.model_dump(),
@@ -829,8 +880,11 @@ def _run_candidate_to_direct_draft_workflow(
     selected_candidate,
     *,
     pdf_intake_summary: dict[str, Any] | None = None,
+    engine_dims: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    canonical_result = map_submittal_candidate_to_canonical_result(selected_candidate)
+    canonical_result = map_submittal_candidate_to_canonical_result(
+        selected_candidate, engine_dims=engine_dims
+    )
     draft = map_canonical_to_direct_coil_draft(canonical_result.record)
     readiness = build_direct_coil_readiness_report(draft)
     paste_ready = build_direct_coil_paste_ready_surface(draft)

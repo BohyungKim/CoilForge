@@ -222,10 +222,30 @@ def detect_product_and_size(text: str | None) -> tuple[str | None, str | None]:
         if size in set(product_size_options().get(label, [])):
             return label, size
 
-    # 2. NOVA / VENTUM: any enumerated non-Terra size token as a whole word.
+    # 2. NOVA / VENTUM size token. Two passes so a token from the unit's real
+    #    model code wins over a loose token that only appears in a generic
+    #    filter/spec appendix table enumerating every catalog model.
+    #
+    #    Oxygen8 unit model codes are UNDERSCORE-joined ("H30_I_ERV",
+    #    "TR_C_015_I_L_1_..."), whereas appendix rows are space/slash/hyphen
+    #    delimited ("V150 1 16 x 20", "C20/C22-BP"). A stray "V150" filter row
+    #    must not outrank the real "H30" model code (the old whole-word search,
+    #    longest-first, picked V150 -> VENTUM_PLUS -> hard-blocked). The "\b"
+    #    search also never matched "H30_I_ERV" at all, since "_" is a word char.
+    #
+    #    Pass A: token in a model-code context (immediately adjacent to "_").
+    for token in _non_terra_size_tokens():
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(token)}(?=_)", upper) or re.search(
+            rf"(?<=_){re.escape(token)}(?![A-Za-z0-9])", upper
+        ):
+            product = product_for_unit_size(token)
+            if product:  # NOVA / VENTUM_H / VENTUM_PLUS
+                return product, token
+    #    Pass B: any enumerated non-Terra size token as a whole word (fallback
+    #    for sources without an underscore-joined model code).
     for token in _non_terra_size_tokens():
         if re.search(rf"\b{re.escape(token)}\b", upper):
             product = product_for_unit_size(token)
-            if product:  # NOVA / VENTUM_H / VENTUM_PLUS
+            if product:
                 return product, token
     return None, None
