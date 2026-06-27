@@ -143,13 +143,17 @@ def test_hgrh_supply_sl_odd_position_formula_differs_per_slot() -> None:
     assert slots["slot.SL1"] != slots["slot.SL3"]
 
 
-def test_hgrh_single_feed_fixes_first_sl_pair_to_3() -> None:
+def test_hgrh_single_feed_uses_same_sl_formula_as_multi_feed() -> None:
+    # John 2026-06-27: the single-feed (feeds==1) SL1=SL2=3 exception is removed — a
+    # single-feed HGRH coil is drawn identically to a multi-feed one. SL1 follows the
+    # supply position formula; SL2 is the return_sl length (8 for NOVA), not the old 3.
+    conn = 0.625
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="NOVA", unit_size="C20",
-        rows=4, circuits=1, feeds=1, conn_size=0.625,
+        rows=4, circuits=1, feeds=1, conn_size=conn,
     )
-    assert slots["slot.SL1"] == 3
-    assert slots["slot.SL2"] == 3
+    assert slots["slot.SL1"] == round(6 + conn / 2 - slots["slot.S1"], 4)
+    assert slots["slot.SL2"] == 8
 
 
 def test_hgrh_supply_sl_gated_by_circuit_count() -> None:

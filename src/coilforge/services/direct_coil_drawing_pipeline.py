@@ -331,14 +331,6 @@ def build_drawing_slots(
                     k * suction_conn_size + (k - 1) * 1.5, 4
                 )
 
-    # Single-feed HGRH exception (John 2026-06-26): the first SL pair is fixed at 3 —
-    # SL1 (supply position) and SL2 (return length). Trigger = feeds == 1 (the engine's
-    # existing single-feed concept). NOTE: NOT circuits == 1 — circuits=1 is the ordinary
-    # one-header-pair case (e.g. feeds=2/circuits=1) and must keep the normal SL length.
-    if is_hgrh and feeds == 1:
-        slots["slot.SL1"] = 3
-        slots["slot.SL2"] = 3
-
     # 3. EZ JSON as-built override for per-header positions (exact; multi-circuit).
     if ez_json:
         from coilforge.services.ez_json_drawing_loader import slots_from_ez_json
