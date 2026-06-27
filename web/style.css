@@ -747,6 +747,26 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
+/* Empty drawing parameter = warning. Red on all edges (not just the status edge,
+   and never the calm amber) so a blank that couldn't be derived is impossible to
+   miss; the reason is shown inline + on hover (John 2026-06-27). Placed after the
+   status rules so it overrides their left-edge/fill for empties. */
+.dc-control.dc-control--empty {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  border-left-color: var(--status-blocked);
+  color: var(--danger-text);
+}
+
+.dc-dimension-reason {
+  color: var(--status-blocked);
+  font-size: 10.5px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+}
+
 .dc-inline-controls {
   display: grid;
   gap: 3px;

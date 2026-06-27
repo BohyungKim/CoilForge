@@ -2185,22 +2185,35 @@ function renderDrawingParameters(uiState) {
 function renderParameterRow(parameter) {
   const hasValue =
     parameter.value !== null && parameter.value !== undefined && parameter.value !== "";
+  // An empty drawing parameter is a warning, not a quiet gap: flag it RED and show
+  // the English reason it couldn't be derived, inline + on hover (John 2026-06-27),
+  // so a blank reads as "what's missing that we can fix together". Filled review
+  // items keep the calm amber edge.
+  const reason = hasValue
+    ? ""
+    : escapeHtml(
+        parameter.blocked_reason ||
+          "No value — not derived from the source or the rule engine.",
+      );
+  const emptyControl = hasValue ? "" : " dc-control--empty";
   // data-drawing-param / data-unit stay present in both modes so the derive
   // round-trip (collectDrawingPreviewValues) always finds the value; `readonly`
   // locks the field outside manual mode while keeping the Direct-Coil look.
   return `
-    <label class="dc-dimension-row ${statusClass(parameter.status)}">
+    <label class="dc-dimension-row ${statusClass(parameter.status)}"${reason ? ` title="${reason}"` : ""}>
       <span>${escapeHtml(parameter.key)}</span>
       <input class="dc-dimension-check" type="checkbox" ${hasValue ? "checked" : ""} disabled />
       <input
-        class="dc-control ${statusClass(parameter.status)}"
+        class="dc-control ${statusClass(parameter.status)}${emptyControl}"
         data-drawing-param="${escapeHtml(parameter.key)}"
         data-unit="${escapeHtml(parameter.unit || "in")}"
         type="number"
         step="0.01"
         value="${parameter.value ?? ""}"
+        ${reason ? `title="${reason}"` : ""}
         ${state.manualDrawingMode ? "" : "readonly"}
       />
+      ${reason ? `<span class="dc-dimension-reason">⚠ ${reason}</span>` : ""}
     </label>
   `;
 }

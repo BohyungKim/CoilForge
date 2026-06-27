@@ -1765,6 +1765,14 @@ _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
         ("Suntion Size (in)", "RETURN_CONNECTION_SIZE"),
         ("Suntion Size", "RETURN_CONNECTION_SIZE"),
         ("Suction Size", "RETURN_CONNECTION_SIZE"),
+        # The HGRH (Reheat Hot Gas Reheat) coil block labels its single connection
+        # plainly "Connection Size (in)" — not "Suction/Suntion Size" — so without
+        # this the connection size (and thus drawing "R" via R-052) is dropped
+        # (2766 Olympic RHHGRH-2; John 2026-06-27). Exact-match only (see
+        # `_match_contextual_detail_label`), so it cannot swallow
+        # "Supply/Return Connection Size".
+        ("Connection Size (in)", "RETURN_CONNECTION_SIZE"),
+        ("Connection Size", "RETURN_CONNECTION_SIZE"),
         ("Inlet Conn. Size (in)", "INLET_CONNECTION_SIZE"),
         ("Inlet Conn. Size", "INLET_CONNECTION_SIZE"),
         ("Outlet Conn. Size (in)", "OUTLET_CONNECTION_SIZE"),

@@ -1650,3 +1650,13 @@ def test_suntion_size_misspelling_maps_to_return_connection_size() -> None:
     # The known-good spellings still resolve.
     assert _match_detail_label("Suction Size (in)", "coil") == "RETURN_CONNECTION_SIZE"
     assert _match_detail_label("Sunction Size (in)", "coil") == "RETURN_CONNECTION_SIZE"
+
+
+def test_plain_connection_size_label_maps_to_return_connection_size() -> None:
+    """HGRH reheat blocks label their single connection plainly "Connection Size (in)"
+    (not "Suction/Suntion Size") — e.g. 2766 Olympic RHHGRH-2. Without this mapping the
+    connection size (and thus drawing "R" via R-052) is dropped (John 2026-06-27)."""
+    assert _match_detail_label("Connection Size (in)", "coil") == "RETURN_CONNECTION_SIZE"
+    assert _match_detail_label("Connection Size", "coil") == "RETURN_CONNECTION_SIZE"
+    # Exact-match only: must NOT swallow the qualified supply/return connection labels.
+    assert _match_detail_label("Supply Connection Size", "coil") != "RETURN_CONNECTION_SIZE"

@@ -99,6 +99,10 @@ the `/api/*` routes (workflows, compatibility review, decision capture, review p
 The browser UI is vanilla JS in `web/` (`index.html` / `app.js` / `style.css`). API
 responses deliberately assert safety flags (`raw_private_data_returned: False`,
 `export_allowed: False`, `production_drawing_approval_claimed: False`).
+Empty drawing-parameter fields render RED with their `blocked_reason` as inline English
+evidence + a hover tooltip (`web/app.js::renderParameterRow`); the frontend colors by
+emptiness, not backend `status`, so a missing value never reads as a silent blank — don't
+revert empties to plain blanks.
 
 ## CoilForge MVP taxonomy (confirmed 2026-06-21)
 
