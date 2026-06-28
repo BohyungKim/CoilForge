@@ -594,11 +594,13 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
     hand_raw = _candidate_field_value(candidate, "connections", "coil_hand")
     header_type = _candidate_attr_value(candidate, "header_type")
     category = _coil_category_from_type(coil_type)
-    circuits = (
+    circuit_count = (
         _candidate_field_value(candidate, "geometry", "circuits")
         or _header_count_from_type(header_type)
         or 1
     )
+    feeds = _candidate_field_value(candidate, "geometry", "number_of_feeds")
+    circuits = circuit_count
     # ``circuits`` drives the "Header N" template key downstream. For water coils
     # that is wrong: CWC/HWC are 1HD only (MVP taxonomy), and their
     # geometry.circuits is electrical circuiting (e.g. "Circuits: 4"), NOT a
@@ -607,6 +609,13 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
     # correct single supply/return connection geometry for a water coil); the
     # true circuiting is still surfaced via the spec panel / paste fields.
     if category in ("CWC", "HWC"):
+        # Water coils state "Circuits", not "Total Feeds". The engine's `feeds`
+        # input gates the HIGH io/hd values (R-060/R-062: multi-feed -> 2.3125/4;
+        # single-feed R-064 -> N/A). Without it the engine holds io/hd as
+        # review suggestions and slot.I1/O2/HD2 stay blank. Derive feeds from the
+        # stated circuit count when feeds is absent so those slots populate.
+        if not feeds:
+            feeds = circuit_count
         circuits = 1
 
     ctx: dict[str, Any] = {
@@ -614,7 +623,7 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         "circuits": circuits,
         "tag": _candidate_attr_value(candidate, "tag"),
         "rows": _candidate_field_value(candidate, "geometry", "rows_deep"),
-        "feeds": _candidate_field_value(candidate, "geometry", "number_of_feeds"),
+        "feeds": feeds,
         "finned_height": _candidate_field_value(candidate, "geometry", "finned_height"),
         "finned_length": _candidate_field_value(candidate, "geometry", "finned_length"),
         "suction_conn_size": _candidate_connection_size(candidate),
