@@ -41,6 +41,14 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.CASING_MATERIAL_2",
+      "value": "Galvanized Steel",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.CD",
       "value": "7.25",
       "source_channels": [
@@ -81,6 +89,22 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.DRY_WEIGHT",
+      "value": "48.3 Lbs. Per Coil",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FASTENER_TYPE",
+      "value": "Rivets",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.FH",
       "value": "16.5",
       "source_channels": [
@@ -91,6 +115,22 @@
     {
       "slot_id": "slot.FIN_MATERIAL",
       "value": "14 Fins Per Inch",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_2",
+      "value": "0.0075 Aluminum",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_3",
+      "value": "Flat",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -137,6 +177,14 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.INTERNAL_VOLUME",
+      "value": "1.61 Gal Per Coil",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.MODEL_NUMBER",
       "value": "CW-A-F-04-14-16.50x24.00-L",
       "source_channels": [
@@ -177,14 +225,6 @@
       "review_status": "review_required"
     },
     {
-      "slot_id": "slot.RETURN_CONN_SIZE",
-      "value": "0.875\" OD Header",
-      "source_channels": [
-        "ez_drawing_pdf"
-      ],
-      "review_status": "review_required"
-    },
-    {
       "slot_id": "slot.RF",
       "value": "1.50",
       "source_channels": [
@@ -217,6 +257,22 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.SUPPLY_CONN_SIZE",
+      "value": "0.875\" OD Header",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
+      "value": "0.75\" MPT-Copper",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.TAG",
       "value": "CCWC-1",
       "source_channels": [
@@ -235,6 +291,14 @@
     {
       "slot_id": "slot.TUBE_MATERIAL",
       "value": "0.625 x 0.020",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.TUBE_MATERIAL_2",
+      "value": "Copper Smooth",
       "source_channels": [
         "ez_drawing_pdf"
       ],

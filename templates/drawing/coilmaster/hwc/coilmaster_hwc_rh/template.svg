@@ -274,7 +274,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M548.62 185.55H548.72V185.65001H548.62Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M533.05 185.6H549.99"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M533.05 202.6H549.99"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="10.291841" font-family="Arial"><tspan y="-190.4785" x="565.53829 571.26058 574.1114 579.8337 585.55599 588.4068">2.31 I</tspan></text>
+<text font-size="10.291841" fill="#1c0a80" font-family="Arial" transform="matrix(1 0 -0 1 0 612)" xml:space="preserve"><tspan x="565.54" y="-190.48">{{slot.I1}} I</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" d="M548.67 202.6 549.28 198.93H548.06L548.67 202.6" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M548.67 185.6 548.06 189.28H549.28L548.67 185.6" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M548.67 198.93V189.28"/>
@@ -283,7 +283,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M541.27 170.85H541.37V170.95001H541.27Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M541.32 198.93V169.58"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M529.37 198.93V169.58"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="10.291841" font-family="Arial"><tspan y="-167.22827" x="487.35453 493.07679 495.9276 501.64988 507.37214 510.22297">1.63 S</tspan></text>
+<text font-size="10.291841" fill="#1c0a80" font-family="Arial" transform="matrix(1 0 -0 1 0 612)" xml:space="preserve"><tspan x="487.35" y="-167.23">{{slot.S1}} S</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M529.37 170.9H525.7"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M525.7 170.9H522.02"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M529.37 170.9 533.05 171.51V170.29L529.37 170.9" fill="#1c0a80"/>
@@ -302,7 +302,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M499.92 327.07H500.02003V327.17H499.92Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M515.59 327.12H498.65"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M515.59 310.12H498.65"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="10.291841" font-family="Arial"><tspan y="-314.94126" x="455.2272 460.94947 463.8003 469.52256 475.2448 478.09565">2.31 O</tspan></text>
+<text font-size="10.291841" fill="#1c0a80" font-family="Arial" transform="matrix(1 0 -0 1 0 612)" xml:space="preserve"><tspan x="455.23" y="-314.94">{{slot.O2}} O</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" d="M499.97 310.12 499.36 313.79H500.58L499.97 310.12" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M499.97 327.12 500.58 323.44H499.36L499.97 327.12" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M499.97 313.79V323.44"/>
@@ -311,7 +311,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M507.27 341.77H507.37V341.87H507.27Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M507.32 313.79V343.14"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M519.27 313.79V343.14"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="10.291841" font-family="Arial"><tspan y="-338.19398" x="531.0123 536.7346 539.58547 545.30776 551.03 553.88088">1.63 R</tspan></text>
+<text font-size="10.291841" fill="#1c0a80" font-family="Arial" transform="matrix(1 0 -0 1 0 612)" xml:space="preserve"><tspan x="531.01" y="-338.19">{{slot.R2}} R</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M519.27 341.82H522.94"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M522.94 341.82H526.62"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M519.27 341.82 515.59 341.21V342.43L519.27 341.82" fill="#1c0a80"/>
@@ -461,7 +461,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M378.62 427.23H378.72V427.33003H378.62Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M419.56 427.28H377.35"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M419.56 417.17H377.35"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="10.291841" font-family="Arial"><tspan y="-418.59898" x="341.24589 346.96815 349.81898 355.54124 361.2635 364.11433">1.38 X</tspan></text>
+
 <path transform="matrix(1,0,0,-1,0,612)" d="M378.67 417.17 378.06 420.85H379.28L378.67 417.17" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M378.67 427.28 379.28 423.6H378.06L378.67 427.28" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M378.67 420.85V423.6"/>

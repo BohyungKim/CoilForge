@@ -37,8 +37,14 @@ _DIM_LABELS = [
     "CH", "CL", "CD", "FH", "FL", "HF", "RF", "TF", "BF", "RB",
     "I1", "I3", "I5", "I7", "S1", "S3", "S5", "S7",
     "O2", "O4", "O6", "O8", "R2", "R4", "R6", "R8",
+    # Bare header letters: water-coil (and some) drawing-area callouts label the
+    # first-header offsets "I/O/S/R" instead of the parity-numbered "I1/O2/S1/R2"
+    # the title block uses. Mapped to the numbered first-header slot below.
+    "I", "O", "S", "R",
     "X",
 ]
+# Bare drawing-area callout label -> the parity-numbered first-header slot it means.
+_BARE_CALLOUT_SLOT = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2"}
 _CALLOUT_RE = re.compile(
     r"^([\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
 )
@@ -159,10 +165,15 @@ def seed_pdf(pdf_path: Path) -> SeedResult:
         # 1) Drawing-area dimension callout: "VALUE LABEL".
         cm = _CALLOUT_RE.match(content)
         if cm:
-            slot = f"slot.{cm.group(2)}"
+            label = cm.group(2)
+            if label == "X":
+                # X is a fixed (non-variable) dimension no parameter drives; drop
+                # the callout rather than slot it (would render blank). John 2026-06-27.
+                return ""
+            slot = _BARE_CALLOUT_SLOT.get(label, f"slot.{label}")
             used.add(slot)
             ref[slot] = cm.group(1)
-            return single(f"{{{{{slot}}}}} {cm.group(2)}")
+            return single(f"{{{{{slot}}}}} {label}")
 
         # 2) Title-block summary row (headers + glued values in two tspans).
         if _looks_like_title_block(content) and tb_tokens:
