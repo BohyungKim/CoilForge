@@ -1262,6 +1262,43 @@ h4 {
   justify-content: flex-end;
 }
 
+.ccsi-autofill-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.ccsi-autofill-setup {
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+
+.ccsi-autofill-setup summary {
+  cursor: pointer;
+  color: var(--text-heading);
+}
+
+.ccsi-setup-steps {
+  margin: 6px 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.ccsi-bookmarklet {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-heading);
+  cursor: grab;
+  text-decoration: none;
+  font-weight: 600;
+}
+
 .paste-ready-table-wrap {
   border: 1px solid var(--border-subtle);
   border-radius: 6px;

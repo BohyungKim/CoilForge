@@ -155,6 +155,31 @@
           </div>
           <div id="drawing-template-status" class="drawing-template-status">Loading template status</div>
           <div id="drawing-parameters" class="parameter-grid"></div>
+          <div class="ccsi-autofill-actions" aria-label="CCSI autofill actions">
+            <button id="copy-ccsi-payload" class="secondary-action" type="button">Copy CCSI autofill payload</button>
+            <span id="ccsi-autofill-status" class="subtle-label">Review aid only &mdash; copies the 13 drawing parameters for the CCSI filler to apply (you confirm each on the form).</span>
+          </div>
+          <details class="ccsi-autofill-setup">
+            <summary>CCSI filler &mdash; one-time setup</summary>
+            <p class="subtle-label">
+              The filler runs on the CCSI page (different site), so it installs once in your browser.
+              Pick either option, then use <strong>Copy CCSI autofill payload</strong> above and trigger the filler on the CCSI form.
+            </p>
+            <ol class="ccsi-setup-steps">
+              <li>
+                <strong>No extension &mdash; bookmarklet (recommended):</strong>
+                drag this link to your bookmarks bar once &rarr;
+                <a id="ccsi-bookmarklet" class="ccsi-bookmarklet" href="#" draggable="true" title="Drag me to your bookmarks bar">CCSI&nbsp;autofill</a>.
+                Then on the CCSI Direct Coil form, click that bookmark to open the filler.
+              </li>
+              <li>
+                <strong>Userscript manager (Tampermonkey/Violentmonkey):</strong>
+                <a href="/static/ccsi/ccsi_autofill.user.js" target="_blank" rel="noopener">install ccsi_autofill.user.js</a>,
+                then trigger it from the userscript menu on the CCSI form.
+              </li>
+            </ol>
+            <span id="ccsi-bookmarklet-status" class="subtle-label">Preparing bookmarklet&hellip;</span>
+          </details>
           <div id="drawing-preview" class="drawing-preview">Loading preview</div>
         </section>
 

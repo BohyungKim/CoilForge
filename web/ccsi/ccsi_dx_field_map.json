@@ -1,0 +1,91 @@
+{
+  "form": "CCSI Online Direct Coil — DX",
+  "version": "2026-06-28",
+  "url_pattern": "https://coil.ccsi.ie/Coils/*",
+  "framework": "jquery-server-rendered (ASP.NET MVC + Bootstrap; no virtual DOM)",
+  "_note": "Phase 0 captured live on coil.ccsi.ie/Coils/Edit (CDXC-1, 2026-06-28). CCSI's internal field ids differ from CoilForge's drawing-param labels for 8 of 13 (I→HS, S→VS, O→HR, R→VR, RF→EF, HF→FF, SL→CS, ZD→DX_ZD). Each `selectors` list tries the real CCSI id first, then falls back to CoilForge's own mirror ([data-ccsi-key='<KEY>']) so the SAME map self-tests same-origin on localhost:8011. `ccsi_readonly:true` marks fields CCSI computes itself (CD, RF, HF, CH) — the userscript skips these instead of overwriting.",
+  "fields": {
+    "CD": {
+      "ccsi_label": "CD (Casing Depth)",
+      "type": "number",
+      "unit": "in",
+      "ccsi_readonly": true,
+      "selectors": ["#CD", "[data-ccsi-key='CD']"]
+    },
+    "I": {
+      "ccsi_label": "I (Distributor / horizontal-supply)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#HS", "[data-ccsi-key='I']"]
+    },
+    "S": {
+      "ccsi_label": "S (vertical-supply spacing)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#VS", "[data-ccsi-key='S']"]
+    },
+    "O": {
+      "ccsi_label": "O (horizontal-return offset)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#HR", "[data-ccsi-key='O']"]
+    },
+    "R": {
+      "ccsi_label": "R (vertical-return spacing)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#VR", "[data-ccsi-key='R']"]
+    },
+    "BF": {
+      "ccsi_label": "BF (Bottom Flange)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#BF", "[data-ccsi-key='BF']"]
+    },
+    "HD": {
+      "ccsi_label": "HD (Header Depth)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#HD", "[data-ccsi-key='HD']"]
+    },
+    "HF": {
+      "ccsi_label": "HF (Header Flange)",
+      "type": "number",
+      "unit": "in",
+      "ccsi_readonly": true,
+      "selectors": ["#FF", "[data-ccsi-key='HF']"]
+    },
+    "TF": {
+      "ccsi_label": "TF (Top Flange)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#TF", "[data-ccsi-key='TF']"]
+    },
+    "RF": {
+      "ccsi_label": "RF (Return Flange)",
+      "type": "number",
+      "unit": "in",
+      "ccsi_readonly": true,
+      "selectors": ["#EF", "[data-ccsi-key='RF']"]
+    },
+    "CH": {
+      "ccsi_label": "CH (Casing Height)",
+      "type": "number",
+      "unit": "in",
+      "ccsi_readonly": true,
+      "selectors": ["#CH", "[data-ccsi-key='CH']"]
+    },
+    "SL": {
+      "ccsi_label": "SL (Suction stub length)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#CS", "[data-ccsi-key='SL']"]
+    },
+    "ZD": {
+      "ccsi_label": "ZD (Zone Depth)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_ZD", "[data-ccsi-key='ZD']"]
+    }
+  }
+}

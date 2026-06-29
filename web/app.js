@@ -81,6 +81,10 @@ const elements = {
   copyVisibleTsv: document.querySelector("#copy-visible-tsv"),
   drawingPreview: document.querySelector("#drawing-preview"),
   drawingParameters: document.querySelector("#drawing-parameters"),
+  copyCcsiPayload: document.querySelector("#copy-ccsi-payload"),
+  ccsiAutofillStatus: document.querySelector("#ccsi-autofill-status"),
+  ccsiBookmarklet: document.querySelector("#ccsi-bookmarklet"),
+  ccsiBookmarkletStatus: document.querySelector("#ccsi-bookmarklet-status"),
   drawingTemplateStatus: document.querySelector("#drawing-template-status"),
   compatibilityStatus: document.querySelector("#compatibility-status"),
   compatibilitySummary: document.querySelector("#compatibility-summary"),
@@ -1443,7 +1447,7 @@ function renderDcDrawingRow(label, hasCheckbox, uiState, fieldsByLabel) {
     <label class="dc-dimension-row ${statusClass(status)}">
       <span>${escapeHtml(label)}</span>
       <input class="dc-dimension-check" type="checkbox" ${checked ? "checked" : ""} disabled />
-      <input class="dc-control" value="${escapeHtml(value)}" readonly />
+      <input class="dc-control" data-ccsi-key="${escapeHtml(label)}" value="${escapeHtml(value)}" readonly />
     </label>
   `;
 }
@@ -1556,6 +1560,91 @@ function fallbackCopyText(text) {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
+}
+
+// --- CCSI Online Direct Coil autofill -------------------------------------
+// John hand-copies the 13 drawing parameters into the external CCSI Online
+// "Direct Coil" DX form. This packages those 13 (and only those 13) into a
+// clipboard JSON payload that the CCSI userscript (web/ccsi/ccsi_autofill.user.js)
+// reads and fills. The selectors come from a same-origin field map so the
+// userscript itself is generic; CCSI markup changes touch only the JSON.
+const CCSI_AUTOFILL_SCHEMA = "coilforge.ccsi.autofill/1";
+// Single source of truth for the scoped keys: the same 13 the panel lays out.
+const CCSI_DRAWING_PARAM_KEYS = DRAWING_PARAM_COLUMNS.flat();
+
+async function loadCcsiFieldMap() {
+  if (state.ccsiFieldMap) {
+    return state.ccsiFieldMap;
+  }
+  const response = await fetch("/static/ccsi/ccsi_dx_field_map.json", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`field map fetch failed (${response.status})`);
+  }
+  state.ccsiFieldMap = await response.json();
+  return state.ccsiFieldMap;
+}
+
+// Build the "drag once" bookmarklet from the SAME userscript source CoilForge
+// serves, so there is one filler implementation. The userscript defines
+// window.coilforgeCcsiAutofill but doesn't auto-open (it's menu-triggered under
+// a manager); for the bookmarklet we append a call to open the panel.
+async function setupCcsiBookmarklet() {
+  const link = elements.ccsiBookmarklet;
+  const status = elements.ccsiBookmarkletStatus;
+  if (!link) {
+    return;
+  }
+  try {
+    const src = await fetch("/static/ccsi/ccsi_autofill.user.js", { cache: "no-store" })
+      .then((response) => (response.ok ? response.text() : Promise.reject(response.status)));
+    const code = `${src}\n;(window.coilforgeCcsiAutofill||function(){})();void 0`;
+    link.href = `javascript:${encodeURIComponent(code)}`;
+    if (status) {
+      status.textContent = "Bookmarklet ready — drag “CCSI autofill” to your bookmarks bar.";
+    }
+  } catch (error) {
+    link.removeAttribute("href");
+    if (status) {
+      status.textContent = `Could not build bookmarklet (${error}). Use the userscript option instead.`;
+    }
+  }
+}
+
+function buildCcsiAutofillPayload(uiState, fieldMap) {
+  const parameters = uiState.drawing_parameters?.parameters || {};
+  const fields = CCSI_DRAWING_PARAM_KEYS.map((key) => {
+    const parameter = parameters[key] || {};
+    const mapEntry = fieldMap.fields?.[key] || {};
+    const hasValue =
+      parameter.value !== null && parameter.value !== undefined && parameter.value !== "";
+    // Confidence gate carried one step further into the external form: a no-value
+    // or unmapped parameter is "blocked" for fill purposes so the userscript skips
+    // it. A real value rides along, but only ever as review_required — never an
+    // auto-applied "ready" (the resolver emits no ready path for these 13).
+    const status = hasValue ? parameter.status || "review_required" : "blocked";
+    return {
+      key,
+      ccsi_label: mapEntry.ccsi_label || parameter.label || key,
+      value: hasValue ? parameter.value : null,
+      unit: parameter.unit || mapEntry.unit || "in",
+      status,
+      type: mapEntry.type || "number",
+      selectors: Array.isArray(mapEntry.selectors) ? mapEntry.selectors : [],
+      blocked_reason: hasValue
+        ? null
+        : parameter.blocked_reason || "No value derived from the source or rule engine; review required.",
+    };
+  });
+  return {
+    schema: CCSI_AUTOFILL_SCHEMA,
+    generated_at: new Date().toISOString(),
+    coil_tag: uiState.project?.coil_tag || null,
+    review_aid_only: true,
+    export_allowed: false,
+    form: fieldMap.form || "CCSI Online Direct Coil — DX",
+    field_map_version: fieldMap.version || "unknown",
+    fields,
+  };
 }
 
 function renderPdfIntakeSummary(uiState) {
@@ -2847,6 +2936,25 @@ elements.copyVisibleTsv.addEventListener("click", () => {
     elements.savedStatus.textContent = error.message;
   });
 });
+
+elements.copyCcsiPayload?.addEventListener("click", async () => {
+  if (!state.ui?.drawing_parameters) {
+    elements.ccsiAutofillStatus.textContent = "Run an analysis first — no drawing parameters yet.";
+    return;
+  }
+  try {
+    const fieldMap = await loadCcsiFieldMap();
+    const payload = buildCcsiAutofillPayload(state.ui, fieldMap);
+    await copyText(JSON.stringify(payload, null, 2));
+    const fillable = payload.fields.filter((field) => field.value !== null).length;
+    elements.ccsiAutofillStatus.textContent =
+      `Copied CCSI payload — ${fillable}/${payload.fields.length} fields have a value to review (map v${payload.field_map_version}). Switch to the CCSI form and run the userscript.`;
+  } catch (error) {
+    elements.ccsiAutofillStatus.textContent = `Could not build payload: ${error.message}`;
+  }
+});
+
+setupCcsiBookmarklet();
 
 document.querySelector("#analyze")?.addEventListener("click", () => {
   runWorkflowFromCurrentState().catch((error) => {
