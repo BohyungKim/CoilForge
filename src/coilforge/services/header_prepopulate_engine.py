@@ -40,11 +40,12 @@ _NOTES_APPEND_IDS = {"R-080", "R-081"}
 _CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
 _RETURN_SPACING_IDS = {"R-022", "R-023", "R-052"}
 _CWC_IO_HD_SL_IDS = {
-    "R-060", "R-061", "R-062", "R-063a", "R-063b",
-    "R-064-sl", "R-064-io", "R-064-hd", "R-065",
+    "R-060", "R-061", "R-061v", "R-062", "R-063a", "R-063b",
+    "R-064-sl", "R-064-io", "R-064-hd", "R-065", "R-065v",
 }
 _OTHER_SPECIAL_IDS = {
     "R-034",  # DX distributor S placement (formula)
+    "R-034v",  # DX distributor S, Terra V (Sn = CD - Rn)
     "R-048",  # HGRH S/R positions (formula)
     "R-049",  # HGRH single-feed note — suppressed (treated as standard one-header)
     "R-051",  # cross-coil validation (no value rule)
@@ -115,6 +116,15 @@ def cd_cwc_hwc(rows: int) -> float:
 def _return_spacing(suction_conn_size: float, circuits: int) -> list[float]:
     """R-022: Rn = n*D + (n-1)*1.5 for n in 1..circuits."""
     return [n * suction_conn_size + (n - 1) * 1.5 for n in range(1, circuits + 1)]
+
+
+def _terra_v_return_spacing(suction_conn_size: float, circuits: int) -> list[float]:
+    """R-023 Terra V: Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 for n in 1..circuits.
+    (R1=0.5D+0.75, R2=1.5D+2.25, R3=2.5D+3.75, R4=3.5D+5.25.)"""
+    return [
+        (n - 0.5) * suction_conn_size + (n - 1) * 1.5 + 0.75
+        for n in range(1, circuits + 1)
+    ]
 
 
 def _hgrh_return_spacing(
@@ -380,40 +390,68 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     _emit_casing_depth(request, place, add_missing)
 
     # --- return_spacing (R-022 / R-023) ---
-    # R-022 (product_family ["*"]) applies to every DX family EXCEPT Terra V, which is
-    # SOP-only/single-source and routes to R-023 (LOW) per the MVP taxonomy. The prior
-    # gate excluded ALL Terra, so Terra H/Terra H C lost their HIGH return spacing.
+    # R-022 (product_family ["*"]) applies to every DX family EXCEPT Terra V, which uses
+    # its own SOP formula R-023 (Rn = (n-0.5)*D + (n-1)*1.5 + 0.75). Terra H/Terra H C
+    # keep the generic R-022. (R-023 was promoted LOW->HIGH, John 2026-06-28, SOP-confirmed.)
     if coil == CoilType.DX:
-        rule = index["R-022"]
-        if _applies(rule, request) and request.terra_variant != TerraVariant.TERRA_V:
+        is_terra_v = request.terra_variant == TerraVariant.TERRA_V
+        if is_terra_v and _applies(index["R-023"], request):
             if request.suction_conn_size is not None and request.circuits is not None:
                 place(
                     "return_spacing",
                     FieldResult(
-                        value=_return_spacing(
+                        value=_terra_v_return_spacing(
                             request.suction_conn_size, request.circuits
                         ),
                         confidence=Confidence.HIGH,
-                        evidence_refs=rule["evidence_refs"],
+                        evidence_refs=index["R-023"]["evidence_refs"],
                     ),
                 )
             else:
                 add_missing(["suction_conn_size", "circuits"])
+        else:
+            rule = index["R-022"]
+            if _applies(rule, request):
+                if request.suction_conn_size is not None and request.circuits is not None:
+                    place(
+                        "return_spacing",
+                        FieldResult(
+                            value=_return_spacing(
+                                request.suction_conn_size, request.circuits
+                            ),
+                            confidence=Confidence.HIGH,
+                            evidence_refs=rule["evidence_refs"],
+                        ),
+                    )
+                else:
+                    add_missing(["suction_conn_size", "circuits"])
 
-    # --- DX distributor S placement (R-034, checklist even-spacing) ---
+    # --- DX distributor S placement (R-034 even-spacing; R-034v Terra V = CD - Rn) ---
     if coil == CoilType.DX:
-        rule = index["R-034"]
         if request.rows is not None and request.circuits is not None:
             cd = _dx_cd_value(request)
             c = request.circuits
-            place(
-                "dist_s",
-                FieldResult(
-                    value=[_excel_round(k * cd / (c + 1)) for k in range(1, c + 1)],
-                    confidence=Confidence.HIGH,
-                    evidence_refs=rule["evidence_refs"],
-                ),
-            )
+            is_terra_v = request.terra_variant == TerraVariant.TERRA_V
+            if is_terra_v and request.suction_conn_size is not None:
+                # Terra V: Sn = CD - Rn (Rn = R-023 Terra V return spacing). SOP-confirmed.
+                r = _terra_v_return_spacing(request.suction_conn_size, c)
+                place(
+                    "dist_s",
+                    FieldResult(
+                        value=[round(cd - r[k - 1], 4) for k in range(1, c + 1)],
+                        confidence=Confidence.HIGH,
+                        evidence_refs=index["R-034v"]["evidence_refs"],
+                    ),
+                )
+            else:
+                place(
+                    "dist_s",
+                    FieldResult(
+                        value=[_excel_round(k * cd / (c + 1)) for k in range(1, c + 1)],
+                        confidence=Confidence.HIGH,
+                        evidence_refs=index["R-034"]["evidence_refs"],
+                    ),
+                )
         else:
             add_missing(["rows", "circuits"])
 
@@ -599,15 +637,18 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
     feeds  > 1   -> R-060 io=2.3125 HIGH, R-062 hd=4 HIGH, R-063 sl HIGH
     feeds absent -> io/hd MEDIUM suggestions (missing feeds); sl HIGH default
     TERRA        -> io=3.25 HIGH (R-061), sl=10 HIGH (R-065) [checklist, John 2026-06-11]
+    TERRA V      -> io=2.75 HIGH (R-061v), sl=12 HIGH (R-065v) [SOP, John 2026-06-28]
+                    (return I/O = CH-2.75 is applied at the slot layer, needs casing height)
     """
     index = _rule_index()
     product = request.product_type
+    is_terra_v = request.terra_variant == TerraVariant.TERRA_V
     feeds_one = request.feeds == 1
     feeds_multi = request.feeds is not None and request.feeds > 1
 
     # --- io ---
     if product == ProductFamily.TERRA:
-        rule = index["R-061"]
+        rule = index["R-061v"] if is_terra_v else index["R-061"]
         place(
             "io",
             FieldResult(
@@ -687,11 +728,11 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
 
     # --- sl ---
     if product == ProductFamily.TERRA:
-        rule = index["R-065"]
+        rule = index["R-065v"] if is_terra_v else index["R-065"]
         place(
             "sl",
             FieldResult(
-                value=10,
+                value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
             ),

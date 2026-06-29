@@ -404,8 +404,9 @@ def test_terra_picker_labels_resolve_to_product_family_and_variant() -> None:
 
 
 def test_terra_v_picker_selection_drives_engine_variant() -> None:
-    """Picking TERRA V drives terra_variant=TERRA_V so the Terra-V-only HGRH
-    rule (R-046) fires; TERRA H (resolved H C) leaves those fields untouched."""
+    """Picking TERRA V drives terra_variant=TERRA_V so the Terra-V-only HGRH rule
+    (R-046) fires with its SOP values (supply I/O=2.75, supply SL=5, return SL=12);
+    TERRA H (resolved H C) keeps the generic Terra values. John 2026-06-28."""
     from coilforge.schemas.header_prepopulate import ProductFamily, TerraVariant
     from coilforge.services.direct_coil_drawing_pipeline import build_header_request
     from coilforge.services.header_prepopulate_engine import prepopulate
@@ -415,15 +416,18 @@ def test_terra_v_picker_selection_drives_engine_variant() -> None:
     )
     assert req_v.product_type == ProductFamily.TERRA
     assert req_v.terra_variant == TerraVariant.TERRA_V
-    blocked_v = prepopulate(req_v).blocked
-    assert {"supply_io", "supply_sl", "return_sl"} <= set(blocked_v)  # R-046
+    values_v = prepopulate(req_v).values
+    assert values_v["supply_io"].value == 2.75  # R-046 (SOP, HIGH)
+    assert values_v["supply_sl"].value == 5
+    assert values_v["return_sl"].value == 12
 
     req_h = build_header_request(
         coil_type="HGRH", product_type="TERRA H", unit_size="024", feeds=2, circuits=2
     )
     assert req_h.terra_variant == TerraVariant.TERRA_H_C
-    blocked_h = prepopulate(req_h).blocked
-    assert not ({"supply_io", "supply_sl", "return_sl"} & set(blocked_h))
+    values_h = prepopulate(req_h).values
+    assert values_h["supply_io"].value == 2  # R-040b (Terra H/H C, unchanged)
+    assert values_h["return_sl"].value == 10  # R-045b (Terra H/H C, unchanged)
 
 
 # --- Right-side specification panel: submittal-stated materials / fins / weight /

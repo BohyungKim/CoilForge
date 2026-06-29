@@ -220,6 +220,18 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK DX TERRA I/O=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V DX I/O = 2.75 (SOP special case). Placed after R-021 so the generic
+  # emitter's last-writer-wins overrides the 3.25 (Terra H/H C) for Terra V only.
+  - rule_id: R-021v
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: suction_io
+    value: 2.75
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH SPECIAL CASE: For Terra V, update all I/Os to 2.75", "John 2026-06-28 (SOP-confirmed)"]
+
   - rule_id: R-022
     applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_spacing
@@ -232,17 +244,21 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "CHK DX!C34:C37"]
 
+  # Terra V DX return spacing: Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 (D=suction_conn_size).
+  # R1=0.5D+0.75, R2=1.5D+2.25, R3=2.5D+3.75, R4=3.5D+5.25. SOP-confirmed by John
+  # 2026-06-28; promoted LOW->HIGH. Emitted by the engine return_spacing block, which
+  # excludes Terra V from the generic R-022 and uses this formula instead.
   - rule_id: R-023
     applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: return_spacing
     value: null
-    formula: "Terra V variant spacing (SOP single-source)"
+    formula: "Terra V: Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 (D=suction_conn_size, n=1..circuits)"
     kind: formula_return_spacing_terra_v
     requires_inputs: [suction_conn_size, circuits]
-    confidence: LOW
-    review_required: true
-    blocked_reason: "R-023 LOW: Terra V return spacing is SOP-only (single source), absent from CHK."
-    evidence_refs: ["SOP §DX-TNVH SPECIAL CASE Terra V"]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH SPECIAL CASE Terra V (Return 1: 0.5D+0.75; Return 2: 1.5D+2.25; Return 3: 2.5D+3.75; Return 4: 3.5D+5.25)", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-024
     applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -295,6 +311,17 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["CHK DX TERRA SL=10", "SOP §DX-TNVH Terra H=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  # Terra V DX SL = 12 (SOP). After R-027 so last-writer-wins overrides Terra H=10.
+  - rule_id: R-027v
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: suction_sl
+    value: 12
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH: Change all SL values to ... 12 for Terra V", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-028
     applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H, TERRA], terra_variant: null, size_pattern: null }
@@ -393,6 +420,20 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK DX!C46:C49 even spacing", "John 2026-06-11 (checklist style)"]
 
+  # Terra V DX distributor S = CD - Rn (the Terra V return spacing, R-023). Emitted by the
+  # engine dist_s block, which branches on Terra V; the slot layer mirrors it for the drawing.
+  - rule_id: R-034v
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: dist_s
+    value: null
+    formula: "Terra V: Sn = CD - Rn (Rn = R-023 Terra V return spacing, n=1..circuits)"
+    kind: formula_dist_s_terra_v
+    requires_inputs: [rows, circuits, suction_conn_size]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH SPECIAL CASE Terra V: S1=CD-R1, S3=CD-R2, S5=CD-R3, S7=CD-R4", "John 2026-06-28 (SOP-confirmed)"]
+
   # --- 2.4 HGRH-specific ------------------------------------------------------
   - rule_id: R-040
     applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
@@ -437,6 +478,18 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["CHK HGRH TERRA I/O=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  # Terra V HGRH Return I/O = 2.75 (SOP). After R-042 so last-writer-wins overrides
+  # Terra H/H C=3.25 for Terra V only. (Supply 1 I/O is set by R-046.)
+  - rule_id: R-042v
+    applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: return_io
+    value: 2.75
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §HGRH-TNVH SPECIAL CASE for Terra V: Update Return I/Os ... to 2.75", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-043
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -510,15 +563,20 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK HGRH TERRA SL=10", "SOP §HGRH-TNVH Terra-as-Terra-H=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V HGRH: Supply 1 I/O = 2.75, all Supply SL = 5, all Return SL = 12 (SOP).
+  # Promoted LOW->HIGH (John 2026-06-28, SOP-confirmed). Placed after R-040b/R-044a/
+  # R-045b so last-writer-wins overrides their Terra/Nova values for Terra V.
+  # NOTE: Supply 2/3/4 I/O ("round software-default to int") is NOT derivable here and
+  # stays review-required downstream; only Supply 1 I/O = 2.75 is asserted.
   - rule_id: R-046
     applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: [supply_io, supply_sl, return_sl]
-    value: null
+    field_values: { supply_io: 2.75, supply_sl: 5, return_sl: 12 }
     kind: constant
-    confidence: LOW
-    review_required: true
-    blocked_reason: "R-046 LOW: Terra V HGRH I/O=2.75, supply SL=5, return SL=12 are SOP-only (single source), absent from CHK."
-    evidence_refs: ["SOP §HGRH-TNVH Terra V special cases"]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §HGRH-TNVH SPECIAL CASE for Terra V: Supply 1 I/O=2.75; Set all Supply SL to 5 and all Return SL to 12", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-047
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -628,6 +686,18 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK CWC/HWC TERRA=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V CWC/HWC Supply I/O = 2.75 (SOP). Return I/O = CH-2.75 is applied at the slot
+  # layer (needs casing height). Emitted by _emit_cwc_io_hd_sl's Terra V branch.
+  - rule_id: R-061v
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: io
+    value: 2.75
+    kind: special_cwc_io
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §CWC/HWC SPECIAL CASE FOR TERRA V: All Supply I/O=2.75 (Return I/O=CH-2.75 applied at slot layer)", "John 2026-06-28 (SOP-confirmed)"]
+
   - rule_id: R-062
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: hd
@@ -705,6 +775,17 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK CWC/HWC TERRA SL=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V CWC/HWC SL = 12 (SOP). Emitted by _emit_cwc_io_hd_sl's Terra V branch.
+  - rule_id: R-065v
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: sl
+    value: 12
+    kind: special_cwc_sl
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §CWC/HWC: Change all SL values to ... Terra V: 12", "John 2026-06-28 (SOP-confirmed)"]
+
   - rule_id: R-066
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: vent_drain
@@ -715,15 +796,17 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §CWC/HWC Supply 1 & Return 1 = Connections"]
 
+  # Terra V CWC/HWC vent/drain = HDR ENDS (SOP). Promoted LOW->HIGH (John 2026-06-28).
+  # After R-066 (="Connections") so last-writer-wins overrides it for Terra V.
   - rule_id: R-067
     applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: vent_drain
-    value: null
+    value: "HDR ENDS"
     kind: constant
-    confidence: LOW
-    review_required: true
-    blocked_reason: "R-067 LOW: Terra V vent/drain='HDR ENDS' is SOP-only (single source, Rev I addition)."
-    evidence_refs: ["SOP §CWC/HWC SPECIAL CASE Terra V"]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §CWC/HWC SPECIAL CASE: for Terra V, Set Supply 1 and Return 1 to HDR ENDS", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-068
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }

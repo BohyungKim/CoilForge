@@ -68,7 +68,14 @@ are handled by dedicated phase helpers. Formulas use explicit safe helpers — *
 ad-hoc code elsewhere. Rules can scope to specific unit sizes via `applies_to.size_pattern`
 (e.g. `[H05, H10]`), now matched in `_applies` (null = all sizes). Combine with last-writer-wins
 (rules applied in YAML order; the generic emitter's `place()` overwrites per field) for
-size/variant overrides — e.g. R-025b/R-044d (size) and R-012v (Terra-V).
+size/variant overrides — e.g. R-025b/R-044d (size) and R-012v/R-021v/R-046 (Terra-V).
+
+**Dual-path gotcha:** some per-header drawing dims are computed in `build_drawing_slots`
+(the slot layer), NOT the engine — DX distributor `S`, return spacing `R`, and Terra V's
+CD/CH-relative formulas (`S = CD − Rn`, CWC return `O = CH − 2.75`). Changing such a value
+means editing BOTH the engine rule/helper AND the slot layer, and threading `terra_variant`
+into `build_drawing_slots` where a variant-specific drawing formula is needed (the generic-R
+safety net is guarded `and not is_terra_v` so Terra V never borrows Terra H's spacing).
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):

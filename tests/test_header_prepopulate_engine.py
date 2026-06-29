@@ -75,10 +75,9 @@ DX_COATING_NOTE = "Do Not Coat Last 5-6 inches of Distributor Extensions."
 HGRH_COATING_NOTE = "Do Not Coat Last 5-6 inches of Supply Stubouts."
 
 
-def test_r022_return_spacing_fires_for_terra_h_not_terra_v() -> None:
-    """R-022 (product_family ["*"]) must fire for Terra H — only Terra V is the
-    SOP-only exception. Regression: the engine gate excluded ALL Terra, so Terra H
-    multi-circuit coils lost their second-header return spacing (R2/R4)."""
+def test_r022_return_spacing_terra_h_generic_terra_v_sop_formula() -> None:
+    """R-022 (generic) fires for Terra H; Terra V uses its own SOP formula R-023
+    (John 2026-06-28, SOP-confirmed). Both HIGH, different formulas."""
     common = dict(circuits=2, suction_conn_size=1.125)
     resp_h = prepopulate(
         _req(CoilType.DX, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_H, **common)
@@ -87,13 +86,15 @@ def test_r022_return_spacing_fires_for_terra_h_not_terra_v() -> None:
     assert resp_h.values["return_spacing"].value == [1.125, 3.75]  # Rn = n*D + (n-1)*1.5
     assert resp_h.values["return_spacing"].confidence == Confidence.HIGH
 
-    # Terra V stays SOP-only (single-source) -> R-022 does not fire.
+    # Terra V: R-023 SOP formula Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 (HIGH, drawn).
     resp_v = prepopulate(
         _req(CoilType.DX, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_V, **common)
     )
-    assert not _in_values(resp_v, "return_spacing")
+    assert _in_values(resp_v, "return_spacing")
+    assert resp_v.values["return_spacing"].value == [1.3125, 3.9375]
+    assert resp_v.values["return_spacing"].confidence == Confidence.HIGH
 
-    # Non-Terra families are unaffected (NOVA still fires).
+    # Non-Terra families are unaffected (NOVA still fires the generic R-022).
     resp_nova = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20", **common))
     assert _in_values(resp_nova, "return_spacing")
 
@@ -320,15 +321,17 @@ def test_t10_hgrh_terra_12_gate() -> None:
 
 
 def test_hgrh_terra_h_supply_io_resolves() -> None:
-    """R-040b: TERRA H / Terra H C HGRH supply I/O = 2 (HIGH), so the drawing's
-    `I` populates instead of staying blank. Terra V keeps R-046's blocked status."""
+    """R-040b: TERRA H / Terra H C HGRH supply I/O = 2 (HIGH). Terra V uses its own
+    SOP value (R-046, supply I/O = 2.75), John 2026-06-28 SOP-confirmed."""
     for variant in (TerraVariant.TERRA_H, TerraVariant.TERRA_H_C):
         r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "024", terra_variant=variant))
         assert r.values["supply_io"].value == 2  # R-040b HIGH
         assert r.values["supply_io"].review_required is False
-    # Terra V supply_io is SOP-only -> stays review-required (R-046), never HIGH.
+    # Terra V: R-046 SOP values now HIGH (supply I/O=2.75, supply SL=5, return SL=12).
     rv = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_V))
-    assert "supply_io" not in rv.values
+    assert rv.values["supply_io"].value == 2.75
+    assert rv.values["supply_sl"].value == 5
+    assert rv.values["return_sl"].value == 12
 
 
 def test_t11_hgrh_nova_single_feed() -> None:

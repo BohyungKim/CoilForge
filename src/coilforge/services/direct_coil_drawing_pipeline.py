@@ -227,12 +227,20 @@ def build_drawing_slots(
     finned_length: float | None = None,
     tag: str | None = None,
     ez_json: dict[str, Any] | None = None,
+    terra_variant: str | None = None,
 ) -> tuple[dict[str, Any], HeaderPrepopulateResponse]:
-    """Resolve EVERY dimension slot from mechanical values (engine/formula/JSON)."""
+    """Resolve EVERY dimension slot from mechanical values (engine/formula/JSON).
+
+    ``terra_variant`` ("TERRA_V" etc.) is threaded so the slot layer can apply the
+    Terra V drawing specials (DX S = CD - Rn, HGRH supply SL = 5, CWC return O = CH -
+    2.75) and stop the generic R-022 safety net from leaking into Terra V. If omitted,
+    ``build_header_request`` still derives it from a "TERRA V" product label.
+    """
     request = build_header_request(
         coil_type=coil_type, product_type=product_type, unit_size=unit_size,
         rows=rows, feeds=feeds, circuits=circuits, suction_conn_size=suction_conn_size,
         conn_size=conn_size, qty_conn_per_header=qty_conn_per_header,
+        terra_variant=terra_variant,
     )
     response = prepopulate(request)
     slots: dict[str, Any] = {}
@@ -285,6 +293,8 @@ def build_drawing_slots(
         str(coil_type or "").strip().upper(), _PER_HEADER_ENGINE_FIELDS["DX"]
     )
     is_hgrh = str(coil_type or "").strip().upper() == "HGRH"
+    is_cwc_hwc = str(coil_type or "").strip().upper() in ("CWC", "HWC")
+    is_terra_v = request.terra_variant == TerraVariant.TERRA_V
     hdr_i = val(field_map["i"]) if "i" in field_map else None
     hdr_hdx = val(field_map["hdx"]) if "hdx" in field_map else None
     hdr_o = val(field_map["o"]) if "o" in field_map else None
@@ -306,27 +316,50 @@ def build_drawing_slots(
             if hdr_hdx is not None:
                 slots[f"slot.HDx{supply_id}"] = hdr_hdx
             if cd is not None:
-                slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
+                if (
+                    is_terra_v
+                    and isinstance(return_spacing, list)
+                    and k <= len(return_spacing)
+                ):
+                    # Terra V DX: distributor S = CD - Rn (SOP), where Rn is the Terra V
+                    # return spacing (R-023). Replaces the checklist even-spacing.
+                    slots[f"slot.S{supply_id}"] = round(cd - return_spacing[k - 1], 4)
+                else:
+                    slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
                 # HGRH supply-side (odd) SL = stub POSITION = 6 + return_conn/2 - S
                 # (John 2026-06-26). Sn is the per-slot drawing S just computed (differs
                 # per slot). The even SL (length) stays the return_sl clearance. HGRH only;
                 # conn_size carries the return connection size.
                 if is_hgrh and conn_size is not None:
-                    slots[f"slot.SL{supply_id}"] = round(
-                        6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
-                    )
+                    if is_terra_v:
+                        # Terra V HGRH: all Supply SL = 5 (SOP), not the position formula.
+                        slots[f"slot.SL{supply_id}"] = 5
+                    else:
+                        slots[f"slot.SL{supply_id}"] = round(
+                            6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
+                        )
             if hdr_o is not None:
-                slots[f"slot.O{return_id}"] = hdr_o
+                if (
+                    is_terra_v
+                    and is_cwc_hwc
+                    and slots.get("slot.CH") is not None
+                ):
+                    # Terra V CWC/HWC: Return I/O = CH - 2.75 (SOP) — levels the return
+                    # stubout with the supply stubout. Supply I/O stays 2.75 (engine io).
+                    slots[f"slot.O{return_id}"] = round(slots["slot.CH"] - 2.75, 4)
+                else:
+                    slots[f"slot.O{return_id}"] = hdr_o
             if hdr_hd is not None:
                 slots[f"slot.HD{return_id}"] = hdr_hd
             if hdr_sl is not None:
                 slots[f"slot.SL{return_id}"] = hdr_sl
             if isinstance(return_spacing, list) and k <= len(return_spacing):
                 slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)
-            elif suction_conn_size is not None:
+            elif suction_conn_size is not None and not is_terra_v:
                 # Safety net when the engine list is absent: the documented R-022
                 # formula Rn = n*D + (n-1)*1.5 for every circuit (not just k==1), so
                 # R4/R6 populate instead of leaving the second/third header blank.
+                # Excluded for Terra V — it uses its own R-023 formula, never the generic.
                 slots[f"slot.R{return_id}"] = round(
                     k * suction_conn_size + (k - 1) * 1.5, 4
                 )

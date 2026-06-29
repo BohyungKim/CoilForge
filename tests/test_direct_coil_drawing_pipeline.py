@@ -270,3 +270,31 @@ def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
     assert s["slot.HD2"] == 4         # hd
     assert s["slot.SL2"] == 8         # sl
     assert s["slot.HDx1"] == 4        # supply header depth = hd
+
+
+def test_terra_v_drawing_slots_use_sop_specials() -> None:
+    """Terra V drawing slots use the SOP specials, NOT Terra H values (John 2026-06-28):
+    DX S = CD - Rn (own R-023 formula, never the generic R-022 net); DX I/O=2.75, SL=12;
+    HGRH supply SL = 5; CWC return O = CH - 2.75 with supply I = 2.75."""
+    common = dict(unit_size="012", rows=4, circuits=2, feeds=2,
+                  conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
+
+    dx, _ = build_drawing_slots(coil_type="DX", product_type="TERRA V", **common)
+    # R-023 Terra V return spacing: R1=0.5*0.625+0.75, R2=1.5*0.625+2.25.
+    assert dx["slot.R2"] == 1.0625 and dx["slot.R4"] == 3.1875
+    # S = CD - Rn (CD=5.5): S1=5.5-1.0625, S3=5.5-3.1875.
+    assert dx["slot.S1"] == 4.4375 and dx["slot.S3"] == 2.3125
+    assert dx["slot.O2"] == 2.75 and dx["slot.SL2"] == 12
+
+    # Terra H is unaffected (generic even-spacing S, generic R, O=3.25, SL=10).
+    dx_h, _ = build_drawing_slots(coil_type="DX", product_type="TERRA H", **common)
+    assert dx_h["slot.R2"] == 0.625 and dx_h["slot.O2"] == 3.25 and dx_h["slot.SL2"] == 10
+
+    hgrh, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA V", **common)
+    assert hgrh["slot.SL1"] == 5 and hgrh["slot.SL3"] == 5  # all supply SL = 5
+    assert hgrh["slot.SL2"] == 12                           # return SL = 12
+
+    cwc, _ = build_drawing_slots(coil_type="CWC", product_type="TERRA V", **common)
+    assert cwc["slot.I1"] == 2.75                           # supply I/O = 2.75
+    assert cwc["slot.O2"] == round(cwc["slot.CH"] - 2.75, 4)  # return I/O = CH - 2.75
+    assert cwc["slot.SL2"] == 12
