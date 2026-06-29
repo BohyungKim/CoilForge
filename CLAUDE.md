@@ -157,6 +157,11 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   own template set. *Target:* a full parallel Ventum+ bucket matrix selected via a catalog
   `product_family` discriminator, replacing the current downstream
   `_UNREGISTERED_PRODUCT_LINES` hard-block in `workflows/submittal_to_drawing.py`.
+  That same submittal gate (`_gate_unregistered_product_line`) also **omits Terra V
+  CWC/HWC** drawings (variant `TERRA_V` + CWC/HWC) — no seeded Terra V water reference,
+  so the shared water template is withheld (not borrowed); Terra V DX/HGRH and Terra H
+  water still draw. The Terra V water engine rules (R-067 etc.) stay intact — only the
+  drawing is withheld.
 
 ### Header count rules
 

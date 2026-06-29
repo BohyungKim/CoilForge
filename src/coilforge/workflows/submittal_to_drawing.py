@@ -475,28 +475,50 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
 _UNREGISTERED_PRODUCT_LINES = {"VENTUM_PLUS"}
 
 
-def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
-    """Force the template result to the not-registered state when the resolved
-    product line has no seeded template (e.g. Ventum Plus). No drawing is borrowed
-    from another product line. No-op for product lines with a seeded template."""
-    if not isinstance(result, dict):
-        return result
-    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
-
-    family, _variant = resolve_product_line(result.get("product_type"))
-    if family not in _UNREGISTERED_PRODUCT_LINES:
-        return result
-    label = str(family).replace("_", " ").title()
+def _omit_drawing(result: dict[str, Any], reason: str) -> dict[str, Any]:
+    """Blank the template result to the omitted/not-generated state with a reason.
+    No drawing is borrowed from another product line/variant; the empty svg makes the
+    omission surface loudly downstream (assembler not_inserted_reason, UI message)."""
     result["svg"] = ""
     result["template_id"] = None
     result["template_found"] = False
     result["generation_allowed"] = False
     result["template_status"] = None
-    result["unregistered_product_line"] = family
-    result["not_registered_reason"] = (
-        f"{label} templates are tracked separately and have not been seeded yet — "
-        "review required before a drawing can be linked."
-    )
+    result["not_registered_reason"] = reason
+    return result
+
+
+def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
+    """Force the template result to the omitted state for combos that must not draw:
+    (1) product lines with no seeded template (Ventum Plus, any category), and
+    (2) Terra V CWC/HWC (no seeded Terra V water reference — Terra V DX/HGRH still draw).
+    No drawing is borrowed from another line/variant. No-op otherwise."""
+    if not isinstance(result, dict):
+        return result
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    family, variant = resolve_product_line(result.get("product_type"))
+    category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
+
+    # Ventum+ : no seeded template for ANY category.
+    if family in _UNREGISTERED_PRODUCT_LINES:
+        label = str(family).replace("_", " ").title()
+        _omit_drawing(
+            result,
+            f"{label} templates are tracked separately and have not been seeded yet — "
+            "review required before a drawing can be linked.",
+        )
+        result["unregistered_product_line"] = family
+        return result
+
+    # Terra V CWC/HWC : deliberately omitted (no seeded Terra V water reference). Terra V
+    # DX/HGRH and Terra H water are NOT gated — only the (TERRA_V, water) combo.
+    if variant == "TERRA_V" and category in {"CWC", "HWC"}:
+        return _omit_drawing(
+            result,
+            "Terra V CWC/HWC drawings are omitted — no seeded Terra V water-coil "
+            "reference; review required before a drawing can be linked.",
+        )
     return result
 
 
