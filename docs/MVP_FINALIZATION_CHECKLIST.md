@@ -62,8 +62,40 @@ The MVP is anchored on the **10 currently-seeded review-aid templates** (everyth
   re-key ~15 Terra rules + engine call-sites (`header_prepopulate_engine.py:334,511,591`)
   + `coilmaster_drawing_extract.py` resolver + `direct_coil_drawing_pipeline.py` `_PRODUCT`
   map + tests.
-- [ ] **[DEFER]** Terra-V single-source LOW items (`R-023`, `R-046`, `R-067`) and `R-082`
-  mounting holes — confirm they remain blocked, not MVP.
+- [x] **[EXT]** **Terra V drawing values finalized from SOP 2024018** (John 2026-06-28,
+  commit `42d6364`): `R-023` (DX return spacing), `R-046` (HGRH supply/return I/O + SL),
+  `R-067` (CWC/HWC vent-drain) promoted **LOW→HIGH and now drawn** — no longer blocked.
+  Companion rules added: `R-021v`/`R-027v`/`R-042v` (constants), `R-034v`/`R-061v`/`R-065v`
+  (specials). 10 confirmed Terra-V-vs-Terra-H deltas — see **§2a** below. Terra H == Terra
+  H C (unchanged). HGRH Supply 2/3/4 I/O stays `review_required` (software default not
+  derivable).
+- [ ] **[DEFER]** `R-082` Terra mounting holes — confirm remains blocked, not MVP.
+
+### 2a. Terra V delta logic (vs Terra H = Terra H C)
+
+> SOP-confirmed difference logic from `2024018 - SOP - EZ Coil Ordering.docx` (John
+> 2026-06-28). Terra V values layer on top of the Terra (H) baseline; **Terra H / Terra
+> H C are unchanged**.
+>
+> **Values are not duplicated here** — they live in
+> `src/coilforge/rules/coil_header_rules.yaml`. The 10 confirmed deltas are the `…v`
+> override rules (`R-021v`/`R-027v`/`R-042v`/`R-061v`/`R-065v` constants;
+> `R-034v` special) plus the promoted `R-023` (DX return spacing), `R-046` (HGRH
+> supply/return I/O + SL), and `R-067` (CWC/HWC vent-drain). Slot-layer formulas
+> (`S = CD − Rₙ`, CWC return `O = CH − 2.75`) live in
+> `services/direct_coil_drawing_pipeline.py::build_drawing_slots`.
+
+The two mechanisms that make this work (the "logic", not just the values):
+
+- [x] **[EXT]** **Last-writer-wins**: each Terra V rule (`R-0xxv`) is placed *after* its
+  generic Terra rule in YAML order, so the emitter's `place()` overwrites Terra H's value
+  for Terra V only — no ruleset fork.
+- [x] **[EXT]** **Engine/slot dual-path**: `S = CD − Rₙ` (DX) and CWC return `O = CH −
+  2.75` live at the **slot layer** (`build_drawing_slots`), not the engine, because they
+  need casing dims (CD/CH) the engine never sees. The generic-R safety net is guarded
+  `and not is_terra_v` so Terra V never borrows Terra H's spacing (the prior gate leak).
+- [ ] **[MVP]** Confirm these 10 Terra V deltas draw correctly end-to-end for a real
+  Terra V case (eyeball gate) before counting Terra V as MVP-complete.
 
 ## 3. End-to-end pipeline & the three outputs
 
