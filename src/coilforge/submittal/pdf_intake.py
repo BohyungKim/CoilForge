@@ -206,6 +206,41 @@ _COIL_FORMAT_BY_PREFIX = {
     "CCWC": "cooling_chilled_water",
 }
 _COIL_TAG_PREFIXES = tuple(_COIL_TYPE_BY_PREFIX)
+
+
+# Tag-prefix spelling variants: prefixes that are the SAME coil written differently.
+# Only hot-gas-reheat appears under multiple spellings in the wild (Oxygen8 writes both
+# ``RHHGRC`` and ``RHHGRH``). HHWC vs PHWC are DISTINCT coils (heating vs preheat), NOT
+# spelling variants — they must never be grouped here, or a package could match the
+# wrong source drawing page.
+_COIL_TAG_SPELLING_VARIANTS: tuple[tuple[str, ...], ...] = (
+    ("RHHGRC", "HGRC", "RHHGRH", "HGRH"),
+)
+
+
+def coil_tag_aliases(tag: str) -> tuple[str, ...]:
+    """All equivalent spellings of a coil tag across known tag-spelling variants.
+
+    Some coils are written more than one way (e.g. Oxygen8 writes hot-gas-reheat as
+    both ``RHHGRC-1`` and ``RHHGRH-1``). This returns every spelling that names the
+    *same* coil, so a tag can be matched against source text that uses a different
+    spelling. The original tag is always included; a prefix with no known variant
+    yields just ``(tag,)`` — never invents a match.
+    """
+    match = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-(?P<seq>\d+)\s*$", tag or "")
+    if not match:
+        return (tag,)
+    prefix = match.group("prefix").upper()
+    seq = match.group("seq")
+    for group in _COIL_TAG_SPELLING_VARIANTS:
+        if prefix in group:
+            aliases = [f"{variant}-{seq}" for variant in group]
+            if tag not in aliases:
+                aliases.insert(0, tag)
+            return tuple(aliases)
+    return (tag,)
+
+
 # Accessory line items that must never be detected as coils, even when their
 # description mentions a coil keyword (e.g. an electronic expansion valve kit
 # tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"). Tag-prefix signal +

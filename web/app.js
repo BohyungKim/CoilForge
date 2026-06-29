@@ -3093,11 +3093,22 @@ async function buildQuotePackage() {
     const detail = straps.detail ? ` — ${straps.detail}` : "";
     return `${coil.tag} (${coil.coil_type || "?"}): ${label}${detail}`;
   });
+  // Surface any coil that was NOT inserted loudly — a dropped coil must never read
+  // as a silent success (e.g. a tag whose drawing page is missing from the source PDF).
+  const warnings = (pkg.coils || [])
+    .filter((coil) => coil.inserted === false)
+    .map((coil) => {
+      const reason = coil.not_inserted_reason || "not inserted";
+      return `⚠ ${coil.tag} (${coil.coil_type || "?"}): ${reason}`;
+    });
   if (summary) {
     summary.innerHTML =
       `<strong>${pkg.inserted_coil_count}/${result.coil_count} coil drawing(s) inserted</strong> &middot; `
       + `${pkg.source_page_count}→${pkg.page_count} pages &middot; review aid, watermarked<br>`
-      + lines.map((line) => `<span class="quote-package-coil">${escapeHtml(line)}</span>`).join("<br>");
+      + lines.map((line) => `<span class="quote-package-coil">${escapeHtml(line)}</span>`).join("<br>")
+      + (warnings.length
+        ? "<br>" + warnings.map((w) => `<span class="quote-package-warning">${escapeHtml(w)}</span>`).join("<br>")
+        : "");
   }
   downloadBase64Pdf(pkg.pdf_base64, "coilforge-quote-package.pdf");
 }

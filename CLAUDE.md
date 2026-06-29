@@ -58,6 +58,12 @@ submittal text or PDF bytes → `SubmittalCoilCandidate` → `CanonicalCoilRecor
 additionally calls `submittal/pdf_to_template_drawing.py` to read as-built values
 straight off the scanned drawing into a template-first drawing.
 
+**Multi-coil quote package** (`package/assembler.py`) inserts each coil's CoilForge
+drawing after its source drawing page, located by an alias-tolerant tag match
+(`pdf_intake.coil_tag_aliases` — only true spelling variants like RHHGRC↔RHHGRH, NOT
+HHWC/PHWC which are distinct coils). A coil that can't be matched gets a
+`not_inserted_reason` and is surfaced loudly, never silently dropped.
+
 **The header rule engine** (`services/header_prepopulate_engine.py` +
 `rules/coil_header_rules.yaml`) is the heart of the system. It is a pure, deterministic
 function with one I/O (loading the cached YAML rule table). Rules are identified by IDs

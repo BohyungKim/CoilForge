@@ -172,3 +172,57 @@ def test_quote_workflow_unknown_header_count_flags_review() -> None:
     straps = out["coils"][0]["copper_straps"]
     assert straps["status"] == "review_required"
     assert straps["total"] is None  # no invented price
+
+
+# --------------------------------------------------------------------------- #
+# Tag-alias matching: a reviewed tag must match its source page across the
+# documented RHHGRC <-> RHHGRH spelling alias (the 2766 Broadway drop bug, where
+# the reviewed state said RHHGRH but the PDF said RHHGRC -> coil silently dropped).
+# --------------------------------------------------------------------------- #
+def test_coil_tag_aliases_groups_hgrh_spellings() -> None:
+    from coilforge.submittal.pdf_intake import coil_tag_aliases
+
+    aliases = coil_tag_aliases("RHHGRH-1")
+    assert set(aliases) == {"RHHGRH-1", "RHHGRC-1", "HGRC-1", "HGRH-1"}
+    assert coil_tag_aliases("CDXC-1") == ("CDXC-1",)  # DX has no aliases
+    assert coil_tag_aliases("BOGUS-9") == ("BOGUS-9",)  # unknown prefix -> verbatim
+    # HHWC (heating) and PHWC (preheat) are DISTINCT coils, NOT spelling variants —
+    # they must never be grouped, or a package could match the wrong source page.
+    assert coil_tag_aliases("HHWC-1") == ("HHWC-1",)
+    assert "PHWC-1" not in coil_tag_aliases("HHWC-1")
+
+
+def test_quote_workflow_inserts_across_tag_spelling_alias() -> None:
+    # Source PDF spells the coil RHHGRC-1; the reviewed UI state carries the alias
+    # spelling RHHGRH-1. It must still match its drawing page and insert (4/4-style),
+    # not silently drop.
+    out = run_quote_package_workflow(
+        {
+            "source_pdf_base64": _quote_pdf_b64(),
+            "coils": [
+                {"tag": "RHHGRH-1", "coil_type": "HGRH", "our_svg": _SVG, "header_count": 2}
+            ],
+        }
+    )
+    assert out["package"]["inserted_coil_count"] == 1
+    coil = out["package"]["coils"][0]
+    assert coil["inserted"] is True
+    assert coil["not_inserted_reason"] is None
+
+
+def test_quote_workflow_unmatched_coil_reports_loud_reason() -> None:
+    # A tag that appears on no source page must be reported (inserted False + reason),
+    # never silently dropped.
+    out = run_quote_package_workflow(
+        {
+            "source_pdf_base64": _quote_pdf_b64(),
+            "coils": [
+                {"tag": "CDXC-9", "coil_type": "DX", "our_svg": _SVG, "header_count": 1}
+            ],
+        }
+    )
+    assert out["package"]["inserted_coil_count"] == 0
+    coil = out["package"]["coils"][0]
+    assert coil["inserted"] is False
+    assert coil["not_inserted_reason"]
+    assert "CDXC-9" in coil["not_inserted_reason"]

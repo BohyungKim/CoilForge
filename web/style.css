@@ -2216,6 +2216,11 @@ h4 {
   color: var(--text-muted);
 }
 
+.quote-package-warning {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
 /* Read-and-alert: Direct Coil entry verifier (PDF intake panel). */
 .dc-verify {
   border-top: 1px solid var(--border);

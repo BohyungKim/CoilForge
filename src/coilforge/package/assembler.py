@@ -19,6 +19,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field
 
 from coilforge.package.svg_to_pdf import svg_to_pdf_bytes
+from coilforge.submittal.pdf_intake import coil_tag_aliases
 
 # Same wording as phase2a/renderer.py + template_population/slot_population.py.
 REVIEW_WATERMARK = "REVIEW AID - NOT FOR MANUFACTURING"
@@ -159,12 +160,16 @@ def _coil_drawing_page_index(doc, tag: str) -> int | None:
     The drawing page contains the coil tag and drawing-geometry markers (F.L./FIN/
     O.D.) but is not the textual REPORT/QUOTE page. Prefer such a page (latest if
     several); else fall back to the latest non-quote page bearing the tag.
+
+    The tag is matched across category-prefix aliases (e.g. a reviewed ``RHHGRH-1``
+    matches a source page that spells the same coil ``RHHGRC-1``) so a spelling
+    difference never silently drops a coil.
     """
-    tag_upper = tag.upper()
+    aliases = tuple(alias.upper() for alias in coil_tag_aliases(tag))
     hits: list[tuple[int, bool, bool]] = []
     for i in range(doc.page_count):
         upper = doc[i].get_text().upper()
-        if tag_upper not in upper:
+        if not any(alias in upper for alias in aliases):
             continue
         is_textual = "REPORT" in upper or "COIL QUOTE" in upper
         has_drawing = bool(_DRAWING_MARKER_RE.search(doc[i].get_text()))
@@ -320,6 +325,12 @@ def assemble_multi_coil_package(
         for coil in coils:
             drawing_index = _coil_drawing_page_index(src, coil["tag"])
             will_insert = drawing_index is not None and bool(coil.get("our_svg"))
+            if will_insert:
+                not_inserted_reason = None
+            elif not coil.get("our_svg"):
+                not_inserted_reason = "no CoilForge drawing generated — review this coil first"
+            else:
+                not_inserted_reason = f"no source drawing page found for tag {coil['tag']}"
             summary.append(
                 {
                     "tag": coil["tag"],
@@ -329,6 +340,7 @@ def assemble_multi_coil_package(
                     "price_status": coil.get("price_status"),
                     "price_note": coil.get("price_note"),
                     "inserted": will_insert,
+                    "not_inserted_reason": not_inserted_reason,
                 }
             )
             if will_insert:
