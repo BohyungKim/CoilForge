@@ -75,6 +75,10 @@ ad-hoc code elsewhere. Rules can scope to specific unit sizes via `applies_to.si
 (e.g. `[H05, H10]`), now matched in `_applies` (null = all sizes). Combine with last-writer-wins
 (rules applied in YAML order; the generic emitter's `place()` overwrites per field) for
 size/variant overrides — e.g. R-025b/R-044d (size) and R-012v/R-021v/R-046 (Terra-V).
+Terra V carries its OWN R-076 size set (`TERRA_V` key = Terra H's 9 + 060/072/084/100);
+since Terra H and V both resolve to `product_family TERRA`, the engine size gate branches
+on `terra_variant` to pick it (casing R-074 still keys on TERRA, so the 4 V-only sizes stay
+casing-blocked until their `TERRA|INTEGRATED|0xx` rows are seeded).
 
 **Dual-path gotcha:** some per-header drawing dims are computed in `build_drawing_slots`
 (the slot layer), NOT the engine — DX distributor `S`, return spacing `R`, and Terra V's

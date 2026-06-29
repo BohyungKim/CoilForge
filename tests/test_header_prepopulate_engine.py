@@ -253,6 +253,41 @@ def test_t05_dx_terra_24_gate() -> None:
     assert r.blocked_reason is None
 
 
+def test_terra_v_unit_size_set_diverges_from_terra_h() -> None:
+    """Terra V has 4 sizes Terra H lacks (060/072/084/100): the size gate accepts
+    them for Terra V and hard-blocks them for Terra H / Terra H C (John 2026-06-29)."""
+    for size in ("060", "072", "084", "100"):
+        rv = prepopulate(
+            _req(CoilType.DX, ProductFamily.TERRA, size,
+                 terra_variant=TerraVariant.TERRA_V)
+        )
+        assert rv.blocked_reason is None
+        # The Terra V variant constants still resolve HIGH for the new sizes.
+        assert rv.values["bottom_flange"].value == 0.375  # R-012v
+        assert rv.values["suction_io"].value == 2.75  # R-021v
+        assert rv.values["suction_sl"].value == 12  # R-027v
+        # Terra H / Terra H C top out at 048 -> 060+ is an unknown size.
+        rh = prepopulate(
+            _req(CoilType.DX, ProductFamily.TERRA, size,
+                 terra_variant=TerraVariant.TERRA_H)
+        )
+        assert rh.blocked_reason == "unknown_unit_size"
+
+
+def test_terra_v_new_size_casing_blocked_until_r074_row_exists() -> None:
+    """A Terra V 060 coil validates (not unknown_unit_size) but its casing dims stay
+    absent — fail-closed — until R-074 gains a TERRA|INTEGRATED|060 row (never guessed)."""
+    common = dict(application="INTEGRATED", terra_variant=TerraVariant.TERRA_V)
+    # Shared size 024 has an R-074 row -> casing dims surface (MEDIUM suggestions).
+    r024 = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024", **common))
+    assert "casing_width" in r024.suggestions
+    # New size 060 has no R-074 row yet -> casing omitted, never guessed.
+    r060 = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "060", **common))
+    assert r060.blocked_reason is None
+    assert "casing_width" not in r060.suggestions
+    assert "casing_height" not in r060.suggestions
+
+
 def test_t06_dx_nova_cd_single_circuit() -> None:
     r = prepopulate(
         _req(CoilType.DX, ProductFamily.NOVA, "B20", rows=4, circuits=1,

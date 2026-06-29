@@ -998,10 +998,12 @@ rules:
     enumerations:
       NOVA: [A16, A18, B20, B22, C20, C22, C24, C26, C30, C32, C40, C48, C58, C70]
       # Terra unit sizes are zero-padded to 3 digits (009 / 006 / 012 …) so the
-      # picker tokens match the submittal callouts (John 2026-06-15). Terra is
-      # split into TERRA H / TERRA V in the picker (see product_size_options);
-      # both orientations share this size set.
+      # picker tokens match the submittal callouts (John 2026-06-15). Terra H and
+      # Terra V have DIFFERENT size sets (John 2026-06-29): Terra V adds 060/072/
+      # 084/100. product_size_options() maps TERRA -> "TERRA H" and TERRA_V ->
+      # "TERRA V"; the engine size gate picks TERRA_V when terra_variant is TERRA_V.
       TERRA: ["006", "009", "012", "015", "018", "024", "032", "040", "048"]
+      TERRA_V: ["006", "009", "012", "015", "018", "024", "032", "040", "048", "060", "072", "084", "100"]
       VENTUM_H: [H05, H10, H15, H20, H25, H30]
       VENTUM_PLUS: [V20, V25, V30, V40, V50, V60, V80, V100, V120, V150]
 

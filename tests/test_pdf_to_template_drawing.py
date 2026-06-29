@@ -385,9 +385,13 @@ def test_product_size_options_lists_the_four_product_lines() -> None:
     options = product_size_options()
     assert set(options) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
     assert "A16" in options["NOVA"]
-    # Terra is split into orientation categories sharing the zero-padded size set.
-    assert options["TERRA H"] == options["TERRA V"]
+    # Terra H and Terra V have DIFFERENT size sets (John 2026-06-29): Terra V adds
+    # 060/072/084/100 on top of the shared 9; Terra H stays at 9.
+    assert len(options["TERRA H"]) == 9
+    assert len(options["TERRA V"]) == 13
+    assert set(options["TERRA H"]).issubset(set(options["TERRA V"]))
     assert "009" in options["TERRA H"]
+    assert "060" in options["TERRA V"] and "060" not in options["TERRA H"]
     # Zero-padded 3-digit tokens, never the bare integers (John 2026-06-15).
     assert "9" not in options["TERRA H"]
 

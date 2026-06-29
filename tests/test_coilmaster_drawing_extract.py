@@ -37,6 +37,15 @@ def test_detect_product_and_size_from_terra_model_code() -> None:
     assert detect_product_and_size("TR_V_012") == ("TERRA V", "012")
 
 
+def test_detect_terra_v_only_sizes() -> None:
+    # Terra V adds 060/072/084/100 on top of the shared 9 (John 2026-06-29). The V
+    # model code validates them; the SAME size under a Terra H (C) code is rejected
+    # (Terra H tops out at 048), proving the two size sets diverge.
+    assert detect_product_and_size("TR_V_060") == ("TERRA V", "060")
+    assert detect_product_and_size("TR_V_100") == ("TERRA V", "100")
+    assert detect_product_and_size("TR_C_060") == (None, None)
+
+
 def test_detect_product_and_size_from_nova_ventum_tokens() -> None:
     assert detect_product_and_size("unit A16 cooling") == ("NOVA", "A16")
     assert detect_product_and_size("H05") == ("VENTUM_H", "H05")

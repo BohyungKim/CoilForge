@@ -132,7 +132,9 @@ def product_for_unit_size(unit_size: str | None) -> str | None:
         return None
     for product, sizes in _r076_enumerations().items():
         if unit_size in sizes:
-            return product
+            # TERRA_V is a variant-scoped size key, not a product family; callers
+            # expect the family. Normalize it (and TERRA) back to "TERRA".
+            return "TERRA" if product.startswith("TERRA") else product
     return None
 
 
@@ -166,12 +168,14 @@ def product_size_options() -> dict[str, list[str]]:
     """{product_line: [unit sizes]} from R-076 — the valid choices an engineer
     can pick to unlock the rule-engine dimensions for a submittal coil.
 
-    TERRA is presented as two orientation categories (TERRA H / TERRA V); both
-    share the R-076 Terra size set (zero-padded, e.g. 009)."""
+    TERRA is presented as two orientation categories (TERRA H / TERRA V) with
+    DIFFERENT size sets — Terra V adds 060/072/084/100 (R-076 TERRA vs TERRA_V).
+    Sizes are zero-padded (e.g. 009)."""
     options: dict[str, list[str]] = {}
     for product, sizes in _r076_enumerations().items():
         if product == "TERRA":
             options[TERRA_H_LABEL] = list(sizes)
+        elif product == "TERRA_V":
             options[TERRA_V_LABEL] = list(sizes)
         else:
             options[product] = list(sizes)
@@ -190,7 +194,7 @@ def _non_terra_size_tokens() -> list[str]:
     search). Longest first so e.g. 'V100' wins over a hypothetical 'V10'."""
     tokens: list[str] = []
     for product, sizes in _r076_enumerations().items():
-        if product == "TERRA":
+        if product.startswith("TERRA"):  # TERRA and TERRA_V — model-code only
             continue
         tokens.extend(sizes)
     return sorted(set(tokens), key=len, reverse=True)

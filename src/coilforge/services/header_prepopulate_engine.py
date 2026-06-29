@@ -264,8 +264,12 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     coil = request.type_of_coil
 
     # --- R-076: unit-size validation (global gate) ---
+    # Terra H and Terra V resolve to the same product_family (TERRA) but have
+    # different size sets (Terra V adds 060/072/084/100), so the gate selects the
+    # variant-scoped enumeration for Terra V. Casing (R-074) still keys on TERRA.
     enumerations = index["R-076"]["enumerations"]
-    valid_sizes = enumerations.get(product.value, [])
+    size_key = "TERRA_V" if request.terra_variant == TerraVariant.TERRA_V else product.value
+    valid_sizes = enumerations.get(size_key, [])
     if request.unit_size not in valid_sizes:
         return HeaderPrepopulateResponse(blocked_reason="unknown_unit_size")
 
