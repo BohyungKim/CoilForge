@@ -55,6 +55,13 @@ _OTHER_SPECIAL_IDS = {
     "R-076",  # unit-size validation
     "R-090",  # copper straps required (header_count * per-header multiplier)
 }
+# Data-only rules: lookup tables consumed by compatibility/mechanical_fit.py, NOT
+# emitted as engine fields. Listed here so the generic emitter skips them (they
+# carry value=null and would otherwise place a spurious None suggestion).
+_FIT_DATA_IDS = {
+    "R-077",  # drain-pan / install width lookup
+    "R-078",  # WIDTH/HEIGHT fit clearances
+}
 _SPECIAL_IDS = (
     _NOTES_BASE_IDS
     | _NOTES_APPEND_IDS
@@ -62,6 +69,7 @@ _SPECIAL_IDS = (
     | _RETURN_SPACING_IDS
     | _CWC_IO_HD_SL_IDS
     | _OTHER_SPECIAL_IDS
+    | _FIT_DATA_IDS
 )
 
 # Feature flags. R-086 (coil_style) is intentionally disabled by default.

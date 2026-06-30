@@ -81,6 +81,8 @@ const elements = {
   copyVisibleTsv: document.querySelector("#copy-visible-tsv"),
   drawingPreview: document.querySelector("#drawing-preview"),
   drawingParameters: document.querySelector("#drawing-parameters"),
+  mechanicalFitSection: document.querySelector("#mechanical-fit-section"),
+  mechanicalFitBody: document.querySelector("#mechanical-fit-body"),
   copyCcsiPayload: document.querySelector("#copy-ccsi-payload"),
   ccsiAutofillStatus: document.querySelector("#ccsi-autofill-status"),
   ccsiBookmarklet: document.querySelector("#ccsi-bookmarklet"),
@@ -2772,9 +2774,86 @@ async function runWorkflowFromPdf() {
     setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
     renderShell(workflowToUiState(state.ui, workflow, null));
     elements.savedStatus.textContent = "PDF candidate pre-populated for review";
+    refreshMechanicalFit();
   } finally {
     setPdfAnalysisLoading(false);
   }
+}
+
+// --- Mechanical fit / 안정성 (review aid) ---------------------------------- //
+function collectFitInputs() {
+  // Every analyzed coil carries compact fit_inputs from the workflow. Pairing
+  // (DX+HGRH / CWC+HWC) is resolved server-side across the whole list.
+  return state.pdfCoilPages.map((page) => page.fit_inputs).filter(Boolean);
+}
+
+async function refreshMechanicalFit() {
+  const coils = collectFitInputs();
+  if (!coils.length) {
+    elements.mechanicalFitSection?.setAttribute("hidden", "");
+    return;
+  }
+  try {
+    // installed_on_drain_pan: true so the pair check evaluates when a partner is
+    // present (a quote pairing DX+HGRH / CWC+HWC almost always shares a drain pan).
+    // No partner -> the report self-documents as "needs paired coil".
+    const report = await requestJson("/api/mechanical-fit", {
+      method: "POST",
+      body: JSON.stringify({ coils, installed_on_drain_pan: true }),
+    });
+    renderMechanicalFit(report);
+  } catch (err) {
+    elements.mechanicalFitSection?.removeAttribute("hidden");
+    elements.mechanicalFitBody.textContent = `Mechanical fit unavailable: ${err.message}`;
+  }
+}
+
+function fitChip(verdict) {
+  const v = verdict || "—";
+  const cls =
+    { PASS: "fit-pass", FAIL: "fit-fail", CANNOT_EVALUATE: "fit-review", NOT_APPLICABLE: "fit-na" }[
+      v
+    ] || "fit-review";
+  return `<span class="fit-chip ${cls}">${escapeHtml(v)}</span>`;
+}
+
+function renderMechanicalFit(report) {
+  elements.mechanicalFitSection?.removeAttribute("hidden");
+  const coils = report.coils || [];
+  if (!coils.length) {
+    elements.mechanicalFitBody.textContent = "No coil with product line + unit size to evaluate.";
+    return;
+  }
+  const cards = coils
+    .map((c) => {
+      const head = `<div class="fit-coil-head"><strong>${escapeHtml(c.tag || "coil")}</strong> <em>${escapeHtml(
+        [c.coil_type, c.product_family, c.unit_size].filter(Boolean).join(" / ")
+      )}</em></div>`;
+      if (c.note) {
+        return `<div class="fit-coil">${head}<p class="fit-note">⚠ ${escapeHtml(c.note)}</p></div>`;
+      }
+      const dp = c.drain_pan;
+      const dpLine = dp
+        ? `<div class="fit-line">${fitChip(dp.verdict)} <span>Drain pan</span> ${escapeHtml(dp.detail)}</div>`
+        : "";
+      return `
+        <div class="fit-coil">
+          ${head}
+          <div class="fit-line">${fitChip(c.width && c.width.verdict)} <span>Width</span> ${escapeHtml(
+            (c.width && c.width.detail) || "—"
+          )}</div>
+          <div class="fit-line">${fitChip(c.height && c.height.verdict)} <span>Height</span> ${escapeHtml(
+            (c.height && c.height.detail) || "—"
+          )}</div>
+          ${dpLine}
+        </div>`;
+    })
+    .join("");
+  elements.mechanicalFitBody.innerHTML =
+    cards +
+    `<p class="fit-footer">Review aid — casing dims are review-required (R-074); a PASS is not an approval. export_allowed: ${
+      report.export_allowed === true
+    }.</p>`;
 }
 
 function setPdfAnalysisLoading(isLoading) {

@@ -113,6 +113,17 @@ slots (`slot_population.py`), and mirrors LH↔RH (`mirror.py`). Each template i
 seeded from a provided PDF or mirrored from a seeded pair — both are review-aid only.
 Schemas for the catalog / slot map live in `schemas/*.schema.json`.
 
+**Mechanical fit / stability** (`compatibility/mechanical_fit.py`) — a review-aid check
+(NOT in the drawing path) mirroring the Coil Checklist WIDTH/HEIGHT/INSTALL fit.
+`evaluate_coil_fit` (FL/OAL vs casing width, FH/CH vs casing height) and
+`evaluate_drain_pan_fit` (paired DX+HGRH / CWC+HWC: `this_CD + partner_CD < drain-pan width`)
+read two DATA-ONLY rules — `R-078` (fit clearances) and `R-077` (drain-pan / install widths) —
+listed in the engine's `_FIT_DATA_IDS` so the generic emitter SKIPS them (consumed here, never
+emitted as engine fields). `build_mechanical_fit_report` pairs coils via
+`pdf_intake.drain_pan_partner_tag`, is exposed at `POST /api/mechanical-fit`, and renders as the
+"Mechanical Fit / 안정성" section. Casing dims are MEDIUM, so every verdict is `review_required`
+— a PASS is never an approval; missing inputs -> `CANNOT_EVALUATE`.
+
 **Web app** — `coilforge/web_app.py` imports the Phase 2A FastAPI `app` and registers
 the `/api/*` routes (workflows, compatibility review, decision capture, review packets).
 The browser UI is vanilla JS in `web/` (`index.html` / `app.js` / `style.css`). API

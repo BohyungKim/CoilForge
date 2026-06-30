@@ -1007,17 +1007,105 @@ rules:
       VENTUM_H: [H05, H10, H15, H20, H25, H30]
       VENTUM_PLUS: [V20, V25, V30, V40, V50, V60, V80, V100, V120, V150]
 
+  # R-077: drain-pan / install width lookup. Data-only (consumed by
+  # compatibility/mechanical_fit.py for the INSTALL FIT pair check
+  # (this_CD + partner_CD < width); NOT emitted as an engine field). Transcribed
+  # from the "Install | Drain Pan Width" sheet (Coil Checklist Template.xlsx) on
+  # 2026-06-30. Key is "<product_family>|<unit_size>" (or "TERRA|<option>" for
+  # Terra H C, which the sheet keys by drain-pan option D1/D2/D3, NOT unit size).
+  # Nova/Ventum H expose two columns (Coil Module Only / w-Access) — both surfaced
+  # per John. Ventum+ exposes Install width + Drain Pan width (the INSTALL FIT
+  # compares against install_width for VENTUM+). Nova size pairs (A16/A18 …) share
+  # one sheet row, expanded here to per-size keys. Single source (CHK) -> MEDIUM.
+  # GAPS: Terra H C needs the D1/D2/D3 option (not an engine input today) -> review;
+  # Terra V drain pan is "TBD" in the sheet -> absent here -> blocked.
   - rule_id: R-077
-    applies_to: { coil_type: [HWC, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
-    field: drain_pan_check
-    value: "review drain-pan / install width"
-    kind: constant
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: drain_pan_width
+    value: null
+    kind: lookup_drain_pan_width
     only_when: installed_on_drain_pan
     requires_inputs: [installed_on_drain_pan]
     confidence: MEDIUM
     review_required: true
     blocked_reason: null
-    evidence_refs: ["CHK HWC rows 20-23 INSTALL FIT", "CHK Install sheet", "SOP drain-pan special cases"]
+    evidence_refs: ["CHK Install sheet", "CHK HWC!C38 / HGRH!C70 INSTALL FIT", "SOP drain-pan special cases"]
+    lookup:
+      "NOVA|A16": { coil_module_only: 19.375, with_access: 14.875 }
+      "NOVA|A18": { coil_module_only: 19.375, with_access: 14.875 }
+      "NOVA|B20": { coil_module_only: 19.375, with_access: 16.375 }
+      "NOVA|B22": { coil_module_only: 19.375, with_access: 16.375 }
+      "NOVA|C20": { coil_module_only: 19.375, with_access: 17.875 }
+      "NOVA|C22": { coil_module_only: 19.375, with_access: 17.875 }
+      "NOVA|C24": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C26": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C30": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C32": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C40": { coil_module_only: 19.375, with_access: 21.375 }
+      "NOVA|C48": { coil_module_only: 19.375, with_access: 23.875 }
+      "NOVA|C58": { coil_module_only: 19.375, with_access: 25.875 }
+      "NOVA|C70": { coil_module_only: 19.375, with_access: 27.875 }
+      "VENTUM_H|H05": { coil_module_only: 19.375, with_access: 14.875 }
+      "VENTUM_H|H10": { coil_module_only: 19.375, with_access: 14.875 }
+      "VENTUM_H|H15": { coil_module_only: 19.375, with_access: 16.375 }
+      "VENTUM_H|H20": { coil_module_only: 19.375, with_access: 16.375 }
+      "VENTUM_H|H25": { coil_module_only: 19.375, with_access: 21.875 }
+      "VENTUM_H|H30": { coil_module_only: 19.375, with_access: 21.875 }
+      "VENTUM_PLUS|V20": { install_width: 17, drain_pan_width: 21.875 }
+      "VENTUM_PLUS|V25": { install_width: 17, drain_pan_width: 23.875 }
+      "VENTUM_PLUS|V30": { install_width: 17, drain_pan_width: 24.875 }
+      "VENTUM_PLUS|V40": { install_width: 17, drain_pan_width: 25.875 }
+      "VENTUM_PLUS|V50": { install_width: 17, drain_pan_width: 27.875 }
+      "VENTUM_PLUS|V60": { install_width: 17, drain_pan_width: 31.875 }
+      "VENTUM_PLUS|V80": { install_width: 17, drain_pan_width: 33.875 }
+      "VENTUM_PLUS|V100": { install_width: 17, drain_pan_width: 33.875 }
+      "VENTUM_PLUS|V120": { install_width: 22, drain_pan_width: 39.875 }
+      "VENTUM_PLUS|V150": { install_width: 22, drain_pan_width: 43.875 }
+      "TERRA|D1": { drain_pan_width: 14.5 }
+      "TERRA|D2": { drain_pan_width: 20.5 }
+      "TERRA|D3": { drain_pan_width: 23.5 }
+
+  # R-078: mechanical WIDTH/HEIGHT FIT clearances. Data-only table consumed by
+  # compatibility/mechanical_fit.py (NOT emitted as an engine field). Transcribed
+  # from the four CHK FIT formulas (Coil Checklist Template.xlsx) on 2026-06-30:
+  #   DX!C64/C65, HGRH!C68/C69, HWC!C36/C37, CWC!C32/C33.
+  # Judgement per direction: available = casing_dim/(2 if h_half) - <sub>, and the
+  # coil fits when available >= the basis value (FL/OAL for width, FH/CH for
+  # height). Key is "<coil_type>|<class>"; <class> = the R-075 NOVA size_class for
+  # NOVA, else the product_family. DX/HGRH w_sub bakes in the -8 header/distributor
+  # allowance. VENTUM_PLUS uses casing_height/2 (stacked construction). Single
+  # source (CHK only) -> every fit verdict is review-required (MEDIUM at best).
+  - rule_id: R-078
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: fit_clearance
+    value: null
+    kind: lookup_fit_clearance
+    requires_inputs: [casing_width, casing_height]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["CHK DX!C64:C65 WIDTH/HEIGHT FIT", "CHK HGRH!C68:C69", "CHK HWC!C36:C37", "CHK CWC!C32:C33"]
+    lookup:
+      "DX|NOVA_1IN":     { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: FH, h_half: false }
+      "DX|NOVA_2IN":     { w_sub: 12,   w_basis: FL, h_sub: 6,     h_basis: FH, h_half: false }
+      "DX|VENTUM_H":     { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: FH, h_half: false }
+      "DX|TERRA":        { w_sub: 12,   w_basis: FL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "DX|VENTUM_PLUS":  { w_sub: 12,   w_basis: FL, h_sub: 8.25,  h_basis: FH, h_half: true }
+      "HGRH|NOVA_1IN":    { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: CH, h_half: false }
+      "HGRH|NOVA_2IN":    { w_sub: 12,   w_basis: FL, h_sub: 6,     h_basis: CH, h_half: false }
+      "HGRH|VENTUM_H":    { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: CH, h_half: false }
+      "HGRH|TERRA":       { w_sub: 12,   w_basis: FL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "HGRH|VENTUM_PLUS": { w_sub: 12,   w_basis: FL, h_sub: 8.25,  h_basis: CH, h_half: true }
+      "HWC|NOVA_1IN":     { w_sub: 2.5,  w_basis: OAL, h_sub: 2.5,   h_basis: CH, h_half: false }
+      "HWC|NOVA_2IN":     { w_sub: 4,    w_basis: OAL, h_sub: 4,     h_basis: CH, h_half: false }
+      "HWC|VENTUM_H":     { w_sub: 2.5,  w_basis: OAL, h_sub: 2.5,   h_basis: CH, h_half: false }
+      "HWC|TERRA":        { w_sub: 4,    w_basis: OAL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "HWC|VENTUM_PLUS":  { w_sub: 6.5,  w_basis: OAL, h_sub: 8.25,  h_basis: CH, h_half: true }
+      "CWC|NOVA_1IN":     { w_sub: 2.5,  w_basis: OAL, h_sub: 5,     h_basis: CH, h_half: false }
+      "CWC|NOVA_2IN":     { w_sub: 4,    w_basis: OAL, h_sub: 6,     h_basis: CH, h_half: false }
+      "CWC|VENTUM_H":     { w_sub: 2.5,  w_basis: OAL, h_sub: 5,     h_basis: CH, h_half: false }
+      "CWC|TERRA":        { w_sub: 4,    w_basis: OAL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "CWC|VENTUM_PLUS":  { w_sub: 6.5,  w_basis: OAL, h_sub: 8.25,  h_basis: CH, h_half: true }
 
   # --- 2.7 Notes / special-case conflicts ------------------------------------
   # R-080/R-081: Direct Coil selection has no coating trigger field, so the

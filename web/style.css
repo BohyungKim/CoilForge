@@ -2306,3 +2306,61 @@ h4 {
   border-left-color: var(--status-ready);
   color: var(--text-muted);
 }
+
+/* Mechanical fit / 안정성 report (review aid) */
+.mechanical-fit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.fit-coil {
+  border: 1px solid var(--border, #d8dde6);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: var(--surface, #fff);
+}
+.fit-coil-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+.fit-coil-head em {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.fit-line {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  flex-wrap: wrap;
+}
+.fit-line span {
+  font-weight: 600;
+  min-width: 3.2rem;
+}
+.fit-note {
+  color: #8a6d00;
+  font-size: 0.82rem;
+  margin: 0;
+}
+.fit-footer {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin: 0.2rem 0 0;
+}
+.fit-chip {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: #fff;
+}
+.fit-chip.fit-pass { background: #1f9d57; }
+.fit-chip.fit-fail { background: #c62828; }
+.fit-chip.fit-review { background: #c08a00; }
+.fit-chip.fit-na { background: #8a93a3; }

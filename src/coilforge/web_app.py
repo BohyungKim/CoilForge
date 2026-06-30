@@ -189,6 +189,28 @@ async def workflow_submittal_to_drawing(request: dict[str, Any] = Body(default_f
     return run_submittal_to_drawing_workflow(request or {})
 
 
+@app.post("/api/mechanical-fit")
+async def mechanical_fit(request: dict[str, Any] = Body(default_factory=dict)):
+    """Width / Height / drain-pan INSTALL fit (review aid) for 1..N coils.
+
+    Body: ``{coils: [{tag, coil_type, product_type, unit_size, finned_height,
+    finned_length, rows?, circuits?, application?, ...}], installed_on_drain_pan?}``.
+    Pairs DX+HGRH / CWC+HWC across the list so the drain-pan check evaluates when a
+    partner is present. Never an export approval (``export_allowed: False``).
+    """
+    from coilforge.compatibility.mechanical_fit import (
+        build_mechanical_fit_report,
+        mechanical_fit_report_dict,
+    )
+
+    payload = request or {}
+    report = build_mechanical_fit_report(
+        payload.get("coils") or [],
+        installed_on_drain_pan=bool(payload.get("installed_on_drain_pan")),
+    )
+    return mechanical_fit_report_dict(report)
+
+
 @app.post("/api/workflow/pdf-to-direct-draft")
 async def workflow_pdf_to_direct_draft(request: Request):
     pdf_bytes = await request.body()

@@ -889,6 +889,9 @@ def _run_candidate_to_drawing_payload(
         "svg": preview.svg,
         "metadata": preview.metadata,
         "template_drawing": template_drawing,
+        # Engine inputs for the mechanical-fit check (read by _pdf_coil_pages -> the
+        # per-coil fit_inputs the /api/mechanical-fit endpoint consumes).
+        "template_header_context": ctx,
         "validation": {
             **direct_result["validation"],
             "preview_allowed": preview.intent.preview_allowed,
@@ -1005,10 +1008,36 @@ def _pdf_coil_pages(
                 "handing": summary.get("handing") or cover_payload.get("handing") or "",
                 "cover_page_number": cover_payload.get("page_number"),
                 "cover_row_number": cover_payload.get("row_number"),
+                "fit_inputs": _fit_inputs_from_ctx(
+                    workflow.get("template_header_context"), tag
+                ),
                 "workflow": workflow,
             }
         )
     return pages
+
+
+def _fit_inputs_from_ctx(ctx: dict[str, Any] | None, tag: str) -> dict[str, Any] | None:
+    """Compact mechanical-fit inputs for one coil (consumed by /api/mechanical-fit).
+
+    ``coil_category`` (DX/HGRH/CWC/HWC) is the engine coil_type token. product_type
+    (product line) / unit_size may be absent when no model code validated — the fit
+    endpoint then reports the coil as needing those inputs rather than guessing.
+    """
+    if not ctx:
+        return None
+    return {
+        "tag": ctx.get("tag") or tag,
+        "coil_type": ctx.get("coil_category"),
+        "product_type": ctx.get("product_type"),
+        "unit_size": ctx.get("unit_size"),
+        "finned_height": ctx.get("finned_height"),
+        "finned_length": ctx.get("finned_length"),
+        "rows": ctx.get("rows"),
+        "feeds": ctx.get("feeds"),
+        "circuits": ctx.get("circuits"),
+        "suction_conn_size": ctx.get("suction_conn_size"),
+    }
 
 
 def _page_id_slug(value: Any) -> str:

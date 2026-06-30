@@ -241,6 +241,51 @@ def coil_tag_aliases(tag: str) -> tuple[str, ...]:
     return (tag,)
 
 
+# Coils that share one drain pan, paired for the INSTALL FIT mechanical check:
+# a DX cooling coil with its HGRH reheat coil, and a chilled-water coil with its
+# hot-water coil. Both members of a pair sit in the same unit (same casing) and
+# carry the same tag sequence number (e.g. CDXC-1 <-> RHHGRH-1, CCWC-2 <-> HHWC-2).
+_DRAIN_PAN_PARTNER_CATEGORY = {
+    "DX COIL": "HGRH COIL",
+    "HGRH COIL": "DX COIL",
+    "Chilled Water Coil": "Hot Water Coil",
+    "Hot Water Coil": "Chilled Water Coil",
+}
+
+
+def coil_category_of_tag(tag: str) -> str | None:
+    """Coil category for a tag (``CDXC-1`` -> ``DX COIL``), or ``None`` if unknown."""
+    match = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-\d+\s*$", tag or "")
+    if not match:
+        return None
+    return _COIL_TYPE_BY_PREFIX.get(match.group("prefix").upper())
+
+
+def drain_pan_partner_tag(tag: str, candidate_tags: list[str]) -> str | None:
+    """The drain-pan-sharing partner tag for ``tag`` among ``candidate_tags``.
+
+    Matches the partner CATEGORY (DX<->HGRH, CWC<->HWC) at the SAME tag sequence
+    number. Returns the first such candidate, or ``None`` when no partner exists
+    (a standalone coil — normal, never invented). Never pairs HHWC with PHWC
+    (both Hot Water, but each other's category is Chilled Water, not Hot Water).
+    """
+    match = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-(?P<seq>\d+)\s*$", tag or "")
+    if not match:
+        return None
+    category = _COIL_TYPE_BY_PREFIX.get(match.group("prefix").upper())
+    partner_category = _DRAIN_PAN_PARTNER_CATEGORY.get(category or "")
+    if partner_category is None:
+        return None
+    seq = match.group("seq")
+    for cand in candidate_tags:
+        cm = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-(?P<seq>\d+)\s*$", cand or "")
+        if not cm or cm.group("seq") != seq:
+            continue
+        if _COIL_TYPE_BY_PREFIX.get(cm.group("prefix").upper()) == partner_category:
+            return cand
+    return None
+
+
 # Accessory line items that must never be detected as coils, even when their
 # description mentions a coil keyword (e.g. an electronic expansion valve kit
 # tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"). Tag-prefix signal +
