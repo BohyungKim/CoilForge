@@ -141,8 +141,9 @@ rules:
   # values (John, 2026-06-11: "checklist is typically the most accurate").
   # The Terra asymmetry (TF=1.625, BF) is intentional per the checklist.
   # terra_variant: null = "Terra defaults to Terra H C" (engine has no variant gate
-  # for null); John 2026-06-25 set the Terra H C bottom flange to 0.5. Terra V keeps
-  # the old 0.375 via the R-012v exception below (last-writer-wins by file order).
+  # for null); John 2026-06-25 set the Terra H C bottom flange to 0.5. Terra V uses
+  # its own symmetric TF=BF=0.625 via the R-012v exception below (last-writer-wins by
+  # file order).
   - rule_id: R-012
     applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: null, size_pattern: null }
     field: [top_flange, bottom_flange]
@@ -153,18 +154,19 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK TERRA TF=1.625", "John 2026-06-25: Terra H C BF=0.5 (was 0.375)"]
 
-  # R-012v: Terra V keeps BF=0.375. Must follow R-012 — the generic emitter writes
-  # bottom_flange last-writer-wins in file order, so for a Terra V request R-012
-  # sets 0.5 and this overwrites it back to 0.375. TF stays 1.625 (from R-012).
+  # R-012v: Terra V flanges are symmetric TF=BF=0.625. Must follow R-012 — the generic
+  # emitter writes both flanges last-writer-wins in file order, so for a Terra V request
+  # R-012 sets TF=1.625/BF=0.5 and this overwrites BOTH to 0.625. (Terra H/H C keep
+  # R-012's 1.625/0.5 — this rule is gated to TERRA_V.)
   - rule_id: R-012v
     applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
-    field: [bottom_flange]
-    field_values: { bottom_flange: 0.375 }
+    field: [top_flange, bottom_flange]
+    field_values: { top_flange: 0.625, bottom_flange: 0.625 }
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["CHK TERRA BF=0.375", "John 2026-06-25: Terra V BF unchanged at 0.375"]
+    evidence_refs: ["John 2026-06-30: Terra V TF=BF=0.625 (corrected from TF=1.625/BF=0.375; supersedes CHK TERRA BF=0.375)"]
 
   - rule_id: R-013
     applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
@@ -186,16 +188,17 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK TERRA TF=1.625", "John 2026-06-25: Terra H C BF=0.5 (was 0.375)"]
 
-  # R-014v: Terra V keeps BF=0.375 for water coils (mirrors R-012v; must follow R-014).
+  # R-014v: Terra V flanges are symmetric TF=BF=0.625 for water coils (mirrors R-012v;
+  # must follow R-014 so last-writer-wins overwrites R-014's 1.625/0.5 for Terra V only).
   - rule_id: R-014v
     applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
-    field: [bottom_flange]
-    field_values: { bottom_flange: 0.375 }
+    field: [top_flange, bottom_flange]
+    field_values: { top_flange: 0.625, bottom_flange: 0.625 }
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["CHK TERRA BF=0.375", "John 2026-06-25: Terra V BF unchanged at 0.375"]
+    evidence_refs: ["John 2026-06-30: Terra V TF=BF=0.625 (corrected from TF=1.625/BF=0.375; supersedes CHK TERRA BF=0.375)"]
 
   # --- 2.3 Connection / stubout geometry --------------------------------------
   - rule_id: R-020

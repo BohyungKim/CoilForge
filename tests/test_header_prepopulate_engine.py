@@ -263,7 +263,8 @@ def test_terra_v_unit_size_set_diverges_from_terra_h() -> None:
         )
         assert rv.blocked_reason is None
         # The Terra V variant constants still resolve HIGH for the new sizes.
-        assert rv.values["bottom_flange"].value == 0.375  # R-012v
+        assert rv.values["bottom_flange"].value == 0.625  # R-012v
+        assert rv.values["top_flange"].value == 0.625  # R-012v
         assert rv.values["suction_io"].value == 2.75  # R-021v
         assert rv.values["suction_sl"].value == 12  # R-027v
         # Terra H / Terra H C top out at 048 -> 060+ is an unknown size.
@@ -445,9 +446,10 @@ def test_t16_cwc_terra_18_gate() -> None:
     assert r.blocked_reason is None
 
 
-def test_terra_bottom_flange_is_05_for_h_c_and_0375_for_v_all_coil_types() -> None:
-    """John 2026-06-25: Terra H C BF=0.5; Terra V stays 0.375. TF=1.625 for both.
-    R-012/R-014 set 0.5 for the Terra-H-C default; R-012v/R-014v override Terra V."""
+def test_terra_flanges_h_c_asymmetric_v_symmetric_all_coil_types() -> None:
+    """Terra H C flanges are asymmetric TF=1.625/BF=0.5 (John 2026-06-25); Terra V
+    flanges are symmetric TF=BF=0.625 (John 2026-06-30, corrected from 1.625/0.375).
+    R-012/R-014 set the Terra-H-C default; R-012v/R-014v override Terra V (both flanges)."""
     sizes = {CoilType.DX: "024", CoilType.HGRH: "012", CoilType.CWC: "018", CoilType.HWC: "018"}
     for coil, size in sizes.items():
         h_c = prepopulate(
@@ -459,8 +461,8 @@ def test_terra_bottom_flange_is_05_for_h_c_and_0375_for_v_all_coil_types() -> No
         terra_v = prepopulate(
             _req(coil, ProductFamily.TERRA, size, terra_variant=TerraVariant.TERRA_V)
         )
-        assert terra_v.values["bottom_flange"].value == 0.375, coil  # R-012v / R-014v
-        assert terra_v.values["top_flange"].value == 1.625, coil
+        assert terra_v.values["bottom_flange"].value == 0.625, coil  # R-012v / R-014v
+        assert terra_v.values["top_flange"].value == 0.625, coil  # R-012v / R-014v
 
 
 def test_t17_dx_coating_note_always_on_drawing_notes() -> None:
