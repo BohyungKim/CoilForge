@@ -13,6 +13,7 @@ import base64
 from typing import Any
 
 from coilforge.package import assemble_drawing_package
+from coilforge.package.copper_strap_pricing import COPPER_STRAP_COIL_TYPES
 from coilforge.schemas.header_prepopulate import CoilType
 from coilforge.services.header_prepopulate_engine import copper_strap_requirement
 
@@ -29,15 +30,26 @@ def _coerce_header_count(value: Any) -> int | None:
 
 
 def _compose_copper_strap_summary(coil_type: CoilType, header_count: int | None) -> dict[str, Any]:
-    """Turn the R-090 result into a stampable note + a traceable summary."""
+    """Turn the R-090 result into a stampable note + a traceable summary.
+
+    Copper straps apply only to DX / HGRH headers, so water coils (CWC/HWC) get
+    no note at all (``not_applicable``, ``note=None``) — nothing is stamped.
+    """
+    if coil_type not in COPPER_STRAP_COIL_TYPES:  # water coils -> no copper-strap note
+        return {
+            "note": None,
+            "status": "not_applicable",
+            "count": None,
+            "coil_type": coil_type.value,
+            "header_count": header_count,
+            "confidence": None,
+            "evidence_refs": [],
+            "blocked_reason": None,
+        }
     result = copper_strap_requirement(coil_type, header_count)
     if result is None:
         note = "COPPER STRAPS: HEADER COUNT UNKNOWN - REVIEW REQUIRED"
         status = "review_required"
-        count = None
-    elif result.value is None:  # CWC/HWC — multiplier unconfirmed, never invented
-        note = f"COPPER STRAPS: REVIEW REQUIRED - multiplier unconfirmed for {coil_type.value}"
-        status = "blocked"
         count = None
     else:
         note = f"COPPER STRAPS REQUIRED: {result.value}"
@@ -107,7 +119,7 @@ def run_drawing_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
     package = assemble_drawing_package(
         direct_coil_pdf=direct_coil_pdf,
         coilforge_drawing_svg=str(svg),
-        copper_strap_note=copper["note"],
+        copper_strap_note=copper["note"] or "",  # water coils -> no banner line
         review_markups=review_markups,
         watermark=True,  # always on for the review-aid route (not caller-suppressible)
     )

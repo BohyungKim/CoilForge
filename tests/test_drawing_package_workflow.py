@@ -1,7 +1,7 @@
 """Drawing-package workflow + /api/package/assemble route.
 
-Covers the copper-strap rule wiring (DX -> count, CWC -> blocked, missing
-header count -> review_required), input validation, and the HTTP contract
+Covers the copper-strap rule wiring (DX -> count, CWC/HWC -> not_applicable,
+missing header count -> review_required), input validation, and the HTTP contract
 (200 with a base64 PDF; 400 on bad input; safety flags never relaxed).
 """
 
@@ -66,11 +66,13 @@ def test_hgrh_two_straps_per_header() -> None:
     assert "COPPER STRAPS REQUIRED: 6" == out["copper_straps"]["note"]
 
 
-def test_cwc_blocked_never_invented() -> None:
+def test_water_coil_has_no_strap_note() -> None:
+    # Copper straps apply only to DX / HGRH — water coils get no note at all
+    # (not_applicable), so nothing is stamped on the package.
     out = run_drawing_package_workflow(_request(coil_type="CWC", header_count=1))
-    assert out["copper_straps"]["status"] == "blocked"
+    assert out["copper_straps"]["status"] == "not_applicable"
     assert out["copper_straps"]["count"] is None
-    assert "REVIEW REQUIRED" in out["copper_straps"]["note"]
+    assert out["copper_straps"]["note"] is None
 
 
 def test_missing_header_count_is_review_required() -> None:

@@ -1996,6 +1996,16 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+// Name the exported quote package after the uploaded quote file with a "_Revised"
+// suffix (e.g. "1234 Acme Quote.pdf" -> "1234 Acme Quote_Revised.pdf"). Falls back
+// to the static name if no source file is in state.
+function quotePackageExportName() {
+  const sourceName = state.selectedQuotePdfFile?.name;
+  if (!sourceName) return "coilforge-quote-package.pdf";
+  const stem = sourceName.replace(/\.pdf$/i, "");
+  return `${stem}_Revised.pdf`;
+}
+
 function downloadBase64Pdf(base64, fileName) {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const blob = new Blob([bytes], { type: "application/pdf" });
@@ -3089,6 +3099,11 @@ async function buildQuotePackage() {
   const pkg = result.package || {};
   const lines = (result.coils || []).map((coil) => {
     const straps = coil.copper_straps || {};
+    // Copper straps apply only to DX / HGRH — water coils (not_applicable) carry no
+    // strap note at all, so list them without a copper-strap descriptor.
+    if (straps.status === "not_applicable") {
+      return `${coil.tag} (${coil.coil_type || "?"})`;
+    }
     const label = straps.note || straps.status || "review required";
     const detail = straps.detail ? ` — ${straps.detail}` : "";
     return `${coil.tag} (${coil.coil_type || "?"}): ${label}${detail}`;
@@ -3110,7 +3125,7 @@ async function buildQuotePackage() {
         ? "<br>" + warnings.map((w) => `<span class="quote-package-warning">${escapeHtml(w)}</span>`).join("<br>")
         : "");
   }
-  downloadBase64Pdf(pkg.pdf_base64, "coilforge-quote-package.pdf");
+  downloadBase64Pdf(pkg.pdf_base64, quotePackageExportName());
 }
 
 // NOTE: the "Verify Direct Coil entry" panel was unmounted pending completion of

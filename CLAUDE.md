@@ -63,6 +63,8 @@ drawing after its source drawing page, located by an alias-tolerant tag match
 (`pdf_intake.coil_tag_aliases` — only true spelling variants like RHHGRC↔RHHGRH, NOT
 HHWC/PHWC which are distinct coils). A coil that can't be matched gets a
 `not_inserted_reason` and is surfaced loudly, never silently dropped.
+Copper-strap notes/prices apply ONLY to DX/HGRH (`copper_strap_pricing.COPPER_STRAP_COIL_TYPES`);
+CWC/HWC are `not_applicable` — no strap note is ever stamped.
 
 **The header rule engine** (`services/header_prepopulate_engine.py` +
 `rules/coil_header_rules.yaml`) is the heart of the system. It is a pure, deterministic
@@ -120,6 +122,8 @@ Empty drawing-parameter fields render RED with their `blocked_reason` as inline 
 evidence + a hover tooltip (`web/app.js::renderParameterRow`); the frontend colors by
 emptiness, not backend `status`, so a missing value never reads as a silent blank — don't
 revert empties to plain blanks.
+Downloads are client-side blob saves (`web/app.js::downloadBase64Pdf`, `anchor.download`),
+not server `Content-Disposition` — the quote package exports as `<uploaded-name>_Revised.pdf`.
 
 ## CoilForge MVP taxonomy (confirmed 2026-06-21)
 

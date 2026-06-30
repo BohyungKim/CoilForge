@@ -1,7 +1,7 @@
 """Copper-strap price adder: $25/strap over the R-090 strap count.
 
 DX = 1 strap/header -> $25/header; HGRH = 2 straps/header -> $50/header.
-CWC/HWC keep R-090's blocked status (no fabricated price); unknown header count
+CWC/HWC are not_applicable (no copper-strap note at all); unknown header count
 routes to review-required. Mirrors the confidence gate end to end.
 """
 
@@ -50,10 +50,13 @@ def test_price_scales_with_header_count() -> None:
     assert copper_strap_price(CoilType.HGRH, 2)["total"] == 100.0  # 4 straps x $25
 
 
-def test_water_coils_never_priced() -> None:
+def test_water_coils_have_no_strap_note() -> None:
+    # Copper straps apply only to DX / HGRH headers, so water coils get no note
+    # at all (not a "review required" banner) and are never priced.
     for coil in (CoilType.CWC, CoilType.HWC):
         price = copper_strap_price(coil, 1)
-        assert price["status"] == "blocked"
+        assert price["status"] == "not_applicable"
+        assert price["note"] is None
         assert price["total"] is None
         assert price["strap_count"] is None
 

@@ -59,7 +59,8 @@ def _stamp_pages(doc, copper_strap_note: str, review_markups: list[str], waterma
     lines: list[tuple[str, float, tuple[float, float, float]]] = []
     if watermark:
         lines.append((REVIEW_WATERMARK, 9, (0.80, 0.0, 0.0)))
-    lines.append((copper_strap_note, 11, (0.0, 0.0, 0.55)))
+    if copper_strap_note:  # water coils carry no strap note -> no banner line
+        lines.append((copper_strap_note, 11, (0.0, 0.0, 0.55)))
 
     pad = 8.0
     band_height = pad + sum(size + 5 for _, size, _ in lines)

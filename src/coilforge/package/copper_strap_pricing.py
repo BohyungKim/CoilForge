@@ -7,10 +7,10 @@ strap** (Ray Leroux email, 2026-06-22), so:
 * DX  = 1 strap/header -> $25.00 per header
 * HGRH = 2 straps/header -> $50.00 per header
 
-CWC/HWC keep R-090's review-required/blocked status — their strap multiplier is
-unconfirmed, so this layer never fabricates a price for them. The result is a
-review-aid note stamped above each coil's quoted price; the original quote
-numbers are never modified.
+Copper straps only apply to DX and HGRH headers, so CWC/HWC get **no copper-strap
+note at all** (``not_applicable``) — never a price, never a review banner. The
+result is a review-aid note stamped above each coil's quoted price; the original
+quote numbers are never modified.
 """
 
 from __future__ import annotations
@@ -19,6 +19,10 @@ from typing import Any
 
 from coilforge.schemas.header_prepopulate import CoilType
 from coilforge.services.header_prepopulate_engine import copper_strap_requirement
+
+# Copper straps are a DX / HGRH header feature only. Water coils (CWC/HWC) never
+# carry a copper-strap note — they fall through to ``not_applicable`` (note=None).
+COPPER_STRAP_COIL_TYPES = frozenset({CoilType.DX, CoilType.HGRH})
 
 # Direct Coil's flat per-strap adder (review aid; engineering/sales confirm before quoting).
 COPPER_STRAP_UNIT_PRICE = 25.00
@@ -33,9 +37,9 @@ def copper_strap_price(coil_type: CoilType, header_count: int | None) -> dict[st
     """Return the gated copper-strap price adder for one coil.
 
     Reuses R-090 for the strap count, then multiplies by the flat unit price.
-    Mirrors the confidence gate: ``required`` (HIGH count -> price), ``blocked``
-    (CWC/HWC multiplier unconfirmed -> no price), ``review_required`` (header
-    count unknown -> no price). Never invents a price.
+    Mirrors the confidence gate: ``required`` (HIGH count -> price),
+    ``not_applicable`` (CWC/HWC -> no strap note at all), ``review_required``
+    (header count unknown -> no price). Never invents a price.
     """
     base: dict[str, Any] = {
         "coil_type": coil_type.value,
@@ -47,19 +51,15 @@ def copper_strap_price(coil_type: CoilType, header_count: int | None) -> dict[st
         "evidence_refs": [COPPER_STRAP_PRICE_EVIDENCE],
     }
 
+    if coil_type not in COPPER_STRAP_COIL_TYPES:  # water coils -> no copper-strap note
+        return {**base, "status": "not_applicable", "note": None}
+
     result = copper_strap_requirement(coil_type, header_count)
     if result is None:  # header count unknown -> cannot count straps
         return {
             **base,
             "status": "review_required",
             "note": "COPPER STRAPS: header count unknown - review required",
-        }
-    if result.value is None:  # CWC/HWC multiplier unconfirmed -> never priced
-        return {
-            **base,
-            "status": "blocked",
-            "note": f"COPPER STRAPS: REVIEW REQUIRED - multiplier unconfirmed for {coil_type.value}",
-            "blocked_reason": result.blocked_reason,
         }
 
     strap_count = int(result.value)
