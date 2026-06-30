@@ -46,6 +46,22 @@ def test_detect_terra_v_only_sizes() -> None:
     assert detect_product_and_size("TR_C_060") == (None, None)
 
 
+def test_detect_product_and_size_terra_vertical_tv_model() -> None:
+    # Terra Vertical units use a "TV_B_084" schedule code (B = Base-mounted, a mount
+    # token that is skipped) and a "TV084" filter-table form; both resolve to Terra V.
+    # (Project 2939 / Fresca's Cuatro regression.)
+    assert detect_product_and_size("Model: TV_B_084 - (7200-8400 CFM)") == ("TERRA V", "084")
+    assert detect_product_and_size("CDXC-2 DXC Cooling TV_B_072 RH") == ("TERRA V", "072")
+    assert detect_product_and_size("TV084") == ("TERRA V", "084")
+    # The real Terra V model code must outrank a stray "V120" Ventum+ filter-appendix
+    # token in the same text — the bug routed TV_B_084 -> VENTUM_PLUS -> hard-block.
+    assert detect_product_and_size(
+        "Model TV_B_084 ... Ventum+ Model Filter Details V120 6 18 x 18 x 4"
+    ) == ("TERRA V", "084")
+    # Out-of-range Terra V size still rejected (never an invented size).
+    assert detect_product_and_size("TV_B_999") == (None, None)
+
+
 def test_detect_product_and_size_from_nova_ventum_tokens() -> None:
     assert detect_product_and_size("unit A16 cooling") == ("NOVA", "A16")
     assert detect_product_and_size("H05") == ("VENTUM_H", "H05")

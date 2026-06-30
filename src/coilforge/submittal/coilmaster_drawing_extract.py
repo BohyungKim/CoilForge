@@ -187,6 +187,13 @@ def product_size_options() -> dict[str, list[str]]:
 # digits are the (zero-padded) Terra unit size.
 _TERRA_MODEL_RE = re.compile(r"\bTR[_\- ]?([CV])[_\- ]?0*(\d{1,3})\b", re.IGNORECASE)
 
+# Terra Vertical model code, e.g. "TV_B_084" (unit schedule) / "TV084" (filter table).
+# Always Terra V; the optional middle token ("B" = Base-mounted) is a mount/config code
+# and is skipped. (John 2026-06-29 confirmed both the TV_B_### and TV### forms.)
+_TERRA_V_MODEL_RE = re.compile(
+    r"\bTV[_\- ]?(?:[A-Z][_\- ]?)?0*(\d{1,3})\b", re.IGNORECASE
+)
+
 
 def _non_terra_size_tokens() -> list[str]:
     """Every R-076 unit-size token outside TERRA (whose sizes are bare digits and
@@ -225,6 +232,17 @@ def detect_product_and_size(text: str | None) -> tuple[str | None, str | None]:
         size = f"{int(match.group(2)):03d}"
         if size in set(product_size_options().get(label, [])):
             return label, size
+
+    # 1b. Terra Vertical "TV" model code (TV_B_084 schedule / TV084 filter forms).
+    #     Matched before the loose NOVA/VENTUM fallback (pass 2) so a real Terra V
+    #     unit is never mis-read as VENTUM_PLUS from a stray "V###" filter-appendix
+    #     token — the TV_B_### naming has no C/V orientation token, so the TR regex
+    #     above misses it and detection would otherwise fall through to pass B.
+    tv = _TERRA_V_MODEL_RE.search(upper)
+    if tv:
+        size = f"{int(tv.group(1)):03d}"
+        if size in set(product_size_options().get(TERRA_V_LABEL, [])):
+            return TERRA_V_LABEL, size
 
     # 2. NOVA / VENTUM size token. Two passes so a token from the unit's real
     #    model code wins over a loose token that only appears in a generic

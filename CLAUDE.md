@@ -142,6 +142,15 @@ PDF intake derives the coil **category** from the unit/coil tag prefix
 - `HHWC` / `PHWC` → **HWC** (Hot Water Coil)
 - `CCWC` → **CWC** (Chilled Water Coil)
 
+Coil **product line + unit size** (Terra/Nova/Ventum + R-076 size) is a *separate*
+detection from the tag-prefix category above:
+`coilmaster_drawing_extract.detect_product_and_size` reads the R-076-validated unit
+**model code**. Terra has TWO code formats — `TR_[CV]_###` (schedule; C/V = Terra H/V
+orientation) and **`TV_B_###` / `TV###`** (Terra Vertical; `B` = Base-mounted, skipped).
+A recognized code is safe (the per-candidate `header_context` wins over the full-PDF
+scan in `pdf_to_template_drawing.py`); an *unrecognized* code falls through to that loose
+scan, where a stray `V###` filter-appendix token poisons it into a VENTUM_PLUS hard-block.
+
 ### Product family rules
 
 First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
