@@ -2143,6 +2143,9 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize) {
       renderDrawingParameters(state.ui);
     }
     renderTemplateDrawingPreview(updated);
+    // The engineer just picked a product line + unit size, so the mechanical fit
+    // can now evaluate. Update the active coil's fit inputs (preserving the rest
+    // of the pair list) and re-run; fall back to just this coil if no PDF pages.
     const fitInput = fitInputFromSpec(spec);
     const active = state.pdfCoilPages[state.activePdfCoilPageIndex];
     if (active) {
@@ -2795,6 +2798,7 @@ function collectFitInputs() {
   return state.pdfCoilPages.map((page) => page.fit_inputs).filter(Boolean);
 }
 
+// Map a coil-drawing derive spec to the /api/mechanical-fit coil-input shape.
 function fitInputFromSpec(spec) {
   return {
     tag: spec.tag,
@@ -3312,6 +3316,95 @@ function initThemeToggle() {
 }
 
 initThemeToggle();
+
+// --- Coil Checklist auto-fill (review aid) -------------------------------- //
+function _checklistCell(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return escapeHtml(String(value));
+}
+
+function _verdictIcon(verdict) {
+  return (
+    { match: "✓", mismatch: "✗", missing_one: "·", both_missing: "—" }[verdict] || ""
+  );
+}
+
+function renderChecklistSheet(sheet) {
+  const inputs = (sheet.inputs || [])
+    .map((i) => {
+      const blank = i.value === null || i.value === undefined || i.value === "";
+      return `<tr class="${blank ? "checklist-blank" : ""}">
+        <td>${escapeHtml(i.label)}</td>
+        <td>${_checklistCell(i.value)}</td>
+        <td class="checklist-src">${escapeHtml(i.note || i.source || "")}</td></tr>`;
+    })
+    .join("");
+  const comps = (sheet.comparisons || [])
+    .map(
+      (c) => `<tr class="checklist-${c.verdict}">
+        <td>${escapeHtml(c.label)}</td>
+        <td>${_checklistCell(c.coilforge)}</td>
+        <td>${_checklistCell(c.checklist)}</td>
+        <td class="checklist-verdict">${_verdictIcon(c.verdict)}</td></tr>`
+    )
+    .join("");
+  return `<div class="checklist-sheet">
+    <h4>${escapeHtml(sheet.tag)}
+      <span class="subtle-label">${escapeHtml(sheet.category)} · ${sheet.mismatch_count} mismatch</span></h4>
+    <div class="checklist-tables">
+      <table class="checklist-table"><caption>Inputs written to column C</caption>
+        <thead><tr><th>Field</th><th>Value</th><th>Source / note</th></tr></thead>
+        <tbody>${inputs}</tbody></table>
+      <table class="checklist-table"><caption>Dimensions — CoilForge engine vs Checklist formula</caption>
+        <thead><tr><th>Dim</th><th>CoilForge</th><th>Checklist</th><th>=</th></tr></thead>
+        <tbody>${comps}</tbody></table>
+    </div></div>`;
+}
+
+function renderChecklistReview(review) {
+  const root = document.querySelector("#checklist-fill-results");
+  if (!root) return;
+  if (!review || !review.sheets) {
+    root.innerHTML = "";
+    return;
+  }
+  const warnings = (review.warnings || []).length
+    ? `<div class="checklist-warnings">⚠ ${review.warnings.map(escapeHtml).join("<br>⚠ ")}</div>`
+    : "";
+  root.innerHTML = warnings + review.sheets.map(renderChecklistSheet).join("");
+}
+
+async function fillCoilChecklist() {
+  const file = state.selectedPdfFile || elements.pdfIntakeFile.files?.[0];
+  const summary = document.querySelector("#checklist-fill-summary");
+  if (!file) {
+    summary.textContent = "Analyze a submittal PDF above first.";
+    return;
+  }
+  summary.textContent = "Filling the checklist via Excel… (opens Excel briefly)";
+  try {
+    const pdfBytes = await file.arrayBuffer();
+    const review = await requestJson("/api/checklist/fill", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
+        ...coverPageHeader(),
+      },
+      body: pdfBytes,
+    });
+    renderChecklistReview(review);
+    summary.innerHTML =
+      `Saved <strong>${escapeHtml(review.saved_path || "")}</strong> · ` +
+      `${review.mismatch_total} dimension mismatch(es) to review · review aid, not exported`;
+  } catch (error) {
+    summary.textContent = `Checklist fill failed: ${error.message || error}`;
+  }
+}
+
+document.querySelector("#fill-coil-checklist")?.addEventListener("click", () => {
+  fillCoilChecklist();
+});
 
 loadDefaultDemoWorkflow().catch((error) => {
   document.body.innerHTML = `<main class="load-error"><pre>${error.message}</pre></main>`;

@@ -217,6 +217,11 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
         application = T.APPLICATION_FIXED.get(unit or "")
     slots, response = _resolve_engine(coil, application)
     engine_ok = response is not None
+    # The comparison's CoilForge column is resolved with the checklist's OWN product
+    # (apples-to-apples with the sheet's formulas). We deliberately do NOT reuse the
+    # per-coil drawing slot_values: the drawing's per-coil product detection can
+    # diverge (e.g. one coil mis-read as NOVA), which would pollute the comparison.
+    dim_slots = slots
 
     # --- UNIT / SIZE (detected) ---
     if unit:
@@ -340,7 +345,7 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
     # R-006 CWC/HWC=1.875); the template's formula (1.75/2.25) is the old SOP. So
     # we WRITE RB (overwriting the stale formula in the copy) — OAL, which is still
     # a formula referencing RB, then recomputes from the correct value.
-    rb = slots.get("slot.RB")
+    rb = dim_slots.get("slot.RB")
     if rb is not None:
         cells.append(CellFill("RB", rb, "number", "ready", "engine:slot.RB (direct-coil value)"))
     else:
@@ -362,7 +367,7 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
         if k is not None and circuits is not None and k > circuits:
             cf_value: Any = "N/A"
         else:
-            cf_value = slots.get(slot)
+            cf_value = dim_slots.get(slot)
         compare.append(DimCompare(label=label, slot=slot, coilforge_value=cf_value))
 
     return SheetFill(category=category, source_sheet=T.CATEGORY_SHEET[category],

@@ -40,6 +40,9 @@ is no install step or `pyproject.toml`.
 
 Runtime deps that may need installing: `python -m pip install fastapi uvicorn pyyaml pydantic`.
 PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade gracefully.
+The Coil Checklist auto-fill (below) uses Excel COM via `pywin32` (already present on
+the Windows box) and reads `.xlsx` back with `openpyxl`; its writer test is guarded by
+`pytest.importorskip` so the suite still runs where Excel/pywin32 is absent.
 
 ## Architecture — the big picture
 
@@ -122,8 +125,25 @@ read two DATA-ONLY rules — `R-078` (fit clearances) and `R-077` (drain-pan / i
 listed in the engine's `_FIT_DATA_IDS` so the generic emitter SKIPS them (consumed here, never
 emitted as engine fields). `build_mechanical_fit_report` pairs coils via
 `pdf_intake.drain_pan_partner_tag`, is exposed at `POST /api/mechanical-fit`, and renders as the
-"Mechanical Fit / 안정성" section. Casing dims are MEDIUM, so every verdict is `review_required`
+"Mechanical Fit / Stability" section. Casing dims are MEDIUM, so every verdict is `review_required`
 — a PASS is never an approval; missing inputs -> `CANNOT_EVALUATE`.
+
+**Coil Checklist auto-fill** (`checklist/`) — fills a COPY of Oxygen8's "Coil Checklist
+Template.xlsx" from a submittal so the engineer stops hand-typing column C, and cross-checks
+it against CoilForge. Four layers kept separate: `template_map.py` (pure structural reference
+— sheet names, fillable labels, dropdown vocab, checkbox defaults; transcribed by Phase-0 COM
+introspection, no Excel dep), `mapping.py`/`model.py` (pure: coil dicts -> `ChecklistFill`),
+`excel_writer.py` (I/O — Excel COM in an ISOLATED `DispatchEx` instance; opens the template
+read-only + `SaveCopyAs` to Downloads so the original is NEVER touched; locates fields by
+scanning column B; sets native boolean checkboxes by writing `True`/`False`), and `compare.py`
+(the review table). **Load-bearing fact:** the checklist's lower dimensions (CD/S/O/R/HD/SL/
+OAL/CH/ASC/FIT…) are Excel FORMULAS that compute from the inputs — the writer fills ONLY the
+input cells and lets the sheet recompute, then reads the formula results back and compares them
+to CoilForge's engine slots (independent implementations -> real accuracy check, not circular).
+Reuses the engine like `mechanical_fit` (`build_drawing_slots` + an application-aware
+`prepopulate` for casing). Exposed at `POST /api/checklist/fill` (POST the PDF bytes); renders
+as the "Coil Checklist Auto-Fill" section. Review aid only; missing values left blank + flagged,
+never guessed. The DO-NOT-TOUCH drawing/template path is untouched.
 
 **Web app** — `coilforge/web_app.py` imports the Phase 2A FastAPI `app` and registers
 the `/api/*` routes (workflows, compatibility review, decision capture, review packets).

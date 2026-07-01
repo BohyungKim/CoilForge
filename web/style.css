@@ -575,6 +575,49 @@ body.is-init-stage .project-search {
   padding: 16px;
 }
 
+/* --- Coil Checklist auto-fill review --- */
+.checklist-fill-results { display: grid; gap: 16px; }
+.checklist-warnings {
+  background: rgba(220, 160, 0, 0.12);
+  border: 1px solid rgba(220, 160, 0, 0.4);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.checklist-sheet h4 { margin: 0 0 6px; }
+.checklist-tables {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) { .checklist-tables { grid-template-columns: 1fr; } }
+.checklist-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+.checklist-table caption {
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-bottom: 4px;
+  text-align: left;
+}
+.checklist-table th,
+.checklist-table td {
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+  text-align: left;
+}
+.checklist-table th { background: var(--bg-elevated, rgba(127,127,127,0.1)); }
+.checklist-src { color: var(--text-muted); font-size: 11px; }
+.checklist-verdict { font-weight: 700; text-align: center; }
+.checklist-blank td { color: var(--text-muted); font-style: italic; }
+.checklist-mismatch { background: rgba(220, 60, 60, 0.16); }
+.checklist-missing_one { background: rgba(220, 160, 0, 0.14); }
+.checklist-match .checklist-verdict { color: #2e9e4f; }
+.checklist-mismatch .checklist-verdict { color: #d83c3c; }
+
 .quote-package-section .quote-package {
   border-top: none;
   margin-top: 0;
