@@ -38,6 +38,10 @@ from coilforge.workflows import (
     run_submittal_to_drawing_workflow,
 )
 from coilforge.submittal.coilmaster_drawing_extract import product_size_options
+from coilforge.checklist.mapping import build_checklist_fill
+from coilforge.checklist.from_workflow import coil_inputs_from_candidates
+from coilforge.checklist.compare import build_review
+from coilforge.checklist.excel_writer import write_checklist
 
 
 def _cover_page_hint_from_request(request: Request) -> int | None:
@@ -237,6 +241,68 @@ async def workflow_pdf_to_drawing(request: Request):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _checklist_output_name(source_filename: str | None) -> str:
+    stem = Path(source_filename).stem if source_filename else "Coil Checklist"
+    return f"{stem} - Coil Checklist.xlsx"
+
+
+@app.post("/api/checklist/fill")
+async def checklist_fill(request: Request):
+    """Auto-fill a COPY of the Coil Checklist from a submittal PDF and return the
+    review table (checklist formula dims vs CoilForge engine dims).
+
+    POST the submittal PDF bytes (``application/pdf``). Optional headers override
+    auto-detection: ``X-CoilForge-Product`` (e.g. ``NOVA``), ``X-CoilForge-Size``
+    (e.g. ``C24``), ``X-CoilForge-Filename`` (names the Downloads copy). The source
+    template is never modified; the filled copy is written to the Downloads folder.
+    Review aid only (``export_allowed: False``)."""
+    pdf_bytes = await request.body()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="POST the submittal PDF bytes.")
+    try:
+        result = run_pdf_to_drawing_workflow(
+            pdf_bytes,
+            source_id=request.headers.get("x-coilforge-source-id", "CHECKLIST-FILL-001"),
+            source_filename=request.headers.get("x-coilforge-filename"),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
+
+        pdf_text = _safe_pdf_text(pdf_bytes)
+    except Exception:  # noqa: BLE001 — text extraction is best-effort
+        pdf_text = ""
+
+    coils, _detected = coil_inputs_from_candidates(
+        result.get("candidates") or [],
+        pdf_text=pdf_text,
+        product_line=request.headers.get("x-coilforge-product"),
+        unit_size=request.headers.get("x-coilforge-size"),
+    )
+    if not coils:
+        raise HTTPException(
+            status_code=400,
+            detail="No recognizable coils (DX/HGRH/HWC/CWC) found for the checklist.",
+        )
+    fill = build_checklist_fill(coils)
+    import asyncio
+
+    try:
+        writer_result = await asyncio.to_thread(
+            write_checklist,
+            fill,
+            dest_name=_checklist_output_name(request.headers.get("x-coilforge-filename")),
+        )
+    except RuntimeError as exc:  # Excel/pywin32 unavailable
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
+        raise HTTPException(status_code=500, detail=f"Excel write failed: {exc}") from exc
+    return jsonable_encoder(build_review(fill, writer_result))
 
 
 @app.get("/api/coil-drawing/product-options")
