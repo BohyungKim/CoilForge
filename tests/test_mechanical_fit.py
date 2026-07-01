@@ -298,6 +298,30 @@ def test_report_resolves_casing_and_pairs_drain_pan():
     assert rep.export_allowed is False
 
 
+def test_report_derives_application_for_dx_without_explicit_value():
+    # No `application` passed; DX/NOVA must derive DECOUPLED so R-074 casing
+    # dims resolve and width/height actually evaluate (not CANNOT_EVALUATE).
+    rep = build_mechanical_fit_report(
+        [{"tag": "CDXC-1", "coil_type": "DX", "product_type": "NOVA",
+          "unit_size": "B20", "rows": 4, "finned_height": 12, "finned_length": 15}]
+    )
+    coil = rep.coils[0]
+    assert (coil.casing_width, coil.casing_height) == (38, 24)
+    assert coil.width.verdict == "PASS" and coil.height.verdict == "PASS"
+
+
+def test_report_hwc_without_application_stays_review():
+    # HWC has several applications (HORZ/VERT/STANDALONE/...) -> not derivable ->
+    # casing dims unresolved -> width/height CANNOT_EVALUATE (never guessed).
+    rep = build_mechanical_fit_report(
+        [{"tag": "HHWC-1", "coil_type": "HWC", "product_type": "NOVA",
+          "unit_size": "B20", "rows": 4, "finned_height": 12, "finned_length": 15}]
+    )
+    coil = rep.coils[0]
+    assert coil.casing_width is None
+    assert coil.width.verdict == "CANNOT_EVALUATE"
+
+
 def test_report_single_coil_drain_pan_not_applicable_when_not_installed():
     rep = build_mechanical_fit_report(_dx_hgrh_pair()[:1], installed_on_drain_pan=False)
     coil = rep.coils[0]

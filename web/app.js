@@ -2143,6 +2143,14 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize) {
       renderDrawingParameters(state.ui);
     }
     renderTemplateDrawingPreview(updated);
+    const fitInput = fitInputFromSpec(spec);
+    const active = state.pdfCoilPages[state.activePdfCoilPageIndex];
+    if (active) {
+      active.fit_inputs = fitInput;
+      refreshMechanicalFit();
+    } else {
+      refreshMechanicalFit([fitInput]);
+    }
   } catch (error) {
     if (elements.drawingTemplateStatus) {
       elements.drawingTemplateStatus.innerHTML = `
@@ -2780,15 +2788,30 @@ async function runWorkflowFromPdf() {
   }
 }
 
-// --- Mechanical fit / 안정성 (review aid) ---------------------------------- //
+// --- Mechanical fit / Stability (review aid) ------------------------------ //
 function collectFitInputs() {
   // Every analyzed coil carries compact fit_inputs from the workflow. Pairing
   // (DX+HGRH / CWC+HWC) is resolved server-side across the whole list.
   return state.pdfCoilPages.map((page) => page.fit_inputs).filter(Boolean);
 }
 
-async function refreshMechanicalFit() {
-  const coils = collectFitInputs();
+function fitInputFromSpec(spec) {
+  return {
+    tag: spec.tag,
+    coil_type: spec.coil_category,
+    product_type: spec.product_type,
+    unit_size: spec.unit_size,
+    finned_height: spec.finned_height,
+    finned_length: spec.finned_length,
+    rows: spec.rows,
+    feeds: spec.feeds,
+    circuits: spec.circuits,
+    suction_conn_size: spec.suction_conn_size,
+  };
+}
+
+async function refreshMechanicalFit(overrideCoils) {
+  const coils = overrideCoils || collectFitInputs();
   if (!coils.length) {
     elements.mechanicalFitSection?.setAttribute("hidden", "");
     return;

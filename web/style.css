@@ -2307,7 +2307,7 @@ h4 {
   color: var(--text-muted);
 }
 
-/* Mechanical fit / 안정성 report (review aid) */
+/* Mechanical fit / Stability report (review aid) */
 .mechanical-fit-body {
   display: flex;
   flex-direction: column;

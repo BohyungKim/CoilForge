@@ -33,6 +33,20 @@ HeightBasis = Literal["FH", "CH"]
 _R077 = "R-077"
 _R078 = "R-078"
 
+# The DX/HGRH/CWC casing column in R-074 has exactly ONE application per product
+# family — the CHK CASING WIDTH/HEIGHT XLOOKUP `AND(product, application)` branches
+# (DX!E9:E10 / CWC!E7:E8 / HGRH!E7:E8): NOVA->DECOUPLED, TERRA->INTEGRATED,
+# VENTUM_H->CPLD EXT, VENTUM+->INTEGRATED. So a DX/HGRH/CWC coil's application is
+# derivable from its family (the workbook's own logic, not a guess). HWC offers
+# several applications (HORZ/VERT/STANDALONE/CPLD W COOLING) so it is NOT derivable
+# and stays review-required when the application is unknown.
+_DX_CWC_APPLICATION = {
+    "NOVA": "DECOUPLED",
+    "TERRA": "INTEGRATED",
+    "VENTUM_H": "CPLD EXT",
+    "VENTUM_PLUS": "INTEGRATED",
+}
+
 
 @dataclass(frozen=True)
 class FitCheck:
@@ -372,11 +386,15 @@ def build_coil_fit(
             conn_size=conn_size,
             qty_conn_per_header=qty_conn_per_header,
         )
+        family = request.product_type.value
+        engine_coil_type = request.type_of_coil.value
+        # DX/HGRH/CWC application is deterministic per family (see _DX_CWC_APPLICATION);
+        # derive it so R-074 casing dims resolve. HWC is ambiguous -> left as given.
+        if application is None and engine_coil_type in ("DX", "HGRH", "CWC"):
+            application = _DX_CWC_APPLICATION.get(family)
         if application is not None:
             request = request.model_copy(update={"application": application})
         response = prepopulate(request)
-        family = request.product_type.value
-        engine_coil_type = request.type_of_coil.value
     except Exception as exc:  # noqa: BLE001 — never raise into the report
         return CoilFitEntry(
             tag=tag, coil_type=coil_type, product_family=product_type,
