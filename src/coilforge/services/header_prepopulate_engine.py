@@ -476,7 +476,15 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     if request.application is None:
         add_missing(["application"])
     else:
-        key = f"{product.value}|{request.application}|{request.unit_size}"
+        # Terra V has its own casing table (vertical units are far taller than
+        # Terra H), so key off TERRA_V and never borrow Terra H's TERRA|... rows.
+        # Mirrors the R-076 size-set gate above.
+        casing_fam = (
+            "TERRA_V"
+            if request.terra_variant == TerraVariant.TERRA_V
+            else product.value
+        )
+        key = f"{casing_fam}|{request.application}|{request.unit_size}"
         entry = rule.get("lookup", {}).get(key)
         if entry is not None:
             for field, val in entry.items():

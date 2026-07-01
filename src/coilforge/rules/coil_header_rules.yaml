@@ -953,6 +953,24 @@ rules:
       "TERRA|INTEGRATED|032": { casing_width: 54, casing_height: 30 }
       "TERRA|INTEGRATED|040": { casing_width: 62, casing_height: 30 }
       "TERRA|INTEGRATED|048": { casing_width: 72, casing_height: 30 }
+      # Terra V (vertical) has its OWN overall dimensions — far taller than Terra H —
+      # so it gets dedicated TERRA_V|... rows (the engine keys Terra V off TERRA_V).
+      # Transcribed from the Terra Vertical "Overall Dimensions" sheet (John 2026-06-30):
+      # Unit Width [in] -> casing_width, Unit Height [in] -> casing_height. Sizes are
+      # grouped 3-per row in the sheet (006/009/012 share, etc.); 13 Terra V sizes.
+      "TERRA_V|INTEGRATED|006": { casing_width: 30, casing_height: 51 }
+      "TERRA_V|INTEGRATED|009": { casing_width: 30, casing_height: 51 }
+      "TERRA_V|INTEGRATED|012": { casing_width: 30, casing_height: 51 }
+      "TERRA_V|INTEGRATED|015": { casing_width: 44, casing_height: 62 }
+      "TERRA_V|INTEGRATED|018": { casing_width: 44, casing_height: 62 }
+      "TERRA_V|INTEGRATED|024": { casing_width: 44, casing_height: 62 }
+      "TERRA_V|INTEGRATED|032": { casing_width: 48, casing_height: 78 }
+      "TERRA_V|INTEGRATED|040": { casing_width: 48, casing_height: 78 }
+      "TERRA_V|INTEGRATED|048": { casing_width: 48, casing_height: 78 }
+      "TERRA_V|INTEGRATED|060": { casing_width: 69, casing_height: 78 }
+      "TERRA_V|INTEGRATED|072": { casing_width: 69, casing_height: 78 }
+      "TERRA_V|INTEGRATED|084": { casing_width: 69, casing_height: 78 }
+      "TERRA_V|INTEGRATED|100": { casing_width: 77, casing_height: 80 }
       "VENTUM_H|CPLD EXT|H05": { casing_width: 29, casing_height: 18 }
       "VENTUM_H|CPLD EXT|H10": { casing_width: 36, casing_height: 18 }
       "VENTUM_H|CPLD EXT|H15": { casing_width: 37, casing_height: 21 }

@@ -275,18 +275,28 @@ def test_terra_v_unit_size_set_diverges_from_terra_h() -> None:
         assert rh.blocked_reason == "unknown_unit_size"
 
 
-def test_terra_v_new_size_casing_blocked_until_r074_row_exists() -> None:
-    """A Terra V 060 coil validates (not unknown_unit_size) but its casing dims stay
-    absent — fail-closed — until R-074 gains a TERRA|INTEGRATED|060 row (never guessed)."""
-    common = dict(application="INTEGRATED", terra_variant=TerraVariant.TERRA_V)
-    # Shared size 024 has an R-074 row -> casing dims surface (MEDIUM suggestions).
-    r024 = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024", **common))
-    assert "casing_width" in r024.suggestions
-    # New size 060 has no R-074 row yet -> casing omitted, never guessed.
-    r060 = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "060", **common))
-    assert r060.blocked_reason is None
-    assert "casing_width" not in r060.suggestions
-    assert "casing_height" not in r060.suggestions
+def test_terra_v_has_own_casing_dims_independent_of_terra_h() -> None:
+    """Terra V (vertical) has its OWN R-074 casing table (TERRA_V|INTEGRATED|<size>),
+    distinct from Terra H, for all 13 sizes incl. the V-only 060/072/084/100. Values
+    transcribed from the Terra Vertical Overall Dimensions sheet (John 2026-06-30):
+    Unit Width -> casing_width, Unit Height -> casing_height (review-required, MEDIUM)."""
+    expect = {  # representative sizes across the 5 sheet groups (incl. V-only 060/100)
+        "006": (30, 51), "024": (44, 62), "048": (48, 78),
+        "060": (69, 78), "100": (77, 80),
+    }
+    for size, (w, h) in expect.items():
+        r = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, size,
+                             terra_variant=TerraVariant.TERRA_V, application="INTEGRATED"))
+        assert r.blocked_reason is None, size
+        assert r.suggestions["casing_width"].value == w, size
+        assert r.suggestions["casing_height"].value == h, size
+        assert r.suggestions["casing_width"].review_required is True, size
+    # Terra V must NOT borrow Terra H's casing: shared size 024 differs, and Terra H
+    # itself is unchanged (V=44x62 vs H=62x21).
+    h024 = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024",
+                            terra_variant=TerraVariant.TERRA_H, application="INTEGRATED"))
+    assert h024.suggestions["casing_width"].value == 62
+    assert h024.suggestions["casing_height"].value == 21
 
 
 def test_t06_dx_nova_cd_single_circuit() -> None:
