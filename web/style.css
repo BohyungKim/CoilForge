@@ -214,6 +214,11 @@ button:disabled,
   flex-direction: column;
   gap: 18px;
   padding: 20px 16px 92px;
+  position: sticky;
+  top: 0;
+  align-self: start;      /* don't stretch — required for sticky to release */
+  max-height: 100vh;
+  overflow-y: auto;       /* a tall tree/nav scrolls inside the sticky panel */
 }
 
 .brand-block {
@@ -314,6 +319,22 @@ button:disabled,
 #compatibility-section,
 #review-section {
   scroll-margin-top: 14px;
+}
+
+/* Slide-in when the review flow advances to the next coil (see advanceToCoil in app.js). */
+@keyframes coilSlideIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.drawing-card.coil-slide-in {
+  animation: coilSlideIn 0.35s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawing-card.coil-slide-in {
+    animation: none;
+  }
 }
 
 .topbar {
@@ -581,7 +602,7 @@ body.is-init-stage .project-search {
   background: rgba(220, 160, 0, 0.12);
   border: 1px solid rgba(220, 160, 0, 0.4);
   border-radius: 6px;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 12px;
   padding: 8px 10px;
 }
@@ -2132,6 +2153,9 @@ h4 {
 
   .sidebar {
     padding-bottom: 18px;
+    position: static;     /* one-column layout: stop sticking, flow normally */
+    max-height: none;
+    overflow-y: visible;
   }
 
   .action-bar {
@@ -2257,7 +2281,7 @@ h4 {
 }
 
 .quote-package-summary {
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -2287,10 +2311,10 @@ h4 {
 
 .dc-verify textarea,
 .dc-verify input {
-  background: var(--surface);
+  background: var(--bg-field);
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text);
+  color: var(--text-primary);
   font: inherit;
   font-size: 12px;
   padding: 6px 8px;
@@ -2304,7 +2328,7 @@ h4 {
 }
 
 .dc-verify-counts {
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .dc-verify-banner {
@@ -2316,7 +2340,7 @@ h4 {
 .dc-verify-banner-warn {
   background: color-mix(in srgb, var(--status-blocked) 18%, transparent);
   border: 1px solid var(--status-blocked);
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .dc-verify-row {
@@ -2367,7 +2391,7 @@ h4 {
   border: 1px solid var(--border, #d8dde6);
   border-radius: 8px;
   padding: 0.55rem 0.7rem;
-  background: var(--surface, #fff);
+  background: var(--bg-elevated);
 }
 .fit-coil-head {
   display: flex;
@@ -2392,7 +2416,7 @@ h4 {
   min-width: 3.2rem;
 }
 .fit-note {
-  color: #8a6d00;
+  color: var(--warn-text);
   font-size: 0.82rem;
   margin: 0;
 }

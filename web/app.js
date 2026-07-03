@@ -370,16 +370,40 @@ function selectPdfCoilPage(index) {
   elements.savedStatus.textContent = `Showing ${page.tag || `coil ${index + 1}`} x ${page.quantity ?? "review"}`;
 }
 
-// Per-coil review footer: shows progress, lets John mark the active coil reviewed,
-// and steps to the next one. The quote package is gated until every coil is reviewed.
+// Advance to a coil from the review-flow footer, then slide the drawing section in and
+// scroll up to it so John starts the next coil at "Drawing Parameters & Drawing" rather
+// than stranded at the bottom. Sidebar coil clicks keep using selectPdfCoilPage directly
+// (no forced scroll) so casual browsing isn't jarring.
+function advanceToCoil(index) {
+  selectPdfCoilPage(index);
+  const sec = document.querySelector("#drawing-section");
+  if (!sec) {
+    return;
+  }
+  // restart the slide-in animation (remove -> force reflow -> re-add)
+  sec.classList.remove("coil-slide-in");
+  void sec.offsetWidth;
+  sec.classList.add("coil-slide-in");
+  sec.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Per-coil review footer: shows progress and lets John mark the active coil reviewed.
+// Marking flips the button + bumps the counter, then advances to the next coil (slide +
+// scroll to Drawing Parameters) so review flows straight through. On the last coil it just
+// marks. The Next/Previous buttons move without marking. Quote package is gated until all
+// coils are reviewed.
 function markActiveCoilReviewed() {
   if (state.activePdfCoilPageIndex < 0) {
     return;
   }
-  state.reviewedCoils.add(state.activePdfCoilPageIndex);
-  renderCoilReviewNav();
-  renderProjectTree(state.ui);
-  updateQuoteGate();
+  const idx = state.activePdfCoilPageIndex;
+  state.reviewedCoils.add(idx);
+  renderCoilReviewNav();       // flips button to "Reviewed ✓"
+  renderProjectTree(state.ui); // adds the ✓ in the sidebar
+  updateQuoteGate();           // bumps the gate/counter
+  if (idx + 1 < state.pdfCoilPages.length) {
+    advanceToCoil(idx + 1);    // slide + scroll to the next coil's Drawing Parameters
+  }
 }
 
 function renderCoilReviewNav() {
@@ -395,6 +419,7 @@ function renderCoilReviewNav() {
   const idx = state.activePdfCoilPageIndex;
   const active = state.pdfCoilPages[idx] || {};
   const reviewed = state.reviewedCoils.has(idx);
+  const hasPrev = idx > 0;
   const hasNext = idx + 1 < total;
   nav.innerHTML = `
     <div class="coil-review-progress">
@@ -404,12 +429,18 @@ function renderCoilReviewNav() {
     <button type="button" id="coil-mark-reviewed" class="secondary-action${reviewed ? " is-reviewed" : ""}">
       ${reviewed ? "Reviewed ✓" : "Mark reviewed ✓"}
     </button>
+    <button type="button" id="coil-prev" class="secondary-action"${hasPrev ? "" : " disabled"}>&larr; Previous coil</button>
     <button type="button" id="coil-next" class="primary-button"${hasNext ? "" : " disabled"}>Next coil &rarr;</button>
   `;
   document.querySelector("#coil-mark-reviewed")?.addEventListener("click", markActiveCoilReviewed);
+  document.querySelector("#coil-prev")?.addEventListener("click", () => {
+    if (hasPrev) {
+      advanceToCoil(idx - 1);
+    }
+  });
   document.querySelector("#coil-next")?.addEventListener("click", () => {
     if (hasNext) {
-      selectPdfCoilPage(idx + 1);
+      advanceToCoil(idx + 1);
     }
   });
 }

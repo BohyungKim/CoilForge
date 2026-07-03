@@ -161,6 +161,11 @@ emptiness, not backend `status`, so a missing value never reads as a silent blan
 revert empties to plain blanks.
 Downloads are client-side blob saves (`web/app.js::downloadBase64Pdf`, `anchor.download`),
 not server `Content-Disposition` — the quote package exports as `<uploaded-name>_Revised.pdf`.
+Dark theme is variable-driven: `[data-theme="dark"]` in `web/style.css` overrides the
+`--bg-*` / `--text-*` tokens. Reference ONLY defined tokens — a bare `var(--surface)` /
+`var(--text)` is undefined and silently falls back to white / inherited (this was the
+Mechanical-Fit white-card-in-dark-mode bug). Guard:
+`grep -nE 'var\(--surface[),]|var\(--text[),]' web/style.css` must return zero.
 
 ## CoilForge MVP taxonomy (confirmed 2026-06-21)
 
