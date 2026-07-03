@@ -2271,14 +2271,27 @@ function templateDrawingBody(templateDrawing, rendered) {
 
 function renderDrawingParameters(uiState) {
   const parameters = uiState.drawing_parameters?.parameters || {};
-  const covered = new Set(DRAWING_PARAM_COLUMNS.flat());
-  // Any resolved parameter not placed by the fixed two-column layout (e.g. HDx1)
-  // rides along at the bottom of the right column so nothing is dropped.
-  const leftovers = Object.keys(parameters).filter((key) => !covered.has(key));
-  const columns = [
-    DRAWING_PARAM_COLUMNS[0],
-    [...DRAWING_PARAM_COLUMNS[1], ...leftovers],
-  ];
+  const casing = DRAWING_PARAM_COLUMNS[0];
+  const header1 = DRAWING_PARAM_COLUMNS[1];
+  // Mirror the CCSI Direct Coil form: a casing column, then one column per header
+  // assembly (Header 1 = I/S/O/R/HD/ZD, Header 2 = I2/S2/O2/R2/HD2/ZD2, ...). The
+  // header index is the trailing digit of the logical key (same detection as
+  // dcHeaderColumns). Degrades to casing | Header 1 for a 1HD coil (no n>=2 keys).
+  const headerNums = new Set();
+  for (const key of Object.keys(parameters)) {
+    const match = /^(?:I|S|O|R|HD|ZD)(\d+)$/.exec(key);
+    if (match && Number(match[1]) >= 2) {
+      headerNums.add(Number(match[1]));
+    }
+  }
+  const headerColumns = [...headerNums]
+    .sort((a, b) => a - b)
+    .map((n) => ["I", "S", "O", "R", "HD", "ZD"].map((base) => `${base}${n}`));
+  // Any resolved parameter the fixed columns don't place (e.g. HDx1) rides along
+  // under the casing column so nothing is silently dropped.
+  const placed = new Set([...casing, ...header1, ...headerColumns.flat()]);
+  const leftovers = Object.keys(parameters).filter((key) => !placed.has(key));
+  const columns = [[...casing, ...leftovers], header1, ...headerColumns];
   elements.drawingParameters.innerHTML = columns
     .map(
       (column) => `

@@ -1872,7 +1872,11 @@ h4 {
 .parameter-grid {
   display: grid;
   gap: 8px 12px;
-  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr);
+  /* One column per .dc-drawing-column child (casing | Header 1 | Header 2 | ...),
+     so the panel mirrors the CCSI Direct Coil form and adapts to the header count. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(120px, 1fr);
+  align-items: start;
   margin-top: 12px;
 }
 
@@ -2222,6 +2226,9 @@ h4 {
   }
 
   .parameter-grid {
+    /* Narrow screens: stack the casing/header columns vertically (no h-scroll). */
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
     grid-template-columns: minmax(0, 1fr);
   }
 
