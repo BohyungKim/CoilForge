@@ -1287,7 +1287,20 @@ def _with_continuation_cover_rows(
     for page in sorted(pages, key=lambda item: item.page_number):
         if page.page_number <= detection.page_number:
             continue
-        continuation_rows = tuple(_extract_cover_rows_from_text(page))
+        # Table-first, mirroring the primary cover page: continuation pages rarely
+        # repeat the header row, but `_detect_cover_page_from_tables` falls back to
+        # the header-less positional parser (`_find_cover_coil_table`), which reads
+        # every column INCLUDING `model`. The text-line parser
+        # (`_cover_row_from_text_line`) never captures `model`, so a coil whose row
+        # spilled onto page 2+ used to lose its product/model code and could not
+        # resolve its product line + unit size. Fall back to text only when no
+        # cover table is found on the page.
+        page_detection = _detect_cover_page_from_tables(page)
+        continuation_rows = (
+            page_detection.rows
+            if page_detection.detected
+            else tuple(_extract_cover_rows_from_text(page))
+        )
         if not continuation_rows:
             break
         for row in continuation_rows:

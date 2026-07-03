@@ -1538,6 +1538,58 @@ def test_cover_row_product_code_flows_into_drawing_context() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Continuation-page cover rows must keep their `model` code. When the cover
+# schedule spills onto a 2nd page, that page rarely repeats the column header,
+# so it is parsed by the header-less positional table parser. The continuation
+# scan used to fall back to the text-line parser, which never captures `model`
+# -- so a coil on page 2 lost its product/model code and could not resolve its
+# product line + unit size (real symptom: a "TV_B_024" DX showing "needs coil
+# type + product line + unit size to evaluate fit"). Table-first fixes it.
+# --------------------------------------------------------------------------- #
+_COVER_HEADER_CELLS = (
+    "Qty", "Tag", "Item", "Model", "Voltage",
+    "Controls Preference", "Installation", "Duct Connection", "Handing",
+)
+
+
+def test_continuation_page_cover_row_keeps_model_code() -> None:
+    header_page = _TextPage(
+        page_number=1,
+        text="Coil Schedule",
+        tables=(
+            (
+                _COVER_HEADER_CELLS,
+                ("1", "CDXC-2", "DXC Cooling", "TV_B_012",
+                 "208/60/3", "BMS", "Vertical", "S2", "LH"),
+            ),
+        ),
+    )
+    # Page 2: the schedule continues but the header band is gone -> a header-less
+    # positional table (col0=qty, col1=tag, col3=model), exactly the real PDF shape.
+    continuation_page = _TextPage(
+        page_number=2,
+        text="1 CDXC-3 DXC Cooling",  # text line carries NO model (the old bug path)
+        tables=(
+            (
+                ("1", "CDXC-3", "DXC Cooling", "TV_B_024",
+                 "208/60/3", "BMS", "Vertical", "S2", "LH"),
+            ),
+        ),
+    )
+
+    detection = detect_cover_page_from_pdf_pages([header_page, continuation_page])
+
+    by_tag = {row.tag: row for row in detection.rows}
+    assert set(by_tag) == {"CDXC-2", "CDXC-3"}
+    # The continuation row keeps its model (was "" before the table-first fix)...
+    assert by_tag["CDXC-3"].model == "TV_B_024"
+    # ...so its product line + unit size resolve just like a first-page row.
+    summary = _cover_row_summary(by_tag["CDXC-3"])
+    assert summary.product_line == "TERRA V"
+    assert summary.unit_size == "024"
+
+
+# --------------------------------------------------------------------------- #
 # Valve / EEV accessory rows must NOT be detected as coils. An electronic
 # expansion valve kit tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"
 # previously slipped through the coil filter on the "dxcoil" substring and then

@@ -68,6 +68,11 @@ HHWC/PHWC which are distinct coils). A coil that can't be matched gets a
 `not_inserted_reason` and is surfaced loudly, never silently dropped.
 Copper-strap notes/prices apply ONLY to DX/HGRH (`copper_strap_pricing.COPPER_STRAP_COIL_TYPES`);
 CWC/HWC are `not_applicable` — no strap note is ever stamped.
+A cover schedule that spills onto a 2nd+ page has its continuation rows parsed **table-first**
+(`pdf_intake._with_continuation_cover_rows` → `_detect_cover_page_from_tables`, header-less
+positional fallback), NOT the text-line parser — the text parser never captures the `model`
+column, so a continuation coil would otherwise lose its product/model code (e.g. Terra V
+`TV_B_024` → blank product line → fit can't evaluate).
 
 **The header rule engine** (`services/header_prepopulate_engine.py` +
 `rules/coil_header_rules.yaml`) is the heart of the system. It is a pure, deterministic
