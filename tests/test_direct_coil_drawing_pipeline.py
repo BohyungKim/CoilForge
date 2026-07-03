@@ -291,10 +291,60 @@ def test_terra_v_drawing_slots_use_sop_specials() -> None:
     assert dx_h["slot.R2"] == 0.625 and dx_h["slot.O2"] == 3.25 and dx_h["slot.SL2"] == 10
 
     hgrh, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA V", **common)
-    assert hgrh["slot.SL1"] == 5 and hgrh["slot.SL3"] == 5  # all supply SL = 5
-    assert hgrh["slot.SL2"] == 12                           # return SL = 12
+    # Terra V HGRH SL callouts split (John 2026-07-03): supply reheat stub SL1 = 5 (its own
+    # redacted template callout), return clearance SL2 = 12 (R-046 return_sl). The old
+    # force-SL2=5 workaround is gone.
+    assert hgrh["slot.SL1"] == 5 and hgrh["slot.SL3"] == 5    # supply SL = 5 (odd)
+    assert hgrh["slot.SL2"] == 12 and hgrh["slot.SL4"] == 12  # return SL = 12 (even)
+    # CD restored to the rows-based base depth (R-070 HIGH), not the R-073 multi value;
+    # rows=4 -> ROUNDUP(4*0.866 to 1/8)+2 = 5.5. This also makes S = CD - Rn use the real CD.
+    assert hgrh["slot.CD"] == 5.5
+    assert hgrh["slot.S1"] == round(5.5 - hgrh["slot.R2"], 4)  # S = CD - Rn
+
+    # Scope guard: non-Terra-V HGRH keeps the return_sl clearance on the drawn even slot.
+    hgrh_h, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA H", **common)
+    assert hgrh_h["slot.SL2"] == 10                         # Terra H HGRH still draws return_sl
+    assert hgrh_h["slot.CD"] == 5.5                         # rows-based base depth (R-070)
 
     cwc, _ = build_drawing_slots(coil_type="CWC", product_type="TERRA V", **common)
     assert cwc["slot.I1"] == 2.75                           # supply I/O = 2.75
     assert cwc["slot.O2"] == round(cwc["slot.CH"] - 2.75, 4)  # return I/O = CH - 2.75
     assert cwc["slot.SL2"] == 12
+
+
+def test_hgrh_return_spacing_r_resolves_when_conn_only_suction_side() -> None:
+    """Regression (3025 Bauducco RHHGRC-2, Terra V 012, John 2026-07-02): the frozen
+    template path (pdf_to_template_drawing) passes the read connection size ONLY as
+    `suction_conn_size`, never `conn_size`. HGRH R (R-052) consumes `conn_size`, so the
+    slot layer must route suction->conn for HGRH. Terra V exposed the bug because its R
+    safety net is off (`and not is_terra_v`); Terra H was masked by that net. For a single
+    connection R reduces to the connection size as-is (John's expectation)."""
+    tv, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA V", unit_size="012",
+        circuits=1, suction_conn_size=0.5,  # conn_size deliberately omitted (template shape)
+    )
+    assert tv["slot.R2"] == 0.5            # was blank before the conn_size routing fallback
+
+    # Terra H HGRH: same call, same value — via the now-primary R-052 path, previously the
+    # safety net. Guards against a behavior change on the variants that already worked.
+    th, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA H", unit_size="012",
+        circuits=1, suction_conn_size=0.5,
+    )
+    assert th["slot.R2"] == 0.5
+
+
+def test_hgrh_cd_stays_rows_based_when_conn_present() -> None:
+    """Regression (3025 Bauducco, John 2026-07-03): routing conn_size for HGRH R must NOT
+    blank slot.CD. CD is the rows-based base depth (R-070 HIGH) for all HGRH, single or
+    multi-circuit; the R-073 multi formula (a non-physical 1.0"/1.25" for one circuit) must
+    never replace it. Template call shape: connection size supplied ONLY as suction_conn_size."""
+    # rows=2 -> ROUNDUP(2*0.866=1.732 to 1/8)=1.75, +2 = 3.75 (the value that went blank).
+    tv, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA V", unit_size="012",
+        rows=2, circuits=1, suction_conn_size=0.5,
+    )
+    assert tv["slot.CD"] == 3.75          # was blank when R-073 (MEDIUM) hijacked casing_depth
+    assert tv["slot.R2"] == 0.5
+    assert tv["slot.SL1"] == 5 and tv["slot.SL2"] == 12
+    assert tv["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn uses the real (rows-based) CD

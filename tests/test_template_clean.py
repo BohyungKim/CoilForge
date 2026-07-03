@@ -110,3 +110,26 @@ def test_clean_normalizes_ez_residue_labels_keeps_values() -> None:
     # the bare/EZ originals are gone.
     for stale in (">2.31 I<", ">1.63 S<", ">2.31 O<", ">1.63 R<", ">3.50 HD1<", ">8.00 SL1<"):
         assert stale not in out
+
+
+def _sl_svg(*callouts: str) -> str:
+    body = "".join(
+        f'<text fill="#1c0a80" transform="matrix(1 0 -0 1 0 612)">'
+        f'<tspan x="1" y="-2">{c}</tspan></text>'
+        for c in callouts
+    )
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="792" height="612" '
+        f'viewBox="0 0 792 612">{body}</svg>'
+    )
+
+
+def test_clean_keeps_hgrh_supply_sl1_but_normalizes_cwc_sl1() -> None:
+    """John 2026-07-03: the redacted HGRH supply SL1 callout must stay SL1 (its own reheat
+    stub), so the two HGRH SL callouts render distinctly — 5 SL1 (supply) and 12 SL2 (return).
+    CWC's lone SL1 residue still normalizes to the return SL2 (unchanged)."""
+    hgrh = _clean_template_svg(_sl_svg("5 SL1", "12 SL2"), "HGRH")
+    assert ">5 SL1</tspan>" in hgrh and ">12 SL2</tspan>" in hgrh
+    # CWC keeps the residue->return normalization; default (no category) too.
+    assert ">8.00 SL2</tspan>" in _clean_template_svg(_sl_svg("8.00 SL1"), "CWC")
+    assert ">8.00 SL2</tspan>" in _clean_template_svg(_sl_svg("8.00 SL1"))

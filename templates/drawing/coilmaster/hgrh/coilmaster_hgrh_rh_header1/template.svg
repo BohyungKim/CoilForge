@@ -336,7 +336,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M386.04 472.5H386.14V472.6H386.04Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M423.68 472.55H384.93"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M403.07 445.88H384.93"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="9.051859" font-family="Arial"><tspan y="-474.1675" x="368.78523 373.81806 376.3254 381.35826 386.39109 388.89845 394.92698 399.9598">4.13 SL1</tspan></text>
+<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="9.051859" font-family="Arial"><tspan x="368.78523" y="-474.1675">{{slot.SL1}} SL1</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" d="M386.09 445.88 385.55 449.11H386.63L386.09 445.88" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M386.09 472.55 386.63 469.32H385.55L386.09 472.55" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M386.09 449.11V469.2"/>

@@ -122,6 +122,11 @@ slots (`slot_population.py`), and mirrors LH↔RH (`mirror.py`). Each template i
 seeded from a provided PDF or mirrored from a seeded pair — both are review-aid only.
 Schemas for the catalog / slot map live in `schemas/*.schema.json`.
 
+**Redaction gotcha:** `populate_template_slots` substitutes `{{slot.X}}` ONLY for slot_ids
+listed in that template's `slot_map.json` `slots[]` — not every `{{slot.*}}` in the SVG. So
+redacting a hardcoded as-built dim to a NEW slot means adding it to BOTH `template.svg` AND
+`slot_map.json`, or the placeholder renders literally (`{{slot.SL1}}`).
+
 **Mechanical fit / stability** (`compatibility/mechanical_fit.py`) — a review-aid check
 (NOT in the drawing path) mirroring the Coil Checklist WIDTH/HEIGHT/INSTALL fit.
 `evaluate_coil_fit` (FL/OAL vs casing width, FH/CH vs casing height) and

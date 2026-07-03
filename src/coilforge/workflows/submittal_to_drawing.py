@@ -327,12 +327,13 @@ _CALLOUT_RE = re.compile(
 )
 
 
-def _clean_callout(m: "re.Match[str]") -> str:
+def _clean_callout(m: "re.Match[str]", coil_category: str | None = None) -> str:
     head, _sign, attrs, gt, value, label, close = m.groups()
     # Direct Coil label authority (John 2026-06-26): rewrite the baked EZ label to its
     # Direct Coil form (e.g. "I" -> "I1", "HD1" -> "HD2"); identity for already-canonical
     # labels. Labels only — the value is never touched (EZ numbers stay until re-seed).
-    label = direct_coil_label(label)
+    # coil_category disambiguates SL1 (HGRH keeps its slot-driven supply SL1; CWC -> SL2).
+    label = direct_coil_label(label, coil_category)
     if value.strip() == "REVIEW REQUIRED":
         # No value yet — show just the label so the dimension is still identified.
         return f"{head}{attrs}{gt}{label}{close}"
@@ -340,13 +341,14 @@ def _clean_callout(m: "re.Match[str]") -> str:
     return f"{head}{attrs}{gt}{value} {label}{close}"
 
 
-def apply_label_authority(svg: str) -> str:
+def apply_label_authority(svg: str, coil_category: str | None = None) -> str:
     """Rewrite blue dim-callout labels to their Direct Coil form (labels only; values and
     positions untouched). Shared by ``_clean_template_svg`` (the live drawing) and the
-    preview generator so both stay in sync. Pure string transform."""
+    preview generator so both stay in sync. Pure string transform. ``coil_category``
+    (DX/HGRH/CWC/HWC) lets the authority keep HGRH's slot-driven SL1 as SL1."""
     if not svg:
         return svg
-    return _CALLOUT_RE.sub(_clean_callout, svg)
+    return _CALLOUT_RE.sub(lambda m: _clean_callout(m, coil_category), svg)
 
 # Crop the CoilMaster sheet down to the geometry+dimensions section only (John's
 # target view). Derived from the UNION of the visible-geometry bounding box across
@@ -405,7 +407,7 @@ def _strip_intruding_chrome(svg: str) -> str:
     )
 
 
-def _clean_template_svg(svg: str) -> str:
+def _clean_template_svg(svg: str, coil_category: str | None = None) -> str:
     """Clean a populated CoilMaster template SVG to the direct-coil ordering view John
     wants (image #7):
 
@@ -424,7 +426,7 @@ def _clean_template_svg(svg: str) -> str:
     """
     if not svg:
         return svg
-    svg = apply_label_authority(svg)
+    svg = apply_label_authority(svg, coil_category)
     # Drop every blank-slot "REVIEW REQUIRED" placeholder from the review-aid drawing.
     # All such text is slot-placeholder output (the source template carries no literal
     # watermark); the export gate (export_allowed=False) is enforced server-side.
@@ -561,7 +563,9 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     ).model_dump()
     _gate_unregistered_product_line(result)
     if result.get("svg"):
-        result["svg"] = _clean_template_svg(result["svg"])
+        result["svg"] = _clean_template_svg(
+            result["svg"], (result.get("extracted") or {}).get("coil_category")
+        )
     _attach_parametric_schematic(result)
     return result
 
@@ -842,7 +846,10 @@ def _run_candidate_to_drawing_payload(
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
-        template_drawing["svg"] = _clean_template_svg(template_drawing["svg"])
+        template_drawing["svg"] = _clean_template_svg(
+            template_drawing["svg"],
+            (template_drawing.get("extracted") or {}).get("coil_category"),
+        )
     if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):
         _attach_parametric_schematic(template_drawing)
 

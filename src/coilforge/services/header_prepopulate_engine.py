@@ -614,28 +614,20 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                 ),
             )
         else:  # HGRH
-            if request.circuits is not None and request.conn_size is not None:
-                d = request.conn_size
-                c = request.circuits
-                multi = (c + 1) * d + (c - 1) * 1.5
-                place(
-                    "casing_depth",
-                    FieldResult(
-                        value=multi,
-                        confidence=Confidence.MEDIUM,
-                        evidence_refs=index["R-073"]["evidence_refs"],
-                        review_required=True,
-                    ),
-                )
-            else:
-                place(
-                    "casing_depth",
-                    FieldResult(
-                        value=base,
-                        confidence=Confidence.HIGH,
-                        evidence_refs=index["R-070"]["evidence_refs"],
-                    ),
-                )
+            # Casing depth is the rows-based base depth (R-070, HIGH) for ALL HGRH, single
+            # or multi-circuit (John 2026-07-03). The R-073 multi-circuit formula
+            # ((c+1)*D+(c-1)*1.5) is NOT a physical casing depth (e.g. 1.0"/1.25" for a
+            # single circuit) and must never replace R-070: doing so flipped casing_depth to
+            # MEDIUM once conn_size was routed, blanking slot.CD and corrupting Terra V's
+            # S = CD - Rn. R-073 stays a YAML data rule but is no longer emitted for drawing.
+            place(
+                "casing_depth",
+                FieldResult(
+                    value=base,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=index["R-070"]["evidence_refs"],
+                ),
+            )
     else:  # CWC / HWC
         if request.rows is None:
             add_missing(["rows"])

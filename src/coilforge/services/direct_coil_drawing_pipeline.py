@@ -236,6 +236,17 @@ def build_drawing_slots(
     2.75) and stop the generic R-022 safety net from leaking into Terra V. If omitted,
     ``build_header_request`` still derives it from a "TERRA V" product label.
     """
+    # HGRH return spacing R (R-052) consumes `conn_size`. The frozen template path
+    # (pdf_to_template_drawing) passes the read connection size only as `suction_conn_size`;
+    # route it to `conn_size` for HGRH so R resolves. No-op for the Direct-Coil path, which
+    # already sets conn_size. Unblocks Terra V HGRH R specifically — its slot-layer R safety
+    # net is off (`and not is_terra_v`), unlike Terra H/Nova/VH which the net already rescued.
+    if (
+        str(coil_type or "").strip().upper() == "HGRH"
+        and conn_size is None
+        and suction_conn_size is not None
+    ):
+        conn_size = suction_conn_size
     request = build_header_request(
         coil_type=coil_type, product_type=product_type, unit_size=unit_size,
         rows=rows, feeds=feeds, circuits=circuits, suction_conn_size=suction_conn_size,
@@ -352,6 +363,10 @@ def build_drawing_slots(
             if hdr_hd is not None:
                 slots[f"slot.HD{return_id}"] = hdr_hd
             if hdr_sl is not None:
+                # Even/return slot = return_sl clearance (Terra V HGRH: 12 via R-046). The
+                # supply reheat stub (SL{odd}=5) now has its OWN redacted SL1 callout in the
+                # HGRH header1 template, so the old force-SL2=5 workaround (John 2026-07-02)
+                # is removed — the return callout shows the true return_sl again (2026-07-03).
                 slots[f"slot.SL{return_id}"] = hdr_sl
             if isinstance(return_spacing, list) and k <= len(return_spacing):
                 slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)

@@ -31,6 +31,19 @@ def test_ez_residue_normalizes_to_parity_indexed_direct_coil_labels() -> None:
     assert direct_coil_label("SL1") == "SL2"
 
 
+def test_sl1_label_is_coil_category_aware() -> None:
+    """John 2026-07-03: HGRH has a real slot-driven SL1 (the supply reheat stub), so its
+    SL1 stays SL1. CWC/HWC (and unknown callers) keep the residue->return normalization
+    SL1->SL2. Only SL1 is category-sensitive; other labels are unaffected."""
+    assert direct_coil_label("SL1", "HGRH") == "SL1"
+    assert direct_coil_label("SL1", "CWC") == "SL2"
+    assert direct_coil_label("SL1", "HWC") == "SL2"
+    assert direct_coil_label("SL1") == "SL2"          # default (unknown category) unchanged
+    # Category does not leak into other labels.
+    assert direct_coil_label("I", "HGRH") == "I1"
+    assert direct_coil_label("SL2", "HGRH") == "SL2"
+
+
 def test_already_canonical_labels_are_identity() -> None:
     for label in ("BF", "CD", "TF", "RF", "HF", "CH", "OAL", "RB", "X",
                   "HD2", "HDx1", "SL2", "SL5", "SL7", "I1", "I3", "O4", "R6", "S1", "FH", "FL"):

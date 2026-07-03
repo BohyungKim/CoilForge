@@ -70,13 +70,18 @@ def is_canonical_label(label: str) -> bool:
     return label_base(label) in CANONICAL_LABEL_BASES
 
 
-def direct_coil_label(label: str) -> str:
+def direct_coil_label(label: str, coil_category: str | None = None) -> str:
     """Map a baked drawing-callout label to its Direct Coil label.
 
     * EZ residue (``I``/``S``/``O``/``R``/``HD1``/``SL1``) -> parity-indexed Direct Coil form.
     * Already-canonical labels (``BF``, ``CD``, ``HD2``, ``SL5``, ``I3``, ``X`` …) -> unchanged.
     * Unknown labels -> unchanged (never blank, never raises).
 
-    Pure function. Labels only — values are never touched here.
+    ``coil_category`` disambiguates the one label whose parity depends on the coil: HGRH has a
+    real slot-driven ``SL1`` (the supply reheat stub), so its ``SL1`` stays ``SL1``. For CWC/HWC
+    (and unknown callers) the lone ``SL1`` residue is the RETURN SL and normalises to ``SL2``
+    (John 2026-07-03). Pure function. Labels only — values are never touched here.
     """
+    if label == "SL1" and str(coil_category or "").upper() == "HGRH":
+        return "SL1"
     return _EZ_NORMALIZE.get(label, label)
