@@ -213,10 +213,13 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
 - **Terra H and Terra V are distinct product types** (not one Terra family).
   **Terra H C** is a sub-variant *under* Terra H.
 - Drawing **values** are always selected by product type (the YAML engine).
-- Template **selection** is product-family-agnostic **except Ventum+**, which forks its
-  own template set. *Target:* a full parallel Ventum+ bucket matrix selected via a catalog
-  `product_family` discriminator, replacing the current downstream
-  `_UNREGISTERED_PRODUCT_LINES` hard-block in `workflows/submittal_to_drawing.py`.
+- Template **selection** is product-family-agnostic for **all** lines — Nova, Ventum H,
+  Terra, **and Ventum+** reuse the shared CoilMaster buckets with their own engine-computed
+  dimensions. (Ventum+ was un-blocked 2026-07-03 after its reference selection PDFs were
+  confirmed to be CoilMaster EZ-Coil drawings in the same category/hand/header format the
+  templates were seeded from, so `_UNREGISTERED_PRODUCT_LINES` in
+  `workflows/submittal_to_drawing.py` is now empty; the earlier dedicated-Ventum+-matrix
+  target was retired as unnecessary.)
   That same submittal gate (`_gate_unregistered_product_line`) also **omits Terra V
   CWC/HWC** drawings (variant `TERRA_V` + CWC/HWC) — no seeded Terra V water reference,
   so the shared water template is withheld (not borrowed); Terra V DX/HGRH and Terra H
@@ -277,8 +280,8 @@ flowchart TD
     %% Two parallel routings (the architectural seam — kept separate)
     PT --> TPL[Template Selection<br/>= category + hand + header count]
     PT --> PARAM[Drawing Parameters<br/>= product type -- YAML engine]
-    %% Ventum+ forks its own template set; Nova/VH/Terra share
-    VP -.->|own template set| TPL
+    %% All lines (Nova/VH/Terra/Ventum+) share the product-agnostic templates
+    VP -.->|shared templates| TPL
 
     %% Header count 1-4 first-class; 4HD buildable once a real PDF is seeded
     TPL --> HC{Header Count}
@@ -286,8 +289,8 @@ flowchart TD
     HC -->|HWC / CWC| HD1[1HD only]
     HD14 -.->|status when no seed yet| CHECK
 
-    %% Every unseeded category/hand/header/Ventum+ combo is tracked
-    TPL -.-> CHECK[Coverage Checklist<br/>unseeded combos incl. 4HD, RH/LH pairs, Ventum+]
+    %% Every unseeded category/hand/header combo is tracked
+    TPL -.-> CHECK[Coverage Checklist<br/>unseeded combos incl. 4HD, RH/LH pairs]
 
     %% 'Later step' — already implemented
     SHARED -.-> CASING[Later Step: Split Nova vs Ventum H<br/>for Casing Size Population<br/>ALREADY in R-074 / R-075 / R-076]
@@ -302,7 +305,7 @@ Until then, the code differs as follows — do not assume the target is implemen
 | --- | --- | --- |
 | Product family enum | `ProductFamily {NOVA, TERRA, VENTUM_H, VENTUM_PLUS}` + `TerraVariant {TERRA_H, TERRA_H_C, TERRA_V}` (`schemas/header_prepopulate.py`) | Split `TERRA` → `TERRA_H` + `TERRA_V`; demote `TERRA_H_C` to a sub-variant of Terra H |
 | 4HD buckets | `placeholder_blocked` (permanent dead-end) in `template_population/catalog.py` | `needs_pair` — buildable once a real 4HD reference PDF is seeded |
-| Ventum+ | Downstream hard-block via `_UNREGISTERED_PRODUCT_LINES` in `workflows/submittal_to_drawing.py` | Catalog `product_family` discriminator + full parallel Ventum+ bucket matrix |
+| Ventum+ | ✅ Resolved 2026-07-03 — draws via the shared product-agnostic templates (`_UNREGISTERED_PRODUCT_LINES` now empty) | Dedicated `product_family` matrix retired as unnecessary; Ventum+ reuses shared templates like every other line |
 | Coverage checklist | Hand-authored `docs/coverage_dashboard.html` snapshot | Generated from `template_population/catalog.list_template_entries()` |
 
 ## Conventions

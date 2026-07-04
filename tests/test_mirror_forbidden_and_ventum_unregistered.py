@@ -1,12 +1,13 @@
-"""Mirror generation is retired and Ventum Plus is tracked separately.
+"""Mirror generation is retired; Ventum Plus draws via the shared templates.
 
 - Mirroring never activates a template (it smeared dimension callouts). Each hand is
   seeded from its own real provided PDF. As of 2026-06-21 the eight previously
   mirror-derived hands were seeded from real per-hand drawings, so no active template
   is mirror-derived and every bucket is an active review aid.
-- Ventum Plus (DX/HGRH/CWC/HWC) still has no seeded template; the workflow forces its
-  template result to "not registered" rather than borrowing another line's artwork,
-  even though the drawing-parameter rule engine covers Ventum Plus dimensions.
+- Ventum Plus (DX/HGRH/CWC/HWC) draws through the existing product-agnostic CoilMaster
+  templates, like Nova/Terra/Ventum H (confirmed 2026-07-03: its reference selection
+  PDFs are CoilMaster EZ-Coil drawings in the same format the templates were seeded
+  from; the unit only sets casing dims, which the engine computes). Review aid only.
 """
 
 from __future__ import annotations
@@ -79,18 +80,28 @@ def test_former_mirror_hand_now_renders() -> None:
     assert out["export_allowed"] is False
 
 
-def test_ventum_plus_is_unregistered_across_categories() -> None:
-    for category in ("DX", "HGRH", "CWC", "HWC"):
+def test_ventum_plus_renders_across_categories() -> None:
+    # Ventum Plus draws through the shared product-agnostic CoilMaster templates
+    # (confirmed 2026-07-03). It is no longer forced to "not registered"; it renders
+    # exactly like Nova/Terra with its own engine-computed dimensions. Review aid only.
+    for category, template_id in (
+        ("DX", "coilmaster_dx_lh_header1"),
+        ("HGRH", "coilmaster_hgrh_lh_header1"),
+        ("CWC", "coilmaster_cwc_lh"),
+        ("HWC", "coilmaster_hwc_lh"),
+    ):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
                  product_type="VENTUM_PLUS", unit_size="V20", rows=4,
                  finned_height=12, finned_length=15, suction_conn_size=0.625)
         )
-        assert out["template_found"] is False, category
-        assert out["generation_allowed"] is False, category
-        assert not out["svg"], category
-        assert out["unregistered_product_line"] == "VENTUM_PLUS", category
-        assert "Ventum Plus" in out["not_registered_reason"], category
+        assert out["template_id"] == template_id, category
+        assert out["template_found"] is True, category
+        assert out["generation_allowed"] is True, category
+        assert out["svg"], category
+        assert out.get("unregistered_product_line") is None, category
+        # Still a review aid only — export stays off.
+        assert out["export_allowed"] is False, category
 
 
 def test_non_ventum_line_is_not_gated() -> None:

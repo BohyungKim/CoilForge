@@ -468,13 +468,18 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
     }
 
 
-# Product lines tracked separately from the other coil selections because their
-# CoilMaster template has NOT been seeded yet (John, 2026-06-17). The drawing-
-# parameter mapping (the rule engine) DOES cover these lines, but no template
-# geometry exists for them — generating a drawing would substitute their
-# dimensions into another line's artwork. Until each is explicitly seeded, the
-# template result is forced to "not registered" rather than borrowing artwork.
-_UNREGISTERED_PRODUCT_LINES = {"VENTUM_PLUS"}
+# Product lines with no CoilMaster template of their own were tracked here and
+# forced to "not registered" rather than borrowing another line's artwork.
+# Ventum Plus was removed 2026-07-03 after John reviewed its reference selection
+# PDFs: they are CoilMaster EZ-Coil drawings in the SAME DX/HGRH/CWC/HWC format
+# the shared templates were seeded from (a CoilMaster coil drawing is identical
+# regardless of the Oxygen8 AHU it ships in — the unit only sets casing dims,
+# which the engine already computes per product+size). So — like Nova, Terra, and
+# Ventum H — Ventum Plus now draws through the existing product-agnostic templates
+# with its own engine-computed dimensions. The set is kept as the extension point
+# for any genuinely unseeded future line. (Terra V CWC/HWC stays withheld by its
+# own branch below — no seeded Terra V water reference.)
+_UNREGISTERED_PRODUCT_LINES: set[str] = set()
 
 
 def _omit_drawing(result: dict[str, Any], reason: str) -> dict[str, Any]:
@@ -492,7 +497,8 @@ def _omit_drawing(result: dict[str, Any], reason: str) -> dict[str, Any]:
 
 def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
     """Force the template result to the omitted state for combos that must not draw:
-    (1) product lines with no seeded template (Ventum Plus, any category), and
+    (1) any product line still listed in _UNREGISTERED_PRODUCT_LINES (currently empty —
+        Ventum Plus was removed 2026-07-03 and now draws via the shared templates), and
     (2) Terra V CWC/HWC (no seeded Terra V water reference — Terra V DX/HGRH still draw).
     No drawing is borrowed from another line/variant. No-op otherwise."""
     if not isinstance(result, dict):
