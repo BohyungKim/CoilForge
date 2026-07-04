@@ -1,9 +1,9 @@
 {
   "form": "CCSI Online Direct Coil — DX",
-  "version": "2026-06-28",
+  "version": "2026-07-04",
   "url_pattern": "https://coil.ccsi.ie/Coils/*",
   "framework": "jquery-server-rendered (ASP.NET MVC + Bootstrap; no virtual DOM)",
-  "_note": "Phase 0 captured live on coil.ccsi.ie/Coils/Edit (CDXC-1, 2026-06-28). CCSI's internal field ids differ from CoilForge's drawing-param labels for 8 of 13 (I→HS, S→VS, O→HR, R→VR, RF→EF, HF→FF, SL→CS, ZD→DX_ZD). Each `selectors` list tries the real CCSI id first, then falls back to CoilForge's own mirror ([data-ccsi-key='<KEY>']) so the SAME map self-tests same-origin on localhost:8011. `ccsi_readonly:true` marks fields CCSI computes itself (CD, RF, HF, CH) — the userscript skips these instead of overwriting.",
+  "_note": "Phase 0 captured live on coil.ccsi.ie/Coils/Edit (CDXC-1, 2026-06-28); Phase 2.0 added the 12 multi-header keys (I2/S2/O2/R2/HD2/ZD2, I3/S3/O3/R3/HD3/ZD3) captured live 2026-07-04 on the same editor from a 3-header DX coil (3025 Bauducco, /Coils/Edit/8182979). CCSI's internal field ids differ from CoilForge's drawing-param labels for 8 of 13 base (I→HS, S→VS, O→HR, R→VR, RF→EF, HF→FF, SL→CS, ZD→DX_ZD); multi-header ids follow a `DX_<stem><N>` pattern (I2→DX_HS2, S2→DX_VS2, O2→DX_HR2, R2→DX_VR2, HD2→DX_HD2, ZD2→DX_ZD2, …3 for header 3), all editable (not readonly). Each `selectors` list tries the real CCSI id first, then falls back to CoilForge's own mirror ([data-ccsi-key='<KEY>']) so the SAME map self-tests same-origin on localhost:8011. `ccsi_readonly:true` marks fields CCSI computes itself (RF/HF/CH observed readonly live 2026-07-04; base CD was captured readonly 2026-06-28 but showed editable in the 2026-07-04 DOM — left as-is pending confirmation, since skipping CD is the conservative direction) — the userscript skips these instead of overwriting. 4HD keys (I4…) are NOT added until captured live from a real 4-header coil (never invented).",
   "fields": {
     "CD": {
       "ccsi_label": "CD (Casing Depth)",
@@ -86,6 +86,78 @@
       "type": "number",
       "unit": "in",
       "selectors": ["#DX_ZD", "[data-ccsi-key='ZD']"]
+    },
+    "I2": {
+      "ccsi_label": "I2 (Header 2 distributor / horizontal-supply)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_HS2", "[data-ccsi-key='I2']"]
+    },
+    "S2": {
+      "ccsi_label": "S2 (Header 2 vertical-supply spacing)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_VS2", "[data-ccsi-key='S2']"]
+    },
+    "O2": {
+      "ccsi_label": "O2 (Header 2 horizontal-return offset)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_HR2", "[data-ccsi-key='O2']"]
+    },
+    "R2": {
+      "ccsi_label": "R2 (Header 2 vertical-return spacing)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_VR2", "[data-ccsi-key='R2']"]
+    },
+    "HD2": {
+      "ccsi_label": "HD2 (Header 2 depth)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_HD2", "[data-ccsi-key='HD2']"]
+    },
+    "ZD2": {
+      "ccsi_label": "ZD2 (Header 2 zone depth)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_ZD2", "[data-ccsi-key='ZD2']"]
+    },
+    "I3": {
+      "ccsi_label": "I3 (Header 3 distributor / horizontal-supply)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_HS3", "[data-ccsi-key='I3']"]
+    },
+    "S3": {
+      "ccsi_label": "S3 (Header 3 vertical-supply spacing)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_VS3", "[data-ccsi-key='S3']"]
+    },
+    "O3": {
+      "ccsi_label": "O3 (Header 3 horizontal-return offset)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_HR3", "[data-ccsi-key='O3']"]
+    },
+    "R3": {
+      "ccsi_label": "R3 (Header 3 vertical-return spacing)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_VR3", "[data-ccsi-key='R3']"]
+    },
+    "HD3": {
+      "ccsi_label": "HD3 (Header 3 depth)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_HD3", "[data-ccsi-key='HD3']"]
+    },
+    "ZD3": {
+      "ccsi_label": "ZD3 (Header 3 zone depth)",
+      "type": "number",
+      "unit": "in",
+      "selectors": ["#DX_ZD3", "[data-ccsi-key='ZD3']"]
     }
   }
 }
