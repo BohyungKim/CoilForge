@@ -155,6 +155,14 @@ Reuses the engine like `mechanical_fit` (`build_drawing_slots` + an application-
 as the "Coil Checklist Auto-Fill" section. Review aid only; missing values left blank + flagged,
 never guessed. The DO-NOT-TOUCH drawing/template path is untouched.
 
+**CCSI value push + green/red compare** (`ccsi/compare.py`, `web/ccsi/`) — pushes the resolved
+drawing params into the external CCSI Direct Coil form (Claude-in-Chrome `/ccsi-fill`; never
+auto-saves, read-only CCSI-computed fields skipped) and reads them back to compare vs CoilForge,
+colouring each field green(match)/red(mismatch) at `POST /api/ccsi-compare`. Reuses
+`checklist/compare.py::_match` (tol 0.01) as the single comparator — a divergence (e.g. CDXC-1
+R 3.317 vs 1.3125) flags red before John saves. Review aid only (`export_allowed: False`);
+multi-header keys (I2/S2…) push only when present in `parameters` AND in the field map.
+
 **Web app** — `coilforge/web_app.py` imports the Phase 2A FastAPI `app` and registers
 the `/api/*` routes (workflows, compatibility review, decision capture, review packets).
 The browser UI is vanilla JS in `web/` (`index.html` / `app.js` / `style.css`). API

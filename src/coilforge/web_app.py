@@ -215,6 +215,21 @@ async def mechanical_fit(request: dict[str, Any] = Body(default_factory=dict)):
     return mechanical_fit_report_dict(report)
 
 
+@app.post("/api/ccsi-compare")
+async def ccsi_compare(request: dict[str, Any] = Body(default_factory=dict)):
+    """Compare CoilForge drawing values vs values read back from the CCSI form.
+
+    Body: ``{fields: [{key, coilforge, ccsi}, ...]}``. Returns per-field verdicts
+    (match / mismatch / missing_one / both_missing) + a mismatch count, reusing the
+    checklist comparator's 0.01" tolerance so a wrong value is flagged before the
+    engineer saves. Review aid only (``export_allowed: False``); never writes to CCSI.
+    """
+    from coilforge.ccsi.compare import compare_ccsi_fields
+
+    payload = request or {}
+    return compare_ccsi_fields(payload.get("fields") or [])
+
+
 @app.post("/api/workflow/pdf-to-direct-draft")
 async def workflow_pdf_to_direct_draft(request: Request):
     pdf_bytes = await request.body()

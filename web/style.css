@@ -831,6 +831,48 @@ body.is-init-stage .primary-intake-panel {
   margin-top: 1px;
 }
 
+/* CCSI compare (Phase 3): green edge when the field matches the CCSI form's current
+   value, red edge + inline both-values when it diverges, so a wrong number can't slip
+   through before John saves the CCSI record. */
+.dc-control.dc-control--match {
+  border-left-color: var(--status-ready);
+  border-color: var(--ok-border, var(--status-ready));
+}
+
+.dc-control.dc-control--mismatch {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  border-left-color: var(--status-blocked);
+  color: var(--danger-text);
+}
+
+.dc-dimension-row .dc-dimension-mismatch {
+  color: var(--status-blocked);
+  font-size: 10.5px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ccsi-compare-banner {
+  border: 1px solid var(--ok-border, var(--status-ready));
+  background: var(--ok-bg, rgba(64, 197, 140, 0.08));
+  color: var(--ok-text, var(--status-ready));
+  border-radius: 8px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 4px 0 2px;
+}
+
+.ccsi-compare-banner.has-mismatch {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
 .dc-inline-controls {
   display: grid;
   gap: 3px;

@@ -85,6 +85,7 @@ const elements = {
   mechanicalFitBody: document.querySelector("#mechanical-fit-body"),
   copyCcsiPayload: document.querySelector("#copy-ccsi-payload"),
   ccsiAutofillStatus: document.querySelector("#ccsi-autofill-status"),
+  ccsiCompareBanner: document.querySelector("#ccsi-compare-banner"),
   ccsiBookmarklet: document.querySelector("#ccsi-bookmarklet"),
   ccsiBookmarkletStatus: document.querySelector("#ccsi-bookmarklet-status"),
   drawingTemplateStatus: document.querySelector("#drawing-template-status"),
@@ -1643,9 +1644,25 @@ async function setupCcsiBookmarklet() {
   }
 }
 
+// The keys to push: the 13 base params, plus any multi-header keys (I2/S2/O2/R2/
+// HD2/ZD2, I3/…) the coil actually produced AND the CCSI field map knows a selector
+// for. Degrades to the 13 base for a 1HD coil, or when the map hasn't been extended
+// with multi-header selectors yet — so it is always safe to call.
+function ccsiFillKeys(parameters, fieldMap) {
+  const keys = [...CCSI_DRAWING_PARAM_KEYS];
+  const mapFields = fieldMap.fields || {};
+  for (const key of Object.keys(parameters)) {
+    const match = /^(?:I|S|O|R|HD|ZD)(\d+)$/.exec(key);
+    if (match && Number(match[1]) >= 2 && mapFields[key] && !keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
 function buildCcsiAutofillPayload(uiState, fieldMap) {
   const parameters = uiState.drawing_parameters?.parameters || {};
-  const fields = CCSI_DRAWING_PARAM_KEYS.map((key) => {
+  const fields = ccsiFillKeys(parameters, fieldMap).map((key) => {
     const parameter = parameters[key] || {};
     const mapEntry = fieldMap.fields?.[key] || {};
     const hasValue =
@@ -1678,6 +1695,69 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
     field_map_version: fieldMap.version || "unknown",
     fields,
   };
+}
+
+// Phase 3 — CCSI safety compare. Given the CCSI form's CURRENT values (keyed by
+// drawing-param, e.g. {R:"3.317", S:"6.188", I2:"3"}), compare each against the
+// value CoilForge derived and colour the panel green (match) / red (mismatch). The
+// compare runs server-side (/api/ccsi-compare) so the checklist comparator's 0.01"
+// tolerance is the single source of truth. Review aid only — never writes to CCSI.
+// Exposed on window so the Claude-in-Chrome filler (or the Tampermonkey bridge) can
+// hand back the values it read from the form.
+async function compareCcsi(ccsiValues) {
+  const parameters = state.ui?.drawing_parameters?.parameters || {};
+  const values = ccsiValues || {};
+  const fields = Object.keys(values)
+    .filter((key) => parameters[key])
+    .map((key) => ({
+      key,
+      coilforge: parameters[key].value ?? null,
+      ccsi: values[key] === "" ? null : values[key],
+    }));
+  if (!fields.length) {
+    renderCcsiCompareBanner({ compared: 0, mismatch_count: 0 });
+    return { compared: 0, mismatch_count: 0, fields: [] };
+  }
+  const response = await fetch("/api/ccsi-compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields }),
+  });
+  const report = await response.json();
+  state.ccsiVerdicts = {};
+  for (const row of report.fields || []) {
+    state.ccsiVerdicts[row.key] = row;
+  }
+  renderDrawingParameters(state.ui);
+  renderCcsiCompareBanner(report);
+  return report;
+}
+
+function renderCcsiCompareBanner(report) {
+  const el = elements.ccsiCompareBanner;
+  if (!el) {
+    return;
+  }
+  const mismatch = (report && report.mismatch_count) || 0;
+  const compared = (report && report.compared) || 0;
+  if (!compared) {
+    el.hidden = true;
+    el.textContent = "";
+    el.classList.remove("has-mismatch");
+    return;
+  }
+  el.hidden = false;
+  el.classList.toggle("has-mismatch", mismatch > 0);
+  el.textContent =
+    mismatch > 0
+      ? `⚠ ${mismatch} of ${compared} field(s) differ from CCSI — review before saving.`
+      : `✓ all ${compared} compared field(s) match CCSI (within 0.01").`;
+}
+
+if (typeof window !== "undefined") {
+  // The read-back path (Claude-in-Chrome or the TM bridge) calls this with the CCSI
+  // form's current values to trigger the green/red compare.
+  window.coilforgeCcsiCompare = compareCcsi;
 }
 
 function renderPdfIntakeSummary(uiState) {
@@ -2352,24 +2432,43 @@ function renderParameterRow(parameter) {
           "No value — not derived from the source or the rule engine.",
       );
   const emptyControl = hasValue ? "" : " dc-control--empty";
+
+  // CCSI compare verdict (Phase 3): after "Compare vs CCSI", each field carries a
+  // verdict. Match -> green edge; mismatch -> red edge + both values inline so a
+  // divergence can't slip through before John saves the CCSI record. Review aid only.
+  const cmp = state.ccsiVerdicts && state.ccsiVerdicts[parameter.key];
+  let compareClass = "";
+  let mismatchBadge = "";
+  let compareTitle = "";
+  if (cmp && cmp.verdict === "match") {
+    compareClass = " dc-control--match";
+  } else if (cmp && cmp.verdict === "mismatch") {
+    compareClass = " dc-control--mismatch";
+    const cf = cmp.coilforge === null || cmp.coilforge === undefined ? "—" : cmp.coilforge;
+    const cc = cmp.ccsi === null || cmp.ccsi === undefined ? "—" : cmp.ccsi;
+    compareTitle = escapeHtml(`CCSI ${cc} vs CoilForge ${cf} — review before saving`);
+    mismatchBadge = `<span class="dc-dimension-mismatch">⚠ CCSI ${escapeHtml(String(cc))} &ne; CoilForge ${escapeHtml(String(cf))}</span>`;
+  }
+  // A mismatch tooltip wins over the empty-reason tooltip.
+  const titleAttr = compareTitle || reason;
   // data-drawing-param / data-unit stay present in both modes so the derive
   // round-trip (collectDrawingPreviewValues) always finds the value; `readonly`
   // locks the field outside manual mode while keeping the Direct-Coil look.
   return `
-    <label class="dc-dimension-row ${statusClass(parameter.status)}"${reason ? ` title="${reason}"` : ""}>
+    <label class="dc-dimension-row ${statusClass(parameter.status)}"${titleAttr ? ` title="${titleAttr}"` : ""}>
       <span>${escapeHtml(parameter.key)}</span>
       <input class="dc-dimension-check" type="checkbox" ${hasValue ? "checked" : ""} disabled />
       <input
-        class="dc-control ${statusClass(parameter.status)}${emptyControl}"
+        class="dc-control ${statusClass(parameter.status)}${emptyControl}${compareClass}"
         data-drawing-param="${escapeHtml(parameter.key)}"
         data-unit="${escapeHtml(parameter.unit || "in")}"
         type="number"
         step="0.01"
         value="${parameter.value ?? ""}"
-        ${reason ? `title="${reason}"` : ""}
+        ${titleAttr ? `title="${titleAttr}"` : ""}
         ${state.manualDrawingMode ? "" : "readonly"}
       />
-      ${reason ? `<span class="dc-dimension-reason">⚠ ${reason}</span>` : ""}
+      ${mismatchBadge || (reason ? `<span class="dc-dimension-reason">⚠ ${reason}</span>` : "")}
     </label>
   `;
 }
