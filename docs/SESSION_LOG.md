@@ -1,0 +1,92 @@
+# CoilForge Session Log
+
+`/checkpoint`가 쌓는 세션 인수인계 로그 (최신순). 각 항목 = 이번 세션 구현 내용 + 다음 스텝.
+제조 기록이 아니라 재개용 dev-log다.
+
+<!-- CHECKPOINTS (newest first) -->
+
+## 2026-07-04 (Toronto) · Tier 0 CCSI push + compare · base 근사 `be05fd2..bc9bbfe` + 미커밋 · claude/ccsi-autofill
+### ✅ 구현/결정된 것
+- **Tier 0 Phase 3.0 — CCSI↔CoilForge 비교 백엔드** (미커밋): `src/coilforge/ccsi/compare.py`(신규, `checklist/compare.py::_match` tol=0.01 재사용) + `POST /api/ccsi-compare`(`web_app.py`). 안전 플래그 스탬프(`review_aid_only:true`/`export_allowed:false`). 근거: `tests/test_ccsi_compare.py` 7개 통과, 전체 **736 passed**.
+- **Tier 0 Phase 2.1 — 멀티헤더 payload** (미커밋): `web/app.js`에 `ccsiFillKeys` 추가 → `buildCcsiAutofillPayload`가 `parameters`에 있고 field-map에도 있는 I2/S2/O2/R2/HD2/ZD2… 키까지 방출(1HD는 base 13로 degrade). 근거: `web/app.js` diff, node --check.
+- **Tier 0 Phase 3.2/3.3 — 초록/빨강 안전 비교 UI** (미커밋): `renderParameterRow`에 verdict 컬러(초록 match / 빨강 mismatch + ⚠뱃지), `compareCcsi`/`window.coilforgeCcsiCompare`, `#ccsi-compare-banner`, `web/style.css` 클래스. 근거: computed-style 육안 검증(빨강 엣지 rgb(224,107,107)+danger-bg, 초록 엣지 rgb(77,138,44)).
+- **결정:** 비교를 JS 포팅 대신 **백엔드 엔드포인트로** — compare.py 단일 소스, pytest 가능, CCSI DOM 문자열값도 `_norm`이 강제변환. (대화 중 확정)
+- **결정:** 전달 경로는 **Claude-in-Chrome `/ccsi-fill` 우선**(오늘 동작), Tampermonkey 역방향 브리지는 선택적 후속. (John 확인)
+- **문서↔코드 드리프트 발견(미수정):** CLAUDE.md "10 of 22 templates" · "4HD placeholder_blocked" stale(코드는 22/22 active); mechanical_fit docstring stale; `coverage_dashboard.html` stale.
+
+### ⏭️ 다음 스텝
+- [ ] **Tier 0 커밋** — 검증된 7파일(`ccsi/compare.py`·`__init__.py`, `web_app.py` 라우트, `test_ccsi_compare.py`, `web/app.js`·`index.html`·`style.css`)을 `/ship`. **진행 중:** ship 실행함(736 green), surgical 스테이징 7파일 확정, CLAUDE.md 한 줄 추가 승인 대기.
+- [ ] **Phase 2.0 라이브 셀렉터 캡처** — `coil.ccsi.ie/Coils/Edit`(3-circuit CDXC-1)에서 I2/I3/S2/S3… input id + readOnly 덤프 → `ccsi_dx_field_map.json` 확장. **필요:** 코일 편집기 URL/이동(문서 뷰에서 도달 실패), 브라우저 게이트. 값 절대 지어내지 않음.
+- [ ] **Phase 2 테스트 갱신** — `tests/test_ccsi_field_map.py`에서 "exactly 13" 바운드 제거 (2.0이 키 추가한 뒤에만).
+- [ ] **Phase 3.1 read-back 배선** — `.claude/commands/ccsi-fill.md`가 CCSI 값을 셀렉터로 읽어 `window.coilforgeCcsiCompare(...)` 호출하도록. **필요:** 2.0 완료 후.
+- [ ] **라이브 확인** — `run_server.bat` 재시작(no --reload) 후 `/api/ccsi-compare` end-to-end + CDXC-1 R 3.317 vs 1.3125 빨강 시연.
+
+### 🔎 Resume anchors
+- branch: `claude/ccsi-autofill` · HEAD: `bc9bbfef7357cf89ae5d95eb839b65edb83e7b7b` · 미커밋 Tier 0: `src/coilforge/ccsi/{__init__,compare}.py`, `tests/test_ccsi_compare.py`, `src/coilforge/web_app.py`(+15), `web/app.js`(+109), `web/index.html`(+5), `web/style.css`(+42)
+- **워킹트리 엉킴(이 세션 소관 아님, 커밋 시 제외):** `services/direct_coil_drawing_pipeline.py`(1058줄 churn), `checklist/from_workflow.py`·`mapping.py`, `rules/coil_header_rules.yaml`, `templates/.../hwc/*.svg`, 관련 test들
+- 핵심 경로: `web/ccsi/ccsi_dx_field_map.json`(13키+8 remap), `src/coilforge/checklist/compare.py`(재사용 코어), CCSI 편집기 `coil.ccsi.ie/Coils/Edit`, payload schema `coilforge.ccsi.autofill/1`
+- 관련: plan `C:\Users\JohnKim\.claude\plans\this-is-a-substantial-compressed-castle.md`
+
+## 2026-07-04 (Toronto) · investigation session (Ventum+ status) · claude/ccsi-autofill
+### ✅ 구현/결정된 것
+- (코드 변경 0건 — 순수 조사 세션, plan mode) Ventum+ 데이터 매핑 + 드로잉 생성 현재 구현 상태 조사.
+- 데이터 매핑: 완전 구현 확인. 탐지(V20–V150 토큰, coilmaster_drawing_extract.detect_product_and_size)
+  → ProductFamily.VENTUM_PLUS(schemas/header_prepopulate.py:42) → 룰엔진 전용 룰 11개+
+  (R-011 플랜지 1", R-029 dist_i=12, R-032 방향 UP, R-052/R-063b 제품 분기) → canonical record, 막힘 없음.
+- ★정정: 드로잉 생성은 "하드블록"이 아니다. 실제 코드
+  workflows/submittal_to_drawing.py:482 = `_UNREGISTERED_PRODUCT_LINES: set[str] = set()` (비어 있음).
+  Ventum+는 2026-07-03(커밋 bc9bbfe)에 un-block되어 공유 CoilMaster 템플릿으로 그려짐. 게이트는
+  남아 있으나 이제 Terra V CWC/HWC만 omit. (근거: grep + 주석 submittal_to_drawing.py:500-502)
+- 세션 중 Explore 에이전트가 stale하게 `= {"VENTUM_PLUS"}` + test_ventum_plus_is_unregistered로
+  보고 → 파일 직접 확인으로 반증. 사용자에게 전달한 초기 보고서의 "차단" 결론은 오류였고 정정 완료.
+### ⏭️ 다음 스텝
+- [ ] (선택) Ventum+ 엔드투엔드 렌더 실물 확인 — run_server.bat 재시작(--reload 없음) + V-tag
+      제출문서 재분석해 SVG가 실제로 나오는지 eyeball. (왜 남음: 코드상 un-block만 확인, 실행 검증 미완)
+- [ ] 미커밋 워킹트리 정리 — 이번 세션과 무관한 대량 변경 다수(ccsi/, checklist,
+      direct_coil_drawing_pipeline.py 1058줄, coil_header_rules.yaml 등). 다음 /ship 또는 별도 커밋으로.
+      (왜 남음: 선행/동시 세션 작업이 스테이징 안 됨)
+### 🔎 Resume anchors
+- branch: claude/ccsi-autofill · HEAD: bc9bbfef7357cf89ae5d95eb839b65edb83e7b7b · 미커밋: 대량(위 참조)
+- 핵심 경로: src/coilforge/workflows/submittal_to_drawing.py (게이트 :482),
+  services/header_prepopulate_engine.py (R-052/R-063b 분기), rules/coil_header_rules.yaml (R-074/R-076),
+  template_population/catalog.py (공유 버킷 — product_family 디스크리미네이터 없음)
+- 관련: CLAUDE.md "Current code state vs confirmed target" 표 · plan 파일
+  C:\Users\JohnKim\.claude\plans\ventum-data-mapping-recursive-curry.md (미작성 상태로 남음)
+
+## 2026-07-04 (Toronto) · first checkpoint (no prior base) · claude/ccsi-autofill
+### ✅ 구현/결정된 것
+- CDXC-3 "needs coil type + product line + unit size to evaluate fit" 원인 규명 + 수정.
+  근본원인: cover schedule가 2페이지로 넘어갈 때 continuation 행을 text-line 파서로만
+  읽어 `model` 컬럼을 버려서 `TV_B_024`가 detect_product_and_size에 도달 못함 →
+  product_type/unit_size=None → R-074 casing 조회 불가 → fit note. (근거: 실 PDF 진단
+  로그 pg2 model='' , detect=(None,None))
+- 수정: `_with_continuation_cover_rows`를 table-first로 변경 — continuation 페이지에도
+  `_detect_cover_page_from_tables`(header-less positional fallback `_find_cover_coil_table`,
+  전 컬럼+model 읽음) 적용, table 없을 때만 text 파서로 폴백. break-guard + (page,row,tag)
+  dedup + review_note 보존. (근거: commit 0db7ee3, src/coilforge/submittal/pdf_intake.py)
+- 회귀 테스트 추가: 합성 2페이지 cover(_TextPage, 고객데이터 없음)로 continuation 행
+  model=='TV_B_024' → ('TERRA V','024') 검증. 전체 스위트 726 passed. (근거: 0db7ee3,
+  tests/test_phase2e_pdf_coil_intake.py)
+- CLAUDE.md에 continuation-page table-first gotcha 문서화. (근거: 0db7ee3)
+- 실 PDF 재진단: 5개 coil 전부 해석 — CDXC-3 → DX / TERRA V / 024. positional 매핑은
+  MEDIUM(review-required) 유지, confidence 부풀림 없음.
+- /defer-task로 2026-07-04 태스크 생성(Work + Daily 캘린더, URL 상호참조). Notion만 변경,
+  로컬 파일 변경 없음.
+### ⏭️ 다음 스텝
+- [ ] 브라우저 eyeball 검증: run_server.bat 재시작(--reload 없음) + PDF 재분석 후 CDXC-3
+      fit 카드가 DX/TERRA/024 + width/height verdict로 뜨는지 확인 (아직 코드-레벨만 검증)
+- [ ] John의 HWC/CWC signal→application 매핑 확보 (값 없이는 아래 인코딩 불가)
+- [ ] mechanical_fit.py에 HWC application 유도 인코딩 (위 매핑 필요)
+- [ ] partner 존재 시 drain-pan 자동 활성화 — refreshMechanicalFit의 하드코딩
+      installed_on_drain_pan:true 제거 (설계 결정 필요)
+- [ ] Terra drain_pan_option D1/D2/D3 출처 결정 (John 확인 필요)
+- [ ] 멀티코일 검증 테스트 추가 (case_006/case_003)
+- [ ] manual-flow polish: finned-height/length 편집 시 fit 재실행
+### 🔎 Resume anchors
+- branch: claude/ccsi-autofill · HEAD(내 커밋): 0db7ee3 · 미커밋: 없음(내 것) — 워킹트리
+  변경은 전부 동시 세션 소유
+- 주의: 현재 실제 HEAD=bc9bbfe (동시 세션이 0db7ee3 위에 4커밋 스택). 내 작업 경계는 0db7ee3.
+- 핵심 경로: src/coilforge/submittal/pdf_intake.py::_with_continuation_cover_rows,
+  tests/test_phase2e_pdf_coil_intake.py, compatibility/mechanical_fit.py:454
+- 관련: plan c-users-johnkim-desktop-coil-checklist-jaunty-bunny.md · defer-task Notion
+  2026-07-04 "CoilForge — verify continuation-page fix + mechanical-fit follow-ups"
