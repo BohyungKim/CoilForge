@@ -1758,6 +1758,20 @@ if (typeof window !== "undefined") {
   // The read-back path (Claude-in-Chrome or the TM bridge) calls this with the CCSI
   // form's current values to trigger the green/red compare.
   window.coilforgeCcsiCompare = compareCcsi;
+  // Multi-coil sync (Tier 1 · /ccsi-sync-all): app.js is a module, so `state` and
+  // selectPdfCoilPage aren't reachable from an injected script. Expose two thin,
+  // read-only-ish entrypoints so the orchestration can list the project's coils and
+  // switch the active one by index without reaching into module scope.
+  window.coilforgeCoils = () =>
+    (state.pdfCoilPages || []).map((page, index) => ({
+      index,
+      tag: page.tag || null,
+      category: page.coil_category || null,
+    }));
+  window.coilforgeSelectCoil = (index) => {
+    selectPdfCoilPage(index);
+    return Boolean(state.ui?.drawing_parameters?.parameters);
+  };
 }
 
 function renderPdfIntakeSummary(uiState) {
