@@ -5,6 +5,27 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-07-04 (Toronto) · Tier 0 CLOSED (Phase 2.0 + 3.1, live-verified) · base `bc9bbfe..11d1c7b` · claude/ccsi-autofill
+### ✅ 구현/결정된 것
+- **Tier 0 전부 커밋·푸시 완료 — CCSI 양방향 통합 3겹(mirror→push→compare) 완성.** 커밋 4개: `7a41933`(3.0 백엔드+2.1 payload+3.2/3.3 UI), `f6c1a8a`(session-log), `f374fc3`(2.0 셀렉터), `11d1c7b`(3.1 read-back 명령).
+- **Phase 2.0 — 멀티헤더 셀렉터 라이브 캡처** (`f374fc3`): 실제 CCSI 편집기(`coil.ccsi.ie/Coils/Edit/8182979`, 3-header DX 코일 3025 Bauducco)에서 12개 id 덤프 → `ccsi_dx_field_map.json` v`2026-07-04`(25키). 패턴 **`DX_<stem><N>`**(I2→`#DX_HS2`, S2→`#DX_VS2`…), 전부 편집가능. 값 창작 0. `test_ccsi_field_map.py` exact-13 완화 + 고유-id 검증. 근거: **737 passed**.
+- **Phase 2.1b** (`f374fc3`): userscript·`/ccsi-fill` 스니펫 둘 다 이미 `Object.keys(map.fields)` 동적 → **코드 무변경**, stale "13" 문구만 정정.
+- **Phase 3.1 — `/ccsi-compare` read-back 명령** (`11d1c7b`): CCSI 값을 map 셀렉터로 읽어 `window.coilforgeCcsiCompare()` 호출 → 패널 초록/빨강. CCSI가 localhost에 cross-origin이라 selector를 CCSI-탭 JS에 embed. **라이브 검증: 25/25 값 읽힘(not-found 0), entrypoint 실행됨.**
+- **실데이터 안전망 실증:** 3025 CDXC-1을 서버사이드 분석(`/api/workflow/pdf-to-drawing`, 84p/126s) → CoilForge 계산값 vs CCSI 라이브값 25필드 대조 = **22 match / 3 mismatch(R 계열 return-spacing)**. tolerance(0.01) 정상.
+- **결정(John):** R 계열 불일치는 **무시** — 최종 quote는 CoilForge가 그린 값으로 요청되므로 CCSI R 차이는 이 워크플로우를 막지 않음. (안전망은 정상 작동, 발견은 내려둠.)
+- **부수 관측(미변경):** 라이브 DOM에서 base `CD`가 편집가능(기존 map은 readonly 표기) — base-13 사안이라 손 안 대고 플래그만.
+
+### ⏭️ 다음 스텝
+- [ ] **Tier 0 이후 로드맵 상위 티어 착수** — 파라메트릭 드로잉 엔진 백엔드(**DXF** via ezdxf 1:1, **PDF** 제출용 title-block/scale), 커버리지 대시보드 생성기(현재 hand-authored `docs/coverage_dashboard.html`). (왜 남음: Tier 0가 CCSI 스레드였고, 제품 최종형은 3-backend 드로잉 엔진)
+- [ ] **(선택) 브라우저 내 초록/빨강 실사용 확인** — John이 코일 드래그(업로드 캡 없음) 후 `/ccsi-compare` → 패널 색 eyeball. (오늘은 데모 코일 state로 entrypoint만 확인, 패널은 `is-init-stage`라 숨김)
+- [ ] **(선택) base CD readonly 정정** — 라이브에서 편집가능 관측; John 확인 후 `ccsi_dx_field_map.json`의 `CD.ccsi_readonly` 조정 여부 결정.
+- [ ] **(선택) 4HD 셀렉터** — 실제 4-header DX 코일 열면 `DX_HS4…` 캡처(패턴상 예측되나 창작 금지).
+
+### 🔎 Resume anchors
+- branch: `claude/ccsi-autofill` · HEAD: `11d1c7bf6309c5481d7b224918f43a47abce84dc` · 미커밋: 없음(내 Tier 0) — 워킹트리 21개 변경은 전부 동시세션 소유(`direct_coil_drawing_pipeline.py`, checklist, YAML, HWC 템플릿 등)
+- 핵심 경로: `web/ccsi/ccsi_dx_field_map.json`(25키), `src/coilforge/ccsi/compare.py`+`/api/ccsi-compare`, `web/app.js`(`compareCcsi`/`ccsiFillKeys`), `.claude/commands/{ccsi-fill,ccsi-compare}.md`, CCSI 편집기 `coil.ccsi.ie/Coils/Edit`
+- 관련: plan `C:\Users\JohnKim\.claude\plans\this-is-a-substantial-compressed-castle.md`(STATUS 섹션이 shipped/remaining 반영) · 서버 `:8011` 실행 중
+
 ## 2026-07-04 (Toronto) · Tier 0 CCSI push + compare · base 근사 `be05fd2..bc9bbfe` + 미커밋 · claude/ccsi-autofill
 ### ✅ 구현/결정된 것
 - **Tier 0 Phase 3.0 — CCSI↔CoilForge 비교 백엔드** (미커밋): `src/coilforge/ccsi/compare.py`(신규, `checklist/compare.py::_match` tol=0.01 재사용) + `POST /api/ccsi-compare`(`web_app.py`). 안전 플래그 스탬프(`review_aid_only:true`/`export_allowed:false`). 근거: `tests/test_ccsi_compare.py` 7개 통과, 전체 **736 passed**.
