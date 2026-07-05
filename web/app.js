@@ -3389,7 +3389,37 @@ async function buildQuotePackage() {
         : "");
   }
   downloadBase64Pdf(pkg.pdf_base64, quotePackageExportName());
+  // T3: the revised PDF is now downloaded — offer a pre-filled email draft. Prepare
+  // only: mailto opens the user's mail client with To/Subject/Body ready; it never
+  // sends and can't carry the attachment, so John attaches the downloaded file himself.
+  const projectName =
+    state.ui?.project?.project_name ||
+    quotePackageExportName().replace(/_Revised\.pdf$/i, "");
+  state.lastQuotePackage = { projectName, fileName: quotePackageExportName() };
+  const emailBtn = document.querySelector("#prepare-quote-email");
+  if (emailBtn) emailBtn.hidden = false;
 }
+
+// T3.3 email prep — build a mailto draft from the built package's project + filename.
+// Review aid / prepare-only: opens the draft, never sends; the PDF is attached by John.
+function prepareQuoteEmail() {
+  const ctx = state.lastQuotePackage;
+  if (!ctx) return;
+  const subject = `Revised Quote — ${ctx.projectName}`;
+  const body = [
+    "Hi,",
+    "",
+    `Please find attached the revised quote (${ctx.fileName}) for ${ctx.projectName}.`,
+    "The coil drawings have been updated per our review.",
+    "",
+    "Best regards,",
+  ].join("\r\n");
+  // mailto can't carry an attachment — John attaches the downloaded PDF himself.
+  window.location.href =
+    `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+document.querySelector("#prepare-quote-email")?.addEventListener("click", prepareQuoteEmail);
 
 // NOTE: the "Verify Direct Coil entry" panel was unmounted pending completion of
 // the read-and-alert feature; it will be re-added (correctly placed) in a later
