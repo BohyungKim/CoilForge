@@ -66,6 +66,10 @@ Hard rules:
    and `missing_one` fields need no callout beyond the count.
 
 ## Notes
+- **Reveal the dimension grid first.** The CCSI drawing-param fields (`#CD`/`#HS`/`#VR`/`#DX_HS2`…)
+  exist ONLY on the coil editor's **Custom Dimensions** view — reached via **Calculate → Custom
+  Dimensions**. A fresh `/Coils/Edit/<id>` load shows the inputs view where the read-back returns 0
+  values; click Calculate → Custom Dimensions before reading.
 - Selectors live in `web/ccsi/ccsi_dx_field_map.json` (base 13 + multi-header I2/S2… captured
   live). If a key reads back blank on a coil that clearly has a value, CCSI may have changed
   its markup — re-run Phase 2.0 discovery and update that file rather than guessing.

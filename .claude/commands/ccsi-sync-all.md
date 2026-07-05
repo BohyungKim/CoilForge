@@ -66,5 +66,8 @@ Hard rules (same as `/ccsi-fill` + `/ccsi-compare`):
   — this command deliberately drives the **currently open** CCSI coil only.
 - Tag matching reuses `pdf_intake.coil_tag_aliases` semantics (spelling variants only). A mismatch
   is never silently filled.
+- **Per coil, reveal the dimension grid first.** After opening a coil (`editProduct`/`/Coils/Edit/<id>`)
+  it loads the inputs view; the drawing-param fields (`#CD`/`#HS`/`#VR`…) appear only after
+  **Calculate → Custom Dimensions**. Do that before the fill/compare, or the selectors read empty.
 - All selectors live in `web/ccsi/ccsi_dx_field_map.json`; a "selector not found" means CCSI
   changed markup — re-run discovery, don't guess.

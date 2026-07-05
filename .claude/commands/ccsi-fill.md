@@ -67,6 +67,11 @@ Hard rules:
    ⚠ mismatch / skipped. Then stop — John reviews and saves ("Apply Changes") himself.
 
 ## Notes
+- **Reveal the dimension grid first.** The drawing-param fields (`#CD`/`#HS`/`#VR`/`#DX_HS2`…)
+  exist ONLY on the coil editor's **Custom Dimensions** view — reached by clicking **Calculate**
+  then **Custom Dimensions**. On a fresh `/Coils/Edit/<id>` load you land on the inputs view and
+  those selectors resolve to nothing; if a fill reads empty, click Calculate → Custom Dimensions
+  first. (Save / Apply Changes stays John's.)
 - Selectors live in `web/ccsi/ccsi_dx_field_map.json`; if a CCSI row says "selector not
   found", CCSI changed its markup — update that file (re-run Phase 0 discovery) rather than
   guessing.
