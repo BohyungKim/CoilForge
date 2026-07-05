@@ -5,6 +5,26 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-07-04 (Toronto) · Tier 1 BUILT (T1+T2+T3, CCSI quote-revision workflow) · base `11d1c7b..4d46013` · claude/ccsi-autofill
+### ✅ 구현/결정된 것
+- **Tier 1 전체 빌드 — John의 CCSI 견적-리비전 워크플로우를 confirm-gated 스킬 체인으로.** 5개 스킬: `/ccsi-fill`(push) · `/ccsi-compare`(compare) · `/ccsi-sync-all`(T1 멀티코일) · `/ccsi-rfo`(T2 프로젝트 nav) · `/ccsi-revise`(T3 마무리).
+- **T1 (`a25b801`) — 멀티코일 sync 루프.** `window.coilforgeCoils()`/`coilforgeSelectCoil(i)` 훅(app.js, 모듈 스코프 우회) + `/ccsi-sync-all`(태그 매칭, 코일당 push+compare). **라이브 검증:** 3025 5코일 로드 → CDXC-1 매칭·활성화 → compare **22 match / 3 red(R 계열)**, 패널 초록/빨강 실렌더(앞선 픽셀-미확인 caveat 해소).
+- **T2 (`99f2650`) — CCSI 프로젝트 nav.** T2.0 라이브 셀렉터 캡처(읽기 전용, 클릭 0) → `web/ccsi/ccsi_nav_map.json`(8 액션/3 mutating): `CopyRevision`(복제)·`RevisionNoteUpdate`(RFO)·`retrieveReport`(export)·`RetrieveProductsForRevision`(코일 로드)·`editProduct(id,'DXCoil')`(코일 열기). 구조: **Project→Revisions→Products**. + `/ccsi-rfo` 오케스트레이션(각 mutation STOP-확인).
+- **T3 (`4d46013`) — export→revise→email.** `/ccsi-revise` 오케스트레이션 + **"Prepare email draft" 버튼**(app.js/index.html, quote 빌드 후 노출, mailto 초안, **발송 안 함·첨부 John**). revise는 기존 `/api/package/quote` 재사용(신규 코드 최소).
+- **결정(재확인):** login=John, 되돌리기-어려운 CCSI 클릭(복제/RFO/저장/export)·이메일 발송은 전부 John의 클릭별 확인. review_aid_only / export_allowed:false 유지. 값 창작 0.
+- **검증:** 각 단계 커밋 전 **737 passed** 유지(멀티코일 훅·이메일 로직은 node/격리 검증).
+
+### ⏭️ 다음 스텝
+- [ ] **Tier 1 전체 체인 라이브 실증** — throwaway/테스트 리비전에서 `/ccsi-rfo`→`/ccsi-revise`를 각 mutation 확인하며 끝까지(실제 복제/RFO/export/revise/email 초안). **왜 남음:** 실제 CCSI 레코드 변경이라 John-in-the-loop 필요; T2.1/T3 실행 경로 미실행(빌드만).
+- [ ] **(사소) "Copy CCSI autofill payload" 버튼 문구 "13" → 멀티헤더 반영** (app.js, command·map은 이미 정리됨).
+- [ ] **(선택) Track B 복귀** — 최종 제품 파라메트릭 드로잉 엔진: 레이아웃/뷰 마무리 → feature 라이브러리 → DXF(ezdxf 설치) → PDF+export 게이트. 별도 브랜치 `claude/phase2-drawing-engine`.
+
+### 🔎 Resume anchors
+- branch: `claude/ccsi-autofill` · HEAD: `4d46013f96b5d1535e05db7b89c7f67fe96aacbc` · 미커밋: 없음(내 Tier 1) — 워킹트리 나머지는 동시세션 소유
+- 스킬/명령: `.claude/commands/{ccsi-fill,ccsi-compare,ccsi-sync-all,ccsi-rfo,ccsi-revise}.md`
+- 핵심 경로: `web/ccsi/ccsi_dx_field_map.json`(25키) + `ccsi_nav_map.json`(nav), `src/coilforge/ccsi/compare.py`+`/api/ccsi-compare`, `web/app.js`(`coilforgeCoils`/`prepareQuoteEmail`), `package/assembler.py`+`/api/package/quote`
+- 상태차트 Artifact: https://claude.ai/code/artifact/64d4f7b4-14de-4463-a5f3-e0117e2f766d · plan `C:\Users\JohnKim\.claude\plans\this-is-a-substantial-compressed-castle.md`
+
 ## 2026-07-04 (Toronto) · Tier 0 CLOSED (Phase 2.0 + 3.1, live-verified) · base `bc9bbfe..11d1c7b` · claude/ccsi-autofill
 ### ✅ 구현/결정된 것
 - **Tier 0 전부 커밋·푸시 완료 — CCSI 양방향 통합 3겹(mirror→push→compare) 완성.** 커밋 4개: `7a41933`(3.0 백엔드+2.1 payload+3.2/3.3 UI), `f6c1a8a`(session-log), `f374fc3`(2.0 셀렉터), `11d1c7b`(3.1 read-back 명령).
