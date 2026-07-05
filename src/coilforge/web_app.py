@@ -42,6 +42,40 @@ from coilforge.checklist.mapping import build_checklist_fill
 from coilforge.checklist.from_workflow import coil_inputs_from_candidates
 from coilforge.checklist.compare import build_review
 from coilforge.checklist.excel_writer import write_checklist
+from coilforge.case_journal import record_coil_milestone
+
+
+def _journal_milestone(milestone: str, result: dict | None = None,
+                       request_payload: dict | None = None,
+                       detail: dict | None = None) -> None:
+    """Best-effort PO Release Case journal write (append-only, review-aid only —
+    records that a milestone request ran; never claims approval). Skipped when
+    no project identity is available (demo/sanitized-text paths)."""
+    try:
+        summary = (result or {}).get("pdf_intake_summary") or {}
+        payload = request_payload or {}
+        project_number = summary.get("project_number") or payload.get("project_number")
+        project_name = summary.get("project_name") or payload.get("project_name")
+        if not (project_number or project_name):
+            return
+        tags: list[str] = []
+        for page in (result or {}).get("pdf_coil_pages") or []:
+            tag = page.get("tag") if isinstance(page, dict) else None
+            if tag and tag not in tags:
+                tags.append(tag)
+        for coil in payload.get("coils") or []:
+            tag = coil.get("tag") if isinstance(coil, dict) else None
+            if tag and tag not in tags:
+                tags.append(tag)
+        record_coil_milestone(
+            milestone,
+            project_number=project_number,
+            project_name=project_name,
+            coil_tags=tags,
+            detail=detail or {},
+        )
+    except Exception:  # noqa: BLE001 — journaling must never break a request
+        pass
 
 
 def _cover_page_hint_from_request(request: Request) -> int | None:
@@ -234,7 +268,7 @@ async def ccsi_compare(request: dict[str, Any] = Body(default_factory=dict)):
 async def workflow_pdf_to_direct_draft(request: Request):
     pdf_bytes = await request.body()
     try:
-        return run_pdf_to_direct_draft_workflow(
+        result = run_pdf_to_direct_draft_workflow(
             pdf_bytes,
             source_id=request.headers.get("x-coilforge-source-id", "PDF-UPLOAD-INTAKE-001"),
             source_filename=request.headers.get("x-coilforge-filename"),
@@ -242,13 +276,16 @@ async def workflow_pdf_to_direct_draft(request: Request):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _journal_milestone("intake_draft", result=result,
+                       detail={"candidates": len(result.get("candidates") or [])})
+    return result
 
 
 @app.post("/api/workflow/pdf-to-drawing")
 async def workflow_pdf_to_drawing(request: Request):
     pdf_bytes = await request.body()
     try:
-        return run_pdf_to_drawing_workflow(
+        result = run_pdf_to_drawing_workflow(
             pdf_bytes,
             source_id=request.headers.get("x-coilforge-source-id", "PDF-UPLOAD-INTAKE-001"),
             source_filename=request.headers.get("x-coilforge-filename"),
@@ -256,6 +293,9 @@ async def workflow_pdf_to_drawing(request: Request):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _journal_milestone("intake_drawing", result=result,
+                       detail={"candidates": len(result.get("candidates") or [])})
+    return result
 
 
 def _checklist_output_name(source_filename: str | None) -> str:
@@ -317,6 +357,11 @@ async def checklist_fill(request: Request):
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
         raise HTTPException(status_code=500, detail=f"Excel write failed: {exc}") from exc
+    _journal_milestone(
+        "checklist_filled", result=result,
+        detail={"saved_path": (writer_result or {}).get("saved_path"),
+                "coils": len(coils)},
+    )
     return jsonable_encoder(build_review(fill, writer_result))
 
 
@@ -341,9 +386,11 @@ async def package_assemble(request: dict[str, Any] = Body(default_factory=dict))
     uncertain-mapping callouts. Returns a base64 watermarked review-aid PDF;
     never flips export_allowed or claims production approval."""
     try:
-        return jsonable_encoder(run_drawing_package_workflow(request or {}))
+        package = run_drawing_package_workflow(request or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _journal_milestone("package_assembled", request_payload=request or {})
+    return jsonable_encoder(package)
 
 
 @app.post("/api/package/quote")
@@ -354,9 +401,11 @@ async def package_quote(request: dict[str, Any] = Body(default_factory=dict)):
     above each coil's quoted price (note-only — quote numbers unchanged). Returns
     a base64 watermarked review-aid PDF; never flips export_allowed."""
     try:
-        return jsonable_encoder(run_quote_package_workflow(request or {}))
+        package = run_quote_package_workflow(request or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _journal_milestone("quote_package", request_payload=request or {})
+    return jsonable_encoder(package)
 
 
 @app.post("/api/direct-coil/verify")
@@ -373,9 +422,18 @@ async def direct_coil_verify(request: dict[str, Any] = Body(default_factory=dict
     CoilForge never edits the website; this only reads and alerts. Review aid only.
     Raises ``ValueError`` on missing/invalid input (mapped to 400)."""
     try:
-        return jsonable_encoder(_run_direct_coil_verify(request or {}))
+        verify_result = _run_direct_coil_verify(request or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _journal_milestone(
+        "direct_coil_verified", request_payload=request or {},
+        detail={
+            "coil_tag": (request or {}).get("coil_tag"),
+            "match_count": verify_result.get("match_count"),
+            "mismatch_count": verify_result.get("mismatch_count"),
+        },
+    )
+    return jsonable_encoder(verify_result)
 
 
 def _run_direct_coil_verify(request: dict[str, Any]) -> dict[str, Any]:
