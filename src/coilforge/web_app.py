@@ -19,7 +19,7 @@ from coilforge.compatibility import (
     build_reconciliation_plan,
     compare_submittal_and_ez,
 )
-from coilforge.phase2a.app import app
+from coilforge.phase2a.app import app, WEB_DIR
 from coilforge.phase2a.fixtures import load_default_dx_header1_fixture
 from coilforge.phase2a.ui_state import build_phase2b_default_ui_state
 from coilforge.phase2a.renderer import DEFAULT_VIEWBOX, REVIEW_WATERMARK
@@ -264,6 +264,55 @@ async def ccsi_compare(request: dict[str, Any] = Body(default_factory=dict)):
     return compare_ccsi_fields(payload.get("fields") or [])
 
 
+def _load_ccsi_field_map() -> dict[str, Any]:
+    """Parse the CCSI field map (same file the live compare/fill use) from disk."""
+    import json
+
+    path = WEB_DIR / "ccsi" / "ccsi_dx_field_map.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.post("/api/ccsi/audit-export")
+async def ccsi_audit_export(request: Request):
+    """Offline CCSI-export audit — the green/red compare from a downloaded CCSI
+    report PDF, with NO live CCSI site and NO browser session.
+
+    POST the exported CCSI report PDF bytes. A CCSI export is a CoilMaster drawing,
+    so the pdf-to-drawing workflow parses each coil's printed as-built dimensions
+    (CCSI side) alongside CoilForge's engine values (CoilForge side); this route
+    reshapes that into the shared comparator (tol 0.01) per coil. Review aid only
+    (``export_allowed: False``); a dimension CCSI's drawing didn't print reads
+    ``missing_one``, never guessed.
+    """
+    from coilforge.ccsi.export_audit import audit_export_result
+
+    pdf_bytes = await request.body()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="POST the exported CCSI report PDF bytes.")
+    try:
+        result = run_pdf_to_drawing_workflow(
+            pdf_bytes,
+            source_id=request.headers.get("x-coilforge-source-id", "CCSI-EXPORT-AUDIT-001"),
+            source_filename=request.headers.get("x-coilforge-filename"),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    field_map = _load_ccsi_field_map()
+    coils = audit_export_result(result, field_map)
+    _journal_milestone("ccsi_export_audit", result=result,
+                       detail={"coils_audited": len(coils)})
+    return {
+        "coils": coils,
+        "field_map_version": field_map.get("version"),
+        "review_aid_only": True,
+        "export_allowed": False,
+        "production_drawing_approval_claimed": False,
+        "raw_private_data_returned": False,
+    }
+
+
 @app.post("/api/workflow/pdf-to-direct-draft")
 async def workflow_pdf_to_direct_draft(request: Request):
     pdf_bytes = await request.body()
@@ -363,6 +412,77 @@ async def checklist_fill(request: Request):
                 "coils": len(coils)},
     )
     return jsonable_encoder(build_review(fill, writer_result))
+
+
+async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict):
+    """Best-effort engine-vs-checklist cross-check (Excel COM). Returns
+    ``(review, None)`` or ``(None, reason)`` — never raises, so the project gate
+    degrades to engine-only when Excel/pywin32 is absent."""
+    try:
+        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
+
+        try:
+            pdf_text = _safe_pdf_text(pdf_bytes)
+        except Exception:  # noqa: BLE001 — text extraction is best-effort
+            pdf_text = ""
+        coils, _ = coil_inputs_from_candidates(
+            result.get("candidates") or [], pdf_text=pdf_text,
+            product_line=request.headers.get("x-coilforge-product"),
+            unit_size=request.headers.get("x-coilforge-size"),
+        )
+        if not coils:
+            return None, "No recognizable coils for the checklist cross-check."
+        fill = build_checklist_fill(coils)
+        import asyncio
+
+        writer_result = await asyncio.to_thread(
+            write_checklist, fill,
+            dest_name=_checklist_output_name(request.headers.get("x-coilforge-filename")),
+        )
+        return build_review(fill, writer_result), None
+    except Exception as exc:  # noqa: BLE001 — Excel/pywin32 absent or COM failure
+        return None, f"Checklist cross-check unavailable: {exc}"
+
+
+@app.post("/api/review/project")
+async def review_project(request: Request):
+    """Exceptions-only project review — analyze EVERY coil at once and return only the
+    ones that need review, via independent triangulation.
+
+    POST the submittal PDF bytes. The gate always uses the engine (blocked/undrawn
+    values surface as exceptions); set ``X-CoilForge-Checklist: 1`` to also run the
+    Oxygen8 checklist cross-check (engine vs Excel formulas — a mismatch is an
+    exception). CCSI overrides (engine vs the printed CCSI export) come from the
+    separate ``/api/ccsi/audit-export`` panel. ``exceptions_K`` is the count of coils
+    that actually need John's eyes — independent of coil count on a clean project.
+    Review aid only (``export_allowed: False``)."""
+    from coilforge.review.project_gate import build_project_gate
+
+    pdf_bytes = await request.body()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="POST the submittal PDF bytes.")
+    try:
+        result = run_pdf_to_drawing_workflow(
+            pdf_bytes,
+            source_id=request.headers.get("x-coilforge-source-id", "PROJECT-REVIEW-001"),
+            source_filename=request.headers.get("x-coilforge-filename"),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    checklist_review = None
+    checklist_note = None
+    if request.headers.get("x-coilforge-checklist", "").strip().lower() in ("1", "true", "yes"):
+        checklist_review, checklist_note = await _try_checklist_review(pdf_bytes, request, result)
+
+    gate = build_project_gate(result, checklist_review=checklist_review)
+    if checklist_note:
+        gate["summary"]["checklist_note"] = checklist_note
+    _journal_milestone("project_review", result=result,
+                       detail={"coils": gate["summary"]["coils"],
+                               "exceptions_K": gate["summary"]["exceptions_K"]})
+    return jsonable_encoder(gate)
 
 
 @app.get("/api/coil-drawing/product-options")

@@ -873,6 +873,167 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
+/* Offline CCSI-export audit — per-coil green/red table. Reuses the ok/danger theme
+   tokens (defined for light + dark) so it tracks the theme like the live compare. */
+.ccsi-audit-results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.ccsi-audit-coil {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ccsi-audit-coil h4 {
+  margin: 0 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-heading);
+}
+
+.ccsi-audit-badge {
+  font-size: 0.8rem;
+  border-radius: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--ok-border);
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.ccsi-audit-badge.has-mismatch {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.ccsi-audit-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.ccsi-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ccsi-audit-table th,
+.ccsi-audit-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ccsi-audit-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.ccsi-audit-table td {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.ccsi-audit-table tr.dc-control--match td {
+  background: var(--ok-bg);
+}
+
+.ccsi-audit-table tr.dc-control--mismatch td {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.ccsi-audit-empty {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Project Review — exceptions first. Passing coils never render; only exceptions
+   (red) and documented overrides (amber-ish) show. Reuses ok/danger theme tokens. */
+.project-review-opt {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.project-review-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.pr-badge {
+  font-size: 0.8rem;
+  border-radius: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--ok-border);
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.pr-badge.has-mismatch {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.pr-badge--override {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.pr-coil {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.pr-coil--exception {
+  border-left-color: var(--danger-border);
+}
+
+.pr-coil--override {
+  border-left-color: var(--ok-border);
+}
+
+.pr-coil h4 {
+  margin: 0 0 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-heading);
+}
+
+.pr-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.pr-list--exception strong {
+  color: var(--danger-text);
+}
+
+.pr-empty {
+  font-size: 0.85rem;
+  color: var(--ok-text);
+  margin: 6px 0 0;
+}
+
 .dc-inline-controls {
   display: grid;
   gap: 3px;

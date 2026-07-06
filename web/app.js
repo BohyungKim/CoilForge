@@ -3593,6 +3593,187 @@ document.querySelector("#fill-coil-checklist")?.addEventListener("click", () => 
   fillCoilChecklist();
 });
 
+// Offline CCSI-export audit — drop the exported CCSI report PDF; CoilForge compares the
+// dimensions CCSI printed against its own engine values (green/red), per coil, with NO
+// live CCSI site and NO browser session. POSTs to /api/ccsi/audit-export, which reuses the
+// SAME 0.01" comparator as the live /ccsi-compare path. Review aid only — never saves to CCSI.
+async function auditCcsiExport(file) {
+  const summary = document.querySelector("#ccsi-audit-summary");
+  const results = document.querySelector("#ccsi-audit-results");
+  if (!file) {
+    return;
+  }
+  summary.textContent = "Auditing the CCSI export…";
+  results.innerHTML = "";
+  try {
+    const pdfBytes = await file.arrayBuffer();
+    const report = await requestJson("/api/ccsi/audit-export", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
+      },
+      body: pdfBytes,
+    });
+    renderCcsiAudit(report);
+  } catch (error) {
+    summary.textContent = `CCSI export audit failed: ${error.message || error}`;
+  }
+}
+
+function renderCcsiAudit(report) {
+  const summary = document.querySelector("#ccsi-audit-summary");
+  const results = document.querySelector("#ccsi-audit-results");
+  const coils = (report && report.coils) || [];
+  if (!coils.length) {
+    summary.textContent = "No coils found in that PDF to audit.";
+    results.innerHTML = "";
+    return;
+  }
+  const totalMismatch = coils.reduce((n, c) => n + (c.mismatch_count || 0), 0);
+  summary.innerHTML =
+    `${coils.length} coil(s) audited · ` +
+    `<strong>${totalMismatch}</strong> field(s) differ from CCSI · review aid, not exported`;
+  results.innerHTML = coils.map(renderCcsiAuditCoil).join("");
+}
+
+function renderCcsiAuditCoil(coil) {
+  const mismatch = coil.mismatch_count || 0;
+  const allFields = coil.fields || [];
+  // Only match/mismatch rows are actionable; a dimension CCSI's drawing didn't print is
+  // "missing_one" — surfaced as a count (never silently dropped), not a red row.
+  const rows = allFields
+    .filter((f) => f.verdict === "match" || f.verdict === "mismatch")
+    .map((f) => {
+      const cls = f.verdict === "mismatch" ? "dc-control--mismatch" : "dc-control--match";
+      const cf = f.coilforge === null || f.coilforge === undefined ? "—" : f.coilforge;
+      const cc = f.ccsi === null || f.ccsi === undefined ? "—" : f.ccsi;
+      const mark = f.verdict === "mismatch" ? "⚠ differ" : "✓ match";
+      return (
+        `<tr class="${cls}"><td>${escapeHtml(f.key)}</td>` +
+        `<td>${escapeHtml(String(cf))}</td><td>${escapeHtml(String(cc))}</td>` +
+        `<td>${mark}</td></tr>`
+      );
+    })
+    .join("");
+  const missing = allFields.filter((f) => f.verdict === "missing_one").length;
+  const badge =
+    mismatch > 0
+      ? `<span class="ccsi-audit-badge has-mismatch">⚠ ${mismatch} differ</span>`
+      : `<span class="ccsi-audit-badge">✓ all match</span>`;
+  const missingNote = missing
+    ? `<span class="ccsi-audit-note">${missing} not printed on the drawing</span>`
+    : "";
+  const body = rows
+    ? `<table class="ccsi-audit-table"><thead><tr><th>Field</th><th>CoilForge</th><th>CCSI</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<p class="ccsi-audit-empty">No printed dimensions to compare on this coil.</p>`;
+  return (
+    `<div class="ccsi-audit-coil"><h4>${escapeHtml(coil.tag || "Coil")} ` +
+    `<span class="subtle-label">${escapeHtml(coil.coil_category || "")}</span> ${badge} ${missingNote}</h4>` +
+    `${body}</div>`
+  );
+}
+
+// Project Review — exceptions first. Analyze EVERY coil at once and show only the coils
+// whose independent computations disagree (engine vs checklist = must-agree exception;
+// engine vs CCSI = documented override). K (coils needing eyes) tracks problems, not coil
+// count — so a clean 50-coil project reviews as fast as one coil. POSTs to
+// /api/review/project (engine always; X-CoilForge-Checklist adds the Excel cross-check).
+async function runProjectReview() {
+  const file = state.selectedPdfFile || elements.pdfIntakeFile.files?.[0];
+  const summary = document.querySelector("#project-review-summary");
+  const results = document.querySelector("#project-review-results");
+  if (!file) {
+    summary.textContent = "Analyze a submittal PDF above first.";
+    return;
+  }
+  const withChecklist = document.querySelector("#project-review-checklist")?.checked;
+  summary.textContent = withChecklist ? "Reviewing all coils… (opens Excel briefly)" : "Reviewing all coils…";
+  results.innerHTML = "";
+  try {
+    const pdfBytes = await file.arrayBuffer();
+    const headers = {
+      "Content-Type": "application/pdf",
+      "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
+      ...coverPageHeader(),
+    };
+    if (withChecklist) {
+      headers["X-CoilForge-Checklist"] = "1";
+    }
+    const gate = await requestJson("/api/review/project", { method: "POST", headers, body: pdfBytes });
+    renderProjectGate(gate);
+  } catch (error) {
+    summary.textContent = `Project review failed: ${error.message || error}`;
+  }
+}
+
+function renderProjectGate(gate) {
+  const summary = document.querySelector("#project-review-summary");
+  const results = document.querySelector("#project-review-results");
+  const s = gate.summary || {};
+  const coils = gate.coils || [];
+  const K = s.exceptions_K || 0;
+  const banner = K > 0
+    ? `<span class="pr-badge has-mismatch">⚠ ${K} of ${s.coils} coil(s) need review</span>`
+    : `<span class="pr-badge">✓ all ${s.coils} coil(s) clear</span>`;
+  const src = `engine${s.sources?.checklist ? " + checklist" : ""}${s.sources?.ccsi ? " + CCSI" : ""}`;
+  const bits = [`sources: ${src}`];
+  if (s.override_coils) {
+    bits.push(`${s.override_coils} coil(s) with documented CCSI overrides`);
+  }
+  if ((s.common_exception_keys || []).length) {
+    bits.push(`common gap: ${escapeHtml(s.common_exception_keys.join(", "))}`);
+  }
+  if (s.checklist_note) {
+    bits.push(escapeHtml(s.checklist_note));
+  }
+  summary.innerHTML = `${banner} <span class="subtle-label">${bits.join(" · ")}</span>`;
+
+  // Only flagged coils are shown; passing coils collapse into the count above.
+  const flagged = coils.filter((c) => c.verdict !== "pass");
+  if (!flagged.length) {
+    results.innerHTML = `<p class="pr-empty">Every coil's independent computations agree — nothing to review. Review aid, not exported.</p>`;
+    return;
+  }
+  results.innerHTML = flagged.map(renderGateCoil).join("");
+}
+
+function renderGateCoil(coil) {
+  const isException = coil.verdict === "exception";
+  const badge = isException
+    ? `<span class="pr-badge has-mismatch">⚠ needs review</span>`
+    : `<span class="pr-badge pr-badge--override">override</span>`;
+  const exRows = (coil.exceptions || []).map((e) => {
+    const detail = e.reason === "engine_vs_checklist"
+      ? `engine ${escapeHtml(String(e.engine))} &ne; checklist ${escapeHtml(String(e.checklist))}`
+      : escapeHtml(e.detail || "review required");
+    return `<li><strong>${escapeHtml(e.key)}</strong> — ${detail}</li>`;
+  }).join("");
+  const ovRows = (coil.overrides || []).map((o) =>
+    `<li><strong>${escapeHtml(o.key)}</strong> — CoilForge ${escapeHtml(String(o.engine))} vs CCSI ${escapeHtml(String(o.ccsi))}${o.acknowledged ? " (accepted)" : ""}</li>`
+  ).join("");
+  return `<div class="pr-coil ${isException ? "pr-coil--exception" : "pr-coil--override"}">
+    <h4>${escapeHtml(coil.tag || "Coil")} ${badge}</h4>
+    ${exRows ? `<ul class="pr-list pr-list--exception">${exRows}</ul>` : ""}
+    ${ovRows ? `<ul class="pr-list pr-list--override">${ovRows}</ul>` : ""}
+  </div>`;
+}
+
+document.querySelector("#run-project-review")?.addEventListener("click", () => {
+  runProjectReview();
+});
+
+document.querySelector("#ccsi-audit-file")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  const nameEl = document.querySelector("#ccsi-audit-file-name");
+  if (nameEl) {
+    nameEl.textContent = file ? file.name : "No file selected";
+  }
+  if (file) {
+    auditCcsiExport(file);
+  }
+});
+
 loadDefaultDemoWorkflow().catch((error) => {
   document.body.innerHTML = `<main class="load-error"><pre>${error.message}</pre></main>`;
 });
