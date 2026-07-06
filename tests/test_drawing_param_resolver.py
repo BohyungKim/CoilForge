@@ -90,6 +90,29 @@ def test_multi_circuit_s_sourced_from_ez_json_headers() -> None:
     assert "S" in report["json_sourced"]
 
 
+def test_multi_circuit_s_is_generated_from_r034_not_left_unconnected() -> None:
+    # Regression: the emit path used to gate S on circuits==1, so a multi-circuit coil
+    # (no EZ JSON) wrongly reported header-1 S as "not connected" even though R-034
+    # even-spacing is HIGH and already computed. It must now be generated.
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from coilforge.direct_coil.draft import DirectCoilInputDraft
+    from coilforge.services.drawing_param_resolver import engine_preview_values
+
+    draft = DirectCoilInputDraft.model_validate(_run_demo()["direct_coil_input_draft"])
+    values, report = engine_preview_values(
+        draft, coil_type="DX", product_type="NOVA", unit_size="B20", circuits=2,
+    )
+    by_key = {v.key: v for v in values}
+    assert "S" in report["connected"]
+    assert "S" not in report["not_connected"]
+    assert by_key["S"].source == "rule_engine/generated"
+    # header-1 R-034 even-spacing = round(CD / (circuits + 1))
+    assert by_key["S"].value == round(by_key["CD"].value / 3, 4)
+
+
 def test_unconnected_params_fall_back_so_preview_still_allowed() -> None:
     out = _run_demo()
     params = out["drawing_parameter_set"]["parameters"]

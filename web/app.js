@@ -3395,7 +3395,14 @@ async function buildQuotePackage() {
   const projectName =
     state.ui?.project?.project_name ||
     quotePackageExportName().replace(/_Revised\.pdf$/i, "");
-  state.lastQuotePackage = { projectName, fileName: quotePackageExportName() };
+  state.lastQuotePackage = {
+    projectName,
+    fileName: quotePackageExportName(),
+    coilCount: result.coil_count ?? (result.coils || []).length,
+    insertedCount: pkg.inserted_coil_count ?? null,
+    tags: (result.coils || []).map((c) => c.tag).filter(Boolean),
+    exceptionsK: state.lastProjectReview?.summary?.exceptions_K ?? null,
+  };
   const emailBtn = document.querySelector("#prepare-quote-email");
   if (emailBtn) emailBtn.hidden = false;
 }
@@ -3406,14 +3413,26 @@ function prepareQuoteEmail() {
   const ctx = state.lastQuotePackage;
   if (!ctx) return;
   const subject = `Revised Quote — ${ctx.projectName}`;
-  const body = [
-    "Hi,",
-    "",
-    `Please find attached the revised quote (${ctx.fileName}) for ${ctx.projectName}.`,
-    "The coil drawings have been updated per our review.",
-    "",
-    "Best regards,",
-  ].join("\r\n");
+  const total = ctx.coilCount ?? (ctx.tags ? ctx.tags.length : null);
+  const lines = ["Hi,", ""];
+  lines.push(`Please find attached the revised quote (${ctx.fileName}) for ${ctx.projectName}.`);
+  if (ctx.tags && ctx.tags.length) {
+    lines.push(`Coils (${total ?? ctx.tags.length}): ${ctx.tags.join(", ")}.`);
+  }
+  if (ctx.insertedCount != null && total != null) {
+    lines.push(`${ctx.insertedCount}/${total} coil drawing(s) updated per our review.`);
+  } else {
+    lines.push("The coil drawings have been updated per our review.");
+  }
+  if (ctx.exceptionsK != null && total != null) {
+    lines.push(
+      ctx.exceptionsK > 0
+        ? `${ctx.exceptionsK} coil(s) were flagged for review; ${total - ctx.exceptionsK} cleared.`
+        : `All ${total} coil(s) cleared review.`,
+    );
+  }
+  lines.push("", "Best regards,");
+  const body = lines.join("\r\n");
   // mailto can't carry an attachment — John attaches the downloaded PDF himself.
   window.location.href =
     `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -3701,11 +3720,39 @@ async function runProjectReview() {
       headers["X-CoilForge-Checklist"] = "1";
     }
     const gate = await requestJson("/api/review/project", { method: "POST", headers, body: pdfBytes });
+    state.lastProjectReview = gate;   // retained so the auto-email + accept-passing can read it
     renderProjectGate(gate);
   } catch (error) {
     summary.textContent = `Project review failed: ${error.message || error}`;
   }
 }
+
+// A2 — "Accept passing coils": mark every coil the gate cleared (verdict "pass") as reviewed,
+// so the Build gate needs only the K exceptions handled. Exceptions/overrides are left for John.
+function acceptPassingCoils() {
+  const gate = state.lastProjectReview;
+  if (!gate || !Array.isArray(gate.coils)) {
+    return;
+  }
+  const passTags = new Set(gate.coils.filter((c) => c.verdict === "pass").map((c) => c.tag));
+  let marked = 0;
+  (state.pdfCoilPages || []).forEach((page, index) => {
+    if (passTags.has(page.tag) && !state.reviewedCoils.has(index)) {
+      state.reviewedCoils.add(index);
+      marked += 1;
+    }
+  });
+  renderCoilReviewNav();
+  renderProjectTree(state.ui);
+  updateQuoteGate();
+  const btn = document.querySelector("#accept-passing-coils");
+  if (btn) {
+    btn.textContent = `Accepted ${marked} passing coil(s) ✓`;
+    btn.disabled = true;
+  }
+}
+
+document.querySelector("#accept-passing-coils")?.addEventListener("click", acceptPassingCoils);
 
 function renderProjectGate(gate) {
   const summary = document.querySelector("#project-review-summary");
@@ -3728,6 +3775,18 @@ function renderProjectGate(gate) {
     bits.push(escapeHtml(s.checklist_note));
   }
   summary.innerHTML = `${banner} <span class="subtle-label">${bits.join(" · ")}</span>`;
+
+  // Reveal the "Accept passing coils" action: one click marks every cleared coil reviewed
+  // so the Build gate needs only the K exceptions handled (clicks N -> K).
+  const passCount = coils.filter((c) => c.verdict === "pass").length;
+  const acceptBtn = document.querySelector("#accept-passing-coils");
+  if (acceptBtn) {
+    acceptBtn.hidden = passCount === 0;
+    if (passCount > 0) {
+      acceptBtn.textContent = `Accept ${passCount} passing coil(s) as reviewed`;
+      acceptBtn.disabled = false;
+    }
+  }
 
   // Only flagged coils are shown; passing coils collapse into the count above.
   const flagged = coils.filter((c) => c.verdict !== "pass");
