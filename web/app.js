@@ -1784,6 +1784,7 @@ function renderPdfIntakeSummary(uiState) {
     return;
   }
   elements.pdfIntakeSummary.innerHTML = `
+    ${ocrAlertBanner(summary)}
     <div class="pdf-summary-grid">
       <div><span>Source</span><strong>${escapeHtml(summary.source_filename || summary.source_id)}</strong></div>
       <div><span>Project Number</span><strong>${escapeHtml(summary.project_number || "review required")}</strong></div>
@@ -1797,10 +1798,33 @@ function renderPdfIntakeSummary(uiState) {
       <div><span>Coil pages</span><strong>${escapeHtml(coilPageCount(summary))}</strong></div>
       <div><span>Cover page</span><strong>${escapeHtml(coverPageStatus(summary))}</strong></div>
       <div><span>LLM OCR</span><strong>${escapeHtml(ocrStatus(summary))}</strong></div>
+      <div><span>Text extraction</span><strong>${escapeHtml(extractionStatus(summary))}</strong></div>
       <div><span>Raw PDF stored</span><strong>${escapeHtml(summary.raw_pdf_stored ? "yes" : "no")}</strong></div>
     </div>
-    ${renderPdfCoilReviewPages()}
+    ${renderPdfCoilReviewPages(summary)}
   `;
+}
+
+function ocrAlertBanner(summary) {
+  if (!summary || !summary.ocr_blocked) {
+    return "";
+  }
+  const message =
+    summary.ocr_alert ||
+    "OCR could not read this PDF's unreadable coil pages — values may be missing.";
+  return `<div class="ocr-alert-banner">⚠ ${escapeHtml(message)}</div>`;
+}
+
+function extractionStatus(summary) {
+  if (!summary.text_extraction_degraded) {
+    return "ok";
+  }
+  const pages = summary.degraded_page_numbers?.length || 0;
+  const ocrPages = summary.ocr_pages?.length || 0;
+  if (ocrPages) {
+    return `${pages} unreadable page(s), ${ocrPages} recovered via OCR (review required)`;
+  }
+  return `${pages} unreadable page(s) — set OPENAI_API_KEY or re-export submittal`;
 }
 
 function coilPageCount(summary) {
@@ -1833,12 +1857,18 @@ function ocrStatus(summary) {
   return "not required";
 }
 
-function renderPdfCoilReviewPages() {
+function renderPdfCoilReviewPages(summary) {
   if (!state.pdfCoilPages.length) {
+    let note = "No separate coil pages detected yet.";
+    if (summary?.text_extraction_degraded) {
+      note = summary.ocr_pages?.length
+        ? "This PDF's coil pages use non-extractable fonts; text was recovered via OCR but no coil schedule matched — check the cover page number."
+        : "This PDF's coil pages use non-extractable fonts, so the text could not be read. Set OPENAI_API_KEY to auto-OCR, enter the cover page number, or re-export the submittal.";
+    }
     return `
       <section class="pdf-review-pages">
         <h4>Detected Coil Review Pages</h4>
-        <p>No separate coil pages detected yet.</p>
+        <p>${escapeHtml(note)}</p>
       </section>
     `;
   }
@@ -2103,6 +2133,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
     <div class="template-drawing-preview">
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
       ${templateDrawingPicker(templateDrawing)}
+      ${distributorOrientationBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
     </div>
   `;
@@ -2394,6 +2425,18 @@ function templateDrawingBody(templateDrawing, rendered) {
   `;
 }
 
+// Loud review-required banner when the backend flagged that the drawn distributor
+// orientation is not representative (Ventum+ DX draws ConnectionDown from the shared
+// seeded template but R-032 requires ConnectionUp). Empty string when not flagged, so
+// it renders nothing for every other coil. See submittal_to_drawing._flag_distributor_orientation_review.
+function distributorOrientationBanner(templateDrawing) {
+  const warning = templateDrawing && templateDrawing.distributor_orientation_warning;
+  if (!warning) {
+    return "";
+  }
+  return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
+}
+
 function renderDrawingParameters(uiState) {
   const parameters = uiState.drawing_parameters?.parameters || {};
   const casing = DRAWING_PARAM_COLUMNS[0];
@@ -2526,6 +2569,7 @@ function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
           <span>Coil Drawing</span>
           <strong>${rendered ? "Reproduced from PDF — review aid" : "Links — artwork not seeded"}</strong>
         </div>
+        ${distributorOrientationBanner(templateDrawing)}
         <div class="dc-coil-drawing-canvas">
           ${templateDrawingBody(templateDrawing, rendered)}
         </div>

@@ -102,6 +102,17 @@ class PdfCoilIntakeSummary(BaseModel):
     ocr_model: str | None = None
     ocr_page_number: int | None = None
     ocr_error: str | None = None
+    # Pages whose embedded fonts extract as machine-unreadable text (broken ToUnicode
+    # CMap -> "(cid:NN)" glyph soup or an ASCII-shifted cipher). Surfaced so the UI can
+    # explain the condition instead of silently reporting "no coils".
+    text_extraction_degraded: bool = False
+    degraded_page_numbers: list[int] = Field(default_factory=list)
+    ocr_pages: list[int] = Field(default_factory=list)
+    # Loud alert when OCR was needed (degraded pages) but could not run/complete -- most
+    # importantly OpenAI token/quota exhausted, also missing/expired key, rate-limit, or a
+    # token-truncated response. Surfaced as a red banner so recovery never fails silently.
+    ocr_blocked: bool = False
+    ocr_alert: str | None = None
 
 
 class PdfCoilIntakeResult(BaseModel):
@@ -529,6 +540,22 @@ def extract_coil_candidate_from_pdf_bytes(
     cover_page_hint: int | None = None,
 ) -> PdfCoilIntakeResult:
     pages, engine = extract_text_pages_from_pdf_bytes(pdf_bytes)
+    # Detect pages whose fonts extracted as unreadable glyph soup / shifted cipher and,
+    # if any, auto-OCR them (no manual page hint needed) so both the cover schedule and
+    # the coil-detail dimensions are recovered before the normal pipeline runs.
+    degraded_page_numbers = _degraded_page_numbers(pages)
+    auto_ocr_results: list[_OcrPageResult] = []
+    auto_ocr_pages: list[int] = []
+    auto_ocr_truncated = len(degraded_page_numbers) > _MAX_AUTO_OCR_PAGES
+    if degraded_page_numbers:
+        replacements, auto_ocr_results = _auto_ocr_degraded_pages(
+            pdf_bytes,
+            degraded_pages=degraded_page_numbers,
+        )
+        if replacements:
+            pages = _pages_with_replaced_text(pages, replacements)
+            auto_ocr_pages = sorted(replacements)
+            engine = f"{engine}+auto_llm_ocr"
     project_context = _extract_project_context(
         pages,
         source_filename=source_filename,
@@ -562,14 +589,20 @@ def extract_coil_candidate_from_pdf_bytes(
         source_id=source_id,
         field_rules=PDF_INTAKE_FIELD_RULES,
     )
+    intake_notes = [
+        *candidate.notes,
+        "Created by Phase 2E PDF intake adapter using deterministic POs-style parsing rules.",
+        "Raw PDF text is not returned to the UI response.",
+    ]
+    if auto_ocr_truncated:
+        intake_notes.append(
+            f"Auto-OCR was capped at {_MAX_AUTO_OCR_PAGES} of {len(degraded_page_numbers)} "
+            "unreadable pages; the remaining pages were not OCR'd and may miss values (review required)."
+        )
     candidate = candidate.model_copy(
         update={
             "candidate_id": f"SCC-{source_id}",
-            "notes": [
-                *candidate.notes,
-                "Created by Phase 2E PDF intake adapter using deterministic POs-style parsing rules.",
-                "Raw PDF text is not returned to the UI response.",
-            ],
+            "notes": intake_notes,
         }
     )
     cover_shared_lines = _shared_unit_lines_for_cover_candidates(pages)
@@ -586,6 +619,22 @@ def extract_coil_candidate_from_pdf_bytes(
         )
         for index, row in enumerate(cover_detection.rows, start=1)
     ]
+    # Report the hint-based OCR result when it actually ran; otherwise reflect auto-OCR so
+    # the existing ocr_* UI indicators light up for the auto path too.
+    if ocr_result.status != "not_requested":
+        effective_ocr = ocr_result
+    else:
+        auto_status, auto_error = _combined_auto_ocr_status(auto_ocr_results)
+        effective_ocr = _OcrPageResult(
+            page_number=(auto_ocr_pages[0] if auto_ocr_pages else 1),
+            model=(auto_ocr_results[0].model if auto_ocr_results else None),
+            status=auto_status,
+            error=auto_error,
+        )
+    ocr_blocked, ocr_alert = _ocr_blocked_alert(
+        degraded=bool(degraded_page_numbers),
+        auto_ocr_results=auto_ocr_results,
+    )
     summary = PdfCoilIntakeSummary(
         source_id=source_id,
         source_filename=source_filename,
@@ -600,13 +649,18 @@ def extract_coil_candidate_from_pdf_bytes(
         selected_tag=None if candidate.tag is None else candidate.tag.value,
         selected_quantity=None if candidate.quantity is None else candidate.quantity.value,
         selected_handing=_field_value(candidate.connections, "coil_hand"),
-        ocr_enabled=ocr_result.status == "completed",
-        ocr_attempted=ocr_result.status != "not_requested",
-        ocr_status=ocr_result.status,
-        ocr_provider=ocr_result.provider if ocr_result.status != "not_requested" else None,
-        ocr_model=ocr_result.model,
-        ocr_page_number=ocr_result.page_number if ocr_result.status != "not_requested" else None,
-        ocr_error=ocr_result.error,
+        ocr_enabled=effective_ocr.status == "completed",
+        ocr_attempted=effective_ocr.status != "not_requested",
+        ocr_status=effective_ocr.status,
+        ocr_provider=effective_ocr.provider if effective_ocr.status != "not_requested" else None,
+        ocr_model=effective_ocr.model,
+        ocr_page_number=effective_ocr.page_number if effective_ocr.status != "not_requested" else None,
+        ocr_error=effective_ocr.error,
+        text_extraction_degraded=bool(degraded_page_numbers),
+        degraded_page_numbers=list(degraded_page_numbers),
+        ocr_pages=list(auto_ocr_pages),
+        ocr_blocked=ocr_blocked,
+        ocr_alert=ocr_alert,
         cover_page_detected=cover_detection.detected,
         cover_page_number=cover_detection.page_number,
         cover_page_detection_method=cover_detection.detection_method,
@@ -780,6 +834,30 @@ def _maybe_run_llm_ocr(
     return _extract_page_text_with_llm_ocr(pdf_bytes, cover_page_hint)
 
 
+def _classify_openai_ocr_error(exc: Exception) -> tuple[str, str]:
+    """Map an OpenAI OCR exception to a distinct status + human message.
+
+    Attribute-based (not ``isinstance``) so it never NameErrors when ``openai`` failed to
+    import, and so it is trivially testable with lightweight fake exceptions. The
+    token/quota case (``insufficient_quota``) is the one John most needs surfaced.
+    """
+    name = type(exc).__name__
+    status_code = getattr(exc, "status_code", None)
+    code = str(getattr(exc, "code", "") or "")
+    message = str(getattr(exc, "message", "") or "") or str(exc)
+    haystack = f"{code} {message}".lower()
+    if status_code == 429 or name == "RateLimitError" or "rate limit" in haystack:
+        if "insufficient_quota" in haystack or "quota" in haystack or "billing" in haystack:
+            return (
+                "blocked_openai_quota_exhausted",
+                "OpenAI token/quota exhausted (insufficient_quota).",
+            )
+        return ("blocked_openai_rate_limited", f"OpenAI rate limit hit: {message}")
+    if name in ("AuthenticationError", "PermissionDeniedError") or status_code in (401, 403):
+        return ("blocked_openai_auth", f"OpenAI key rejected: {message}")
+    return ("failed_openai_request", str(exc))
+
+
 def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrPageResult:
     _load_dotenv_if_available()
     model = os.environ.get("COILFORGE_OCR_MODEL", "gpt-4o")
@@ -816,7 +894,13 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
                     "content": (
                         "You perform OCR for HVAC coil submittal pages. Return only visible text. "
                         "Preserve line breaks, table row order, labels, units, and tag/quantity values. "
-                        "Do not infer missing engineering values and do not add commentary."
+                        "Do not infer missing engineering values and do not add commentary. "
+                        "Never wrap output in markdown code fences. "
+                        "If a Qty/Tag schedule (cover) table is present, emit its header on ONE single "
+                        "line using exactly these column names in this order: "
+                        "'Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing' "
+                        "(never split 'Controls Preference' across two lines), then one coil row per line "
+                        "with the same column order, single spaces between columns."
                     ),
                 },
                 {
@@ -825,8 +909,9 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
                         {
                             "type": "text",
                             "text": (
-                                "OCR this PDF page for CoilForge review intake. Return plain text only. "
-                                "If a cover table is visible, preserve columns in row order."
+                                "OCR this PDF page for CoilForge review intake. Return plain text only, "
+                                "no markdown fences. If a cover schedule table is visible, put the full "
+                                "header on one line and one coil row per line, columns in order."
                             ),
                         },
                         {
@@ -839,13 +924,24 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
                 },
             ],
         )
-        text = (response.choices[0].message.content or "").strip()
+        choice = response.choices[0]
+        text = _strip_markdown_code_fences((choice.message.content or "").strip())
         if not text:
             return _OcrPageResult(
                 page_number=page_number,
                 model=model,
                 status="completed_empty",
                 error="OpenAI OCR returned no text.",
+            )
+        if getattr(choice, "finish_reason", None) == "length":
+            # Output hit the max_tokens ceiling: the text is real but likely cut off, so
+            # trailing coil rows may be missing. Keep the text, flag as a blocking status.
+            return _OcrPageResult(
+                page_number=page_number,
+                text=text,
+                model=model,
+                status="completed_truncated",
+                error="OCR output hit the token limit and may be truncated.",
             )
         return _OcrPageResult(
             page_number=page_number,
@@ -854,12 +950,27 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
             status="completed",
         )
     except Exception as exc:
+        status, message = _classify_openai_ocr_error(exc)
         return _OcrPageResult(
             page_number=page_number,
             model=model,
-            status="failed_openai_request",
-            error=str(exc),
+            status=status,
+            error=message,
         )
+
+
+def _strip_markdown_code_fences(text: str) -> str:
+    """Remove ```-fenced wrapping that vision OCR often adds around table output.
+
+    The downstream cover/detail parsers expect plain text lines; a leading/trailing
+    ``` fence (optionally language-tagged) would otherwise pollute the first/last row.
+    """
+    lines = text.splitlines()
+    if lines and lines[0].lstrip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
 
 
 def _load_dotenv_if_available() -> None:
@@ -918,6 +1029,139 @@ def _pages_with_ocr_text(
     if not replaced:
         merged.append(_TextPage(page_number=ocr_result.page_number, text=ocr_result.text))
     return sorted(merged, key=lambda page: page.page_number)
+
+
+# --- Un-extractable-font detection + auto OCR ------------------------------------------
+# Some Oxygen8 submittal exports embed subset fonts with a missing/broken ToUnicode CMap.
+# The pages render fine on screen but extract as machine-unreadable text: pdfplumber emits
+# one "(cid:NN)" token per unmapped glyph, and PyPDF2 falls back to the font's built-in
+# encoding, which on these files is ASCII shifted by a fixed offset (e.g. "Project" ->
+# "3URMHFW"). Either way the tag-prefix scan and cover-header signature match nothing, so
+# detection must route these pages through visual OCR instead of reporting "no coils".
+_CID_TOKEN_RE = re.compile(r"\(cid:\d+\)")
+# Extremely common words that any readable submittal content page carries. A text-heavy
+# page with NONE of them didn't decode to real words -- the PyPDF2 fixed-offset-cipher
+# fallback turns "the coil" into "WKH FRLO", erasing every one of these.
+_READABLE_WORD_RE = re.compile(
+    r"\b(?:the|and|coil|air|tag|model|size|unit|water|flow|total|type)\b",
+    re.IGNORECASE,
+)
+_DEGRADED_MIN_CHARS = 200
+_MAX_AUTO_OCR_PAGES = 12
+
+
+def _page_text_is_degraded(text: str) -> bool:
+    """True when a text-heavy page extracted as unreadable glyph soup / shifted cipher."""
+    stripped = (text or "").strip()
+    if len(stripped) < _DEGRADED_MIN_CHARS:
+        # Too little text to judge; genuinely empty pages route through the normal
+        # not-detected / OCR-hint path, not this one.
+        return False
+    cid_tokens = _CID_TOKEN_RE.findall(stripped)
+    if cid_tokens:
+        # pdfplumber emits one "(cid:N)" per unmapped glyph; a page dominated by them is
+        # unreadable. A handful can be legit, so require a large share.
+        cid_char_span = sum(len(token) for token in cid_tokens)
+        if cid_char_span / max(len(stripped), 1) > 0.30:
+            return True
+    # Secondary signal for the PyPDF2 fixed-offset-cipher fallback: substantial text with
+    # not one recognizable common English word.
+    return _READABLE_WORD_RE.search(stripped) is None
+
+
+def _degraded_page_numbers(pages: list[_TextPage]) -> list[int]:
+    return [page.page_number for page in pages if _page_text_is_degraded(page.text)]
+
+
+def _pages_with_replaced_text(
+    pages: list[_TextPage],
+    replacements: dict[int, str],
+) -> list[_TextPage]:
+    """Return pages with the given page numbers' text FULLY replaced (garbage dropped).
+
+    Unlike ``_pages_with_ocr_text`` (which appends OCR text to the existing text), this
+    discards the unreadable original text and its garbage tables so downstream table-first
+    parsing does not consume cid-soup cells.
+    """
+    merged: list[_TextPage] = []
+    for page in pages:
+        new_text = replacements.get(page.page_number)
+        if new_text is None:
+            merged.append(page)
+        else:
+            merged.append(_TextPage(page_number=page.page_number, text=new_text, tables=()))
+    return merged
+
+
+def _auto_ocr_degraded_pages(
+    pdf_bytes: bytes,
+    *,
+    degraded_pages: list[int],
+) -> tuple[dict[int, str], list[_OcrPageResult]]:
+    """OCR each degraded page (bounded) so cover + detail text are both recovered."""
+    replacements: dict[int, str] = {}
+    results: list[_OcrPageResult] = []
+    for page_number in degraded_pages[:_MAX_AUTO_OCR_PAGES]:
+        result = _extract_page_text_with_llm_ocr(pdf_bytes, page_number)
+        results.append(result)
+        if result.text:
+            replacements[page_number] = result.text
+    return replacements, results
+
+
+def _combined_auto_ocr_status(results: list[_OcrPageResult]) -> tuple[str, str | None]:
+    """Aggregate per-page auto-OCR outcomes into one (status, error) for the summary."""
+    if not results:
+        return "not_requested", None
+    if any(result.status == "completed" for result in results):
+        return "completed", None
+    first = results[0]
+    return first.status, first.error
+
+
+# Blocking OCR statuses -> the alert shown when recovery of a degraded PDF could not
+# complete. Dict order is priority: the first status any page hit is the one surfaced.
+_OCR_ALERT_MESSAGES: dict[str, str] = {
+    "blocked_openai_quota_exhausted": (
+        "OCR blocked: OpenAI token/quota exhausted — top up billing or set a new key; "
+        "coil pages could not be read."
+    ),
+    "blocked_openai_auth": (
+        "OCR blocked: OpenAI key rejected (expired/invalid) — set a valid OPENAI_API_KEY."
+    ),
+    "skipped_missing_openai_api_key": (
+        "OCR needed but OPENAI_API_KEY is not set — coil pages could not be read."
+    ),
+    "blocked_openai_rate_limited": (
+        "OCR rate-limited by OpenAI — re-analyze shortly; coil pages could not be fully read."
+    ),
+    "failed_openai_request": (
+        "OCR request to OpenAI failed — coil pages could not be read."
+    ),
+    "failed_render_pdf_page": (
+        "OCR could not render a page image — coil pages could not be read."
+    ),
+    "completed_truncated": (
+        "OCR output hit the token limit and was truncated — some coil rows may be missing."
+    ),
+    "completed_empty": (
+        "OCR returned no text for an unreadable page — coil pages could not be read."
+    ),
+}
+
+
+def _ocr_blocked_alert(
+    *,
+    degraded: bool,
+    auto_ocr_results: list[_OcrPageResult],
+) -> tuple[bool, str | None]:
+    """Alert when OCR was needed (degraded pages) but a page ended in a blocking status."""
+    if not degraded:
+        return False, None
+    for status, message in _OCR_ALERT_MESSAGES.items():
+        if any(result.status == status for result in auto_ocr_results):
+            return True, message
+    return False, None
 
 
 def detect_cover_page_from_pdf_pages(
