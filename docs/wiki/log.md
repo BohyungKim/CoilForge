@@ -47,3 +47,10 @@ John을 위해 라이브 위키↔코드 / 문서↔문서 드리프트 3건을 
    셋 다 지금 `HIGH`(SOP-confirmed, 2026-06-28 승격). → 낡음.
 추가로 문서↔문서 모순: **Ventum+ fork**가 MVP 체크리스트(L43)에선 `[ ]` 열림인데 CLAUDE.md에선
 "불필요로 폐기됨". → 조정 필요.
+
+## 2026-07-07 · ingest — multi-header-geometry 스텁 시드
+`[[multi-header-geometry]]` 스텁을 시드함(circuits/feeds → Nth 헤더). 핵심 `[CONFIRMED]` 사실:
+**John 2026-07-06 — N interlaced circuits = N 공급 헤더 (DX/HGRH)**, 따라서 `circuits`가
+`submittal_to_drawing.py`에서 "Header N" 템플릿 키를 옳게 이끈다(버그 아님). 근거: 세션 라이브 확인
+(ALS Palmetto `CDXC-1` "Interlaced 2 Circuits" → circuits=2 → Header 2). 인덱스: 스텁 → 개념 섹션으로
+이동. `src/` 변경 없음. 관련 공식 규칙 R-022/R-034/R-048/R-052/R-072/R-073 참조.

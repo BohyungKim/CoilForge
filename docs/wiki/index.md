@@ -18,10 +18,10 @@
 
 ## 개념
 - [[confidence-gate]] `[CONFIRMED]` — HIGH→values / MEDIUM→suggestions / LOW·CONFLICT→blocked; 중심 불변식.
+- [[multi-header-geometry]] `[CONFIRMED]` — circuits/feeds → I2/S2/R2…; N interlaced circuits = N 공급 헤더 (John 2026-07-06).
 
 ## 스텁 (참조되지만 아직 시드 안 됨 — `/wiki-ingest`로 자라남)
 - `[[dx]]`, `[[hwc]]`, `[[cwc]]` — 나머지 세 카테고리.
 - `[[nova]]`, `[[ventum-h]]`, `[[terra-h]]` — 나머지 세 패밀리.
 - `[[taxonomy]]` — 4단계 결정 트리 (카테고리 → 패밀리 → 헤더 수 → 도면).
-- `[[multi-header-geometry]]` — circuits/feeds → I2/S2/R2… (R-022/R-034/R-048/R-052/R-072/R-073).
 - `[[mechanical-fit]]` — WIDTH/HEIGHT/INSTALL 핏 (R-077/R-078, `compatibility/mechanical_fit.py`).
