@@ -170,3 +170,32 @@ def test_clean_pdf_is_not_degraded_and_skips_ocr(monkeypatch) -> None:
     assert result.summary.ocr_pages == []
     assert result.summary.ocr_status == "not_requested"
     assert "auto_llm_ocr" not in result.summary.extraction_engine
+
+
+_COVER_TEXT_TERRA = "\n".join(
+    [
+        "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+        "1 DOAS AHU TR_C_015 208V/1ph/60Hz Constant Volume Horizontal S1 LH",
+        "1 CDXC-1 DXC Cooling TR_C_015 LH",
+        "1 RHHGRC-1 HGRC Reheat TR_C_015 LH",
+    ]
+)
+
+
+def test_text_path_cover_row_captures_model_and_resolves_product_size() -> None:
+    # Regression: the text-path parser used to drop the model column, so an OCR-recovered
+    # short coil row lost its TR_C_015 code and mis-detected Terra V/006 instead of Terra H/015.
+    det = pi.detect_cover_page_from_pdf_pages([_TextPage(page_number=2, text=_COVER_TEXT_TERRA)])
+    assert det.detected is True
+    assert [row.tag for row in det.rows] == ["CDXC-1", "RHHGRC-1"]
+    for row in det.rows:
+        assert row.model == "TR_C_015"
+        assert pi._derive_product_line_and_size(row.model, row.tag, row.item) == ("TERRA H", "015")
+
+
+def test_model_code_from_row_text_is_specific() -> None:
+    assert pi._model_code_from_row_text("DXC Cooling TR_C_015 LH") == "TR_C_015"
+    assert pi._model_code_from_row_text("NV Cooling A16 RH") == "A16"  # general, not just Terra
+    # No false match on voltage / handing / item-only rows.
+    assert pi._model_code_from_row_text("DXC Cooling LH") == ""
+    assert pi._model_code_from_row_text("208V/1ph/60Hz LH") == ""

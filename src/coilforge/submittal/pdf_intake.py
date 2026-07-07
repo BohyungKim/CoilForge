@@ -1570,6 +1570,25 @@ def _with_continuation_cover_rows(
     )
 
 
+def _model_code_from_row_text(text: str) -> str:
+    """The unit model code embedded in a cover row's free text (e.g. ``TR_C_015``).
+
+    The text-path row parser splits columns positionally, which drops the model on
+    short / OCR-recovered rows (``1 CDXC-1 DXC Cooling TR_C_015 LH``). Recover it by
+    returning the first whitespace token the product/size detector recognizes as a
+    product line -- reusing ``detect_product_and_size`` so this can never drift from
+    detection (matches ``TR_C_015`` and Nova/Ventum size codes alike). Returns ``""``
+    when no product code is present (voltage/handing/item tokens never match).
+    """
+    from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+
+    for token in text.split():
+        token = token.strip(",;")
+        if token and detect_product_and_size(token)[0]:
+            return token
+    return ""
+
+
 def _cover_row_from_text_line(
     page: _TextPage,
     line_number: int,
@@ -1594,6 +1613,7 @@ def _cover_row_from_text_line(
         qty=_extract_qty(match.group("qty")),
         tag=tag,
         item=item,
+        model=_model_code_from_row_text(rest),
         handing="" if handing_match is None else handing_match.group("handing"),
     )
 
