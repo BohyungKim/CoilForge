@@ -35,7 +35,8 @@ def test_template_catalog_contains_22_buckets_and_validates_schema() -> None:
         )
     )
 
-    assert len(catalog.entries) == TEMPLATE_BUCKET_COUNT == 22
+    # 22 shared buckets + any dedicated per-family buckets (e.g. seeded Ventum+).
+    assert len(catalog.entries) == TEMPLATE_BUCKET_COUNT >= 22
     jsonschema.validate(payload, schema)
 
 

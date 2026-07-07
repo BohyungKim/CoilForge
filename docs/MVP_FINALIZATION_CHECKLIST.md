@@ -40,9 +40,14 @@ The MVP is anchored on the **10 currently-seeded review-aid templates** (everyth
   `hgrh_lh_header3`, `cwc_rh`, `hwc_rh`). *(Done 2026-06-21 — real seeds, no mirrors.)*
 - [x] **[EXT]** **4HD**: seeded real DX/HGRH header-4 references (LH+RH) and registered
   them; the `placeholder_blocked` branch is now inert. *(Done 2026-06-21.)*
-- [ ] **[EXT]** **Ventum+ fork**: add catalog `product_family` discriminator + full
-  parallel Ventum+ bucket matrix; remove the downstream `_UNREGISTERED_PRODUCT_LINES`
-  hard-block in `workflows/submittal_to_drawing.py`. New buckets start unseeded.
+- [x] **[EXT]** **Ventum+ fork** — **implemented 2026-07-06.** First un-blocked 2026-07-03
+  (`_UNREGISTERED_PRODUCT_LINES` emptied → shared templates), then forked: `catalog.py` gained
+  an optional `product_family` axis (2-pass: dedicated wins, else shared fallback) and **11
+  dedicated Ventum+ templates were seeded** from real Ventum+ selection drawings
+  (`VENTUM_PLUS_TEMPLATES`: DX 5, HGRH 3, HWC 2, CWC 1) — driven by the R-032 ConnectionUP
+  distributor the shared DOWN templates couldn't show. Other lines + unseeded Ventum+ combos
+  still resolve to the shared 22 buckets (no regression). John eyeball gate on each seeded
+  template pending. (Matches `CLAUDE.md` product-family rules + `[[ventum-plus]]` wiki.)
 - [ ] **[MVP]** Confirm the "unregistered/unseeded" list is **known and surfaced** (not a
   silent gap) for everything outside the 10-template set.
 

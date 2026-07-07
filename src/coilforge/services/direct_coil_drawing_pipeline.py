@@ -266,6 +266,15 @@ def build_drawing_slots(
     if "notes" in response.values:
         slots["slot.NOTES"] = " ".join(str(v) for v in response.values["notes"].value)
 
+    # DX distributor orientation (R-031 DOWN / R-032 UP) is a HIGH engine value but a
+    # STRING, not a dimension, so it rides its own slot rather than _SLOT_ENGINE_FIELD.
+    # Surfacing it lets the parametric drawing engine redraw the distributor on the
+    # correct side (Ventum+ = UP). Emitted only when the engine resolved it (DX only —
+    # HGRH/CWC/HWC have no distributor), never invented.
+    orientation = val("dist_orientation")
+    if orientation is not None:
+        slots["slot.DIST_ORIENTATION"] = orientation
+
     # 2. Recovered formulas (confirmed against reference cases).
     tf, bf, cd, rb = val("top_flange"), val("bottom_flange"), val("casing_depth"), val("return_bend")
     if cd is None:
@@ -281,8 +290,8 @@ def build_drawing_slots(
     if finned_length is not None:
         slots["slot.FL"] = finned_length
         slots["slot.CL"] = round(finned_length + 3, 4)                  # CL = FL+3
-        if rb is not None:
-            slots["slot.OAL"] = round(finned_length + 3 + rb, 4)        # OAL (derived/review)
+        # OAL = FL + RB + HD2 is emitted after the per-header loop / EZ override below,
+        # once slot.HD2 (return/suction header depth) is resolved (John 2026-06-29).
     if rows is not None:
         slots["slot.ROWS"] = rows
     if tag:
@@ -387,6 +396,14 @@ def build_drawing_slots(
         for slot in _SLOT_EZ_OVERRIDE:
             if slot in json_slots:
                 slots[slot] = json_slots[slot]
+
+    # 4. OAL = FL + RB + HD2 (return/suction header depth) — John 2026-06-29, all coils.
+    # Computed from the FINAL drawn slot values (after the per-header loop and the EZ
+    # override) so OAL always matches the HD2 the drawing shows. If HD2 is absent (e.g.
+    # single-feed water coils where HD = "N/A"), OAL is omitted, never guessed.
+    oal_fl, oal_rb, oal_hd = slots.get("slot.FL"), slots.get("slot.RB"), slots.get("slot.HD2")
+    if all(isinstance(x, (int, float)) for x in (oal_fl, oal_rb, oal_hd)):
+        slots["slot.OAL"] = round(oal_fl + oal_rb + oal_hd, 4)
 
     return slots, response
 
@@ -502,13 +519,17 @@ def run_direct_coil_drawing_pipeline(
 
     _, review_items = map_engine_to_slots(response)
 
-    # step 4 — select + populate template
+    # step 4 — select + populate template. Prefer a dedicated per-family template when
+    # one is seeded (e.g. Ventum+ DX with its ConnectionUP distributor); falls back to
+    # the shared bucket when none exists (two-pass match in select_drawing_template).
+    dpl_family, _ = resolve_product_line(product_type)
     selection = select_drawing_template(
         TemplateSelectionRequest(
             supplier=supplier,
             coil_category=coil_type,
             coil_hand=hand,
             header_type=header_type,
+            product_family=dpl_family,
         )
     )
     if not selection.found or selection.template_id is None:

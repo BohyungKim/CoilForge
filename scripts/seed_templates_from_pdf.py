@@ -142,8 +142,11 @@ def _pick_drawing_page(doc: "fitz.Document") -> "fitz.Page":
     return best
 
 
-def seed_pdf(pdf_path: Path) -> SeedResult:
-    page = _pick_drawing_page(fitz.open(pdf_path))
+def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
+    doc = fitz.open(pdf_path)
+    # Multi-coil project PDFs hold many drawing pages, so a specific page must be named;
+    # single-coil EZ exports omit it and fall back to the callout-density auto-pick.
+    page = doc[page_index] if page_index is not None else _pick_drawing_page(doc)
     svg = page.get_svg_image(text_as_path=False)
     used: set[str] = set()
 
@@ -565,6 +568,38 @@ BUCKETS = [
 # activates no template.
 MIRRORS: list[tuple[str, str, str]] = []
 
+# Dedicated Ventum+ buckets (the product_family fork). Seeded from REAL Ventum+
+# CoilMaster selection drawings so the ConnectionUP distributor (R-032) is captured
+# from the reference itself. These are per-PROJECT multi-coil PDFs, so each carries an
+# explicit page index (9th element). Sources are staged under Case/feed/vplus_* (which
+# is gitignored, like all of Case/). Bucket -> (pdf, page) comes from the Phase-0
+# inventory manifest (scripts/inventory_ventum_selection.py), confirmed by John.
+#   template_id, category_dir, coil_category, hand, header_type, special, src, case_id, page_index
+VPLUS_BUCKETS: list[tuple] = [
+    ("coilmaster_vplus_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
+     "Case/feed/vplus_dx_rh_header1/2798_Centra_Reno.pdf", "VPLUS-2798-CENTRA-RENO", 1),
+    ("coilmaster_vplus_dx_lh_header1", "dx", "DX", "LH", "Header 1", None,
+     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 2),
+    ("coilmaster_vplus_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
+     "Case/feed/vplus_dx_lh_header2/2760_Revere.pdf", "VPLUS-2760-REVERE", 3),
+    ("coilmaster_vplus_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
+     "Case/feed/vplus_dx_lh_header3/1929_Hoffman.pdf", "VPLUS-1929-HOFFMAN", 1),
+    ("coilmaster_vplus_dx_rh_header2", "dx", "DX", "RH", "Header 2", None,
+     "Case/feed/vplus_dx_rh_header2/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 1),
+    ("coilmaster_vplus_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
+     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 6),
+    ("coilmaster_vplus_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
+     "Case/feed/vplus_hgrh_rh_header1/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 2),
+    ("coilmaster_vplus_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,
+     "Case/feed/vplus_hgrh_rh_header2/2839_Fairmount.pdf", "VPLUS-2839-FAIRMOUNT", 2),
+    ("coilmaster_vplus_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
+     "Case/feed/vplus_hwc_lh/2802_Manchester.pdf", "VPLUS-2802-MANCHESTER", 2),
+    ("coilmaster_vplus_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
+     "Case/feed/vplus_hwc_rh/2523_WestCalgary.pdf", "VPLUS-2523-WCALGARY", 1),
+    ("coilmaster_vplus_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
+     "Case/feed/vplus_cwc_lh/2773_Paiza.pdf", "VPLUS-2773-PAIZA", 1),
+]
+
 
 def _slot_map(template_id: str, slot_ids: set[str]) -> dict:
     slots = []
@@ -590,10 +625,12 @@ def _slot_map(template_id: str, slot_ids: set[str]) -> dict:
 
 
 def build_bucket(spec: tuple) -> set[str]:
-    template_id, cat_dir, coil_cat, hand, header_type, special, src, case_id = spec
+    template_id, cat_dir, coil_cat, hand, header_type, special, src, case_id = spec[:8]
+    # Optional 9th element = explicit page index for multi-coil project PDFs (Ventum+).
+    page_index = spec[8] if len(spec) > 8 else None
     out_dir = REPO_ROOT / "templates" / "drawing" / "coilmaster" / cat_dir / template_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    res = seed_pdf(REPO_ROOT / src)
+    res = seed_pdf(REPO_ROOT / src, page_index)
     (out_dir / "template.svg").write_text(finalize(res.svg, template_id), encoding="utf-8")
     src_folder = str(Path(src).parent).replace("\\", "/")
     page_count = fitz.open(REPO_ROOT / src).page_count
@@ -678,7 +715,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "build-one":
         sys.path.insert(0, str(REPO_ROOT / "src"))
         target = sys.argv[2]
-        spec = next((s for s in BUCKETS if s[0] == target), None)
+        spec = next((s for s in (*BUCKETS, *VPLUS_BUCKETS) if s[0] == target), None)
         if spec is None:
             raise SystemExit(f"unknown template_id: {target}")
         ids = build_bucket(spec)

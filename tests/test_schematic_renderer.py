@@ -264,6 +264,48 @@ def test_side_view_dimensions_s1_r2_and_distributor_extension() -> None:
     assert "supply distributor: no stubout" not in res.side_svg
 
 
+def _supply_connection(layout: ViewLayout) -> Circle:
+    return next(c for c in layout.circles if c.feature == "connection_supply")
+
+
+def test_distributor_orientation_up_lifts_supply_to_top_half() -> None:
+    # R-032: the Ventum+ DX distributor mounts ConnectionUP — the supply connection is
+    # referenced from the TOP casing edge (upper half), the mirror of the ConnectionDOWN
+    # default (R-031, every other line).
+    up = layout_header_side_view(geometry(slots(**{"slot.DIST_ORIENTATION": "UP"})))
+    down = layout_header_side_view(geometry(slots(**{"slot.DIST_ORIENTATION": "DOWN"})))
+    casing = _side_casing(up)
+    mid = casing.y + casing.h / 2.0
+    s_up, s_down = _supply_connection(up), _supply_connection(down)
+    assert s_up.cy < mid < s_down.cy  # UP in the top half, DOWN in the bottom half
+    assert s_up.cy == pytest.approx(casing.y + 6.0)  # from the top by I1 = 6
+    assert s_down.cy == pytest.approx(casing.y + casing.h - 6.0)  # from the bottom by I1 = 6
+    # the return header is unaffected by the supply distributor's orientation
+    ret = next(c for c in up.circles if c.feature == "connection_return")
+    assert ret.cy == pytest.approx(casing.y + casing.h - 4.0)  # O2 = 4 from the bottom
+    # the flip is annotated for the eyeball gate
+    assert any("orientation: UP" in n for n in up.omitted_notes)
+
+
+def test_distributor_orientation_defaults_to_down_when_unset() -> None:
+    # No orientation slot (non-DX, or the engine did not emit it) -> keep the DOWN datum;
+    # never invent UP.
+    default = layout_header_side_view(geometry(slots()))
+    down = layout_header_side_view(geometry(slots(**{"slot.DIST_ORIENTATION": "DOWN"})))
+    assert _supply_connection(default).cy == pytest.approx(_supply_connection(down).cy)
+    assert not any("orientation: UP" in n for n in default.omitted_notes)
+
+
+def test_distributor_orientation_is_orthogonal_to_hand_mirror() -> None:
+    # UP is a vertical concern; LH<->RH is a horizontal x-mirror. A UP distributor stays
+    # in the top half for BOTH hands (the two axes do not interfere).
+    up = slots(**{"slot.DIST_ORIENTATION": "UP"})
+    for hand in ("LH", "RH"):
+        view = build_dx_views(geometry(up, hand=hand))["side"]
+        casing = _side_casing(view)
+        assert _supply_connection(view).cy < casing.y + casing.h / 2.0, hand
+
+
 def test_distinct_connections_do_not_overlap() -> None:
     conns = _connections(layout_header_side_view(geometry(sanitized_slots())))
     for a, b in itertools.combinations(conns, 2):

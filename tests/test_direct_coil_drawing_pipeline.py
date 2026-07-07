@@ -118,6 +118,7 @@ def test_all_dimension_labels_are_value_driven() -> None:
     assert r.slot_values["slot.CL"] == 18.0     # FL+3
     assert r.slot_values["slot.S1"] == 2.75     # CD/2
     assert r.slot_values["slot.RB"] == 1.5      # engine default RB (R-005; John 2026-06-25)
+    assert r.slot_values["slot.OAL"] == 20.0    # OAL = FL + RB + HD2 = 15 + 1.5 + 3.5 (John 2026-06-29)
 
 
 def test_slot_sl2_is_17_for_dx_ventum_h_h05() -> None:
@@ -174,6 +175,30 @@ def test_dx_emits_no_supply_odd_sl() -> None:
     )
     assert "slot.SL1" not in slots and "slot.SL3" not in slots
     assert "slot.SL2" in slots  # even/return SL still present
+
+
+def test_dx_distributor_orientation_slot_emitted_per_family() -> None:
+    # R-031/R-032 dist_orientation is a HIGH engine value; build_drawing_slots surfaces it
+    # as slot.DIST_ORIENTATION so the parametric engine can redraw the distributor side.
+    # Ventum+ = UP (R-032); Nova/Terra/Ventum H = DOWN (R-031).
+    common = dict(unit_size=None, rows=4, circuits=1, feeds=2,
+                  conn_size=0.625, suction_conn_size=0.625)
+    vp, _ = build_drawing_slots(coil_type="DX", product_type="VENTUM_PLUS",
+                                **{**common, "unit_size": "V20"})
+    nova, _ = build_drawing_slots(coil_type="DX", product_type="NOVA",
+                                  **{**common, "unit_size": "B20"})
+    assert vp["slot.DIST_ORIENTATION"] == "UP"
+    assert nova["slot.DIST_ORIENTATION"] == "DOWN"
+
+
+def test_non_dx_emits_no_distributor_orientation_slot() -> None:
+    # HGRH/CWC/HWC have no distributor -> R-031/R-032 do not apply -> no orientation slot.
+    for coil_type in ("HGRH", "CWC", "HWC"):
+        slots, _ = build_drawing_slots(
+            coil_type=coil_type, product_type="VENTUM_PLUS", unit_size="V20",
+            rows=4, circuits=1, feeds=2, conn_size=0.625, suction_conn_size=0.625,
+        )
+        assert "slot.DIST_ORIENTATION" not in slots, coil_type
 
 
 def test_material_and_title_slots_wired_from_coil_data() -> None:

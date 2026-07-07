@@ -40,6 +40,9 @@ _SUPPLY_SLOTS = {
     "extension": "slot.DIST_EXT",
     "connection_diameter": "slot.SUPPLY_CONN_SIZE",
 }
+# Distributor mount orientation (R-031 ConnectionDown / R-032 ConnectionUp) — a string,
+# not a dimension. Drives which casing edge the DX distributor is referenced from.
+_DIST_ORIENTATION_SLOT = "slot.DIST_ORIENTATION"
 _RETURN_SLOTS = {
     "diameter": "slot.HD2",
     "offset": "slot.O2",
@@ -77,6 +80,19 @@ def _slot_int(slot_values: dict[str, Any], key: str) -> int | None:
     return int(value) if value is not None else None
 
 
+def _dist_orientation(slot_values: dict[str, Any]) -> str | None:
+    """Normalize the distributor-orientation slot to ``"UP"`` / ``"DOWN"`` or ``None``.
+
+    Any other / missing value -> ``None`` so the layout keeps its default (DOWN)
+    placement rather than inventing a direction.
+    """
+    value = slot_values.get(_DIST_ORIENTATION_SLOT)
+    if value is None:
+        return None
+    text = str(value).strip().upper()
+    return text if text in ("UP", "DOWN") else None
+
+
 @dataclass(frozen=True)
 class HeaderSpec:
     """One header/connection at the coil's header end, in inches. No pixels.
@@ -92,6 +108,7 @@ class HeaderSpec:
     connection_diameter: float | None  # RETURN_CONN_SIZE (return)
     spacing: float | None = None  # S1 (supply) / R2 (return) — depth position along CD
     extension: float | None = None  # DIST_EXT (supply distributor extension stub)
+    orientation: str | None = None  # "UP"/"DOWN" (supply distributor; R-031/R-032). None = default DOWN
 
 
 @dataclass(frozen=True)
@@ -144,6 +161,7 @@ class CoilGeometry:
             connection_diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["connection_diameter"]),
             spacing=_slot_inches(slot_values, _SUPPLY_SLOTS["spacing"]),
             extension=_slot_inches(slot_values, _SUPPLY_SLOTS["extension"]),
+            orientation=_dist_orientation(slot_values),
         )
         return_header = HeaderSpec(
             role="return",

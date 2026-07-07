@@ -1,0 +1,23 @@
+{
+  "template_id": "coilmaster_vplus_hgrh_lh_header1",
+  "schema_version": "template-first.1",
+  "supplier": "coilmaster",
+  "coil_category": "HGRH",
+  "coil_hand": "LH",
+  "header_type": "Header 1",
+  "special_feature": null,
+  "status": "active_review_aid",
+  "source_case_id": "VPLUS-2760-REVERE",
+  "source_folder": "Case/feed/vplus_hgrh_lh_header1",
+  "seed_method": "vectorised_from_provided_ez_drawing_pdf_values_redacted_to_slots",
+  "review_status": "review_required",
+  "release_status": "review_aid_only",
+  "export_allowed": false,
+  "production_approved": false,
+  "pdf_export_enabled": false,
+  "notes": [
+    "Artwork is the vectorised EZ drawing with values replaced by slots.",
+    "Raw PDFs are not copied into this template folder.",
+    "Review aid only; engineering must confirm before any use."
+  ]
+}

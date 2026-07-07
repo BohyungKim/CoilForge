@@ -163,6 +163,17 @@ colouring each field green(match)/red(mismatch) at `POST /api/ccsi-compare`. Reu
 R 3.317 vs 1.3125) flags red before John saves. Review aid only (`export_allowed: False`);
 multi-header keys (I2/S2…) push only when present in `parameters` AND in the field map.
 
+**Engineering Wiki** (`docs/wiki/`, schema `docs/wiki/WIKI.md`) — an LLM-maintained,
+interlinked markdown knowledge base (Karpathy "LLM Wiki" pattern) that is the human-readable
+synthesis layer ABOVE the YAML rule table: one page per coil category / product family / concept,
+every claim badged (`[CONFIRMED]`/`[REVIEW-REQUIRED]`/`[BLOCKED]`, mirroring the confidence gate)
+and cited with the engine's `evidence_ref` grammar. Raw sources stay external/gitignored —
+`docs/wiki/sources.md` is a citation registry, not the files (review aid only; never invents
+values). Maintained via `/wiki-ingest`, `/wiki-query`, `/wiki-lint`; the lint pass cross-checks
+wiki claims against `coil_header_rules.yaml`/enums and reconciles `open-questions.md` against
+`docs/MVP_FINALIZATION_CHECKLIST.md`. Distinct from the auto-memory (decision log) and
+`docs/rules/coil_header_rule_extraction.md` (per-cell dictionary) — it links to both, duplicates neither.
+
 **Web app** — `coilforge/web_app.py` imports the Phase 2A FastAPI `app` and registers
 the `/api/*` routes (workflows, compatibility review, decision capture, review packets).
 The browser UI is vanilla JS in `web/` (`index.html` / `app.js` / `style.css`). API
@@ -221,13 +232,19 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
 - **Terra H and Terra V are distinct product types** (not one Terra family).
   **Terra H C** is a sub-variant *under* Terra H.
 - Drawing **values** are always selected by product type (the YAML engine).
-- Template **selection** is product-family-agnostic for **all** lines — Nova, Ventum H,
-  Terra, **and Ventum+** reuse the shared CoilMaster buckets with their own engine-computed
-  dimensions. (Ventum+ was un-blocked 2026-07-03 after its reference selection PDFs were
-  confirmed to be CoilMaster EZ-Coil drawings in the same category/hand/header format the
-  templates were seeded from, so `_UNREGISTERED_PRODUCT_LINES` in
-  `workflows/submittal_to_drawing.py` is now empty; the earlier dedicated-Ventum+-matrix
-  target was retired as unnecessary.)
+- Template **selection** is product-family-agnostic **by default** — Nova, Ventum H, Terra
+  reuse the shared CoilMaster buckets with their own engine-computed dimensions. **Exception:
+  the Ventum+ fork (2026-07-06).** Because the Ventum+ DX distributor mounts ConnectionUP
+  (R-032) which the shared ConnectionDown-seeded templates can't show, `catalog.py` gained an
+  optional `product_family` axis (2-pass match: a dedicated bucket wins, else fall back to the
+  shared one) and **11 dedicated Ventum+ templates were seeded from real Ventum+ selection
+  drawings** (`VENTUM_PLUS_TEMPLATES` / `VPLUS_BUCKETS`: DX 5, HGRH 3, HWC 2, CWC 1). A Ventum+
+  coil prefers its dedicated bucket; every other line and any not-yet-seeded Ventum+ combo
+  still resolves to the shared 22 buckets. Routing is post-process in
+  `submittal_to_drawing.py::_prefer_dedicated_family_template` (frozen `pdf_to_template_drawing`
+  untouched) + threaded at `direct_coil_drawing_pipeline`. (Ventum+ was first un-blocked
+  2026-07-03 — `_UNREGISTERED_PRODUCT_LINES` emptied — to reuse shared templates; the fork
+  then gave it its own seeded set so the R-032 UP geometry is captured from the reference.)
   That same submittal gate (`_gate_unregistered_product_line`) also **omits Terra V
   CWC/HWC** drawings (variant `TERRA_V` + CWC/HWC) — no seeded Terra V water reference,
   so the shared water template is withheld (not borrowed); Terra V DX/HGRH and Terra H
@@ -253,15 +270,20 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
 - Generated drawings are **review aids** (`export_allowed: False`) until formally approved.
 - **No surrogate / mirror template generation** — each hand/header must be seeded from its
   own real reference PDF.
-- **Terra V** is largely SOP-only (single-source) across categories, so it routes to
-  `LOW` / blocked (`R-023` DX spacing, `R-046` HGRH, `R-067` CWC/HWC vent-drain).
+- **Terra V** drawing values were SOP-confirmed and promoted **LOW→HIGH (now drawn)** on
+  2026-06-28 (`R-023` DX return spacing, `R-046` HGRH supply/return, `R-067` CWC/HWC
+  vent-drain) — it is no longer a blanket LOW/blocked line. What genuinely stays gated:
+  `R-082` Terra mounting holes (blocked/deferred), HGRH Supply 2/3/4 I/O (review-required —
+  a software default, not derivable), and the Terra V **CWC/HWC drawing** (withheld at the
+  submittal gate for lack of a seeded water reference; the engine rules are intact).
 
 ### MVP checklist
 
 Coverage = which `(category, hand, header, product family)` template buckets are **seeded**
-vs **unseeded**. Unseeded buckets (`needs_pair` / `placeholder_blocked`,
-`generation_allowed=False`) are tracked work items. Currently **10 of 22** buckets are
-active review aids; the rest await seeding. Coverage is surfaced today via the
+vs **unseeded**. The `needs_pair` / `placeholder_blocked` (`generation_allowed=False`)
+statuses tag any future unseeded bucket, but **all 22 buckets are currently seeded/active
+review aids** (`catalog.ACTIVE_TEMPLATES`); the 10-template set anchors the MVP scope.
+Coverage is surfaced today via the
 hand-authored `docs/coverage_dashboard.html` (a point-in-time snapshot; a generator is a
 follow-up item).
 
@@ -312,8 +334,8 @@ Until then, the code differs as follows — do not assume the target is implemen
 | Area | Current code | Confirmed target |
 | --- | --- | --- |
 | Product family enum | `ProductFamily {NOVA, TERRA, VENTUM_H, VENTUM_PLUS}` + `TerraVariant {TERRA_H, TERRA_H_C, TERRA_V}` (`schemas/header_prepopulate.py`) | Split `TERRA` → `TERRA_H` + `TERRA_V`; demote `TERRA_H_C` to a sub-variant of Terra H |
-| 4HD buckets | `placeholder_blocked` (permanent dead-end) in `template_population/catalog.py` | `needs_pair` — buildable once a real 4HD reference PDF is seeded |
-| Ventum+ | ✅ Resolved 2026-07-03 — draws via the shared product-agnostic templates (`_UNREGISTERED_PRODUCT_LINES` now empty) | Dedicated `product_family` matrix retired as unnecessary; Ventum+ reuses shared templates like every other line |
+| 4HD buckets | ✅ Resolved 2026-06-21 — DX/HGRH header-4 LH+RH seeded from real reference PDFs (`catalog.ACTIVE_TEMPLATES`); the `placeholder_blocked` branch is inert | Was `needs_pair`; now seeded — aligned |
+| Ventum+ | ✅ Fork implemented 2026-07-06 — optional `product_family` axis in `catalog.py` + 11 dedicated Ventum+ templates seeded (DX 5, HGRH 3, HWC 2, CWC 1); unseeded combos + other lines fall back to shared | Ventum+ prefers its own seeded buckets (captures R-032 UP distributor); shared fallback keeps every other line unchanged |
 | Coverage checklist | Hand-authored `docs/coverage_dashboard.html` snapshot | Generated from `template_population/catalog.list_template_entries()` |
 
 ## Conventions

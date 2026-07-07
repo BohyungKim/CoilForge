@@ -365,11 +365,24 @@ def layout_header_side_view(geom: CoilGeometry) -> ViewLayout:
         for h in geom.headers:
             dia_label = "HDx1" if h.role == "supply" else "HD2"
             off_label = "I1" if h.role == "supply" else "O2"
-            cy = bottom - h.offset if h.offset is not None else casing.y + casing.h / 2.0
+            # Distributor mount orientation (R-031/R-032): the Ventum+ DX distributor
+            # mounts ConnectionUP, every other line ConnectionDOWN. UP references the
+            # supply connection from the TOP casing edge (and dims it from the top);
+            # DOWN (default, incl. the return header and any unset orientation) keeps
+            # the bottom datum. Orthogonal to the LH<->RH x-mirror (vertical vs horizontal).
+            supply_up = h.role == "supply" and (h.orientation or "").upper() == "UP"
             if h.offset is not None:
-                # offset dim on the LEFT (connection) side, from the bottom to the connection.
-                reqs.append(_DimReq(off_label, "offset", "left", "v", casing.x, bottom, casing.x, cy))
+                if supply_up:
+                    cy = casing.y + h.offset
+                    # offset dim on the LEFT (connection) side, from the TOP to the connection.
+                    reqs.append(_DimReq(off_label, "offset", "left", "v", casing.x, casing.y, casing.x, cy))
+                    notes.append("distributor orientation: UP (R-032) — connection referenced from top")
+                else:
+                    cy = bottom - h.offset
+                    # offset dim on the LEFT (connection) side, from the bottom to the connection.
+                    reqs.append(_DimReq(off_label, "offset", "left", "v", casing.x, bottom, casing.x, cy))
             else:
+                cy = casing.y + casing.h / 2.0
                 notes.append(_omit(off_label))
 
             # S1 (supply) / R2 (return): the header's depth position along CD, measured

@@ -49,7 +49,7 @@ def test_no_mirror_entries_remain_active() -> None:
 
 def test_former_mirror_buckets_now_seeded_from_real_pdfs() -> None:
     entries = load_drawing_template_catalog().by_template_id()
-    assert len(entries) == 22
+    assert len(entries) >= 22  # 22 shared + any dedicated per-family (seeded Ventum+)
     for bucket in _FORMER_MIRROR_BUCKETS:
         assert entries[bucket].generation_allowed is True
         assert entries[bucket].status == "active_review_aid"
@@ -81,14 +81,14 @@ def test_former_mirror_hand_now_renders() -> None:
 
 
 def test_ventum_plus_renders_across_categories() -> None:
-    # Ventum Plus draws through the shared product-agnostic CoilMaster templates
-    # (confirmed 2026-07-03). It is no longer forced to "not registered"; it renders
-    # exactly like Nova/Terra with its own engine-computed dimensions. Review aid only.
+    # Ventum Plus renders across categories. These LH 1-header combos now have DEDICATED
+    # Ventum+ templates seeded from real Ventum+ selection drawings (2026-07-06), so they
+    # route to the `coilmaster_vplus_*` bucket instead of the shared one. Review aid only.
     for category, template_id in (
-        ("DX", "coilmaster_dx_lh_header1"),
-        ("HGRH", "coilmaster_hgrh_lh_header1"),
-        ("CWC", "coilmaster_cwc_lh"),
-        ("HWC", "coilmaster_hwc_lh"),
+        ("DX", "coilmaster_vplus_dx_lh_header1"),
+        ("HGRH", "coilmaster_vplus_hgrh_lh_header1"),
+        ("CWC", "coilmaster_vplus_cwc_lh"),
+        ("HWC", "coilmaster_vplus_hwc_lh"),
     ):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
@@ -96,6 +96,7 @@ def test_ventum_plus_renders_across_categories() -> None:
                  finned_height=12, finned_length=15, suction_conn_size=0.625)
         )
         assert out["template_id"] == template_id, category
+        assert out.get("dedicated_family_template") == "VENTUM_PLUS", category
         assert out["template_found"] is True, category
         assert out["generation_allowed"] is True, category
         assert out["svg"], category
@@ -154,3 +155,86 @@ def test_terra_h_water_still_generates() -> None:
     )
     assert out["generation_allowed"] is True
     assert out["svg"]
+
+
+def test_ventum_plus_dx_flags_distributor_orientation() -> None:
+    # For a Ventum+ DX combo with NO dedicated template yet (DX RH 3-header — the shared
+    # bucket exists but no vplus one is seeded), the drawing falls back to the shared
+    # ConnectionDown template, so the R-032 orientation caveat is attached. The drawing
+    # still renders (never blocked); the warning just prevents silent wrong-direction use.
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Right", circuits=3,
+             product_type="VENTUM_PLUS", unit_size="V20", rows=4,
+             finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert out["template_id"] == "coilmaster_dx_rh_header3"  # shared fallback
+    assert out["svg"]  # never blocked — the caveat rides alongside the drawing
+    warning = out.get("distributor_orientation_warning")
+    assert warning, "Ventum+ DX on a shared template must carry the orientation warning"
+    assert "R-032" in warning
+    assert "ConnectionUP" in warning and "ConnectionDOWN" in warning
+
+
+def test_ventum_plus_non_dx_has_no_orientation_warning() -> None:
+    # R-031/R-032 are DX-only (the distributor exists on DX). Ventum+ HGRH/CWC/HWC have
+    # no distributor, so no orientation warning is attached.
+    for category in ("HGRH", "CWC", "HWC"):
+        out = derive_coil_template_drawing(
+            dict(coil_category=category, coil_hand="Left", circuits=1,
+                 product_type="VENTUM_PLUS", unit_size="V20", rows=4,
+                 finned_height=12, finned_length=15, suction_conn_size=0.625)
+        )
+        assert out.get("distributor_orientation_warning") is None, category
+
+
+def test_nova_dx_has_no_orientation_warning() -> None:
+    # Nova/Terra/Ventum H distributors mount ConnectionDown (R-031) — the seeded
+    # template already draws them correctly, so no warning is attached.
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Left", circuits=1, product_type="NOVA",
+             unit_size="B20", rows=4, finned_height=12, finned_length=15,
+             suction_conn_size=0.625)
+    )
+    assert out["svg"]
+    assert out.get("distributor_orientation_warning") is None
+
+
+def test_ventum_plus_dx_rh_routes_to_dedicated_template() -> None:
+    # A dedicated Ventum+ DX RH 1-header template is seeded (from a real UP reference),
+    # so a Ventum+ DX RH coil draws from it — not the shared ConnectionDown bucket — and
+    # the orientation caveat is dropped (the dedicated template already draws UP).
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Right", circuits=1,
+             product_type="VENTUM_PLUS", unit_size="V20", rows=4,
+             finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert out["template_id"] == "coilmaster_vplus_dx_rh_header1"
+    assert out.get("dedicated_family_template") == "VENTUM_PLUS"
+    assert out["svg"]
+    assert out.get("distributor_orientation_warning") is None  # dedicated UP -> no caveat
+    assert out["export_allowed"] is False  # still review aid only
+
+
+def test_ventum_plus_combo_without_dedicated_falls_back_to_shared() -> None:
+    # Ventum+ DX RH 3-header has NO dedicated bucket seeded yet -> two-pass match falls
+    # back to the shared template, and the orientation warning stays (shared draws DOWN).
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Right", circuits=3,
+             product_type="VENTUM_PLUS", unit_size="V20", rows=4,
+             finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert out["template_id"] == "coilmaster_dx_rh_header3"  # shared fallback
+    assert out.get("dedicated_family_template") is None
+    assert out.get("distributor_orientation_warning")  # shared DOWN -> caveat present
+
+
+def test_non_ventum_line_never_gets_dedicated_ventum_template() -> None:
+    # A Nova DX RH coil must keep the shared bucket even though a dedicated Ventum+ RH
+    # bucket exists for the same category/hand/header (the family axis gates it).
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Right", circuits=1, product_type="NOVA",
+             unit_size="B20", rows=4, finned_height=12, finned_length=15,
+             suction_conn_size=0.625)
+    )
+    assert out["template_id"] == "coilmaster_dx_rh_header1"  # shared, NOT the vplus one
+    assert out.get("dedicated_family_template") is None

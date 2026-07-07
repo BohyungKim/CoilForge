@@ -530,6 +530,89 @@ def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+# The distributor orientation physically differs by product family: Nova/Terra/
+# Ventum H mount the DX distributor ConnectionDown (R-031), but Ventum+ mounts it
+# ConnectionUp (R-032, HIGH). The shared CoilMaster templates were seeded from
+# ConnectionDown reference drawings and the drawing path does NOT consume
+# `dist_orientation` (it is computed by the engine but never wired into slots /
+# template geometry). So a Ventum+ DX review-aid draws the distributor DOWN — the
+# wrong direction. Until the parametric engine consumes dist_orientation, flag it
+# loudly so the wrong orientation is never trusted silently. Review aid only.
+_DIST_ORIENTATION_REVIEW = (
+    "Distributor orientation (R-032): Ventum+ DX distributors mount ConnectionUP, "
+    "but this review-aid reuses the shared CoilMaster template seeded ConnectionDOWN "
+    "and the drawing path does not yet redraw the distributor by orientation. The "
+    "distributor direction shown is NOT representative for Ventum+ — do not rely on "
+    "it. Review required."
+)
+
+
+def _flag_distributor_orientation_review(result: dict[str, Any]) -> dict[str, Any]:
+    """Attach a loud review-required warning when a DRAWN Ventum+ DX drawing would
+    show the distributor in the seeded ConnectionDown orientation instead of the
+    Ventum+ ConnectionUp (R-032). No-op unless a drawing was actually produced and
+    the coil is Ventum+ DX. Never blocks the drawing — surfaces the caveat only."""
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    # A dedicated Ventum+ template (seeded from a real UP reference) already draws the
+    # distributor ConnectionUP, so the caveat no longer applies — only the shared
+    # ConnectionDown template needs it.
+    if result.get("dedicated_family_template") == "VENTUM_PLUS":
+        return result
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    family, _ = resolve_product_line(result.get("product_type"))
+    category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
+    if family == "VENTUM_PLUS" and category == "DX":
+        result["distributor_orientation_warning"] = _DIST_ORIENTATION_REVIEW
+    return result
+
+
+def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
+    """When a dedicated per-family template is seeded for this coil's (family, category,
+    hand, header, special), re-select + re-populate the drawing from it instead of the
+    shared bucket. No-op unless a drawing was produced AND a dedicated bucket exists
+    (VENTUM_PLUS_TEMPLATES). Keeps the frozen pdf_to_template_drawing path untouched —
+    this runs in the workflow layer and only calls the public populate_template_slots."""
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+    from coilforge.template_population.catalog import (
+        TemplateSelectionRequest,
+        select_drawing_template,
+    )
+    from coilforge.template_population.slot_population import populate_template_slots
+
+    family, _ = resolve_product_line(result.get("product_type"))
+    if not family:
+        return result
+    ex = result.get("extracted") or {}
+    sel = select_drawing_template(
+        TemplateSelectionRequest(
+            supplier="coilmaster",
+            coil_category=str(ex.get("coil_category") or ""),
+            coil_hand=str(ex.get("hand") or "LH"),
+            header_type=ex.get("header_type"),
+            special_feature=ex.get("special_feature"),
+            product_family=family,
+        )
+    )
+    # Only swap when a genuinely dedicated bucket matched (not the shared fallback) and
+    # it differs from what the frozen path already drew.
+    if not (sel.found and sel.entry and sel.entry.product_family == family):
+        return result
+    if sel.template_id == result.get("template_id"):
+        return result
+    repop = populate_template_slots(sel.template_id, result.get("slot_values") or {})
+    if not repop.svg:  # re-population blocked -> keep the shared drawing, never blank it
+        return result
+    result["svg"] = repop.svg
+    result["template_id"] = sel.template_id
+    result["source_case_id"] = sel.entry.source_case_id
+    result["dedicated_family_template"] = family
+    return result
+
+
 def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     """Re-derive ONE coil's template drawing given its classification + geometry
     plus an engineer-chosen product line + unit size (the UI product/size picker).
@@ -568,6 +651,8 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         result, circuits=ctx.get("circuits")
     ).model_dump()
     _gate_unregistered_product_line(result)
+    _prefer_dedicated_family_template(result)
+    _flag_distributor_orientation_review(result)
     if result.get("svg"):
         result["svg"] = _clean_template_svg(
             result["svg"], (result.get("extracted") or {}).get("coil_category")
@@ -851,6 +936,8 @@ def _run_candidate_to_drawing_payload(
 
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)
+        _prefer_dedicated_family_template(template_drawing)
+        _flag_distributor_orientation_review(template_drawing)
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
         template_drawing["svg"] = _clean_template_svg(
             template_drawing["svg"],

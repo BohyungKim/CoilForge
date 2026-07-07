@@ -12,7 +12,6 @@
     "entries": {
       "type": "array",
       "minItems": 22,
-      "maxItems": 22,
       "items": {"$ref": "#/$defs/template_entry"}
     }
   },
@@ -49,7 +48,8 @@
         "metadata_path": {"type": ["string", "null"]},
         "source_case_id": {"type": ["string", "null"]},
         "reference_status": {"type": "string"},
-        "blocked_reason": {"type": ["string", "null"]}
+        "blocked_reason": {"type": ["string", "null"]},
+        "product_family": {"type": ["string", "null"]}
       }
     }
   }
