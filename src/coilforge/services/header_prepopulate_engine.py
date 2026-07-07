@@ -521,9 +521,8 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     field,
                     FieldResult(
                         value=positions,
-                        confidence=Confidence.MEDIUM,
+                        confidence=Confidence.HIGH,
                         evidence_refs=rule["evidence_refs"],
-                        review_required=True,
                     ),
                 )
         else:

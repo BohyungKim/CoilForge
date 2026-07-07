@@ -346,11 +346,11 @@ def test_t09_hgrh_ventum_plus_v20() -> None:
     assert r.values["return_sl"].value == 10
     assert r.values["hd"].value == 3.5
     assert r.values["supply_io"].value == 2
-    # supply_sl=6 confirmed by John for Ventum+ (R-044c); MEDIUM suggestion,
-    # matching the golden case and the analogous Nova/Ventum H rule R-044a.
-    assert r.suggestions["supply_sl"].value == 6
-    assert r.suggestions["supply_sl"].review_required is True
-    assert "supply_sl" not in r.values
+    # supply_sl=6 confirmed by John for Ventum+ (R-044c), promoted MEDIUM->HIGH
+    # 2026-07-06 (auto-drawn). Nova/Ventum H rule R-044a stays MEDIUM (see t08).
+    assert r.values["supply_sl"].value == 6
+    assert r.values["supply_sl"].confidence == Confidence.HIGH
+    assert "supply_sl" not in r.suggestions
 
 
 def test_t10_hgrh_terra_12_gate() -> None:

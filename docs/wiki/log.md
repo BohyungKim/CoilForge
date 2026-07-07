@@ -6,6 +6,11 @@
 
 <!-- LOG (newest first) -->
 
+## 2026-07-07 · lint — MEDIUM→HIGH 승격 원장 정정
+`open-questions.md`의 "AWAITING SIGN-OFF"(R-044a/c·R-048·R-066·R-002b·R-073·R-074·R-077·R-085·R-086)를
+John 2026-07-07 판정 결과로 갱신: 승격 5(R-066/R-002b/R-085/R-044c/R-048)·검토유지 2(R-044a/R-074)·
+재분류 3(R-073/R-077/R-086). 근거 `docs/mvp_promotion_decisions.md` + `coil_header_rules.yaml`.
+
 ## 2026-07-06 · ingest — Ventum+ 전용 템플릿 시드 (product_family fork)
 R-032 UP 갭 근본 해결: catalog에 `product_family` 축(2-pass: 전용 우선→공유 fallback) 추가 후, 실제
 Ventum+ 선정 도면(2폴더·69페이지 스윕, `scripts/inventory_ventum_selection.py`)에서 **11개 전용 템플릿

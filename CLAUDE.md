@@ -105,6 +105,13 @@ routes its output (`bucket_for_confidence`):
 - `LOW` / `CONFLICT` → `blocked` — `value=None` with a `blocked_reason`.
 This gate is enforced again at the data-contract layer and must be preserved end to end.
 
+**Promoting MEDIUM→HIGH:** the bucket is chosen by `confidence` ALONE — the YAML `review_required:`
+field is never read by the engine (it is derived from confidence). So a promotion is a one-line YAML
+`confidence` edit **only for rules the generic emitter handles**; rules in `_SPECIAL_IDS` (e.g. R-048,
+R-074) hardcode `Confidence.MEDIUM` in their Python helper, so a YAML flip is inert — edit the helper.
+Some IDs never promote: R-073's `casing_depth` is already emitted HIGH by R-070, and R-077 is data-only
+(consumed by `mechanical_fit`, never bucketed).
+
 **Data contracts** (`contracts/`) — every imported/prepopulated value is wrapped:
 - `FieldValue` — traceable value with `source_evidence`, `confidence`, `status`,
   `review_required`. Its validator **requires `source_evidence` for any non-null,

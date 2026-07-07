@@ -16,12 +16,15 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 | D3 | Terra V "LOW/blocked로 라우팅 (R-023/R-046/R-067)" (CLAUDE.md) | 셋 다 `HIGH`, SOP-confirmed, 2026-06-28 승격. `[[terra-v]]` 참고. | **CLOSED** (2026-07-06 — CLAUDE.md manual-review 룰 "LOW→HIGH, now drawn"으로 정정) |
 | D4 | Ventum+ fork MVP 체크리스트(L43)에선 `[ ]` OPEN vs CLAUDE.md "불필요로 폐기" | 두 거버넌스 문서 간 모순. `_UNREGISTERED_PRODUCT_LINES`는 비어 있음(Ventum+ 도면화됨). | **CLOSED** (2026-07-06 — MVP 체크리스트 L43 `[x]` 폐기로 정정, 두 문서 일치) |
 
-## John의 사인오프 대기 (MEDIUM → HIGH)
+## MEDIUM → HIGH 승격 — RESOLVED (John 2026-07-07)
 
-`docs/MVP_FINALIZATION_CHECKLIST.md` §"MEDIUM→HIGH promotions"에서:
-- `R-044a/c` supply_sl · `R-048` HGRH positions · `R-066` vent_drain · `R-002b` lifting_lugs ·
-  `R-073` HGRH casing depth · `R-074` casing dims · `R-077` drain-pan · `R-085` back-to-back ·
-  `R-086` coil style. **상태: AWAITING SIGN-OFF.**
+`docs/MVP_FINALIZATION_CHECKLIST.md` §"MEDIUM→HIGH promotions" 판정 완료 — 결정표 `docs/mvp_promotion_decisions.md`:
+- **승격(→HIGH, 자동도면) [CONFIRMED]**: `R-066` vent_drain · `R-002b` lifting_lugs · `R-085` back-to-back ·
+  `R-044c` Ventum+ supply_sl (제네릭 emitter, YAML confidence) · `R-048` HGRH positions (특수 헬퍼 코드).
+  근거: `John 2026-07-07`, 스위트 790 green.
+- **검토 유지 [REVIEW-REQUIRED]**: `R-044a` supply_sl(기하식 미구현) · `R-074` casing dims(CHK 단일출처).
+- **승격 대상 아님(재분류)**: `R-073`(casing_depth는 이미 `R-070`으로 HIGH 방출) · `R-077`(엔진 미방출,
+  `mechanical_fit` 전용) · `R-086`(feature_flag 비활성).
 
 ## 열린 엔지니어링 작업
 

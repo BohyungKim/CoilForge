@@ -56,11 +56,14 @@ The MVP is anchored on the **10 currently-seeded review-aid templates** (everyth
 - [ ] **[MVP]** **Parameter completeness audit** for every use case in the set: confirm
   each drawing slot resolves to a **HIGH** value, or is intentionally annotated as
   `review_required` / omitted — no silent `None`.
-- [ ] **[MVP]** **MEDIUM → HIGH promotions needing John's sign-off** (currently
-  `review_required`): `R-044a/c` supply_sl, `R-048` HGRH positions, `R-066` vent_drain,
-  `R-002b` lifting_lugs, `R-073` HGRH casing depth, `R-074` casing dims (single-source
-  CHK), `R-077` drain-pan, `R-085` back-to-back, `R-086` coil style. Decide which the MVP
-  auto-draws vs leaves as review.
+- [x] **[MVP]** **MEDIUM → HIGH promotions** — resolved 2026-07-07. Low-risk SOP set
+  **promoted (auto-drawn)**: `R-066` vent_drain, `R-002b` lifting_lugs, `R-085` back-to-back,
+  `R-044c` Ventum+ supply_sl (Class A YAML), `R-048` HGRH positions (Class B helper).
+  **Kept review-required**: `R-044a` supply_sl (geometric formula unimplemented), `R-074`
+  casing dims (single-source CHK). **Reclassified — not promotable**: `R-073` (already HIGH
+  via R-070; promoting would conflict), `R-077` (data-only, not engine-emitted), `R-086`
+  (feature-flag disabled). Suite 790 green + engine-level verified; browser eyeball sign-off
+  pending. **Decision table: `docs/mvp_promotion_decisions.md`**.
 - [ ] **[MVP]** **CONFLICT/blocked disposition**: confirm `R-084` ASC orientation stays
   blocked for MVP (deferred until the Direct Coil field-naming convention exists).
 - [ ] **[EXT]** **Terra split**: `TERRA → TERRA_H + TERRA_V` (Terra H C as sub-variant);
