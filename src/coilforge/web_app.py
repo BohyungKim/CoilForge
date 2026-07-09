@@ -444,6 +444,149 @@ async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict
         return None, f"Checklist cross-check unavailable: {exc}"
 
 
+# Fixed Oxygen8 DirectCoil hand-off recipients John confirmed (image #2). Display
+# names resolve against his Outlook GAL; unresolved ones show in the open draft.
+_DELIVERABLE_TO = "purchasing; rayl@directcoil.com"
+_DELIVERABLE_CC = "David Newton"
+
+
+def _b64_to_bytes(value, field: str) -> bytes:
+    import base64
+
+    if not value:
+        raise HTTPException(status_code=400, detail=f"missing {field}")
+    try:
+        return base64.b64decode(value)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"bad base64 in {field}") from exc
+
+
+@app.post("/api/deliverable/finalize")
+async def deliverable_finalize(request: Request):
+    """Finalize a DirectCoil deliverable: file the original quote, the revised quote,
+    and the auto-generated Coil Checklist into the project's
+    ``…/02 - POs/<project>/Accessory Order Forms/DirectCoil`` folder (only the
+    ``DirectCoil`` leaf is created if absent), then open a pre-filled Outlook DRAFT
+    (subject ``Coils: <#> - <name>``, revised PDF attached) — never sent.
+
+    POST JSON: ``submittal_pdf_base64`` (project identity + checklist),
+    ``quote_pdf_base64`` (original source quote), ``revised_pdf_base64`` (the built
+    revised PDF), plus ``submittal_filename`` / ``quote_filename``. Original PDFs are
+    copied, never modified. Review aid only (``export_allowed: False``)."""
+    import asyncio
+
+    from coilforge.deliverable.finalize import (
+        FinalizeError,
+        deliverable_subject,
+        place_bytes,
+        place_copy,
+        resolve_directcoil_folder,
+    )
+    from coilforge.deliverable.outlook_draft import open_deliverable_draft
+
+    payload = await request.json()
+    submittal = _b64_to_bytes(payload.get("submittal_pdf_base64"), "submittal_pdf_base64")
+    quote = _b64_to_bytes(payload.get("quote_pdf_base64"), "quote_pdf_base64")
+    revised = _b64_to_bytes(payload.get("revised_pdf_base64"), "revised_pdf_base64")
+    quote_name = Path(payload.get("quote_filename") or "quote.pdf").name
+    submittal_name = payload.get("submittal_filename")
+
+    # Project identity from the submittal intake.
+    try:
+        result = run_pdf_to_drawing_workflow(
+            submittal,
+            source_id="DELIVERABLE-FINALIZE-001",
+            source_filename=submittal_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    summary = result.get("pdf_intake_summary") or {}
+    project_number = summary.get("project_number")
+    project_name = summary.get("project_name")
+    if not project_number:
+        raise HTTPException(
+            status_code=400,
+            detail="No project number found in the submittal — cannot locate the PO folder.",
+        )
+
+    # Auto-generate the Coil Checklist (best-effort — surfaced, never silent).
+    checklist_path = None
+    checklist_status = "ok"
+    try:
+        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
+
+        try:
+            pdf_text = _safe_pdf_text(submittal)
+        except Exception:  # noqa: BLE001 — text extraction is best-effort
+            pdf_text = ""
+        coils, _ = coil_inputs_from_candidates(
+            result.get("candidates") or [], pdf_text=pdf_text
+        )
+        if coils:
+            fill = build_checklist_fill(coils)
+            writer_result = await asyncio.to_thread(
+                write_checklist, fill, dest_name=_checklist_output_name(submittal_name)
+            )
+            checklist_path = (writer_result or {}).get("saved_path")
+        else:
+            checklist_status = "skipped — no recognizable coils for the checklist"
+    except Exception as exc:  # noqa: BLE001 — checklist is best-effort
+        checklist_status = f"unavailable: {exc}"
+
+    # Resolve/create the DirectCoil folder and file the docs (copies, never moves).
+    try:
+        folder = resolve_directcoil_folder(project_number)
+    except FinalizeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    revised_name = f"{Path(quote_name).stem}_Revised.pdf"
+    files_written = [
+        place_bytes(folder, quote_name, quote),
+        place_bytes(folder, revised_name, revised),
+    ]
+    if checklist_path and Path(checklist_path).exists():
+        files_written.append(
+            place_copy(folder, Path(checklist_path).name, checklist_path)
+        )
+
+    # Open the Outlook draft with the revised PDF attached (never sent).
+    subject = deliverable_subject(project_number, project_name)
+    try:
+        await asyncio.to_thread(
+            open_deliverable_draft,
+            subject=subject,
+            to=_DELIVERABLE_TO,
+            cc=_DELIVERABLE_CC,
+            attachment_path=files_written[1],
+        )
+        draft_opened, draft_status = True, "ok"
+    except RuntimeError as exc:  # pywin32 / Outlook unavailable
+        draft_opened, draft_status = False, str(exc)
+    except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
+        draft_opened, draft_status = False, f"Outlook draft failed: {exc}"
+
+    _journal_milestone(
+        "deliverable_finalized", result=result,
+        detail={"folder": str(folder), "files": len(files_written),
+                "draft_opened": draft_opened},
+    )
+    return {
+        "project_number": project_number,
+        "project_name": project_name,
+        "subject": subject,
+        "folder": str(folder),
+        "files_written": files_written,
+        "checklist_status": checklist_status,
+        "draft_opened": draft_opened,
+        "draft_status": draft_status,
+        "email_sent": False,
+        "review_aid_only": True,
+        "export_allowed": False,
+        "production_drawing_approval_claimed": False,
+        "raw_private_data_returned": False,
+    }
+
+
 @app.post("/api/review/project")
 async def review_project(request: Request):
     """Exceptions-only project review — analyze EVERY coil at once and return only the

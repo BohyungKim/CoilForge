@@ -161,6 +161,42 @@ def test_unknown_product_flags_unit_and_dims():
     assert any("UNIT not detected" in w for w in fill.warnings)
 
 
+def _hgrh_coil(**over):
+    coil = dict(tag="RHHGRC-1", coil_type="HGRH", product_label="NOVA", unit_size="B20",
+                quantity=1, finned_height=12.0, finned_length=19.0, rows=1, feeds=1,
+                circuits=1, conn_size=1.125, qty_conn_per_header=1, coil_hand="L")
+    coil.update(over)
+    return coil
+
+
+def test_install_fit_inputs_filled_on_hgrh_sheet():
+    # DX + HGRH pair (NOVA B20): the HGRH sheet gets the partner DX CD/FH/FL,
+    # INSTALLED ON DP, and R-077 widths so the sheet's INSTALL FIT formula computes.
+    fill = build_checklist_fill([_dx_coil(tag="CDXC-1", product_label="NOVA", unit_size="B20"),
+                                 _hgrh_coil(tag="RHHGRC-1")])
+    hgrh = next(s for s in fill.sheets if s.category == "HGRH")
+    cells = _cells(hgrh)
+    assert cells["INSTALLED ON DP"].value is True
+    assert cells["DX CD"].value is not None          # partner DX CD resolved
+    assert cells["DX FH"].value == 45.0              # partner DX finned height
+    assert cells["INSTALL WIDTH"].value == 16.375    # R-077 NOVA|B20 with_access
+    assert cells["DRAIN PAN WIDTH"].value == 19.375  # R-077 NOVA|B20 coil_module_only
+
+
+def test_install_fit_widths_blocked_for_terra_without_option():
+    # Terra needs a D1/D2/D3 drain-pan option (not captured) -> widths blocked, not invented.
+    fill = build_checklist_fill([_dx_coil(tag="CDXC-1", product_label="TERRA H", unit_size="024"),
+                                 _hgrh_coil(tag="RHHGRC-1", product_label="TERRA H", unit_size="024")])
+    cells = _cells(next(s for s in fill.sheets if s.category == "HGRH"))
+    assert cells["DRAIN PAN WIDTH"].value is None
+    assert cells["DRAIN PAN WIDTH"].status == "blocked"
+
+
+def test_standalone_hgrh_has_installed_on_dp_false():
+    fill = build_checklist_fill([_hgrh_coil(tag="RHHGRC-9")])  # no DX partner
+    assert _cells(fill.sheets[0])["INSTALLED ON DP"].value is False
+
+
 def test_export_flags_are_review_aid():
     fill = build_checklist_fill([_dx_coil()])
     assert fill.export_allowed is False

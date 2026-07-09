@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-08
+> 마지막 갱신: 2026-07-09
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -16,12 +16,14 @@
 - [x] Submittal 제품/사이즈 오검지 수정 (556b366) — 텍스트경로 커버행 model코드 포착 → TERRA H/015 라이브 검증 🆕 이번 세션
 - [x] Header 2 = circuit수 확정 (John 2026-07-06) + wiki multi-header-geometry 시드 (b7f71a2) 🆕 이번 세션
 - [x] PR #3 생성 (2026-07-07) — claude/ccsi-autofill → main, 73커밋(브랜치 누적 작업 전부)
-- [x] 저위험 SOP 승격 5개 (R-066/R-002b/R-085/R-044c/R-048 MEDIUM→HIGH, 790 green) + eyeball 사인오프(John 2026-07-07) + 결정표·재분류(R-073/R-077/R-086) + /ship(hunk격리로 R-006 등 무관작업 제외) 🆕 이번 세션
+- [x] 저위험 SOP 승격 5개 (R-066/R-002b/R-085/R-044c/R-048 MEDIUM→HIGH, 790 green) + eyeball 사인오프(John 2026-07-07) + 결정표·재분류(R-073/R-077/R-086) + /ship(hunk격리로 R-006 등 무관작업 제외)
+- [x] R-074 2차 출처 판정 + R-048/R-085 조건부 발화 검증 (fc7037c, 794 green) — R-074 내부 2차출처 부재→MEDIUM 유지 확정(외부 출처 대기); R-048/R-085 유닛테스트 4건으로 HIGH 발화 검증; 검증 중 발견한 R-048 supply≠return 공식 결함·R-085 back_to_back 실경로 미배선을 [REVIEW-REQUIRED]로 등재(hunk격리로 R-006 재배제) 🆕 이번 세션
 
 ## ▶️ 지금
 - [ ] MVP 사인오프 마무리 — 파라미터 완전성 감사(Stage 2b) — 다음 걸음:
-  남은 판정 → R-074 CHK 2차 출처 확보 여부(단일출처라 승격 보류 중) + R-048/R-085 조건부 발화 재확인
-  (멀티-포지션/back_to_back config 트리거). 승격·재분류는 docs/mvp_promotion_decisions.md에 확정 기록.
+  승격 판정 전부 해소(승격5·유지2·재분류3, R-074/R-048/R-085 후속까지 확정 기록). 이제 남은 것은
+  **템플릿 eyeball 사인오프**(Ventum+ 11 + 공용 10) + John 판정 대기 3건(R-048 supply 공식 수정 ·
+  R-085 back_to_back 실경로 배선 · R-074 외부 2차 출처 확보). 결정 기록은 docs/mvp_promotion_decisions.md.
 
 ## ⬜ 앞으로
 - [ ] 템플릿 eyeball 사인오프 — Ventum+ 11 + 공용 10, 실제 프로젝트 진행하며 확인 (MVP §1·§4)

@@ -36,7 +36,7 @@ CoilForge internal files inspected:
 - `examples/sanitized/*`
 - `tests/*`
 
-Sibling project file-name search identified `C:\Users\JohnKim\Desktop\Bins\Projects\PO Release Engineering Workflow\pdf_extractor` as the relevant source. Only code and project documents were inspected:
+Sibling project file-name search identified `C:\Users\JohnKim\Desktop\Bins\Projects\PO_Release_Engineering_Workflow\pdf_extractor` as the relevant source. Only code and project documents were inspected:
 
 - `pdf_processing.py`
 - `bom_ordering_rules.py`

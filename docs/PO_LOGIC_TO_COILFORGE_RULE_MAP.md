@@ -8,10 +8,10 @@ POs logic is mapped into CoilForge as review-only rule summaries and field-decis
 
 Safe sibling source locations:
 
-- `C:\Users\JohnKim\Desktop\Bins\Projects\PO Release Engineering Workflow\pdf_extractor\pdf_processing.py`
-- `C:\Users\JohnKim\Desktop\Bins\Projects\PO Release Engineering Workflow\pdf_extractor\bom_ordering_rules.py`
-- `C:\Users\JohnKim\Desktop\Bins\Projects\PO Release Engineering Workflow\pdf_extractor\EXTRACTION_CONTRACT.md`
-- `C:\Users\JohnKim\Desktop\Bins\Projects\PO Release Engineering Workflow\pdf_extractor\PROJECT_CONTEXT.md`
+- `C:\Users\JohnKim\Desktop\Bins\Projects\PO_Release_Engineering_Workflow\pdf_extractor\pdf_processing.py`
+- `C:\Users\JohnKim\Desktop\Bins\Projects\PO_Release_Engineering_Workflow\pdf_extractor\bom_ordering_rules.py`
+- `C:\Users\JohnKim\Desktop\Bins\Projects\PO_Release_Engineering_Workflow\pdf_extractor\EXTRACTION_CONTRACT.md`
+- `C:\Users\JohnKim\Desktop\Bins\Projects\PO_Release_Engineering_Workflow\pdf_extractor\PROJECT_CONTEXT.md`
 
 Skipped:
 

@@ -28,8 +28,25 @@
       "Bash(echo \"--- exit:$? ---\")",
       "Bash(python -c \"import pdfplumber; print\\('pdfplumber OK'\\)\")",
       "Bash(python -c \"import PyPDF2; print\\('PyPDF2 OK'\\)\")",
-      "Bash(python -c \"import fitz; print\\('fitz OK'\\)\")"
+      "Bash(python -c \"import fitz; print\\('fitz OK'\\)\")",
+      "Workflow(deep-research)",
+      "PowerShell(Get-PnpDevice *)",
+      "PowerShell(Start-Process \"ms-settings:sound\"; \"Opened Windows Sound settings \\(Input section has the live 'Test your microphone' meter\\).\")",
+      "mcp__plan-review__review_plan",
+      "Skill(plan-review)",
+      "PowerShell(Start-Process control -ArgumentList \"mmsys.cpl,,1\")",
+      "PowerShell(\"Opened Sound control panel -> Recording tab.\")",
+      "mcp__notion__notion-search",
+      "Bash(python scripts/render_value_label_previews.py)",
+      "PowerShell(python -m pytest -q 2>&1 | Select-Object -Last 4)"
     ]
   },
-  "spinnerTipsEnabled": true
+  "enabledMcpjsonServers": [
+    "plan-review"
+  ],
+  "outputStyle": "Explanatory",
+  "spinnerTipsEnabled": true,
+  "disabledMcpjsonServers": [
+    "plan-review"
+  ]
 }

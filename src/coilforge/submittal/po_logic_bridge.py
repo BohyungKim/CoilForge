@@ -68,7 +68,7 @@ class PoLogicIntakeSummary:
 
 def default_po_logic_source_paths(projects_root: Path | None = None) -> tuple[Path, ...]:
     root = projects_root or Path.cwd().parent
-    po_root = root / "PO Release Engineering Workflow" / "pdf_extractor"
+    po_root = root / "PO_Release_Engineering_Workflow" / "pdf_extractor"
     return (
         po_root / "pdf_processing.py",
         po_root / "bom_ordering_rules.py",

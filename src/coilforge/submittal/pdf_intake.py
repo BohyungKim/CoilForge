@@ -671,11 +671,11 @@ def extract_coil_candidate_from_pdf_bytes(
         cover_page_user_input_required=cover_detection.user_page_input_required,
         cover_page_review_note=cover_detection.review_note,
         reused_rule_sources=[
-            "PO Release Engineering Workflow/pdf_extractor: cover-page Qty/Tag table structure",
-            "PO Release Engineering Workflow/pdf_extractor: deterministic line regex style",
-            "PO Release Engineering Workflow/pdf_extractor: Unit Tag anchor rule",
-            "PO Release Engineering Workflow/pdf_extractor: Qty/Tag table-row rule",
-            "PO Release Engineering Workflow/pdf_extractor: .env-backed OpenAI vision fallback pattern",
+            "PO_Release_Engineering_Workflow/pdf_extractor: cover-page Qty/Tag table structure",
+            "PO_Release_Engineering_Workflow/pdf_extractor: deterministic line regex style",
+            "PO_Release_Engineering_Workflow/pdf_extractor: Unit Tag anchor rule",
+            "PO_Release_Engineering_Workflow/pdf_extractor: Qty/Tag table-row rule",
+            "PO_Release_Engineering_Workflow/pdf_extractor: .env-backed OpenAI vision fallback pattern",
         ],
     )
     return PdfCoilIntakeResult(

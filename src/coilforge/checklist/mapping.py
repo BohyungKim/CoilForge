@@ -201,6 +201,34 @@ def _partner(coil: dict[str, Any], coils: list[dict[str, Any]]) -> dict[str, Any
     return next((c for c in coils if c.get("tag") == partner_tag), None)
 
 
+# Checklist UNIT value -> engine product family key used by the R-077 lookup.
+_FAMILY_FROM_UNIT = {
+    "NOVA": "NOVA", "VENTUM H": "VENTUM_H", "VENTUM+": "VENTUM_PLUS",
+    "TERRA H": "TERRA", "TERRA V": "TERRA",
+}
+
+
+def _install_widths(unit: str | None, unit_size: Any) -> tuple[Any, Any]:
+    """(INSTALL WIDTH, DRAIN PAN WIDTH) from R-077 for the INSTALL FIT rows.
+
+    Reuses ``mechanical_fit._drain_pan_row`` (R-077). The sheet's INSTALL FIT formula
+    compares against INSTALL WIDTH for VENTUM+ and DRAIN PAN WIDTH otherwise, so both
+    cells are filled with the right R-077 columns. Returns (None, None) when unresolved
+    (Terra needs a D1/D2/D3 option we don't capture; Terra V is TBD) — never invented.
+    """
+    from coilforge.compatibility.mechanical_fit import _drain_pan_row
+
+    family = _FAMILY_FROM_UNIT.get(unit or "")
+    if not family:
+        return (None, None)
+    row = _drain_pan_row(family, str(unit_size) if unit_size is not None else None, None)
+    if not row:
+        return (None, None)
+    install_w = row.get("install_width", row.get("with_access"))
+    drain_w = row.get("drain_pan_width", row.get("coil_module_only"))
+    return (install_w, drain_w)
+
+
 def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[SheetFill, list[str]]:
     category = _category_of(coil)
     spec = T.SHEET_LABELS[category]
@@ -339,6 +367,44 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
                 cells.append(CellFill("HGRH CONN SZ", None, "number", "blocked",
                                       "submittal:partner_conn_size",
                                       note="paired HGRH connection size absent"))
+
+    # --- INSTALL FIT inputs (HGRH + HWC sheets only; the fit lives on the reheat /
+    # hot-water partner sheet). Fill the paired coil's CD/FH/FL, installed-on-drain-pan,
+    # and R-077 install / drain-pan widths so the sheet's INSTALL FIT formula computes.
+    if category in ("HGRH", "HWC"):
+        partner = _partner(coil, coils)
+        installed = partner is not None
+        cells.append(CellFill("INSTALLED ON DP", installed, "bool",
+                              "review_required" if installed else "constant",
+                              "derived:partner_tag"))
+        if partner:
+            p_slots, _p = _resolve_engine(partner, None)  # CD does not depend on application
+            p_cd = p_slots.get("slot.CD")
+            ptag = partner.get("tag")
+            if category == "HGRH":
+                cells.append(CellFill("DX FH", partner.get("finned_height"), "number",
+                                      "ready" if partner.get("finned_height") is not None else "blocked",
+                                      f"submittal:partner_fh({ptag})"))
+                cells.append(CellFill("DX FL", partner.get("finned_length"), "number",
+                                      "ready" if partner.get("finned_length") is not None else "blocked",
+                                      f"submittal:partner_fl({ptag})"))
+                cells.append(CellFill("DX CD", p_cd, "number",
+                                      "review_required" if p_cd is not None else "blocked",
+                                      f"engine:partner slot.CD({ptag})",
+                                      note=None if p_cd is not None else "partner DX CD unresolved"))
+            else:  # HWC sheet -> paired CWC coil's CD
+                cells.append(CellFill("CWC CD", p_cd, "number",
+                                      "review_required" if p_cd is not None else "blocked",
+                                      f"engine:partner slot.CD({ptag})",
+                                      note=None if p_cd is not None else "partner CWC CD unresolved"))
+        iw, dpw = _install_widths(unit, coil.get("unit_size") or coil.get("unit_size_token"))
+        for lbl, val in (("INSTALL WIDTH", iw), ("DRAIN PAN WIDTH", dpw)):
+            if val is not None:
+                cells.append(CellFill(lbl, val, "number", "review_required", "engine:R-077"))
+            else:
+                cells.append(CellFill(lbl, None, "number", "blocked", "engine:R-077",
+                                      note="drain-pan/install width unresolved (Terra needs "
+                                           "D1/D2/D3 option; Terra V is TBD)"))
 
     # --- RB (return bend): a direct-coil INPUT value, not a computed dim (John
     # 2026-07-01). CoilForge's rule value is authoritative (R-005 DX/HGRH=1.5,

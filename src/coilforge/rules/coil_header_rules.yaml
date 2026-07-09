@@ -89,12 +89,12 @@ rules:
   - rule_id: R-006
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_bend
-    value: 2.25
+    value: 1.875
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["SOP §CWC/HWC", "CHK CWC!C26", "CHK HWC!C30"]
+    evidence_refs: ["John 2026-06-29: Direct-Coil RB rule-of-thumb max 1 7/8 = 1.875 for CWC/HWC (was 2.25 per SOP §CWC/HWC; OAL = FL+RB+HD)", "CHK CWC!C26", "CHK HWC!C30"]
 
   - rule_id: R-007
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }

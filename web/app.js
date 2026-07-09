@@ -3446,43 +3446,64 @@ async function buildQuotePackage() {
     insertedCount: pkg.inserted_coil_count ?? null,
     tags: (result.coils || []).map((c) => c.tag).filter(Boolean),
     exceptionsK: state.lastProjectReview?.summary?.exceptions_K ?? null,
+    // Keep the revised PDF so "Finalize deliverable" can file + attach it without rebuilding.
+    revisedBase64: pkg.pdf_base64 || null,
   };
-  const emailBtn = document.querySelector("#prepare-quote-email");
-  if (emailBtn) emailBtn.hidden = false;
+  const finalizeBtn = document.querySelector("#finalize-deliverable");
+  if (finalizeBtn) finalizeBtn.hidden = false;
 }
 
-// T3.3 email prep — build a mailto draft from the built package's project + filename.
-// Review aid / prepare-only: opens the draft, never sends; the PDF is attached by John.
-function prepareQuoteEmail() {
+// Finalize deliverable — file the original quote + revised quote + auto-generated
+// checklist into the project's DirectCoil folder and open a pre-filled Outlook DRAFT
+// (revised PDF attached). Server-side (Outlook COM + SharePoint filing); never sends.
+async function finalizeDeliverable() {
+  const summary = document.querySelector("#quote-package-summary");
   const ctx = state.lastQuotePackage;
-  if (!ctx) return;
-  const subject = `Revised Quote — ${ctx.projectName}`;
-  const total = ctx.coilCount ?? (ctx.tags ? ctx.tags.length : null);
-  const lines = ["Hi,", ""];
-  lines.push(`Please find attached the revised quote (${ctx.fileName}) for ${ctx.projectName}.`);
-  if (ctx.tags && ctx.tags.length) {
-    lines.push(`Coils (${total ?? ctx.tags.length}): ${ctx.tags.join(", ")}.`);
+  if (!ctx || !ctx.revisedBase64) {
+    if (summary) summary.textContent = "Build the quote package first.";
+    return;
   }
-  if (ctx.insertedCount != null && total != null) {
-    lines.push(`${ctx.insertedCount}/${total} coil drawing(s) updated per our review.`);
-  } else {
-    lines.push("The coil drawings have been updated per our review.");
+  const submittal = state.selectedPdfFile;
+  const quote = state.selectedQuotePdfFile;
+  if (!isPdfFile(submittal) || !isPdfFile(quote)) {
+    if (summary) summary.textContent = "Need both the analyzed submittal PDF and the quote PDF to finalize.";
+    return;
   }
-  if (ctx.exceptionsK != null && total != null) {
-    lines.push(
-      ctx.exceptionsK > 0
-        ? `${ctx.exceptionsK} coil(s) were flagged for review; ${total - ctx.exceptionsK} cleared.`
-        : `All ${total} coil(s) cleared review.`,
-    );
+  if (summary) summary.textContent = "Finalizing deliverable — filing docs & drafting email…";
+  const [subBytes, quoteBytes] = await Promise.all([submittal.arrayBuffer(), quote.arrayBuffer()]);
+  const body = {
+    submittal_pdf_base64: arrayBufferToBase64(subBytes),
+    submittal_filename: submittal.name,
+    quote_pdf_base64: arrayBufferToBase64(quoteBytes),
+    quote_filename: quote.name,
+    revised_pdf_base64: ctx.revisedBase64,
+  };
+  let res;
+  try {
+    res = await requestJson("/api/deliverable/finalize", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (summary) summary.textContent = `Finalize failed: ${err.message || err}`;
+    return;
   }
-  lines.push("", "Best regards,");
-  const body = lines.join("\r\n");
-  // mailto can't carry an attachment — John attaches the downloaded PDF himself.
-  window.location.href =
-    `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const files = (res.files_written || [])
+    .map((p) => `<span class="quote-package-coil">${escapeHtml(p)}</span>`)
+    .join("<br>");
+  const draft = res.draft_opened
+    ? `<span class="quote-package-coil">Outlook draft opened — review &amp; send: <strong>${escapeHtml(res.subject)}</strong></span>`
+    : `<span class="quote-package-warning">⚠ Draft not opened: ${escapeHtml(res.draft_status || "unknown")}</span>`;
+  const chk =
+    res.checklist_status && res.checklist_status !== "ok"
+      ? `<br><span class="quote-package-warning">⚠ Checklist: ${escapeHtml(res.checklist_status)}</span>`
+      : "";
+  if (summary) {
+    summary.innerHTML = `<strong>Filed to</strong> ${escapeHtml(res.folder)}<br>${files}<br>${draft}${chk}`;
+  }
 }
 
-document.querySelector("#prepare-quote-email")?.addEventListener("click", prepareQuoteEmail);
+document.querySelector("#finalize-deliverable")?.addEventListener("click", finalizeDeliverable);
 
 // NOTE: the "Verify Direct Coil entry" panel was unmounted pending completion of
 // the read-and-alert feature; it will be re-added (correctly placed) in a later
