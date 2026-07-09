@@ -5,6 +5,7 @@ const state = {
   manualDrawingMode: false,
   compatibilityFilter: "all",
   pdfIntakeSummary: null,
+  brainCase: null,
   selectedPdfFile: null,
   selectedQuotePdfFile: null,
   coverPageHint: "",
@@ -114,6 +115,7 @@ const elements = {
   pdfCoverPageInput: document.querySelector("#pdf-cover-page-input"),
   analyzePdf: document.querySelector("#analyze-pdf"),
   pdfIntakeSummary: document.querySelector("#pdf-intake-summary"),
+  brainCaseBanner: document.querySelector("#brain-case-banner"),
   counts: {
     ready: document.querySelector("#count-ready"),
     review: document.querySelector("#count-review"),
@@ -2979,17 +2981,114 @@ async function runWorkflowFromPdf() {
       },
       body: pdfBytes,
     });
-    state.pdfIntakeSummary = workflow.pdf_intake_summary;
-    state.pdfCoilPages = workflow.pdf_coil_pages || [];
-    state.activePdfCoilPageIndex = state.pdfCoilPages.length ? 0 : -1;
-    state.reviewedCoils = new Set();  // fresh PDF -> nothing reviewed yet
-    setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
-    renderShell(workflowToUiState(state.ui, workflow, null));
-    elements.savedStatus.textContent = "PDF candidate pre-populated for review";
-    refreshMechanicalFit();
+    state.brainCase = null;  // manual analyze replaces any case prefill context
+    hydratePdfWorkflow(workflow, "PDF candidate pre-populated for review");
+    renderBrainCaseBanner();
   } finally {
     setPdfAnalysisLoading(false);
   }
+}
+
+// Shared hydration for both intake paths (manual PDF upload and the PO Release
+// board case deep link) — the case endpoint returns the same workflow shape.
+function hydratePdfWorkflow(workflow, statusText) {
+  state.pdfIntakeSummary = workflow.pdf_intake_summary;
+  state.pdfCoilPages = workflow.pdf_coil_pages || [];
+  state.activePdfCoilPageIndex = state.pdfCoilPages.length ? 0 : -1;
+  state.reviewedCoils = new Set();  // fresh PDF -> nothing reviewed yet
+  setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
+  renderShell(workflowToUiState(state.ui, workflow, null));
+  elements.savedStatus.textContent = statusText;
+  refreshMechanicalFit();
+}
+
+// --- PO Release board case prefill (?case=PRC-N deep link) ----------------- //
+async function runWorkflowFromCase(caseId) {
+  setPdfAnalysisLoading(true);
+  const loadingLabel = elements.pdfIntakeSummary?.querySelector(".pdf-loading-indicator strong");
+  if (loadingLabel) {
+    loadingLabel.textContent = `Analyzing case ${caseId}'s submittal PDF...`;
+  }
+  elements.savedStatus.textContent = `Loading case ${caseId} from the PO Release board`;
+  try {
+    const workflow = await requestJson("/api/workflow/case-to-drawing", {
+      method: "POST",
+      body: JSON.stringify({ case_id: caseId }),
+    });
+    state.brainCase = workflow.brain_case || null;
+    // Restore the File object BEFORE hydrating: checklist fill, quote package
+    // and cover-page re-analyze all re-POST state.selectedPdfFile's bytes.
+    await restoreCasePdfFile(caseId, state.brainCase?.source_filename);
+    const label = state.brainCase?.label || caseId;
+    hydratePdfWorkflow(workflow, `Case ${label} pre-analyzed from the PO Release board`);
+    renderBrainCaseBanner();
+  } catch (error) {
+    state.brainCase = null;
+    renderBrainCaseError(caseId, error);
+  } finally {
+    setPdfAnalysisLoading(false);
+  }
+}
+
+async function restoreCasePdfFile(caseId, filename) {
+  try {
+    const response = await fetch(`/api/case/${encodeURIComponent(caseId)}/submittal-pdf`);
+    if (!response.ok) {
+      return;  // best-effort: downstream actions fall back to asking for a PDF
+    }
+    const blob = await response.blob();
+    setSelectedPdfFile(new File([blob], filename || `${caseId}.pdf`, { type: "application/pdf" }));
+  } catch {
+    // best-effort only — the analysis itself already succeeded server-side
+  }
+}
+
+function renderBrainCaseBanner() {
+  const el = elements.brainCaseBanner;
+  if (!el) {
+    return;
+  }
+  const brainCase = state.brainCase;
+  if (!brainCase) {
+    el.setAttribute("hidden", "");
+    el.classList.remove("has-mismatch");
+    return;
+  }
+  const analyzedTags = new Set(
+    (state.pdfCoilPages || []).map((page) => page.tag).filter(Boolean));
+  const expected = brainCase.expected_coils || [];
+  const rows = expected
+    .map((coil) => {
+      const found = analyzedTags.has(coil.tag);
+      const qty = coil.qty ?? "?";
+      const category = coil.category ? ` (${escapeHtml(coil.category)})` : "";
+      const miss = found ? "" : " — not found in this analysis, review manually";
+      return `<li class="${found ? "is-match" : "is-missing"}">` +
+             `${escapeHtml(coil.tag)} × ${escapeHtml(qty)}${category}${miss}</li>`;
+    })
+    .join("");
+  const expectation = expected.length
+    ? `<span>Brain expects ${expected.length} coil(s) from the submittal scan:</span><ul>${rows}</ul>`
+    : "<span>No coil requirement journaled for this case yet — review the analysis below.</span>";
+  el.innerHTML =
+    `<strong>PO Release board — ${escapeHtml(brainCase.label || brainCase.case_id)}</strong>${expectation}`;
+  el.classList.toggle(
+    "has-mismatch", expected.some((coil) => !analyzedTags.has(coil.tag)));
+  el.removeAttribute("hidden");
+}
+
+function renderBrainCaseError(caseId, error) {
+  const el = elements.brainCaseBanner;
+  elements.savedStatus.textContent = "Case prefill failed — manual upload available";
+  if (!el) {
+    return;
+  }
+  el.innerHTML =
+    `<strong>Case ${escapeHtml(caseId)} could not be pre-analyzed</strong>` +
+    `<span>${escapeHtml(error?.message || String(error))}</span>` +
+    `<span>Falling back to the demo view — drop the submittal PDF manually.</span>`;
+  el.classList.add("has-mismatch");
+  el.removeAttribute("hidden");
 }
 
 // --- Mechanical fit / Stability (review aid) ------------------------------ //
@@ -3898,8 +3997,19 @@ document.querySelector("#ccsi-audit-file")?.addEventListener("change", (event) =
   }
 });
 
-loadDefaultDemoWorkflow().catch((error) => {
-  document.body.innerHTML = `<main class="load-error"><pre>${error.message}</pre></main>`;
-});
+// Bootstrap: always seed state.ui with the demo first (workflowToUiState spreads
+// the previous ui state), then honor a ?case=PRC-N deep link from the PO Release
+// board by pre-analyzing that case's submittal PDF.
+const brainCaseParam = (new URLSearchParams(window.location.search).get("case") || "").trim();
+loadDefaultDemoWorkflow()
+  .then(() => {
+    if (brainCaseParam) {
+      return runWorkflowFromCase(brainCaseParam);
+    }
+    return undefined;
+  })
+  .catch((error) => {
+    document.body.innerHTML = `<main class="load-error"><pre>${error.message}</pre></main>`;
+  });
 
 ensureProductOptions();

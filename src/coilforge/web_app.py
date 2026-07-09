@@ -1,9 +1,12 @@
+import asyncio
+
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, HTTPException, Request
+from fastapi import Body, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 
+from coilforge import brain_case
 from coilforge.adapters import load_sanitized_ez_json
 from coilforge.direct_coil import (
     parse_direct_coil_page,
@@ -345,6 +348,88 @@ async def workflow_pdf_to_drawing(request: Request):
     _journal_milestone("intake_drawing", result=result,
                        detail={"candidates": len(result.get("candidates") or [])})
     return result
+
+
+def _resolve_brain_case(case_id: str) -> tuple[dict, Path]:
+    """Shared resolve for the case-prefill endpoints: case JSON + staged PDF.
+    Raises HTTPException with an actionable message on every miss."""
+    if not brain_case.is_safe_case_id(case_id):
+        raise HTTPException(status_code=400,
+                            detail="case_id is required (path separators not allowed).")
+    case = brain_case.load_case(case_id)
+    if case is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Case {case_id} not found on the PO Release Case board "
+                   f"(looked in {brain_case.cases_dir()}).")
+    pdf_path = brain_case.find_submittal_pdf(case)
+    if pdf_path is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No submittal PDF found for {case_id} — the case has no "
+                   "journaled intake path (it may predate dashboard intake). "
+                   "Drop the PDF manually instead.")
+    return case, pdf_path
+
+
+@app.post("/api/workflow/case-to-drawing")
+async def workflow_case_to_drawing(payload: dict = Body(...)):
+    """Brain deep-link prefill: resolve the case's staged submittal PDF from the
+    PO Release Case board (read-only) and run the standard pdf-to-drawing
+    workflow on it. Response shape == /api/workflow/pdf-to-drawing plus a
+    ``brain_case`` block; the Brain's project identity overrides the PDF-parsed
+    one so downstream journaling keys to the right case."""
+    case_id = str(payload.get("case_id") or "").strip()
+    case, pdf_path = _resolve_brain_case(case_id)
+    try:
+        pdf_bytes = await asyncio.to_thread(pdf_path.read_bytes)
+    except OSError as exc:
+        raise HTTPException(status_code=409,
+                            detail=f"Submittal PDF unreadable: {exc}") from exc
+    try:
+        # to_thread: the analysis blocks 30-60s — keep the event loop free.
+        result = await asyncio.to_thread(
+            run_pdf_to_drawing_workflow,
+            pdf_bytes,
+            source_id=f"BRAIN-CASE-{case_id}",
+            source_filename=pdf_path.name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    identity = brain_case.case_identity(case)
+    summary = result.get("pdf_intake_summary")
+    if isinstance(summary, dict):
+        # Brain identity is authoritative (a filename like "SIGNED 2819 - ..."
+        # can misparse; milestones must journal to the real project).
+        if identity["project_number"]:
+            summary["project_number"] = identity["project_number"]
+            summary["project_context_source"] = "po_release_case_board"
+        if identity["project_name"]:
+            summary["project_name"] = identity["project_name"]
+    result["brain_case"] = {
+        "case_id": case_id,
+        "label": identity["label"],
+        "expected_coils": brain_case.expected_coils(case),
+        "source_filename": pdf_path.name,
+    }
+    _journal_milestone("intake_drawing", result=result,
+                       detail={"candidates": len(result.get("candidates") or []),
+                               "brain_case_id": case_id})
+    return result
+
+
+@app.get("/api/case/{case_id}/submittal-pdf")
+async def case_submittal_pdf(case_id: str):
+    """Raw staged submittal PDF for a Brain case, so the frontend can restore
+    a File object after a case deep link (checklist fill, quote package and
+    cover-page re-analyze all re-POST the original PDF bytes)."""
+    _case, pdf_path = _resolve_brain_case(case_id)
+    try:
+        pdf_bytes = await asyncio.to_thread(pdf_path.read_bytes)
+    except OSError as exc:
+        raise HTTPException(status_code=409,
+                            detail=f"Submittal PDF unreadable: {exc}") from exc
+    return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 def _checklist_output_name(source_filename: str | None) -> str:
