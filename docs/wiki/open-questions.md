@@ -28,6 +28,25 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 
 ## 열린 엔지니어링 작업
 
+- **[MVP] R-074 케이싱 dim 2차 출처 확보** `[REVIEW-REQUIRED]` — `casing_width`/`casing_height`는
+  CHK Units 시트 **단일출처**라 MEDIUM. 2026-07-08 판정: **코드베이스 내부에 독립 2차 출처가
+  없다** — `mechanical_fit.py`(R-078)·`checklist/mapping.py`는 R-074 출력을 소비(순환참조),
+  slot 레이어 `casing_height`(`CH=FH+TF+BF`≈13")는 유닛 캐비닛 치수(≈20"+)와 **다른 물리량**,
+  SOP엔 등가 테이블 없음(`coil_header_rules.yaml:888`). **승격 트리거 = 외부 2차 출처(실물
+  overall-dimension 도면 또는 SOP dims 테이블) 확보.** 확보 시 HIGH 재검토. 근거
+  `docs/mvp_promotion_decisions.md` §후속. **OPEN (외부 출처 대기).**
+- **[MVP] R-048 supply_position 공식 결함** `[REVIEW-REQUIRED]` — 엔진이 `supply_position`에
+  `return_position`과 **동일** 리스트를 낸다(`header_prepopulate_engine.py` R-048 블록 line 519).
+  YAML 공식은 supply = `CD − [(Xmax+2)·D + (Xmax−1)·1.5]`(`coil_header_rules.yaml:598`)로 달라야
+  하며, 멀티회로 HGRH에서 supply 헤더 위치가 틀린다(단일회로면 우연히 일치). 조건부 발화 자체는
+  검증됨(`tests/test_header_prepopulate_engine.py::test_r048_hgrh_positions_high_when_multi_circuit`).
+  supply 공식 구현은 CD(케이싱 폭)가 slot 레이어에서 와야 해 dual-path 편집 필요 → **John 확정
+  후 별도 수정.** `[[hgrh]]` 참고. **OPEN.**
+- **[MVP] R-085 back_to_back 실 경로 미배선** `[REVIEW-REQUIRED]` — 룰 자체는 `back_to_back=True`에서
+  HIGH 발화 확인됨(`test_r085_back_to_back_mounting_high_when_flagged`). 단 `back_to_back` 입력은
+  `schemas/header_prepopulate.py:103`에 정의만 있고 `build_header_request`/submittal 경로가 세팅하지
+  않아 **실 UI 경로에선 구조적 미발화**. 실 트리거 배선은 입력 출처 정의 선행 후 별도 결정.
+  `docs/mvp_promotion_decisions.md` §후속 참고. **OPEN (미배선 판정).**
 - **[EXT] Terra 분리** `TERRA → TERRA_H + TERRA_V` (~15개 Terra 규칙 + 엔진 콜사이트 + 리졸버 + 테스트
   리키). `MVP_FINALIZATION_CHECKLIST.md` L61 `[ ]`. `[[terra-v]]` 참고. **OPEN.**
 - **[MVP] R-084 ASC 방향** — Direct-Coil 필드 네이밍 규약이 생길 때까지 `CONFLICT`/`[BLOCKED]`.

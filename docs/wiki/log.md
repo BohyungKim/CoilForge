@@ -6,6 +6,17 @@
 
 <!-- LOG (newest first) -->
 
+## 2026-07-08 · ingest — R-074 2차 출처 판정 + R-048/R-085 조건부 발화 검증
+로드맵 후속 두 항목 처리 결과를 원장에 반영. **R-074**(casing dims): 코드베이스 내부에 독립 2차
+출처 없음 판정(`mechanical_fit`/`checklist`는 R-074 소비=순환; slot `casing_height`는 다른 물리량;
+SOP 등가 테이블 없음) → MEDIUM 유지 확정, 승격 트리거 = 외부 2차 출처 확보. **R-048**: 조건부 발화
+(circuits+conn_size+rows) HIGH 검증 + **supply≠return 공식 결함** 발견(엔진이 supply에 return과 동일
+리스트; YAML 공식은 supply=CD−[...]) → `[REVIEW-REQUIRED]` 별도 처리 등재. **R-085**: back_to_back
+HIGH 발화 검증 + **실 경로 미배선**(입력이 `build_header_request`에 없음) 판정 등재. 신규 유닛테스트
+4건(`test_header_prepopulate_engine.py`), R-048 YAML confidence stale(MEDIUM→HIGH) 정정. `src/` 값
+변경 없음(엔지니어링 값 무발명). `[[open-questions]]`·`[[hgrh]]` 조정, 근거
+`docs/mvp_promotion_decisions.md` §후속.
+
 ## 2026-07-07 · lint — MEDIUM→HIGH 승격 원장 정정
 `open-questions.md`의 "AWAITING SIGN-OFF"(R-044a/c·R-048·R-066·R-002b·R-073·R-074·R-077·R-085·R-086)를
 John 2026-07-07 판정 결과로 갱신: 승격 5(R-066/R-002b/R-085/R-044c/R-048)·검토유지 2(R-044a/R-074)·

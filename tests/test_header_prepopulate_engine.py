@@ -353,6 +353,59 @@ def test_t09_hgrh_ventum_plus_v20() -> None:
     assert "supply_sl" not in r.suggestions
 
 
+def test_r048_hgrh_positions_high_when_multi_circuit() -> None:
+    """R-048 conditional emission: HGRH with circuits+conn_size+rows present emits
+    supply_position/return_position at HIGH (promoted 2026-07-07). Verifies the
+    trigger gate fires and lands in ``values`` (auto-drawn), not ``suggestions``.
+
+    NOTE (known defect, tracked in docs/wiki/open-questions.md): the engine gives
+    supply_position the SAME list as return_position, while the YAML formula makes
+    Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5] (a different position). This test
+    pins the current behaviour so the promotion is verified; correcting the Supply
+    formula is a separate, John-gated change."""
+    r = prepopulate(
+        _req(CoilType.HGRH, ProductFamily.NOVA, "B20", circuits=2, conn_size=0.625, rows=2)
+    )
+    # x=1: 0.625 ; x=2: 2*0.625 + 1.5 = 2.75
+    assert r.values["supply_position"].value == [0.625, 2.75]
+    assert r.values["return_position"].value == [0.625, 2.75]
+    assert r.values["supply_position"].confidence == Confidence.HIGH
+    assert r.values["return_position"].confidence == Confidence.HIGH
+    assert "supply_position" not in r.suggestions
+    assert "return_position" not in r.suggestions
+
+
+def test_r048_hgrh_positions_missing_inputs_when_no_circuits() -> None:
+    """R-048 skips (not blocked) when its trigger inputs are absent: the fields
+    appear in neither values nor suggestions, and the missing inputs are surfaced."""
+    r = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "B20"))
+    assert "supply_position" not in r.values and "supply_position" not in r.suggestions
+    assert "return_position" not in r.values and "return_position" not in r.suggestions
+    for inp in ("circuits", "conn_size", "rows"):
+        assert inp in r.missing_inputs
+
+
+def test_r085_back_to_back_mounting_high_when_flagged() -> None:
+    """R-085 conditional emission: back_to_back=True fires the only_when gate and
+    emits the mounting-hole note at HIGH (auto-drawn)."""
+    r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20", back_to_back=True))
+    assert (
+        r.values["back_to_back_mounting"].value
+        == 'Mounting Holes, Bolts, 0.3125", 12" spacing'
+    )
+    assert r.values["back_to_back_mounting"].confidence == Confidence.HIGH
+
+
+def test_r085_absent_when_not_flagged() -> None:
+    """R-085 only_when gate: without back_to_back the field is not emitted at all
+    (neither values nor suggestions). Reachable only via direct construction — the
+    production build_header_request path does not wire back_to_back (see
+    docs/wiki/open-questions.md)."""
+    r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20"))
+    assert "back_to_back_mounting" not in r.values
+    assert "back_to_back_mounting" not in r.suggestions
+
+
 def test_t10_hgrh_terra_12_gate() -> None:
     r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "012"))
     assert r.values["hd"].value == 3.5

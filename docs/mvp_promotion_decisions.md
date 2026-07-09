@@ -33,9 +33,9 @@
 | **R-002b** | `lifting_lugs` | 전체 | `false` | A | SOP §GEN | 승격 | ✅ **승격 완료** |
 | **R-085** | `back_to_back_mounting` | 전체 (`only_when back_to_back`) | `"Mounting Holes, Bolts, 0.3125\", 12\" spacing"` | A | SOP §GEN SPECIAL CASE | 승격(저빈도) | ✅ **승격 완료** |
 | **R-044c** | `supply_sl` | HGRH · VENTUM_PLUS | `6` | A | SOP §HGRH-VP · John 확정 2026-06-11(golden T09) | 승격 | ✅ **승격 완료** |
-| **R-048** | `supply_position`, `return_position` | HGRH · 전체 | `x·D + (x−1)·1.5` | **B** | SOP §HGRH-TNVH · CHK HGRH!C42:C49 | 입력 조건부 승격 | ✅ **승격 완료** (헬퍼 코드 수정) |
+| **R-048** | `supply_position`, `return_position` | HGRH · 전체 | `x·D + (x−1)·1.5` | **B** | SOP §HGRH-TNVH · CHK HGRH!C42:C49 | 입력 조건부 승격 | ✅ **승격 완료** (헬퍼 코드 수정) ⚠️ supply≠return 결함 — 아래 §후속 |
 | **R-044a** | `supply_sl` | HGRH · NOVA/VENTUM_H | `6` | A | SOP §HGRH-TNVH · CHK 기하식 `6+D/2−S1` | 검토 유지 | ⏸ **유지** — 기하식 미구현 |
-| **R-074** | `casing_width`, `casing_height` | 전체 | CHK Units 룩업 | **B** | CHK Units sheet XLOOKUP | 검토 유지 | ⏸ **유지** — CHK 단일출처(2차 검증 前) |
+| **R-074** | `casing_width`, `casing_height` | 전체 | CHK Units 룩업 | **B** | CHK Units sheet XLOOKUP | 검토 유지 | ⏸ **유지 확정** — 내부 2차 출처 부재(2026-07-08 판정); 외부 출처 대기 — 아래 §후속 |
 
 ## 승격 대상 아님 (재분류)
 
@@ -58,6 +58,42 @@
   R-048 (Class B 공식) — 2026-07-07
 - **검토 유지(2)**: R-044a (기하식 미구현), R-074 (CHK 단일출처 — 2차 출처 확보 후 재검토)
 - **재분류(3)**: R-073, R-077, R-086 — 위 참조
+
+## 후속 판정 (2026-07-08) — R-074 2차 출처 · R-048 결함 · R-085 배선
+
+승격 배치 후 로드맵 "지금"에 남았던 두 항목(R-074 2차 출처 판정, R-048/R-085 조건부
+발화 실사례 확인)을 처리한 결과다. 세 룰 모두 **엔지니어링 값을 새로 발명하지 않았고**
+도면/템플릿 경로도 건드리지 않았다.
+
+### R-074 — 검토 유지(MEDIUM) 확정, 외부 2차 출처 대기
+탐색 결과 **코드베이스 내부에 독립 2차 출처가 없다**:
+- `compatibility/mechanical_fit.py`(R-078)·`checklist/mapping.py`는 둘 다 R-074 출력을
+  `engine_value("casing_width/height")`로 **소비**한다 → 순환참조, 대조 불가.
+- slot 레이어의 `casing_height`(`CH = FH+TF+BF ≈ 13"`, 코일 인클로저)는 R-074의 유닛
+  캐비닛 치수(≈20"+)와 **다른 물리량** → 대조 불가.
+- SOP엔 등가 casing 테이블 없음(`coil_header_rules.yaml:888`).
+
+→ **판정: MEDIUM 유지 확정. 승격 전제 = 외부 2차 출처(실물 overall-dimension 도면 또는
+SOP dims 테이블) 확보.** 확보 시 재검토. `docs/wiki/open-questions.md`에 트리거로 등재.
+
+### R-048 — 조건부 발화 검증됨 + supply≠return 결함(별도 처리)
+`circuits + conn_size + rows`가 모두 있으면 `supply_position`/`return_position`이 HIGH로
+발화함을 유닛테스트로 확인(`tests/test_header_prepopulate_engine.py::
+test_r048_hgrh_positions_high_when_multi_circuit` + `..._missing_inputs_when_no_circuits`).
+YAML confidence stale(MEDIUM)를 HIGH로 동반 정정(엔진 무영향, 문서 일관성).
+
+⚠️ **결함(John 확정 후 별도 수정):** 엔진이 `supply_position`에 `return_position`과 **동일**
+리스트를 낸다(`header_prepopulate_engine.py` R-048 블록 line 519). YAML 공식은 supply =
+`CD − [(Xmax+2)·D + (Xmax−1)·1.5]`로 달라야 하며, 멀티회로 HGRH에서 supply 헤더 위치가
+틀린다. `docs/wiki/open-questions.md`에 [REVIEW-REQUIRED]로 등재.
+
+### R-085 — 룰 발화 검증됨 + 실 경로 미배선(판정)
+`back_to_back=True`면 `back_to_back_mounting`이 HIGH로 발화함을 유닛테스트로 확인
+(`test_r085_back_to_back_mounting_high_when_flagged` + `test_r085_absent_when_not_flagged`).
+단 **`back_to_back` 입력은 실 파이프라인에 배선되지 않았다** — `schemas/header_prepopulate.py`
+에 정의만 있고 `build_header_request`/submittal 경로가 세팅하지 않아 실 UI 경로에선 미발화.
+→ **판정: 룰 정확성은 유닛레벨 확인. 실 트리거 배선은 입력 출처 정의 선행 후 별도 결정.**
+`docs/wiki/open-questions.md`에 등재.
 
 ## 반영 절차 (실행 기록)
 

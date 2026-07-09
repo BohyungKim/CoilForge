@@ -598,8 +598,12 @@ rules:
     formula: "Return X = X*D + (X-1)*1.5 ; Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5]"
     kind: formula_hgrh_positions
     requires_inputs: [circuits, conn_size, rows]
-    confidence: MEDIUM
-    review_required: true
+    # confidence promoted MEDIUM->HIGH (John 2026-07-07). The engine emits these
+    # positions at HIGH from its special helper (header_prepopulate_engine.py
+    # ~R-048 block); this field is kept in sync only for documentation — the
+    # engine reads confidence from that helper, not from this key.
+    confidence: HIGH
+    review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH position formulas", "CHK HGRH!C42:C49"]
 

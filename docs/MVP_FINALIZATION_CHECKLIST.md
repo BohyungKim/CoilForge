@@ -144,7 +144,11 @@ The two mechanisms that make this work (the "logic", not just the values):
 - [ ] **[MVP]** **Unit-size picker correctness** (`R-076` enumerations; Terra zero-padding)
   — tokens must match real submittal callouts.
 - [ ] **[MVP]** **Casing-dims table completeness** (`R-074`) — single-source (CHK only) and
-  MEDIUM; confirm in-scope products' rows are present and reviewed.
+  MEDIUM; confirm in-scope products' rows are present and reviewed. *(2026-07-08: promotion
+  disposition settled — no independent 2nd source exists in-code (mechanical_fit/checklist both
+  consume R-074 = circular; as-built casing_height is a different physical quantity; SOP has no
+  equivalent table). Kept MEDIUM; promotion trigger = external 2nd source. See
+  `docs/mvp_promotion_decisions.md` §후속 + `docs/wiki/open-questions.md`.)*
 - [ ] **[MVP]** **Notes assembly** (`R-007/R-008` base + `R-080/R-081` coating) — final note
   text matches SOP Rev H wording.
 
