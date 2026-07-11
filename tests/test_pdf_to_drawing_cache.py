@@ -102,6 +102,16 @@ def _count_intake(monkeypatch) -> list[int]:
     return calls
 
 
+def _embedded_source_id(result: dict) -> str:
+    """The source_id stamped into the result's provenance (pdf_intake_summary).
+
+    A bytes-only cache key would hand a second caller the FIRST caller's payload,
+    so this embedded id would read SRC-A for a SRC-B request — exactly the silent
+    cross-contamination the cache key must prevent.
+    """
+    return result["pdf_intake_summary"]["source_id"]
+
+
 def test_identical_input_runs_analysis_once(monkeypatch) -> None:
     calls = _count_intake(monkeypatch)
     pdf = _sample_pdf_bytes()
