@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import io
+import json
 import re
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -266,7 +270,79 @@ def run_pdf_to_direct_draft_workflow(
     return selected_result
 
 
+# --- R12b: bounded memoization of the PDF -> drawing workflow ----------------
+# Case deep-link and re-analyze flows re-run the SAME submittal PDF repeatedly,
+# each time paying 30-60s of OCR/analysis. We memoize the whole workflow keyed on
+# sha1(pdf_bytes) PLUS every other argument, because source_id / source_filename /
+# cover_page_hint / preview_defaults / title_block are all embedded in the result
+# (e.g. source_id -> "BRAIN-CASE-{id}"). Keying on the PDF bytes alone would hand
+# back a result stamped with the WRONG source_id -- a silent cross-contamination.
+# The stored result is never returned directly (callers mutate it -- see
+# web_app.py::workflow_case_to_drawing), so every hit returns a deepcopy.
+_WORKFLOW_CACHE_MAXSIZE = 32
+_WORKFLOW_CACHE: "OrderedDict[tuple[str, str], dict[str, Any]]" = OrderedDict()
+
+
+def _workflow_cache_key(
+    pdf_bytes: bytes,
+    source_id: str,
+    source_filename: str | None,
+    cover_page_hint: int | None,
+    preview_defaults: list[dict[str, Any]] | None,
+    title_block: dict[str, Any] | None,
+) -> tuple[str, str]:
+    pdf_sha1 = hashlib.sha1(pdf_bytes).hexdigest()
+    meta = json.dumps(
+        [source_id, source_filename, cover_page_hint, preview_defaults, title_block],
+        default=str,
+        sort_keys=True,
+    )
+    meta_hash = hashlib.sha256(meta.encode("utf-8")).hexdigest()
+    return (pdf_sha1, meta_hash)
+
+
+def clear_pdf_to_drawing_workflow_cache() -> None:
+    """Drop all memoized workflow results (test hygiene / manual invalidation)."""
+    _WORKFLOW_CACHE.clear()
+
+
 def run_pdf_to_drawing_workflow(
+    pdf_bytes: bytes,
+    *,
+    source_id: str = "PDF-UPLOAD-INTAKE-001",
+    source_filename: str | None = None,
+    cover_page_hint: int | None = None,
+    preview_defaults: list[dict[str, Any]] | None = None,
+    title_block: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    key = _workflow_cache_key(
+        pdf_bytes,
+        source_id,
+        source_filename,
+        cover_page_hint,
+        preview_defaults,
+        title_block,
+    )
+    cached = _WORKFLOW_CACHE.get(key)
+    if cached is not None:
+        _WORKFLOW_CACHE.move_to_end(key)
+        return copy.deepcopy(cached)
+    result = _run_pdf_to_drawing_workflow_uncached(
+        pdf_bytes,
+        source_id=source_id,
+        source_filename=source_filename,
+        cover_page_hint=cover_page_hint,
+        preview_defaults=preview_defaults,
+        title_block=title_block,
+    )
+    _WORKFLOW_CACHE[key] = result
+    _WORKFLOW_CACHE.move_to_end(key)
+    while len(_WORKFLOW_CACHE) > _WORKFLOW_CACHE_MAXSIZE:
+        _WORKFLOW_CACHE.popitem(last=False)
+    return copy.deepcopy(result)
+
+
+def _run_pdf_to_drawing_workflow_uncached(
     pdf_bytes: bytes,
     *,
     source_id: str = "PDF-UPLOAD-INTAKE-001",

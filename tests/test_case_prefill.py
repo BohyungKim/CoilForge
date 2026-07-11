@@ -215,6 +215,49 @@ def test_case_to_drawing_unknown_case_is_404(brain_board: Path) -> None:
     assert "PRC-9999" in response.json()["detail"]
 
 
+def test_case_to_drawing_journals_request_identity_header(brain_board: Path) -> None:
+    # R12c: the X-CoilForge-Identity request header (who/what initiated the
+    # request) lands on the milestone journal line as value.request_identity,
+    # kept distinct from the project identity.
+    pdf_path = brain_board / "intake" / "sub.pdf"
+    pdf_path.write_bytes(_sample_pdf_bytes())
+    _write_case(brain_board, _case_json(pdf_path))
+
+    response = client.post(
+        "/api/workflow/case-to-drawing",
+        json={"case_id": "PRC-2819"},
+        headers={"X-CoilForge-Identity": "john@oxygen8 via web UI"},
+    )
+
+    assert response.status_code == 200
+    event = json.loads(
+        list((brain_board / "journal").glob("coil-*.jsonl"))[0]
+        .read_text(encoding="utf-8").splitlines()[0])
+    # Request initiator recorded ...
+    assert event["value"]["request_identity"] == "john@oxygen8 via web UI"
+    # ... without polluting the project identity (a distinct concept).
+    assert event["identity"]["project_number"] == "2819"
+    assert "request_identity" not in event["identity"]
+
+
+def test_case_to_drawing_without_identity_header_still_succeeds(brain_board: Path) -> None:
+    # Missing header must degrade, not fail: the request succeeds and the journal
+    # line simply carries no request_identity key.
+    pdf_path = brain_board / "intake" / "sub.pdf"
+    pdf_path.write_bytes(_sample_pdf_bytes())
+    _write_case(brain_board, _case_json(pdf_path))
+
+    response = client.post("/api/workflow/case-to-drawing",
+                           json={"case_id": "PRC-2819"})
+
+    assert response.status_code == 200
+    event = json.loads(
+        list((brain_board / "journal").glob("coil-*.jsonl"))[0]
+        .read_text(encoding="utf-8").splitlines()[0])
+    assert event["value"]["milestone"] == "intake_drawing"
+    assert "request_identity" not in event["value"]
+
+
 def test_case_to_drawing_without_staged_pdf_is_409(brain_board: Path) -> None:
     case = _case_json(None, file_name="")  # no intake_requested event at all
     _write_case(brain_board, case)
