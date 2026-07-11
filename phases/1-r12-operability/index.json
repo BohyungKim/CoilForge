@@ -7,7 +7,8 @@
       "name": "prefill-sha1-cache",
       "status": "completed",
       "started_at": "2026-07-11T17:17:47-0400",
-      "summary": "run_pdf_to_drawing_workflow now bounded-memoized (LRU maxsize=32) on a cache key of sha1(pdf_bytes)+sha256 of all meta args; hits return a deepcopy so callers cannot poison the store. Completed the pre-existing test's missing _embedded_source_id helper; 4 cache tests + full suite (806) green."
+      "summary": "run_pdf_to_drawing_workflow now bounded-memoized (LRU maxsize=32) on a cache key of sha1(pdf_bytes)+sha256 of all meta args; hits return a deepcopy so callers cannot poison the store. Completed the pre-existing test's missing _embedded_source_id helper; 4 cache tests + full suite (806) green.",
+      "completed_at": "2026-07-11T17:20:47-0400"
     },
     {
       "step": 1,
