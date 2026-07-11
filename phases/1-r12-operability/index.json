@@ -1,0 +1,8 @@
+{
+  "project": "CoilForge",
+  "phase": "1-r12-operability",
+  "steps": [
+    { "step": 0, "name": "prefill-sha1-cache", "status": "pending" },
+    { "step": 1, "name": "identity-header", "status": "pending" }
+  ]
+}

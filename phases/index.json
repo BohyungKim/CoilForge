@@ -1,0 +1,12 @@
+{
+  "phases": [
+    {
+      "dir": "0-harness-smoke",
+      "status": "pending"
+    },
+    {
+      "dir": "1-r12-operability",
+      "status": "pending"
+    }
+  ]
+}

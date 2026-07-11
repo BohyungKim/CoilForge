@@ -14,26 +14,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -NonInteractive -NoProfile -Command \"[console]::beep(880,250); [console]::beep(1175,400)\""
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -NonInteractive -NoProfile -Command \"[console]::beep(660,200); [console]::beep(660,200)\""
-          }
-        ]
-      }
     ]
   }
 }

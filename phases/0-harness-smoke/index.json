@@ -1,0 +1,7 @@
+{
+  "project": "CoilForge",
+  "phase": "0-harness-smoke",
+  "steps": [
+    { "step": 0, "name": "reload-dev-launcher", "status": "pending" }
+  ]
+}
