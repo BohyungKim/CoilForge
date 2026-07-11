@@ -50,10 +50,16 @@ from coilforge.case_journal import record_coil_milestone
 
 def _journal_milestone(milestone: str, result: dict | None = None,
                        request_payload: dict | None = None,
-                       detail: dict | None = None) -> None:
+                       detail: dict | None = None,
+                       identity: str | None = None) -> None:
     """Best-effort PO Release Case journal write (append-only, review-aid only —
     records that a milestone request ran; never claims approval). Skipped when
-    no project identity is available (demo/sanitized-text paths)."""
+    no project identity is available (demo/sanitized-text paths).
+
+    ``identity`` is the REQUEST initiator (the ``X-CoilForge-Identity`` header —
+    who/what fired the request), recorded as ``value.request_identity``. It is a
+    distinct concept from the event's project identity (project_number/name);
+    the two are never merged."""
     try:
         summary = (result or {}).get("pdf_intake_summary") or {}
         payload = request_payload or {}
@@ -70,12 +76,16 @@ def _journal_milestone(milestone: str, result: dict | None = None,
             tag = coil.get("tag") if isinstance(coil, dict) else None
             if tag and tag not in tags:
                 tags.append(tag)
+        record_detail = dict(detail or {})
+        if identity:
+            # Request initiator (R12c) — kept separate from project identity.
+            record_detail["request_identity"] = identity
         record_coil_milestone(
             milestone,
             project_number=project_number,
             project_name=project_name,
             coil_tags=tags,
-            detail=detail or {},
+            detail=record_detail,
         )
     except Exception:  # noqa: BLE001 — journaling must never break a request
         pass
@@ -92,6 +102,18 @@ def _cover_page_hint_from_request(request: Request) -> int | None:
     if page_number < 1:
         raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be 1 or greater.")
     return page_number
+
+
+def _identity_from_request(request: Request) -> str | None:
+    """Read the ``X-CoilForge-Identity`` request header (the initiator / call
+    source, R12c). Degrades to ``None`` when absent or blank — never raises, so a
+    request without the header still succeeds. This is the REQUEST identity, NOT
+    the project identity (``brain_case.case_identity``)."""
+    raw_value = request.headers.get("x-coilforge-identity")
+    if raw_value is None:
+        return None
+    identity = raw_value.strip()
+    return identity or None
 
 
 def load_default_state():
@@ -305,7 +327,8 @@ async def ccsi_audit_export(request: Request):
     field_map = _load_ccsi_field_map()
     coils = audit_export_result(result, field_map)
     _journal_milestone("ccsi_export_audit", result=result,
-                       detail={"coils_audited": len(coils)})
+                       detail={"coils_audited": len(coils)},
+                       identity=_identity_from_request(request))
     return {
         "coils": coils,
         "field_map_version": field_map.get("version"),
@@ -329,7 +352,8 @@ async def workflow_pdf_to_direct_draft(request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _journal_milestone("intake_draft", result=result,
-                       detail={"candidates": len(result.get("candidates") or [])})
+                       detail={"candidates": len(result.get("candidates") or [])},
+                       identity=_identity_from_request(request))
     return result
 
 
@@ -346,7 +370,8 @@ async def workflow_pdf_to_drawing(request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _journal_milestone("intake_drawing", result=result,
-                       detail={"candidates": len(result.get("candidates") or [])})
+                       detail={"candidates": len(result.get("candidates") or [])},
+                       identity=_identity_from_request(request))
     return result
 
 
@@ -373,7 +398,7 @@ def _resolve_brain_case(case_id: str) -> tuple[dict, Path]:
 
 
 @app.post("/api/workflow/case-to-drawing")
-async def workflow_case_to_drawing(payload: dict = Body(...)):
+async def workflow_case_to_drawing(request: Request, payload: dict = Body(...)):
     """Brain deep-link prefill: resolve the case's staged submittal PDF from the
     PO Release Case board (read-only) and run the standard pdf-to-drawing
     workflow on it. Response shape == /api/workflow/pdf-to-drawing plus a
@@ -414,7 +439,8 @@ async def workflow_case_to_drawing(payload: dict = Body(...)):
     }
     _journal_milestone("intake_drawing", result=result,
                        detail={"candidates": len(result.get("candidates") or []),
-                               "brain_case_id": case_id})
+                               "brain_case_id": case_id},
+                       identity=_identity_from_request(request))
     return result
 
 
@@ -495,6 +521,7 @@ async def checklist_fill(request: Request):
         "checklist_filled", result=result,
         detail={"saved_path": (writer_result or {}).get("saved_path"),
                 "coils": len(coils)},
+        identity=_identity_from_request(request),
     )
     return jsonable_encoder(build_review(fill, writer_result))
 
@@ -709,7 +736,8 @@ async def review_project(request: Request):
         gate["summary"]["checklist_note"] = checklist_note
     _journal_milestone("project_review", result=result,
                        detail={"coils": gate["summary"]["coils"],
-                               "exceptions_K": gate["summary"]["exceptions_K"]})
+                               "exceptions_K": gate["summary"]["exceptions_K"]},
+                       identity=_identity_from_request(request))
     return jsonable_encoder(gate)
 
 
