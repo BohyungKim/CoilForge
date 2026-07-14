@@ -689,6 +689,36 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _gate_unseeded_ventum_plus_dx(result: dict[str, Any]) -> dict[str, Any]:
+    """Block an un-seeded Ventum+ DX drawing as 'not registered' instead of letting it
+    fall back to a shared template. Ventum+ DX distributors mount ConnectionUP (R-032),
+    but the shared CoilMaster templates were seeded ConnectionDOWN and the drawing path
+    does NOT redraw the distributor by orientation — so a shared fallback would show the
+    WRONG distributor direction. A dedicated Ventum+ DX template (seeded from a real UP
+    reference) already drew UP and set ``dedicated_family_template``, so it is kept.
+    HGRH/HWC/CWC have no distributor and are NOT gated (they still draw via the shared
+    template). Runs AFTER :func:`_prefer_dedicated_family_template`; no-op unless a
+    drawing was produced from a NON-dedicated (shared) template for a Ventum+ DX coil."""
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    if result.get("dedicated_family_template") == "VENTUM_PLUS":
+        return result  # drawn from the seeded UP reference — keep it
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    family, _ = resolve_product_line(result.get("product_type"))
+    category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
+    if family == "VENTUM_PLUS" and category == "DX":
+        _omit_drawing(
+            result,
+            "Ventum+ DX drawing template not registered — the distributor mounts "
+            "ConnectionUP (R-032), but no seeded Ventum+ DX reference matches this "
+            "hand/header and the shared template would draw it ConnectionDOWN. A real "
+            "Ventum+ DX reference for this hand/header must be seeded first.",
+        )
+        result["unregistered_ventum_plus_dx"] = True
+    return result
+
+
 def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     """Re-derive ONE coil's template drawing given its classification + geometry
     plus an engineer-chosen product line + unit size (the UI product/size picker).
@@ -728,6 +758,7 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     ).model_dump()
     _gate_unregistered_product_line(result)
     _prefer_dedicated_family_template(result)
+    _gate_unseeded_ventum_plus_dx(result)
     _flag_distributor_orientation_review(result)
     if result.get("svg"):
         result["svg"] = _clean_template_svg(
@@ -1013,6 +1044,7 @@ def _run_candidate_to_drawing_payload(
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)
         _prefer_dedicated_family_template(template_drawing)
+        _gate_unseeded_ventum_plus_dx(template_drawing)
         _flag_distributor_orientation_review(template_drawing)
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
         template_drawing["svg"] = _clean_template_svg(

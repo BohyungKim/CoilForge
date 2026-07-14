@@ -157,22 +157,25 @@ def test_terra_h_water_still_generates() -> None:
     assert out["svg"]
 
 
-def test_ventum_plus_dx_flags_distributor_orientation() -> None:
-    # For a Ventum+ DX combo with NO dedicated template yet (DX RH 3-header — the shared
-    # bucket exists but no vplus one is seeded), the drawing falls back to the shared
-    # ConnectionDown template, so the R-032 orientation caveat is attached. The drawing
-    # still renders (never blocked); the warning just prevents silent wrong-direction use.
+def test_ventum_plus_dx_unseeded_is_not_registered() -> None:
+    # DX-only not-registered gate (John 2026-07-14): a Ventum+ DX combo with NO dedicated
+    # UP template (DX RH 3-header — the shared bucket exists but no vplus one is seeded)
+    # must NOT fall back to the shared ConnectionDown template. Ventum+ DX mounts the
+    # distributor ConnectionUP (R-032), so a DOWN drawing would be wrong — it is blocked
+    # as "not registered" instead of drawn-with-a-caveat.
     out = derive_coil_template_drawing(
         dict(coil_category="DX", coil_hand="Right", circuits=3,
              product_type="VENTUM_PLUS", unit_size="V20", rows=4,
              finned_height=12, finned_length=15, suction_conn_size=0.625)
     )
-    assert out["template_id"] == "coilmaster_dx_rh_header3"  # shared fallback
-    assert out["svg"]  # never blocked — the caveat rides alongside the drawing
-    warning = out.get("distributor_orientation_warning")
-    assert warning, "Ventum+ DX on a shared template must carry the orientation warning"
-    assert "R-032" in warning
-    assert "ConnectionUP" in warning and "ConnectionDOWN" in warning
+    assert not out["svg"]  # blocked — no wrong-orientation shared drawing leaks through
+    assert out["template_found"] is False
+    assert out["generation_allowed"] is False
+    assert out.get("unregistered_ventum_plus_dx") is True
+    reason = out.get("not_registered_reason") or ""
+    assert "R-032" in reason and "ConnectionUP" in reason
+    # No shared drawing was produced, so no orientation caveat rides alongside.
+    assert out.get("distributor_orientation_warning") is None
 
 
 def test_ventum_plus_non_dx_has_no_orientation_warning() -> None:
@@ -215,17 +218,20 @@ def test_ventum_plus_dx_rh_routes_to_dedicated_template() -> None:
     assert out["export_allowed"] is False  # still review aid only
 
 
-def test_ventum_plus_combo_without_dedicated_falls_back_to_shared() -> None:
-    # Ventum+ DX RH 3-header has NO dedicated bucket seeded yet -> two-pass match falls
-    # back to the shared template, and the orientation warning stays (shared draws DOWN).
+def test_ventum_plus_non_dx_unseeded_still_draws_via_shared() -> None:
+    # The not-registered gate is DX-ONLY (the distributor is a DX concept). An un-seeded
+    # Ventum+ NON-DX combo (HGRH LH 2-header — no dedicated bucket) still falls back to
+    # the shared template and draws; it is never blocked and carries no orientation caveat.
     out = derive_coil_template_drawing(
-        dict(coil_category="DX", coil_hand="Right", circuits=3,
+        dict(coil_category="HGRH", coil_hand="Left", circuits=2,
              product_type="VENTUM_PLUS", unit_size="V20", rows=4,
              finned_height=12, finned_length=15, suction_conn_size=0.625)
     )
-    assert out["template_id"] == "coilmaster_dx_rh_header3"  # shared fallback
-    assert out.get("dedicated_family_template") is None
-    assert out.get("distributor_orientation_warning")  # shared DOWN -> caveat present
+    assert out["svg"]  # non-DX un-seeded still draws via the shared bucket
+    assert out.get("dedicated_family_template") is None  # shared fallback, not dedicated
+    assert out.get("not_registered_reason") is None
+    assert out.get("unregistered_ventum_plus_dx") is None
+    assert out.get("distributor_orientation_warning") is None  # non-DX -> no caveat
 
 
 def test_non_ventum_line_never_gets_dedicated_ventum_template() -> None:

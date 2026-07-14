@@ -6,6 +6,17 @@
 
 <!-- LOG (newest first) -->
 
+## 2026-07-14 · ingest — 미시드 Ventum+ DX = not-registered 차단 (DX-only)
+John 판정(2026-07-14): 미시드 Ventum+ **DX** 조합은 더 이상 공유 ConnectionDOWN 템플릿으로 fallback
+하지 않고 **not-registered로 차단**한다 — Ventum+ DX distributor는 ConnectionUP(R-032)인데 공유는 DOWN을
+그리므로, 실제 UP 참조가 시드되기 전엔 도면을 안 내보내는 편이 낫다는 결정. `_gate_unseeded_ventum_plus_dx`
+(dedicated-preference 직후)가 `_omit_drawing` + `unregistered_ventum_plus_dx` 플래그. **DX 전용** — 미시드
+비-DX(HGRH/HWC/CWC)는 distributor가 없어 공유 fallback 유지. 이전 `_flag_distributor_orientation_review`
+경고는 DX에선 대체(dead). 갱신: `[[ventum-plus]]` distributor 섹션·인트로·템플릿 섹션, `[[open-questions]]`
+R-032 항목. 근거: `workflows/submittal_to_drawing.py::_gate_unseeded_ventum_plus_dx`, 테스트
+`test_ventum_plus_dx_unseeded_is_not_registered` / `test_ventum_plus_non_dx_unseeded_still_draws_via_shared`
+(818 green). 이 결정으로 R-032 "틀린 방향 도면" 리스크는 DX에서 원천 차단(dedicated-UP 아니면 차단).
+
 ## 2026-07-08 · ingest — R-074 2차 출처 판정 + R-048/R-085 조건부 발화 검증
 로드맵 후속 두 항목 처리 결과를 원장에 반영. **R-074**(casing dims): 코드베이스 내부에 독립 2차
 출처 없음 판정(`mechanical_fit`/`checklist`는 R-074 소비=순환; slot `casing_height`는 다른 물리량;

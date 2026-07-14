@@ -251,8 +251,15 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   optional `product_family` axis (2-pass match: a dedicated bucket wins, else fall back to the
   shared one) and **11 dedicated Ventum+ templates were seeded from real Ventum+ selection
   drawings** (`VENTUM_PLUS_TEMPLATES` / `VPLUS_BUCKETS`: DX 5, HGRH 3, HWC 2, CWC 1). A Ventum+
-  coil prefers its dedicated bucket; every other line and any not-yet-seeded Ventum+ combo
-  still resolves to the shared 22 buckets. Routing is post-process in
+  coil prefers its dedicated bucket; every other line resolves to the shared 22 buckets, and a
+  not-yet-seeded Ventum+ **non-DX** combo (HGRH/HWC/CWC) still falls back to the shared bucket.
+  A not-yet-seeded Ventum+ **DX** combo, however, is **blocked as "not registered"** (John
+  2026-07-14, DX-only): the DX distributor mounts ConnectionUP (R-032) but the shared templates
+  draw ConnectionDOWN, so `_gate_unseeded_ventum_plus_dx` (runs right after the dedicated-preference
+  step) omits the drawing with a `not_registered_reason` + `unregistered_ventum_plus_dx` flag rather
+  than borrow the wrong-orientation shared artwork — a real Ventum+ DX (hand/header) reference must
+  be seeded first. (The older `_flag_distributor_orientation_review` caveat is now superseded for DX
+  — every Ventum+ DX is either dedicated-UP or blocked.) Routing is post-process in
   `submittal_to_drawing.py::_prefer_dedicated_family_template` (frozen `pdf_to_template_drawing`
   untouched) + threaded at `direct_coil_drawing_pipeline`. (Ventum+ was first un-blocked
   2026-07-03 — `_UNREGISTERED_PRODUCT_LINES` emptied — to reuse shared templates; the fork

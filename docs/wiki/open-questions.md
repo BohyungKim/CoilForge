@@ -61,8 +61,9 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
   `docs/coverage_dashboard.html`을 대체. **OPEN.**
 - **[MVP] Ventum+ distributor orientation (R-032 UP) 도면 반영** — 엔진은 UP을 `HIGH`로 계산하나 도면
   경로가 소비 안 하던 갭 (2026-07-06 발견). **근본 해결:** catalog `product_family` fork + 실제 Ventum+
-  참조에서 **11개 전용 템플릿 시드**(vector artwork 그대로 복사 → UP 자연 캡처); 시드 조합은 전용 라우팅 +
-  경고 자동 해제, 미시드 조합만 공유 DOWN + 경고. 파라메트릭 엔진도 UP 지원(`schematic_layout`). 남은 것:
+  참조에서 **11개 전용 템플릿 시드**(vector artwork 그대로 복사 → UP 자연 캡처); 시드 조합은 전용 라우팅.
+  미시드 **DX**는 not-registered 차단(`John 2026-07-14` — 틀린 방향 도면 원천 차단, `_gate_unseeded_ventum_plus_dx`),
+  미시드 **비-DX**만 공유 fallback. 파라메트릭 엔진도 UP 지원(`schematic_layout`). 남은 것:
   각 시드 템플릿의 **John eyeball 게이트**. hand 미표기 프로젝트 hand 확정 완료(John 2026-07-06):
   **2666 Pembroke HQ DX = LH, 2658 Fitchburg CWC = LH** → 둘 다 기존 시드(dx_lh_header3, cwc_lh)와 중복,
   신규 버킷 없음. **11개가 이 참조 폴더의 완전한 시드 집합.**

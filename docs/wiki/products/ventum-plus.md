@@ -2,8 +2,9 @@
 
 First-class 제품 타입 (`ProductFamily.VENTUM_PLUS`, `schemas/header_prepopulate.py`). Nova/Ventum H와
 헤더 규칙 세트를 공유하지 않고 **자체 상수 세트**를 가진다 — 특히 DX distributor가 물리적으로
-**반대 방향(ConnectionUp)** 이라는 점이 다른 모든 라인과 구별되는 핵심이다. 도면은 전용 템플릿이 아니라
-**공유 product-agnostic CoilMaster 템플릿**으로 그려진다. Review aid only.
+**반대 방향(ConnectionUp)** 이라는 점이 다른 모든 라인과 구별되는 핵심이다. 도면은 **DX**의 경우 전용
+UP 시드 템플릿으로 그려지거나(미시드면 not-registered 차단, `John 2026-07-14` — 아래 참조), **비-DX**
+(HGRH/HWC/CWC)는 공유 product-agnostic CoilMaster 템플릿으로 그려진다. Review aid only.
 
 ## 감지
 
@@ -45,17 +46,21 @@ Terra-Vertical `TV_B_###`의 떠도는 `V###` 필터-부록 토큰이 감지를 
   `schematic_layout.layout_header_side_view`가 `UP`이면 supply distributor를 **top 케이싱 엣지** 기준으로,
   아니면 기존 `DOWN`(bottom)으로 배치. UP/DOWN(수직)은 LH↔RH 미러(수평)와 직교. `[CONFIRMED]` 근거:
   테스트 `test_distributor_orientation_up_lifts_supply_to_top_half` 등 (`2026-07-06`).
-- **프로즌 템플릿 경로 (전용 시드 前)**: geometry는 못 고침(DO-NOT-TOUCH, orientation은 slot이
-  아님). 대신 `_flag_distributor_orientation_review`가 공유 템플릿으로 fallback한 Ventum+ DX 도면에
-  **loud review-required 경고**를 부착 — 틀린 방향이 조용히 나가지 않게 함. `[CONFIRMED]` 근거:
-  `workflows/submittal_to_drawing.py`, 테스트 `test_ventum_plus_dx_flags_distributor_orientation` (`2026-07-06`).
+- **미시드 DX → not-registered 차단 (DX-only, `John 2026-07-14`)**: 미시드 Ventum+ DX는 공유 DOWN
+  템플릿으로 그리지 않고 **아예 차단**한다 — `_gate_unseeded_ventum_plus_dx`(dedicated-preference 단계
+  직후 실행)가 `_omit_drawing`으로 svg를 비우고 `not_registered_reason` + `unregistered_ventum_plus_dx`
+  플래그를 세팅. 틀린 방향 도면이 경고와 함께라도 나가는 것보다, 실제 UP 참조가 시드되기 전엔 도면을
+  안 내보내는 편이 낫다는 판정. (이전 `_flag_distributor_orientation_review` 경고는 DX에선 이제 **대체됨**
+  — 모든 Ventum+ DX는 dedicated-UP 아니면 차단이라 공유-DOWN 경고 경로가 dead.) `[CONFIRMED]` 근거:
+  `workflows/submittal_to_drawing.py::_gate_unseeded_ventum_plus_dx`, 테스트
+  `test_ventum_plus_dx_unseeded_is_not_registered` (`2026-07-14`).
 - **전용 템플릿 시드 (근본 해결, 2026-07-06)**: 실제 Ventum+ 참조 도면에서 시드하면 vector artwork를
-  그대로 복사하므로 UP distributor가 자연 캡처된다. 시드된 조합은 dedicated 템플릿으로 라우팅되고 위
-  경고는 자동 해제(`dedicated_family_template=="VENTUM_PLUS"`). 아래 "템플릿" 섹션 참고.
+  그대로 복사하므로 UP distributor가 자연 캡처된다. 시드된 조합은 dedicated 템플릿으로 라우팅된다
+  (`dedicated_family_template=="VENTUM_PLUS"`). 아래 "템플릿" 섹션 참고.
 
-즉 **시드된 전용 템플릿은 UP을 실물 그대로 그리고**(경고 없음), 미시드 조합만 공유 DOWN + 경고로
-방어한다(파라메트릭 엔진도 UP 지원). 각 시드 템플릿의 UP geometry는 John의 eyeball 게이트로 CLOSE —
-`[[confidence-gate]]`.
+즉 **시드된 전용 템플릿은 UP을 실물 그대로 그리고**, 미시드 **DX**는 not-registered 차단, 미시드
+**비-DX**만 공유 fallback으로 그린다(파라메트릭 엔진도 UP 지원). 각 시드 템플릿의 UP geometry는 John의
+eyeball 게이트로 CLOSE — `[[confidence-gate]]`.
 
 ## 템플릿 — 전용 시드 (product_family fork, 2026-07-06)
 
@@ -69,7 +74,8 @@ DOWN 템플릿에 표현되지 않는 문제 때문에 **catalog `product_family
 - **HWC (2):** `lh`(2802), `rh`(2523) · **CWC (1):** `lh`(2773)
 
 Template 선택은 이제 `(supplier, category, hand, header, special, **product_family**)` 2-pass — 전용 버킷
-우선, 없으면 공유 fallback. 그래서 **다른 라인·미시드 Ventum+ 조합은 공유 22버킷 그대로**(무회귀). 각
+우선, 없으면 공유 fallback. 그래서 **다른 라인은 공유 22버킷 그대로**(무회귀); 미시드 Ventum+ **비-DX**는
+공유 fallback, 미시드 Ventum+ **DX**는 not-registered 차단(`John 2026-07-14`, 위 distributor 섹션). 각
 아티팩트는 review-aid only(`export_allowed=false`); 참조 PDF는 `Case/feed/vplus_*`에 gitignored 스테이징.
 surrogate/mirror 금지 원칙대로 각 (hand,header)는 자기 실제 참조 페이지에서 시드됨.
 
