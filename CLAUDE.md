@@ -302,9 +302,10 @@ Coverage = which `(category, hand, header, product family)` template buckets are
 vs **unseeded**. The `needs_pair` / `placeholder_blocked` (`generation_allowed=False`)
 statuses tag any future unseeded bucket, but **all 22 buckets are currently seeded/active
 review aids** (`catalog.ACTIVE_TEMPLATES`); the 10-template set anchors the MVP scope.
-Coverage is surfaced today via the
-hand-authored `docs/coverage_dashboard.html` (a point-in-time snapshot; a generator is a
-follow-up item).
+Coverage is surfaced via
+`docs/coverage_dashboard.html`, **generated** from the live catalog by
+`scripts/generate_coverage_dashboard.py` (regenerate after seeding a bucket; `--check` is a
+CI drift guard that fails if the encoded MVP taxonomy and the live SHARED buckets diverge).
 
 ### Corrected taxonomy diagram
 
@@ -354,8 +355,8 @@ Until then, the code differs as follows — do not assume the target is implemen
 | --- | --- | --- |
 | Product family enum | `ProductFamily {NOVA, TERRA, VENTUM_H, VENTUM_PLUS}` + `TerraVariant {TERRA_H, TERRA_H_C, TERRA_V}` (`schemas/header_prepopulate.py`) | Split `TERRA` → `TERRA_H` + `TERRA_V`; demote `TERRA_H_C` to a sub-variant of Terra H |
 | 4HD buckets | ✅ Resolved 2026-06-21 — DX/HGRH header-4 LH+RH seeded from real reference PDFs (`catalog.ACTIVE_TEMPLATES`); the `placeholder_blocked` branch is inert | Was `needs_pair`; now seeded — aligned |
-| Ventum+ | ✅ Fork implemented 2026-07-06 — optional `product_family` axis in `catalog.py` + 11 dedicated Ventum+ templates seeded (DX 5, HGRH 3, HWC 2, CWC 1); unseeded combos + other lines fall back to shared | Ventum+ prefers its own seeded buckets (captures R-032 UP distributor); shared fallback keeps every other line unchanged |
-| Coverage checklist | Hand-authored `docs/coverage_dashboard.html` snapshot | Generated from `template_population/catalog.list_template_entries()` |
+| Ventum+ | ✅ Fork implemented 2026-07-06 — optional `product_family` axis in `catalog.py` + 11 dedicated Ventum+ templates seeded (DX 5, HGRH 3, HWC 2, CWC 1); unseeded **non-DX** combos + other lines fall back to shared, unseeded **DX** blocked as not-registered (2026-07-14, R-032 UP) | Ventum+ prefers its own seeded buckets (captures R-032 UP distributor); shared fallback keeps every other line unchanged |
+| Coverage checklist | ✅ Resolved 2026-07-14 — `scripts/generate_coverage_dashboard.py` generates `docs/coverage_dashboard.html` from `catalog.list_template_entries()` (+ `--check` drift guard) | Was hand-authored snapshot; now generated — aligned |
 
 ## Conventions
 

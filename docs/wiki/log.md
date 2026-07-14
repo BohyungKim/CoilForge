@@ -6,6 +6,15 @@
 
 <!-- LOG (newest first) -->
 
+## 2026-07-14 · ingest — 커버리지-대시보드 생성기 (수기 스냅샷 대체)
+`[[open-questions]]`의 [EXT] 항목 CLOSE. `scripts/generate_coverage_dashboard.py`가
+`template_population.catalog.list_template_entries()`에서 시드/미시드 버킷 커버리지를 계산해
+`docs/coverage_dashboard.html`을 생성 — 2026-06-17 하드코딩 스냅샷(당시 "10/22", 지금은 33개 전부
+시드) 대체. 인코딩된 MVP 택소노미(DX 10 + HGRH 8 + HWC 2 + CWC 2 = SHARED 22)를 `--check`가 라이브
+SHARED 버킷과 대조(드리프트 시 실패, CI 가드). Ventum+ 갭 11개를 이번 세션 정책대로 표면화: DX 5 =
+not-registered(R-032 UP), 비-DX 6 = shared-fallback. 근거: `scripts/generate_coverage_dashboard.py`,
+테스트 `tests/test_coverage_dashboard_generator.py`(8건, 826 green). `[[ventum-plus]]` 참고.
+
 ## 2026-07-14 · ingest — 미시드 Ventum+ DX = not-registered 차단 (DX-only)
 John 판정(2026-07-14): 미시드 Ventum+ **DX** 조합은 더 이상 공유 ConnectionDOWN 템플릿으로 fallback
 하지 않고 **not-registered로 차단**한다 — Ventum+ DX distributor는 ConnectionUP(R-032)인데 공유는 DOWN을

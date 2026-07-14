@@ -57,8 +57,10 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 - **[DEFER] R-082** Terra 마운팅 홀 — `CONFLICT`/`LOW`, blocked. **OPEN (deferred).**
 - **[MVP] R-090 카퍼 스트랩** — CWC/HWC 배수 미확정(`[BLOCKED]`); DX/HGRH 확정. `[[hgrh]]` 참고.
   **OPEN (water는 blocked).**
-- **[EXT] 커버리지-대시보드 생성기** (`scripts/generate_coverage_dashboard.py`)로 손으로 쓴
-  `docs/coverage_dashboard.html`을 대체. **OPEN.**
+- **[EXT] 커버리지-대시보드 생성기** — `scripts/generate_coverage_dashboard.py`가 라이브 카탈로그
+  (`list_template_entries()`)에서 `docs/coverage_dashboard.html`을 생성(수기 스냅샷 대체); `--check`는
+  택소노미↔SHARED 버킷 드리프트 가드. Ventum+ 갭을 DX=not-registered / 비-DX=shared-fallback으로 표면화.
+  **CLOSED 2026-07-14** (8테스트, 826 green).
 - **[MVP] Ventum+ distributor orientation (R-032 UP) 도면 반영** — 엔진은 UP을 `HIGH`로 계산하나 도면
   경로가 소비 안 하던 갭 (2026-07-06 발견). **근본 해결:** catalog `product_family` fork + 실제 Ventum+
   참조에서 **11개 전용 템플릿 시드**(vector artwork 그대로 복사 → UP 자연 캡처); 시드 조합은 전용 라우팅.
@@ -72,3 +74,4 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 ## 닫힘 (감사 추적)
 - Terra-V 4 케이싱 값 → 채워짐 (D1). · 4HD → 시드됨 (D2). · Terra-V DX/HGRH/water 스페셜 →
   2026-06-28 HIGH 승격 (D3). · Ventum+ → 언블록, 2026-07-03 공유 템플릿으로 도면화 (D4 문서 측).
+- 커버리지-대시보드 생성기 → `scripts/generate_coverage_dashboard.py`로 CLOSED (2026-07-14).

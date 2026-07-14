@@ -1,324 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CoilForge — Coverage Gaps (Templates · Products · Fields)</title>
-<style>
-  :root{
-    --bg:#0c0f14; --panel:#141922; --panel2:#1b2230; --ink:#e7ecf3; --muted:#8b97a8;
-    --line:#27303f; --ok:#3fb950; --warn:#d29922; --bad:#f0883e; --block:#f85149;
-    --info:#58a6ff; --accent:#7c5cff;
-    --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);
-       line-height:1.45;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
-  header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-bottom:6px}
-  h1{font-size:22px;margin:0;letter-spacing:.2px}
-  .badge{font-family:var(--mono);font-size:11px;color:var(--muted);
-         border:1px solid var(--line);border-radius:999px;padding:3px 10px}
-  .sub{color:var(--muted);font-size:13px;margin:0 0 28px}
-  .review{color:var(--warn);font-weight:600}
-  section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
-          padding:22px 24px;margin-bottom:22px}
-  section h2{font-size:15px;margin:0 0 2px;display:flex;align-items:center;gap:10px}
-  section h2 .n{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500}
-  section .desc{color:var(--muted);font-size:12.5px;margin:0 0 18px;max-width:78ch}
-  .grid2{display:grid;grid-template-columns:1.35fr 1fr;gap:26px;align-items:start}
-  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
-  .chart-title{font-size:12px;color:var(--muted);text-transform:uppercase;
-               letter-spacing:.6px;margin:0 0 12px}
-  /* stacked / bar rows */
-  .row{display:flex;align-items:center;gap:10px;margin-bottom:11px}
-  .row .lbl{width:74px;font-size:12.5px;color:var(--ink);font-family:var(--mono);text-align:right}
-  .track{flex:1;display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--panel2)}
-  .seg{height:100%;display:flex;align-items:center;justify-content:center;
-       font-size:11px;font-family:var(--mono);color:#0c0f14;font-weight:700;min-width:0}
-  .seg.empty{color:var(--muted);font-weight:500}
-  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-size:12px;color:var(--muted)}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
-  /* donut */
-  .donut-wrap{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
-  .donut-center{font-family:var(--mono)}
-  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
-  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
-  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-  td.mono,th.mono{font-family:var(--mono)}
-  .pill{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:999px;font-weight:700}
-  .p-ok{background:rgba(63,185,80,.16);color:var(--ok)}
-  .p-warn{background:rgba(210,153,34,.16);color:var(--warn)}
-  .p-bad{background:rgba(240,136,62,.16);color:var(--bad)}
-  .p-block{background:rgba(248,81,73,.16);color:var(--block)}
-  .kpis{display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 20px}
-  .kpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
-       padding:12px 16px;min-width:120px}
-  .kpi .v{font-size:24px;font-weight:700;font-family:var(--mono)}
-  .kpi .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  footer{color:var(--muted);font-size:11.5px;text-align:center;margin-top:30px;
-         font-family:var(--mono)}
-  .note{font-size:11.5px;color:var(--muted);margin-top:14px;border-left:2px solid var(--accent);
-        padding-left:12px}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header class="top">
-    <h1>CoilForge — Coverage Gaps</h1>
-    <span class="badge">snapshot 2026-06-17 · branch claude/phase2g-continuation</span>
-  </header>
-  <p class="sub">
-    EZ template configurations, product-line data mapping, and template field (slot) mapping.
-    Sourced directly from the live catalog, the R-076 rule table, and the template slot scan.
-    <span class="review">Review-aid only — no export, no production approval.</span>
-  </p>
-
-  <!-- ============ KPIs ============ -->
-  <div class="kpis">
-    <div class="kpi"><div class="v" style="color:var(--ok)">10<span style="color:var(--muted);font-size:15px">/22</span></div><div class="k">Templates registered</div></div>
-    <div class="kpi"><div class="v" style="color:var(--bad)">12</div><div class="k">Configs not registered</div></div>
-    <div class="kpi"><div class="v" style="color:var(--bad)">1<span style="color:var(--muted);font-size:15px">/5</span></div><div class="k">Product line unmapped*</div></div>
-    <div class="kpi"><div class="v" style="color:var(--warn)">13<span style="color:var(--muted);font-size:15px">/50</span></div><div class="k">Fields review-required</div></div>
-  </div>
-
-  <!-- ============ 1. TEMPLATE CONFIGS ============ -->
-  <section>
-    <h2>1 · EZ Template Configurations <span class="n">22 buckets · (category, hand, header, special)</span></h2>
-    <p class="desc">
-      Each bucket is one drawing configuration. Only buckets <b>seeded from a provided EZ PDF</b>
-      generate a drawing; mirror-derived hands are forbidden (John, 2026-06-17), so every hand
-      needs its own seed. Unregistered buckets split by why: a known reference exists but isn't
-      seeded, a hand-pair isn't seeded, or no reference drawing exists at all.
-    </p>
-    <div class="grid2">
-      <div>
-        <p class="chart-title">Registered vs. not, by category</p>
-        <div id="cat-bars"></div>
-        <div class="legend">
-          <span><i class="dot" style="background:var(--ok)"></i>Registered (seeded)</span>
-          <span><i class="dot" style="background:var(--bad)"></i>Known ref, not seeded</span>
-          <span><i class="dot" style="background:var(--warn)"></i>Needs pair</span>
-          <span><i class="dot" style="background:var(--block)"></i>No reference</span>
-        </div>
-      </div>
-      <div>
-        <p class="chart-title">The 12 unregistered configurations</p>
-        <table id="unreg-table"><thead><tr>
-          <th class="mono">bucket</th><th>status</th>
-        </tr></thead><tbody></tbody></table>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ 2. PRODUCT LINES ============ -->
-  <section>
-    <h2>2 · Product-Line Data Mapping <span class="n">5 lines · R-076 enumeration</span></h2>
-    <p class="desc">
-      Template selection is product-family-agnostic: every line draws through the shared
-      CoilMaster templates with its own engine-computed dimensions. As of 2026-07-03 all 5
-      lines — including <b>Ventum Plus</b> — are both engine-mapped and drawable. (Ventum Plus's
-      reference selection PDFs were confirmed to be CoilMaster EZ-Coil drawings in the same
-      DX/HGRH/CWC/HWC format the templates were seeded from, so it needs no template of its own.)
-    </p>
-    <table id="product-table"><thead><tr>
-      <th class="mono">product line</th><th>unit sizes</th><th>engine-mapped</th><th>template registered</th><th>can draw</th>
-    </tr></thead><tbody></tbody></table>
-    <p class="note">* All 5 product lines draw via the shared product-agnostic templates. Terra V
-       CWC/HWC remains the one withheld combo (no seeded Terra V water reference).</p>
-  </section>
-
-  <!-- ============ 3. FIELDS / SLOTS ============ -->
-  <section>
-    <h2>3 · Template Field (Slot) Mapping <span class="n">50 slots scanned across 10 active templates</span></h2>
-    <p class="desc">
-      Every <code>{{slot.X}}</code> in the templates must classify into exactly one bucket — a CI
-      gate fails on any UNCLASSIFIED slot. Logic-derived slots come from the rule engine or
-      recovered formulas; material/title slots come from the draft or EZ JSON; the rest are
-      <span class="review">intentionally REVIEW REQUIRED</span> (mass-properties &amp; secondary
-      materials that no rule can derive). <b>UNCLASSIFIED = 0</b> — nothing is silently unmapped.
-    </p>
-    <div class="grid2">
-      <div>
-        <p class="chart-title">Slots by mapping source</p>
-        <div class="donut-wrap">
-          <div id="slot-donut"></div>
-          <div class="legend" id="slot-legend" style="flex-direction:column;gap:9px"></div>
-        </div>
-      </div>
-      <div>
-        <p class="chart-title">The 13 review-required (unmapped) fields</p>
-        <table id="review-table"><thead><tr><th class="mono">slot</th><th>why</th></tr></thead><tbody></tbody></table>
-      </div>
-    </div>
-  </section>
-
-  <footer>CoilForge coverage dashboard · generated from catalog.py + R-076 + template slot scan · review-aid only</footer>
-</div>
-
-<script>
-/* ---------- data (snapshot 2026-06-17, extracted from live code) ---------- */
-const COLORS = {ok:'#3fb950', bad:'#f0883e', warn:'#d29922', block:'#f85149',
-                info:'#58a6ff', accent:'#7c5cff', muted:'#8b97a8'};
-
-// category -> bucket counts by status (exact, from the live catalog scan).
-//   registered = active_review_aid (seeded)
-//   known      = needs_pair / known_reference_not_seeded
-//   pair       = needs_pair / needs_pair (no seed on either hand yet)
-//   none       = placeholder_blocked / missing_reference
-const CATS = {
-  // DX(10): reg LH-H1,RH-H2,LH-H3,LH-HGBP | known RH-H1,LH-H2,RH-H3 | pair RH-HGBP | none H4 LH/RH
-  DX:   {registered:4, known:3, pair:1, none:2, total:10},
-  // HGRH(8): reg LH-H1,RH-H1,LH-H2,RH-H3 | known RH-H2,LH-H3 | none H4 LH/RH
-  HGRH: {registered:4, known:2, pair:0, none:2, total:8},
-  CWC:  {registered:1, known:0, pair:1, none:0, total:2},  // reg LH | pair RH
-  HWC:  {registered:1, known:0, pair:1, none:0, total:2},  // reg LH | pair RH
-};
-
-const UNREG = [
-  ['coilmaster_dx_rh_header1','Known ref, not seeded','p-bad'],
-  ['coilmaster_dx_lh_header2','Known ref, not seeded','p-bad'],
-  ['coilmaster_dx_rh_header3','Known ref, not seeded','p-bad'],
-  ['coilmaster_dx_lh_header4','No reference','p-block'],
-  ['coilmaster_dx_rh_header4','No reference','p-block'],
-  ['coilmaster_dx_rh_hgbp','Needs pair','p-warn'],
-  ['coilmaster_hgrh_rh_header2','Known ref, not seeded','p-bad'],
-  ['coilmaster_hgrh_lh_header3','Known ref, not seeded','p-bad'],
-  ['coilmaster_hgrh_lh_header4','No reference','p-block'],
-  ['coilmaster_hgrh_rh_header4','No reference','p-block'],
-  ['coilmaster_cwc_rh','Needs pair','p-warn'],
-  ['coilmaster_hwc_rh','Needs pair','p-warn'],
-];
-
-const PRODUCTS = [
-  ['NOVA',        14, true, true],
-  ['TERRA H',      9, true, true],
-  ['TERRA V',      9, true, true],
-  ['VENTUM_H',     6, true, true],
-  ['VENTUM_PLUS', 10, true, true],
-];
-
-const SLOTS = [
-  ['Engine rule',      18, COLORS.ok,   'Rule-engine HIGH dimension (CD, BF, HD2, HDx1, I/O/R/SL …)'],
-  ['Recovered formula', 9, COLORS.info, 'Derived formula (FH, FL, CH, CL, OAL, ROWS, S1/3/5)'],
-  ['Material / title', 10, COLORS.accent,'From Direct Coil draft or EZ JSON (materials, tag, model #)'],
-  ['Review required',  13, COLORS.warn, 'Not derivable — mass-properties & secondary materials'],
-];
-
-const REVIEW_FIELDS = [
-  ['slot.DRY_WEIGHT','Mass property — needs separate calc'],
-  ['slot.INTERNAL_VOLUME','Mass property — needs separate calc'],
-  ['slot.FASTENER_TYPE','Construction detail, not in rule engine'],
-  ['slot.SUPPLY_CONN_SIZE','From draft, not logic-derived'],
-  ['slot.SUPPLY_CONN_SIZE_2','Secondary connection — draft only'],
-  ['slot.TUBE_MATERIAL_2','Secondary material line'],
-  ['slot.FIN_MATERIAL_2','Secondary material line'],
-  ['slot.FIN_MATERIAL_3','Tertiary material line'],
-  ['slot.CASING_MATERIAL_2','Secondary material line'],
-  ['slot.CIRCUITING_2','Secondary circuiting line'],
-  ['slot.CIRCUITING_3','Tertiary circuiting line'],
-  ['slot.DISTRIBUTORS_2','Secondary distributor line'],
-  ['slot.RETURN_CONN_SIZE_2','Secondary connection — draft only'],
-];
-
-/* ---------- render: category stacked bars ---------- */
-(function(){
-  const host = document.getElementById('cat-bars');
-  const order = [['registered',COLORS.ok],['known',COLORS.bad],['pair',COLORS.warn],['none',COLORS.block]];
-  for(const [cat,d] of Object.entries(CATS)){
-    const row = document.createElement('div'); row.className='row';
-    const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent=cat;
-    const track = document.createElement('div'); track.className='track';
-    for(const [k,c] of order){
-      const v = d[k]||0; if(!v) continue;
-      const seg = document.createElement('div'); seg.className='seg';
-      seg.style.flex = v; seg.style.background=c; seg.textContent=v;
-      seg.title = `${cat} ${k}: ${v}`;
-      track.appendChild(seg);
-    }
-    row.appendChild(lbl); row.appendChild(track); host.appendChild(row);
-  }
-})();
-
-/* ---------- render: unregistered table ---------- */
-(function(){
-  const tb = document.querySelector('#unreg-table tbody');
-  for(const [id,status,cls] of UNREG){
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td class="mono">${id.replace('coilmaster_','')}</td>`+
-                   `<td><span class="pill ${cls}">${status}</span></td>`;
-    tb.appendChild(tr);
-  }
-})();
-
-/* ---------- render: product table ---------- */
-(function(){
-  const tb=document.querySelector('#product-table tbody');
-  for(const [line,sizes,eng,tmpl] of PRODUCTS){
-    const draw = eng && tmpl;
-    const tr=document.createElement('tr');
-    tr.innerHTML =
-      `<td class="mono">${line}</td>`+
-      `<td class="mono">${sizes}</td>`+
-      `<td><span class="pill ${eng?'p-ok':'p-block'}">${eng?'yes':'no'}</span></td>`+
-      `<td><span class="pill ${tmpl?'p-ok':'p-bad'}">${tmpl?'yes':'NOT SEEDED'}</span></td>`+
-      `<td><span class="pill ${draw?'p-ok':'p-block'}">${draw?'draw':'blocked'}</span></td>`;
-    if(!tmpl) tr.style.background='rgba(240,136,62,.06)';
-    tb.appendChild(tr);
-  }
-})();
-
-/* ---------- render: slot donut ---------- */
-(function(){
-  const total = SLOTS.reduce((s,x)=>s+x[1],0);
-  const R=62, r=40, cx=72, cy=72, C=2*Math.PI*((R+r)/2), w=R-r;
-  let acc=0;
-  const ns='http://www.w3.org/2000/svg';
-  const svg=document.createElementNS(ns,'svg');
-  svg.setAttribute('width',144); svg.setAttribute('height',144);
-  svg.setAttribute('viewBox','0 0 144 144');
-  for(const [name,val,col] of SLOTS){
-    const frac=val/total, len=C*frac;
-    const ring=document.createElementNS(ns,'circle');
-    ring.setAttribute('cx',cx); ring.setAttribute('cy',cy);
-    ring.setAttribute('r',(R+r)/2); ring.setAttribute('fill','none');
-    ring.setAttribute('stroke',col); ring.setAttribute('stroke-width',w);
-    ring.setAttribute('stroke-dasharray',`${len} ${C-len}`);
-    ring.setAttribute('stroke-dashoffset',-acc);
-    ring.setAttribute('transform',`rotate(-90 ${cx} ${cy})`);
-    svg.appendChild(ring); acc+=len;
-  }
-  const t1=document.createElementNS(ns,'text');
-  t1.setAttribute('x',cx); t1.setAttribute('y',cy-2);
-  t1.setAttribute('text-anchor','middle'); t1.setAttribute('fill','#e7ecf3');
-  t1.setAttribute('font-size','26'); t1.setAttribute('font-weight','700');
-  t1.setAttribute('font-family','ui-monospace,monospace'); t1.textContent=total;
-  const t2=document.createElementNS(ns,'text');
-  t2.setAttribute('x',cx); t2.setAttribute('y',cy+16);
-  t2.setAttribute('text-anchor','middle'); t2.setAttribute('fill','#8b97a8');
-  t2.setAttribute('font-size','10'); t2.textContent='slots';
-  svg.appendChild(t1); svg.appendChild(t2);
-  document.getElementById('slot-donut').appendChild(svg);
-
-  const leg=document.getElementById('slot-legend');
-  for(const [name,val,col,desc] of SLOTS){
-    const s=document.createElement('span');
-    s.innerHTML=`<i class="dot" style="background:${col}"></i><b style="color:#e7ecf3">${val}</b>&nbsp;${name}`;
-    s.title=desc; leg.appendChild(s);
-  }
-})();
-
-/* ---------- render: review fields table ---------- */
-(function(){
-  const tb=document.querySelector('#review-table tbody');
-  for(const [slot,why] of REVIEW_FIELDS){
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td class="mono">${slot.replace('slot.','')}</td><td style="color:#8b97a8">${why}</td>`;
-    tb.appendChild(tr);
-  }
-})();
-</script>
-</body>
-</html>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>CoilForge — Template Coverage (generated)</title><style>
+:root{--bg:#0c0f14;--panel:#141922;--panel2:#1b2230;--ink:#e7ecf3;--muted:#8b97a8;
+--line:#27303f;--ok:#3fb950;--warn:#d29922;--info:#58a6ff;--block:#f85149;
+--font:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+--mono:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);line-height:1.45}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+.badge{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);
+border-radius:999px;padding:3px 10px;margin-left:8px}
+.kpis{display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 26px}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-width:150px}
+.kpi .v{font-size:24px;font-weight:700;font-family:var(--mono)}
+.kpi .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:22px}
+section h2{font-size:15px;margin:0 0 2px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+section h2 .n{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500}
+section .desc{color:var(--muted);font-size:12.5px;margin:0 0 16px;max-width:82ch}
+.cat{margin:14px 0 6px;font-family:var(--mono);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.cells{display:flex;flex-wrap:wrap;gap:8px}
+.cell{border:1px solid var(--line);border-radius:8px;padding:8px 11px;min-width:118px;background:var(--panel2)}
+.cell .h{font-family:var(--mono);font-size:12px;font-weight:700}
+.cell .m{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:3px;word-break:break-all}
+.cell.seeded{border-color:rgba(63,185,80,.5)}
+.cell.blocked{border-color:rgba(248,81,73,.55)}
+.cell.fallback{border-color:rgba(88,166,255,.5)}
+.pill{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:999px;font-weight:700;display:inline-block}
+.p-ok{background:rgba(63,185,80,.16);color:var(--ok)}
+.p-block{background:rgba(248,81,73,.16);color:var(--block)}
+.p-info{background:rgba(88,166,255,.16);color:var(--info)}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin:4px 0 2px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+footer{color:var(--muted);font-size:11.5px;margin-top:26px;font-family:var(--mono)}
+</style></head><body><div class="wrap"><h1>CoilForge — Template Coverage<span class="badge">auto-generated</span></h1><p class="sub">Seeded vs missing drawing buckets over the confirmed MVP taxonomy, derived live from <code>catalog.list_template_entries()</code>. Review aid only.</p><div class="kpis"><div class="kpi"><div class="v" style="color:var(--ok)">22<span style="color:var(--muted);font-size:15px">/22</span></div><div class="k">Shared buckets seeded</div></div><div class="kpi"><div class="v" style="color:var(--ok)">11<span style="color:var(--muted);font-size:15px">/22</span></div><div class="k">Ventum+ dedicated seeded</div></div><div class="kpi"><div class="v" style="color:var(--block)">5</div><div class="k">Ventum+ DX not registered</div></div><div class="kpi"><div class="v" style="color:var(--info)">6</div><div class="k">Ventum+ non-DX shared fallback</div></div></div><div class="legend"><span><i class="dot" style="background:var(--ok)"></i>seeded (dedicated / shared)</span><span><i class="dot" style="background:var(--block)"></i>not registered (blocked)</span><span><i class="dot" style="background:var(--info)"></i>shared fallback (draws)</span></div><section><h2>1 · Shared (product-agnostic) buckets <span class="n">22 buckets · (category, hand, header, special)</span></h2><p class="desc">Product-agnostic CoilMaster buckets every line draws through. No mirror/surrogate generation — each hand/header is seeded from its own real reference PDF.</p><p class="badge">seeded 22/22</p><div class="cat">DX · 10 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0001</div></div><div class="cell seeded"><div class="h">LH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-DX_2_LH</div></div><div class="cell seeded"><div class="h">LH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0007</div></div><div class="cell seeded"><div class="h">LH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-DX_4_LH</div></div><div class="cell seeded"><div class="h">LH · HGBP</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0013</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-DX_1_RH</div></div><div class="cell seeded"><div class="h">RH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0011</div></div><div class="cell seeded"><div class="h">RH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-DX_3_RH</div></div><div class="cell seeded"><div class="h">RH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-DX_4_RH</div></div><div class="cell seeded"><div class="h">RH · HGBP</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-DX_HB_RH</div></div></div><div class="cat">HGRH · 8 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-HG_1_LH-2572-BOWIE</div></div><div class="cell seeded"><div class="h">LH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0008</div></div><div class="cell seeded"><div class="h">LH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-HG_3_LH</div></div><div class="cell seeded"><div class="h">LH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-HG_4_LH</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0012</div></div><div class="cell seeded"><div class="h">RH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-HG_2_RH</div></div><div class="cell seeded"><div class="h">RH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0016</div></div><div class="cell seeded"><div class="h">RH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-HG_4_RH</div></div></div><div class="cat">HWC · 2 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0005</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-HW_RH</div></div></div><div class="cat">CWC · 2 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">EZC-0014</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">FEED-CW_RH</div></div></div></section><section><h2>2 · Ventum+ dedicated buckets <span class="n">11/22 seeded · dedicated family fork</span></h2><p class="desc">Dedicated Ventum+ buckets (product_family fork, 2026-07-06) capture the R-032 ConnectionUP distributor from real references. An un-seeded Ventum+ <b>DX</b> combo is blocked as <b>not registered</b> (DX-only gate, John 2026-07-14) — never drawn with the shared ConnectionDOWN artwork; an un-seeded <b>non-DX</b> combo still falls back to the shared template and draws.</p><p class="badge">seeded 11/22 · not-registered 5 · shared-fallback 6</p><div class="cat">DX · 10 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2760-REVERE</div></div><div class="cell seeded"><div class="h">LH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2760-REVERE</div></div><div class="cell seeded"><div class="h">LH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-1929-HOFFMAN</div></div><div class="cell blocked"><div class="h">LH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-block">not registered</span></div><div class="m">needs real Ventum+ DX reference (R-032 UP)</div></div><div class="cell blocked"><div class="h">LH · HGBP</div><div style="margin:5px 0 2px"><span class="pill p-block">not registered</span></div><div class="m">needs real Ventum+ DX reference (R-032 UP)</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2798-CENTRA-RENO</div></div><div class="cell seeded"><div class="h">RH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2619-CONGRESS</div></div><div class="cell blocked"><div class="h">RH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-block">not registered</span></div><div class="m">needs real Ventum+ DX reference (R-032 UP)</div></div><div class="cell blocked"><div class="h">RH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-block">not registered</span></div><div class="m">needs real Ventum+ DX reference (R-032 UP)</div></div><div class="cell blocked"><div class="h">RH · HGBP</div><div style="margin:5px 0 2px"><span class="pill p-block">not registered</span></div><div class="m">needs real Ventum+ DX reference (R-032 UP)</div></div></div><div class="cat">HGRH · 8 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2760-REVERE</div></div><div class="cell fallback"><div class="h">LH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-info">shared fallback</span></div><div class="m">draws via shared template</div></div><div class="cell fallback"><div class="h">LH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-info">shared fallback</span></div><div class="m">draws via shared template</div></div><div class="cell fallback"><div class="h">LH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-info">shared fallback</span></div><div class="m">draws via shared template</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2619-CONGRESS</div></div><div class="cell seeded"><div class="h">RH · Header 2</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2839-FAIRMOUNT</div></div><div class="cell fallback"><div class="h">RH · Header 3</div><div style="margin:5px 0 2px"><span class="pill p-info">shared fallback</span></div><div class="m">draws via shared template</div></div><div class="cell fallback"><div class="h">RH · Header 4</div><div style="margin:5px 0 2px"><span class="pill p-info">shared fallback</span></div><div class="m">draws via shared template</div></div></div><div class="cat">HWC · 2 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2802-MANCHESTER</div></div><div class="cell seeded"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2523-WCALGARY</div></div></div><div class="cat">CWC · 2 buckets</div><div class="cells"><div class="cell seeded"><div class="h">LH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-ok">seeded</span></div><div class="m">VPLUS-2773-PAIZA</div></div><div class="cell fallback"><div class="h">RH · Header 1</div><div style="margin:5px 0 2px"><span class="pill p-info">shared fallback</span></div><div class="m">draws via shared template</div></div></div></section><footer>Generated 2026-07-14 from template_population.catalog · no hand-authored snapshot · review aid only, not a production release.</footer></div></body></html>
