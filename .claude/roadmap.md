@@ -19,8 +19,8 @@
 - [x] 저위험 SOP 승격 5개 (R-066/R-002b/R-085/R-044c/R-048 MEDIUM→HIGH, 790 green) + eyeball 사인오프(John 2026-07-07) + 결정표·재분류(R-073/R-077/R-086) + /ship(hunk격리로 R-006 등 무관작업 제외)
 - [x] R-074 2차 출처 판정 + R-048/R-085 조건부 발화 검증 (fc7037c, 794 green) — R-074 내부 2차출처 부재→MEDIUM 유지 확정(외부 출처 대기); R-048/R-085 유닛테스트 4건으로 HIGH 발화 검증; 검증 중 발견한 R-048 supply≠return 공식 결함·R-085 back_to_back 실경로 미배선을 [REVIEW-REQUIRED]로 등재(hunk격리로 R-006 재배제) 🆕 이번 세션
 
-- [x] Coil Checklist 자동화 (b8b2168) — analyze 시 백그라운드 자동채움(기본ON 토글, 수동 "Fill" 버튼 제거) + sha1(pdf_bytes) 캐시로 finalize 이중 Excel COM 제거; `_run_or_reuse_checklist`/`_CHECKLIST_CACHE`(analyze↔finalize source_id 무관 공유), 신규 10테스트+818 green, invariant-guard clean(WARN 2건 수정), 실서버 실측 270.3s→0.053s 재사용 + 브라우저 자동채움 실증 🆕 이번 세션
-- [x] 미시드 Ventum+ DX = not-registered 차단 (003928f, John 2026-07-14) — 미시드 Ventum+ DX가 공유 ConnectionDOWN 템플릿으로 폴백하던 걸 차단(R-032 UP를 공용이 못 그림); `_gate_unseeded_ventum_plus_dx`(DX 전용, 비-DX는 공유 폴백 유지), 시드 DX는 전용 UP 그대로; 테스트 2건 갱신+818 green, CLAUDE.md+위키 3파일 정정, 런타임 eyeball 확인 🆕 이번 세션
+- [x] Coil Checklist 자동화 (b8b2168) — analyze 시 백그라운드 자동채움(기본ON 토글, 수동 "Fill" 버튼 제거) + sha1(pdf_bytes) 캐시로 finalize 이중 Excel COM 제거; `_run_or_reuse_checklist`/`_CHECKLIST_CACHE`(analyze↔finalize source_id 무관 공유), 신규 10테스트+818 green, invariant-guard clean(WARN 2건 수정), 실서버 실측 270.3s→0.053s 재사용 + 브라우저 자동채움 실증 · **John eyeball 확인 완료(2026-07-14)** 🆕 이번 세션
+- [x] 미시드 Ventum+ DX = not-registered 차단 (003928f, John 2026-07-14) — 미시드 Ventum+ DX가 공유 ConnectionDOWN 템플릿으로 폴백하던 걸 차단(R-032 UP를 공용이 못 그림); `_gate_unseeded_ventum_plus_dx`(DX 전용, 비-DX는 공유 폴백 유지), 시드 DX는 전용 UP 그대로; 테스트 2건 갱신+818 green, CLAUDE.md+위키 3파일 정정, 런타임 eyeball 확인 · **John 브라우저 확인 완료(2026-07-14)** 🆕 이번 세션
 
 ## ▶️ 지금
 - [ ] MVP 사인오프 마무리 — 파라미터 완전성 감사(Stage 2b) — 다음 걸음:
