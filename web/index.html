@@ -291,16 +291,18 @@
         <section id="checklist-fill-section" class="quote-package-section review-flow" data-view="checklist" aria-label="Auto-fill Coil Checklist">
           <div class="section-heading">
             <h3>Coil Checklist Auto-Fill &mdash; Review Aid Only</h3>
-            <span class="subtle-label">Cross-check</span>
+            <label class="checklist-auto-toggle">
+              <input id="checklist-auto-toggle" type="checkbox" checked />
+              Auto-fill on analyze
+            </label>
           </div>
           <p class="review-warning">
-            Analyze the submittal PDF above first. This fills a COPY of the Coil Checklist
-            template in your Downloads folder (the original is never touched) and compares the
-            sheet's own formula dimensions against CoilForge's engine values.
+            Runs automatically after you analyze a submittal PDF above. It fills a COPY of the
+            Coil Checklist template in your Downloads folder (the original is never touched) and
+            compares the sheet's own formula dimensions against CoilForge's engine values. Uncheck
+            the toggle to skip it; re-check to fill the current submittal now.
           </p>
           <div class="quote-package">
-            <button id="fill-coil-checklist" type="button">Fill Coil Checklist</button>
-            <span class="quote-package-hint">Uses the analyzed submittal PDF. Writes to Downloads.</span>
             <div id="checklist-fill-summary" class="quote-package-summary"></div>
           </div>
           <div id="checklist-fill-results" class="checklist-fill-results"></div>

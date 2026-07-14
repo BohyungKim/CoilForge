@@ -355,6 +355,17 @@ button:disabled,
   font-weight: 700;
 }
 
+.checklist-auto-toggle {
+  align-items: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .topbar h2 {
   font-size: 23px;
   margin: 3px 0 0;

@@ -3000,6 +3000,7 @@ function hydratePdfWorkflow(workflow, statusText) {
   renderShell(workflowToUiState(state.ui, workflow, null));
   elements.savedStatus.textContent = statusText;
   refreshMechanicalFit();
+  maybeAutoFillChecklist();  // background, best-effort — never blocks analyze
 }
 
 // --- PO Release board case prefill (?case=PRC-N deep link) ----------------- //
@@ -3748,10 +3749,10 @@ async function fillCoilChecklist() {
   const file = state.selectedPdfFile || elements.pdfIntakeFile.files?.[0];
   const summary = document.querySelector("#checklist-fill-summary");
   if (!file) {
-    summary.textContent = "Analyze a submittal PDF above first.";
+    if (summary) summary.textContent = "Analyze a submittal PDF above first.";
     return;
   }
-  summary.textContent = "Filling the checklist via Excel… (opens Excel briefly)";
+  if (summary) summary.textContent = "Auto-filling the checklist in background… (opens Excel briefly)";
   try {
     const pdfBytes = await file.arrayBuffer();
     const review = await requestJson("/api/checklist/fill", {
@@ -3764,17 +3765,43 @@ async function fillCoilChecklist() {
       body: pdfBytes,
     });
     renderChecklistReview(review);
-    summary.innerHTML =
-      `Saved <strong>${escapeHtml(review.saved_path || "")}</strong> · ` +
-      `${review.mismatch_total} dimension mismatch(es) to review · review aid, not exported`;
+    if (summary)
+      summary.innerHTML =
+        `Saved <strong>${escapeHtml(review.saved_path || "")}</strong> · ` +
+        `${review.mismatch_total} dimension mismatch(es) to review · review aid, not exported`;
   } catch (error) {
-    summary.textContent = `Checklist fill failed: ${error.message || error}`;
+    if (summary) summary.textContent = `Checklist fill failed: ${error.message || error}`;
   }
 }
 
-document.querySelector("#fill-coil-checklist")?.addEventListener("click", () => {
+// Auto-fill toggle: default ON, persisted so John's OFF choice sticks across reloads.
+const CHECKLIST_AUTO_KEY = "coilforge.checklistAutoFill";
+
+function checklistAutoEnabled() {
+  const toggle = document.querySelector("#checklist-auto-toggle");
+  return toggle ? toggle.checked : true;
+}
+
+// Fired after every analyze (from hydratePdfWorkflow). Non-blocking, best-effort —
+// a checklist/Excel failure never affects the analyze results already on screen.
+function maybeAutoFillChecklist() {
+  if (!checklistAutoEnabled()) return;
+  if (!state.pdfCoilPages.length) return;
   fillCoilChecklist();
-});
+}
+
+(function initChecklistAutoToggle() {
+  const toggle = document.querySelector("#checklist-auto-toggle");
+  if (!toggle) return;
+  const stored = localStorage.getItem(CHECKLIST_AUTO_KEY);
+  if (stored !== null) toggle.checked = stored === "1";
+  toggle.addEventListener("change", () => {
+    localStorage.setItem(CHECKLIST_AUTO_KEY, toggle.checked ? "1" : "0");
+    // Re-checking is the manual trigger now that the button is gone: fill the
+    // already-analyzed submittal right away (reuses the cached result server-side).
+    if (toggle.checked) maybeAutoFillChecklist();
+  });
+})();
 
 // Offline CCSI-export audit — drop the exported CCSI report PDF; CoilForge compares the
 // dimensions CCSI printed against its own engine values (green/red), per coil, with NO

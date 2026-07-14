@@ -161,6 +161,11 @@ Reuses the engine like `mechanical_fit` (`build_drawing_slots` + an application-
 `prepopulate` for casing). Exposed at `POST /api/checklist/fill` (POST the PDF bytes); renders
 as the "Coil Checklist Auto-Fill" section. Review aid only; missing values left blank + flagged,
 never guessed. The DO-NOT-TOUCH drawing/template path is untouched.
+Auto-fills on analyze (frontend `maybeAutoFillChecklist` after `hydratePdfWorkflow`; default-on
+`#checklist-auto-toggle`, the manual "Fill" button was removed) and is memoized server-side by
+`sha1(pdf_bytes)` (`_run_or_reuse_checklist` / `_CHECKLIST_CACHE`, key = sha1 + product + size +
+cover_page_hint) so `deliverable_finalize` reuses the same Downloads .xlsx instead of re-running
+Excel COM (no double-fill).
 
 **CCSI value push + green/red compare** (`ccsi/compare.py`, `web/ccsi/`) — pushes the resolved
 drawing params into the external CCSI Direct Coil form (Claude-in-Chrome `/ccsi-fill`; never

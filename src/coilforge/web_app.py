@@ -1,7 +1,10 @@
 import asyncio
+import copy
+import hashlib
 
+from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import Body, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -463,6 +466,129 @@ def _checklist_output_name(source_filename: str | None) -> str:
     return f"{stem} - Coil Checklist.xlsx"
 
 
+# --- Bounded memoization of the Coil Checklist fill --------------------------
+# The submittal is now auto-filled on analyze, then reused when the deliverable is
+# finalized. Generating the checklist is the expensive step (an isolated Excel COM
+# process: SaveCopyAs + CalculateFull + read-back), so re-running it for the same
+# PDF would double John's wait. We memoize the review table + the Downloads copy
+# path keyed on sha1(pdf_bytes) PLUS the product/size overrides -- the only inputs
+# that change the sheet contents (the filename only names the file, so it is NOT
+# in the key). A cached entry is reused only while its ``saved_path`` still exists
+# on disk; a deleted copy falls through to a fresh write. source_id is deliberately
+# excluded so the analyze-time fill and the finalize-time reuse share one entry.
+_CHECKLIST_CACHE_MAXSIZE = 32
+_CHECKLIST_CACHE: "OrderedDict[tuple[str, str | None, str | None, int | None], dict[str, Any]]" = (
+    OrderedDict()
+)
+
+
+class _ChecklistOutcome(NamedTuple):
+    """Result of :func:`_run_or_reuse_checklist`. ``review`` is ``None`` on any
+    failure; ``reason`` / ``http_status`` describe it so each caller can map it to
+    its own contract (route -> HTTPException, finalize -> status string, project
+    gate -> best-effort skip). The helper never raises."""
+
+    review: dict[str, Any] | None
+    saved_path: str | None
+    reason: str | None
+    http_status: int | None
+    # The workflow dict from a FRESH generation (for milestone journaling); ``None``
+    # on a cache reuse (already journaled on first fill) or any failure.
+    workflow_result: dict[str, Any] | None = None
+
+
+def clear_checklist_cache() -> None:
+    """Drop all memoized checklist results (test hygiene / manual invalidation)."""
+    _CHECKLIST_CACHE.clear()
+
+
+async def _run_or_reuse_checklist(
+    pdf_bytes: bytes,
+    *,
+    product: str | None = None,
+    size: str | None = None,
+    filename: str | None = None,
+    cover_page_hint: int | None = None,
+    source_id: str = "CHECKLIST-FILL-001",
+) -> _ChecklistOutcome:
+    """Fill the Coil Checklist for a submittal PDF and return its review table,
+    reusing an already-generated result (and its Downloads .xlsx) when the same PDF
+    bytes were filled before. Never raises: returns an outcome whose ``review`` is
+    ``None`` with a ``reason`` when no recognizable coils exist or Excel/pywin32 is
+    unavailable, so callers degrade cleanly."""
+    if not pdf_bytes:
+        return _ChecklistOutcome(None, None, "POST the submittal PDF bytes.", 400)
+
+    # cover_page_hint is in the key (like _WORKFLOW_CACHE): reselecting the cover
+    # page on the same bytes changes which coils are read, so it must not hit a
+    # stale entry computed under the previous selection.
+    key = (hashlib.sha1(pdf_bytes).hexdigest(), product, size, cover_page_hint)
+    cached = _CHECKLIST_CACHE.get(key)
+    if cached is not None:
+        saved_path = cached.get("saved_path")
+        if not saved_path or Path(saved_path).exists():
+            _CHECKLIST_CACHE.move_to_end(key)
+            return _ChecklistOutcome(
+                copy.deepcopy(cached["review"]), saved_path, None, None
+            )
+        # The filled copy was deleted -- drop the stale entry and regenerate.
+        del _CHECKLIST_CACHE[key]
+
+    try:
+        result = run_pdf_to_drawing_workflow(
+            pdf_bytes,
+            source_id=source_id,
+            source_filename=filename,
+            cover_page_hint=cover_page_hint,
+        )
+    except ValueError as exc:
+        return _ChecklistOutcome(None, None, str(exc), 400)
+    except Exception as exc:  # noqa: BLE001 -- honor the never-raise contract
+        return _ChecklistOutcome(None, None, f"Checklist workflow failed: {exc}", 500)
+
+    try:
+        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
+
+        try:
+            pdf_text = _safe_pdf_text(pdf_bytes)
+        except Exception:  # noqa: BLE001 -- text extraction is best-effort
+            pdf_text = ""
+        coils, _detected = coil_inputs_from_candidates(
+            result.get("candidates") or [],
+            pdf_text=pdf_text,
+            product_line=product,
+            unit_size=size,
+        )
+    except Exception as exc:  # noqa: BLE001 -- candidate adaptation failure
+        return _ChecklistOutcome(None, None, f"Checklist inputs unavailable: {exc}", 500)
+
+    if not coils:
+        return _ChecklistOutcome(
+            None, None,
+            "No recognizable coils (DX/HGRH/HWC/CWC) found for the checklist.", 400,
+        )
+
+    try:
+        fill = build_checklist_fill(coils)
+        writer_result = await asyncio.to_thread(
+            write_checklist, fill, dest_name=_checklist_output_name(filename)
+        )
+        review = build_review(fill, writer_result)
+    except RuntimeError as exc:  # Excel / pywin32 unavailable
+        return _ChecklistOutcome(None, None, str(exc), 501)
+    except Exception as exc:  # noqa: BLE001 -- surface COM/fill failures clearly
+        return _ChecklistOutcome(None, None, f"Excel write failed: {exc}", 500)
+
+    saved_path = (writer_result or {}).get("saved_path")
+    _CHECKLIST_CACHE[key] = {"review": review, "saved_path": saved_path}
+    _CHECKLIST_CACHE.move_to_end(key)
+    while len(_CHECKLIST_CACHE) > _CHECKLIST_CACHE_MAXSIZE:
+        _CHECKLIST_CACHE.popitem(last=False)
+    return _ChecklistOutcome(
+        copy.deepcopy(review), saved_path, None, None, workflow_result=result
+    )
+
+
 @app.post("/api/checklist/fill")
 async def checklist_fill(request: Request):
     """Auto-fill a COPY of the Coil Checklist from a submittal PDF and return the
@@ -476,84 +602,40 @@ async def checklist_fill(request: Request):
     pdf_bytes = await request.body()
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="POST the submittal PDF bytes.")
-    try:
-        result = run_pdf_to_drawing_workflow(
-            pdf_bytes,
-            source_id=request.headers.get("x-coilforge-source-id", "CHECKLIST-FILL-001"),
-            source_filename=request.headers.get("x-coilforge-filename"),
-            cover_page_hint=_cover_page_hint_from_request(request),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    try:
-        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
-
-        pdf_text = _safe_pdf_text(pdf_bytes)
-    except Exception:  # noqa: BLE001 — text extraction is best-effort
-        pdf_text = ""
-
-    coils, _detected = coil_inputs_from_candidates(
-        result.get("candidates") or [],
-        pdf_text=pdf_text,
-        product_line=request.headers.get("x-coilforge-product"),
-        unit_size=request.headers.get("x-coilforge-size"),
+    outcome = await _run_or_reuse_checklist(
+        pdf_bytes,
+        product=request.headers.get("x-coilforge-product"),
+        size=request.headers.get("x-coilforge-size"),
+        filename=request.headers.get("x-coilforge-filename"),
+        cover_page_hint=_cover_page_hint_from_request(request),
+        source_id=request.headers.get("x-coilforge-source-id", "CHECKLIST-FILL-001"),
     )
-    if not coils:
-        raise HTTPException(
-            status_code=400,
-            detail="No recognizable coils (DX/HGRH/HWC/CWC) found for the checklist.",
+    if outcome.review is None:
+        raise HTTPException(status_code=outcome.http_status or 400, detail=outcome.reason)
+    if outcome.workflow_result is not None:  # only journal a fresh fill, not a reuse
+        _journal_milestone(
+            "checklist_filled", result=outcome.workflow_result,
+            detail={"saved_path": outcome.saved_path},
+            identity=_identity_from_request(request),
         )
-    fill = build_checklist_fill(coils)
-    import asyncio
-
-    try:
-        writer_result = await asyncio.to_thread(
-            write_checklist,
-            fill,
-            dest_name=_checklist_output_name(request.headers.get("x-coilforge-filename")),
-        )
-    except RuntimeError as exc:  # Excel/pywin32 unavailable
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
-        raise HTTPException(status_code=500, detail=f"Excel write failed: {exc}") from exc
-    _journal_milestone(
-        "checklist_filled", result=result,
-        detail={"saved_path": (writer_result or {}).get("saved_path"),
-                "coils": len(coils)},
-        identity=_identity_from_request(request),
-    )
-    return jsonable_encoder(build_review(fill, writer_result))
+    return jsonable_encoder(outcome.review)
 
 
 async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict):
     """Best-effort engine-vs-checklist cross-check (Excel COM). Returns
     ``(review, None)`` or ``(None, reason)`` — never raises, so the project gate
-    degrades to engine-only when Excel/pywin32 is absent."""
-    try:
-        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
-
-        try:
-            pdf_text = _safe_pdf_text(pdf_bytes)
-        except Exception:  # noqa: BLE001 — text extraction is best-effort
-            pdf_text = ""
-        coils, _ = coil_inputs_from_candidates(
-            result.get("candidates") or [], pdf_text=pdf_text,
-            product_line=request.headers.get("x-coilforge-product"),
-            unit_size=request.headers.get("x-coilforge-size"),
-        )
-        if not coils:
-            return None, "No recognizable coils for the checklist cross-check."
-        fill = build_checklist_fill(coils)
-        import asyncio
-
-        writer_result = await asyncio.to_thread(
-            write_checklist, fill,
-            dest_name=_checklist_output_name(request.headers.get("x-coilforge-filename")),
-        )
-        return build_review(fill, writer_result), None
-    except Exception as exc:  # noqa: BLE001 — Excel/pywin32 absent or COM failure
-        return None, f"Checklist cross-check unavailable: {exc}"
+    degrades to engine-only when Excel/pywin32 is absent. Shares the checklist
+    cache, so a project review reuses an already-generated fill. ``result`` is the
+    caller's workflow dict, kept for signature stability; the fill is re-derived
+    (and memoized) from ``pdf_bytes`` inside the helper."""
+    outcome = await _run_or_reuse_checklist(
+        pdf_bytes,
+        product=request.headers.get("x-coilforge-product"),
+        size=request.headers.get("x-coilforge-size"),
+        filename=request.headers.get("x-coilforge-filename"),
+        source_id=request.headers.get("x-coilforge-source-id", "PROJECT-REVIEW-001"),
+    )
+    return outcome.review, outcome.reason
 
 
 # Fixed Oxygen8 DirectCoil hand-off recipients John confirmed (image #2). Display
@@ -621,29 +703,16 @@ async def deliverable_finalize(request: Request):
             detail="No project number found in the submittal — cannot locate the PO folder.",
         )
 
-    # Auto-generate the Coil Checklist (best-effort — surfaced, never silent).
-    checklist_path = None
-    checklist_status = "ok"
-    try:
-        from coilforge.workflows.submittal_to_drawing import _safe_pdf_text
-
-        try:
-            pdf_text = _safe_pdf_text(submittal)
-        except Exception:  # noqa: BLE001 — text extraction is best-effort
-            pdf_text = ""
-        coils, _ = coil_inputs_from_candidates(
-            result.get("candidates") or [], pdf_text=pdf_text
-        )
-        if coils:
-            fill = build_checklist_fill(coils)
-            writer_result = await asyncio.to_thread(
-                write_checklist, fill, dest_name=_checklist_output_name(submittal_name)
-            )
-            checklist_path = (writer_result or {}).get("saved_path")
-        else:
-            checklist_status = "skipped — no recognizable coils for the checklist"
-    except Exception as exc:  # noqa: BLE001 — checklist is best-effort
-        checklist_status = f"unavailable: {exc}"
+    # Reuse the Coil Checklist auto-generated on analyze (best-effort — surfaced,
+    # never silent). Shares the checklist cache, so the same submittal bytes hit the
+    # already-written Downloads copy instead of re-running Excel (no double COM).
+    checklist_outcome = await _run_or_reuse_checklist(
+        submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001"
+    )
+    checklist_path = checklist_outcome.saved_path
+    checklist_status = "ok" if checklist_outcome.review is not None else (
+        checklist_outcome.reason or "unavailable"
+    )
 
     # Resolve/create the DirectCoil folder and file the docs (copies, never moves).
     try:
