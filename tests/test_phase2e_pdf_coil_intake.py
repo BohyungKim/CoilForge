@@ -980,11 +980,14 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert "setPdfAnalysisLoading(true)" in app_js
     assert "setPdfAnalysisLoading(false)" in app_js
     assert "Extracting PDF data..." in app_js
-    assert "Reading cover rows and coil sections. Raw PDF is not stored." in app_js
+    # Determinate progress: a % bar with a rotating step label (replaces the old
+    # looping spinner + static "Reading cover rows..." copy).
+    assert 'data-role="fill"' in app_js
+    assert "pdfProgress" in app_js
     assert "aria-busy" in app_js
     assert ".pdf-loading-indicator" in style
-    assert ".pdf-loading-spinner" in style
-    assert "@keyframes pdf-loading-spin" in style
+    assert ".pdf-progress" in style
+    assert ".pdf-progress-fill" in style
     # Init stage hides the per-coil review flow until a PDF is analyzed.
     assert "body.is-init-stage .review-flow" in style
     assert ".coil-review-nav" in style

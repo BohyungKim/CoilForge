@@ -1386,37 +1386,48 @@ h4 {
 }
 
 .pdf-loading-indicator {
-  align-items: center;
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--warn-text);
+  color: var(--text-secondary);
   display: grid;
-  gap: 4px 10px;
-  grid-template-columns: 22px 1fr;
-  min-height: 54px;
+  gap: 8px;
   padding: 10px 12px;
 }
 
-.pdf-loading-indicator strong,
-.pdf-loading-indicator span:last-child {
-  grid-column: 2;
+.pdf-loading-head {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
 }
 
-.pdf-loading-spinner {
-  animation: pdf-loading-spin 780ms linear infinite;
-  border: 3px solid rgba(194, 139, 27, 0.22);
-  border-left-color: var(--accent-link);
-  border-radius: 50%;
-  grid-row: 1 / span 2;
-  height: 18px;
-  width: 18px;
+.pdf-loading-head strong {
+  color: var(--text-heading);
 }
 
-@keyframes pdf-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.pdf-loading-pct {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.pdf-progress {
+  background: var(--border-subtle);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.pdf-progress-fill {
+  background: var(--status-ready);
+  border-radius: inherit;
+  height: 100%;
+  transition: width 320ms ease;
+}
+
+.pdf-loading-step {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .pdf-review-pages {
@@ -1863,6 +1874,14 @@ h4 {
   line-height: 1.4;
   margin: 0 0 4px;
   padding: 9px 11px;
+}
+
+/* Honor the `hidden` attribute: `display: grid` above otherwise overrides the UA
+   `[hidden] { display: none }`, leaving an empty green strip rendered when no case
+   is loaded (the stray bar above the loading card). The JS already sets/clears
+   `hidden` correctly — this just lets it take effect. */
+.brain-case-banner[hidden] {
+  display: none;
 }
 
 .brain-case-banner.has-mismatch {

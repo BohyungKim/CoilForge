@@ -3195,17 +3195,79 @@ function setPdfAnalysisLoading(isLoading) {
   elements.pdfIntakeFile.disabled = isLoading;
   elements.pdfCoverPageInput.disabled = isLoading;
   if (!isLoading) {
+    pdfProgress.stop();
     return;
   }
   elements.savedStatus.textContent = "Extracting PDF data for review";
   elements.pdfIntakeSummary.innerHTML = `
-    <div class="pdf-loading-indicator" role="status" aria-live="polite">
-      <span class="pdf-loading-spinner" aria-hidden="true"></span>
-      <strong>Extracting PDF data...</strong>
-      <span>Reading cover rows and coil sections. Raw PDF is not stored.</span>
+    <div class="pdf-loading-indicator" role="status" aria-live="polite" aria-busy="true">
+      <div class="pdf-loading-head">
+        <strong>Extracting PDF data...</strong>
+        <span class="pdf-loading-pct" data-role="pct">0%</span>
+      </div>
+      <div class="pdf-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="pdf-progress-fill" data-role="fill" style="width:2%"></div>
+      </div>
+      <span class="pdf-loading-step" data-role="step">Reading the submittal...</span>
     </div>
   `;
+  pdfProgress.start();
 }
+
+// Determinate progress for the PDF analyze POST. The endpoint is one blocking call
+// whose internal stages aren't observable from the browser, so we ease a "trickle"
+// bar toward a sub-100 cap and rotate the step label by %-band — honest motion that
+// never claims completion. The real finish is the results grid replacing the loading
+// card (renderPdfIntakeSummary overwrites #pdf-intake-summary), so there is no forced
+// 100% frame. stop() clears the interval on every teardown path.
+const pdfProgress = (() => {
+  let timer = null;
+  let current = 0;
+
+  function stepLabel(pct) {
+    if (pct < 15) return "Extracting PDF text";
+    if (pct < 35) return "Parsing cover rows";
+    if (pct < 55) return "Detecting coil sections";
+    if (pct < 75) return "Classifying product line";
+    return "Building drawing";
+  }
+
+  function paint() {
+    const summary = elements.pdfIntakeSummary;
+    const fill = summary?.querySelector('[data-role="fill"]');
+    if (!fill) {  // card was replaced by results (or torn down) — nothing to drive
+      stop();
+      return;
+    }
+    const rounded = Math.round(current);
+    fill.style.width = `${rounded}%`;
+    const pct = summary.querySelector('[data-role="pct"]');
+    if (pct) pct.textContent = `${rounded}%`;
+    const bar = summary.querySelector('[role="progressbar"]');
+    if (bar) bar.setAttribute("aria-valuenow", String(rounded));
+    const step = summary.querySelector('[data-role="step"]');
+    if (step) step.textContent = stepLabel(current);
+  }
+
+  function stop() {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  function start() {
+    stop();  // defensive: never run two intervals (e.g. case deep-link + button)
+    current = 2;
+    paint();
+    timer = setInterval(() => {
+      current += (92 - current) * 0.09;  // eased trickle, decelerates toward the cap
+      paint();
+    }, 350);
+  }
+
+  return { start, stop };
+})();
 
 function sanitizeHeaderValue(value) {
   return String(value || "").replace(/[\r\n]/g, " ").slice(0, 180);
