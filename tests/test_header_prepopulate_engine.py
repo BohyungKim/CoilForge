@@ -73,6 +73,10 @@ VALID_SIZE = {
 # in Direct Coil selection); SOP Rev H wording (John, 2026-06-11).
 DX_COATING_NOTE = "Do Not Coat Last 5-6 inches of Distributor Extensions."
 HGRH_COATING_NOTE = "Do Not Coat Last 5-6 inches of Supply Stubouts."
+# Distributor extension note (R-035a/b): Ventum+ DX mounts ConnectionUP, every other
+# DX line mounts down. Appended after the coating note.
+DX_DIST_NOTE_DOWN = 'Distributor 6" Extension Downwards'
+DX_DIST_NOTE_UP = 'Distributor 6" Extension Upwards'
 
 
 def test_r022_return_spacing_terra_h_generic_terra_v_sop_formula() -> None:
@@ -155,7 +159,11 @@ def test_t01_dx_nova_b20_happy_path_1in() -> None:
     assert r.values["suction_io"].value == 2
     assert r.values["collared_holes"].value is True
     assert r.values["stacking_flanges"].value is False
-    assert r.values["notes"].value == ["Copper Straps Required.", DX_COATING_NOTE]
+    assert r.values["notes"].value == [
+        "Copper Straps Required.",
+        DX_COATING_NOTE,
+        DX_DIST_NOTE_DOWN,
+    ]
     assert r.values["size_class"].value == "NOVA_1IN"
     # Distributor HD = 4.5 (R-030); 3.5 is the suction/return HD (suction_hd).
     assert r.values["dist_hd"].value == 4.5
@@ -182,6 +190,12 @@ def test_t03_dx_ventum_plus_v40() -> None:
     assert r.values["suction_sl"].value == 10
     assert r.values["dist_i"].value == 12
     assert r.values["dist_orientation"].value == "UP"
+    # Ventum+ DX distributor mounts up (R-035a), so the note reads "Upwards".
+    assert r.values["notes"].value == [
+        "Copper Straps Required.",
+        DX_COATING_NOTE,
+        DX_DIST_NOTE_UP,
+    ]
     assert r.values["return_bend"].value == 1.5
     assert r.values["suction_hd"].value == 3.5
     assert r.values["dist_extension"].value == 6
@@ -242,7 +256,11 @@ def test_t05_dx_terra_24_gate() -> None:
     assert r.values["dist_i"].value == 3
     assert r.values["dist_orientation"].value == "DOWN"
     assert r.values["dist_extension"].value == 6
-    assert r.values["notes"].value == ["Copper Straps Required.", DX_COATING_NOTE]
+    assert r.values["notes"].value == [
+        "Copper Straps Required.",
+        DX_COATING_NOTE,
+        DX_DIST_NOTE_DOWN,
+    ]
     # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
     assert r.values["suction_io"].value == 3.25  # R-021
     assert r.values["suction_sl"].value == 10  # R-027
@@ -536,10 +554,41 @@ def test_t17_dx_coating_note_always_on_drawing_notes() -> None:
         _req(CoilType.DX, ProductFamily.NOVA, "B20", coating="HERESITE")
     )
     without_coating = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20"))
-    expected = ["Copper Straps Required.", DX_COATING_NOTE]
+    expected = ["Copper Straps Required.", DX_COATING_NOTE, DX_DIST_NOTE_DOWN]
     assert with_coating.values["notes"].value == expected
     assert without_coating.values["notes"].value == expected
     assert "coating_note" not in with_coating.blocked
+
+
+def test_distributor_extension_note_up_for_ventum_plus_dx_else_down() -> None:
+    # R-035a/b: the distributor extension note branches on product line exactly like
+    # the distributor orientation (R-031 DOWN / R-032 UP). Ventum+ DX -> "Upwards";
+    # every other DX line -> "Downwards"; never both, never on HGRH/CWC/HWC.
+    up = prepopulate(_req(CoilType.DX, ProductFamily.VENTUM_PLUS, "V40"))
+    assert up.values["notes"].value[-1] == DX_DIST_NOTE_UP
+    assert DX_DIST_NOTE_DOWN not in up.values["notes"].value
+
+    for pf, size in (
+        (ProductFamily.NOVA, "B20"),
+        (ProductFamily.VENTUM_H, "H10"),
+        (ProductFamily.TERRA, "024"),
+    ):
+        down = prepopulate(_req(CoilType.DX, pf, size))
+        assert down.values["notes"].value[-1] == DX_DIST_NOTE_DOWN, pf
+        assert DX_DIST_NOTE_UP not in down.values["notes"].value, pf
+
+    # Terra V DX (variant of TERRA) still resolves the Down note.
+    terra_v = prepopulate(
+        _req(CoilType.DX, ProductFamily.TERRA, "060", terra_variant=TerraVariant.TERRA_V)
+    )
+    assert terra_v.values["notes"].value[-1] == DX_DIST_NOTE_DOWN
+
+    # No distributor note on HGRH or water coils (DX-only rule).
+    hgrh = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "B20"))
+    assert not any("Distributor" in n for n in hgrh.values["notes"].value)
+    for coil in (CoilType.CWC, CoilType.HWC):
+        water = prepopulate(_req(coil, ProductFamily.NOVA, "C30", feeds=2, rows=2))
+        assert not any("Distributor" in n for n in water.values["notes"].value)
 
 
 def test_t18_dx_nova_hot_gas_bypass() -> None:

@@ -981,6 +981,34 @@ def _engine_drawing_dims(parameter_set: Any) -> dict[str, Any]:
     return out
 
 
+def _engine_drawing_notes(ctx: dict[str, Any]) -> list[str]:
+    """Assemble the engine drawing notes (copper straps / coating / distributor
+    extension) for a candidate's resolved context. Returns ``[]`` when the product
+    line / unit size is unknown so nothing is invented — the SAME gating the drawing's
+    ``slot.NOTES`` uses (``build_drawing_slots`` runs only when product+size+category
+    are known), so the paste "Drawing Notes" field and the drawing never diverge."""
+    product = ctx.get("product_type")
+    unit_size = ctx.get("unit_size")
+    coil_category = ctx.get("coil_category")
+    if not (product and unit_size and coil_category):
+        return []
+    from coilforge.services.direct_coil_drawing_pipeline import build_header_request
+    from coilforge.services.header_prepopulate_engine import assemble_drawing_notes
+
+    try:
+        request = build_header_request(
+            coil_type=coil_category,
+            product_type=product,
+            unit_size=unit_size,
+            rows=ctx.get("rows"),
+            feeds=ctx.get("feeds"),
+            circuits=ctx.get("circuits"),
+        )
+    except Exception:  # never break the workflow on an engine-input mismatch
+        return []
+    return assemble_drawing_notes(request)
+
+
 def _run_candidate_to_drawing_payload(
     selected_candidate,
     *,
@@ -994,6 +1022,14 @@ def _run_candidate_to_drawing_payload(
         selected_candidate,
         pdf_intake_summary=pdf_intake_summary,
     )
+    # Assemble the engine drawing notes once, up front, so BOTH the paste "Drawing
+    # Notes" field and the SVG title block draw from the same source (never diverge).
+    # Computed off a safe copy of the candidate context — [] when product is unknown.
+    try:
+        notes_ctx = _template_header_context_from_candidate(selected_candidate)
+    except Exception:
+        notes_ctx = {}
+    engine_notes_list = _engine_drawing_notes(notes_ctx)
     draft_payload = direct_result["direct_coil_input_draft"]
     draft = DirectCoilInputDraft.model_validate(draft_payload)
     parameter_set = resolve_drawing_parameters(
@@ -1003,18 +1039,23 @@ def _run_candidate_to_drawing_payload(
             for item in (preview_defaults or DEFAULT_PREVIEW_VALUES)
         ],
     )
+    preview_title_block = title_block or {
+        "coil_name": direct_result["selected_candidate_summary"]["tag"]
+        or "PDF INTAKE REVIEW PREVIEW",
+        "model_number": "PDF-INTAKE-DRAFT-PREVIEW",
+        "source_case_id": source_id,
+        "product_type": "DX",
+        "coil_type": "DX_HEADER1_WORKFLOW_CANDIDATE",
+    }
+    if engine_notes_list and not preview_title_block.get("drawing_notes"):
+        preview_title_block = {
+            **preview_title_block,
+            "drawing_notes": "; ".join(engine_notes_list),
+        }
     preview = render_direct_coil_svg_preview(
         draft,
         parameter_set,
-        title_block=title_block
-        or {
-            "coil_name": direct_result["selected_candidate_summary"]["tag"]
-            or "PDF INTAKE REVIEW PREVIEW",
-            "model_number": "PDF-INTAKE-DRAFT-PREVIEW",
-            "source_case_id": source_id,
-            "product_type": "DX",
-            "coil_type": "DX_HEADER1_WORKFLOW_CANDIDATE",
-        },
+        title_block=preview_title_block,
     )
     generation_report = {
         "source": "static_default",
@@ -1074,11 +1115,16 @@ def _run_candidate_to_drawing_payload(
     # the canonical record. Rebuild ONLY the review surface; the drawing and its
     # parameter panel are unchanged. Every value stays review-required.
     engine_dims = _engine_drawing_dims(panel_parameter_set)
-    if engine_dims:
+    # Surface the same assembled notes on the paste "Drawing Notes" field via a
+    # DEDICATED manufacturing_options key (never distributor_notes, which drives the
+    # drawing's distributor callout). One newline-joined string; review-required.
+    engine_notes = "\n".join(engine_notes_list) if engine_notes_list else None
+    if engine_dims or engine_notes:
         augmented = _run_candidate_to_direct_draft_workflow(
             selected_candidate,
             pdf_intake_summary=pdf_intake_summary,
             engine_dims=engine_dims,
+            engine_notes=engine_notes,
         )
         for key in (
             "canonical_summary",
@@ -1123,9 +1169,10 @@ def _run_candidate_to_direct_draft_workflow(
     *,
     pdf_intake_summary: dict[str, Any] | None = None,
     engine_dims: dict[str, Any] | None = None,
+    engine_notes: str | None = None,
 ) -> dict[str, Any]:
     canonical_result = map_submittal_candidate_to_canonical_result(
-        selected_candidate, engine_dims=engine_dims
+        selected_candidate, engine_dims=engine_dims, engine_notes=engine_notes
     )
     draft = map_canonical_to_direct_coil_draft(canonical_result.record)
     readiness = build_direct_coil_readiness_report(draft)

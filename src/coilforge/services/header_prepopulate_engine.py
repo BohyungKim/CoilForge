@@ -36,7 +36,7 @@ _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules
 
 # Rule IDs handled by dedicated phases rather than the generic constant emitter.
 _NOTES_BASE_IDS = {"R-007", "R-008"}
-_NOTES_APPEND_IDS = {"R-080", "R-081"}
+_NOTES_APPEND_IDS = {"R-080", "R-081", "R-035a", "R-035b"}
 _CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
 _RETURN_SPACING_IDS = {"R-022", "R-023", "R-052"}
 _CWC_IO_HD_SL_IDS = {
@@ -363,7 +363,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     # always appended to the drawing notes (per John, 2026-06-11).
     note_lines: list[str] = []
     note_refs: list[str] = []
-    for rid in ("R-007", "R-008", "R-080", "R-081"):
+    for rid in ("R-007", "R-008", "R-080", "R-081", "R-035a", "R-035b"):
         rule = index[rid]
         if _applies(rule, request):
             note_lines.append(rule["value"])
@@ -563,6 +563,18 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
         review_required=review_required,
         blocked_reason=None,
     )
+
+
+def assemble_drawing_notes(request: HeaderPrepopulateRequest) -> list[str]:
+    """Return the engine-assembled drawing notes for a coil, or ``[]``.
+
+    Wraps :func:`prepopulate` so callers (the paste-ready "Drawing Notes" field and
+    the SVG title block) share ONE source with the drawing. The ``notes`` field is only
+    placed when at least one note rule fires (R-007/008/080/081/035a/035b), so read it
+    with ``.get`` — an unknown product line yields no distributor note (never invented).
+    """
+    result = prepopulate(request).values.get("notes")
+    return [str(v) for v in result.value] if result else []
 
 
 # --------------------------------------------------------------------------- #

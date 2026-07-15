@@ -87,6 +87,8 @@ def test_step3_engine_values_mapped_to_slots() -> None:
     assert s["slot.I1"] == 3
     assert s["slot.SL2"] == 8
     assert "Copper Straps Required." in s["slot.NOTES"]
+    # DX distributor extension note (R-035a/b) rides slot.NOTES too.
+    assert 'Distributor 6" Extension' in s["slot.NOTES"]
     # geometry slots passed through
     assert s["slot.FH"] == 12.0 and s["slot.TAG"] == "CDXC-1"
 

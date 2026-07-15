@@ -218,6 +218,28 @@ def test_workflow_and_ui_payloads_include_paste_ready_fields_without_enabling_ex
     assert ui_state["drawing_preview"]["export_allowed"] is False
 
 
+def test_drawing_notes_field_populates_from_engine_notes() -> None:
+    # The engine assembles the drawing notes (copper straps / coating / distributor
+    # extension); wiring them through the canonical record must surface them on the
+    # paste "Drawing Notes" field as a review-required value (was UNMAPPED before).
+    from coilforge.submittal.to_canonical import (
+        map_submittal_candidate_to_canonical_result,
+    )
+
+    candidate = load_submittal_candidate_fixture(FIXTURE_PATH)
+    notes = 'Copper Straps Required.\nDistributor 6" Extension Downwards'
+    record = map_submittal_candidate_to_canonical_result(
+        candidate, engine_notes=notes
+    ).record
+    surface = build_direct_coil_paste_ready_surface(
+        map_canonical_to_direct_coil_draft(record)
+    )
+    field = _field_by_label(surface, "Drawing Notes")
+    assert field.status != "unmapped"
+    assert "Copper Straps Required." in field.display_value
+    assert 'Distributor 6" Extension Downwards' in field.display_value
+
+
 def _field_by_label(surface, label: str):
     return next(field for field in surface.fields if field.direct_coil_label == label)
 

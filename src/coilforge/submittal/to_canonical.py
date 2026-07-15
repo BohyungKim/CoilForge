@@ -42,6 +42,7 @@ def map_submittal_candidate_to_canonical_result(
     *,
     record_id: str | None = None,
     engine_dims: dict[str, Any] | None = None,
+    engine_notes: str | None = None,
 ) -> SubmittalToCanonicalResult:
     connections = dict(candidate.connections)
     _ensure_return_connection_size(connections)
@@ -57,7 +58,9 @@ def map_submittal_candidate_to_canonical_result(
         refrigerant_conditions=dict(candidate.refrigerant_conditions),
         materials_construction=dict(candidate.materials_construction),
         connections=connections,
-        manufacturing_options=dict(candidate.manufacturing_options),
+        manufacturing_options=_manufacturing_options_with_engine_notes(
+            candidate, engine_notes
+        ),
         drawing_parameters=_drawing_parameters_with_engine_dims(candidate, engine_dims),
         performance=dict(candidate.performance),
         source_evidence=_collect_source_evidence(candidate),
@@ -131,6 +134,52 @@ def _drawing_parameters_with_engine_dims(
             ],
         )
     return drawing_parameters
+
+
+def _manufacturing_options_with_engine_notes(
+    candidate: SubmittalCoilCandidate,
+    engine_notes: str | None,
+) -> dict[str, FieldValue]:
+    """Surface the engine-assembled drawing notes in the canonical record.
+
+    The rule engine assembles the drawing notes (copper straps / coating / distributor
+    extension — R-007/008/080/081/035) and renders them on the SVG, but they were never
+    written back into ``manufacturing_options``, so the paste-ready "Drawing Notes" field
+    (which reads ``distributor_notes`` — the codebase's legacy name for this field) read
+    blank. Wire the SAME string through the CANONICAL record so the review surface mirrors
+    the drawing. Value stays ``review_required`` (never auto-confirmed) with engine source
+    evidence; a submittal-stated value, if any, is never overridden.
+
+    Safe re: the drawing's distributor callout: both drawing renderers read
+    ``slot.DISTRIBUTORS`` from the RAW candidate (``pdf_to_template_drawing`` via the
+    candidate panel) or not at all (the parametric preview uses typed draft fields, never
+    ``distributor_notes``). This injection touches only the CANONICAL copy, which feeds the
+    paste-ready review surface — so the notes reach the review field without ever reaching
+    a rendered distributor callout.
+    """
+    manufacturing_options = dict(candidate.manufacturing_options)
+    if not engine_notes:
+        return manufacturing_options
+    if manufacturing_options.get("distributor_notes") is not None:
+        return manufacturing_options
+    manufacturing_options["distributor_notes"] = FieldValue(
+        value=engine_notes,
+        confidence="inferred",
+        status="review_required",
+        review_required=True,
+        source_evidence=[
+            SourceEvidence(
+                evidence_id="EV-ENGINE-NOTES",
+                source_type="engine_rule",
+                source_id="coil-header-prepopulate-engine",
+                source_location="header prepopulate engine notes assembly",
+                source_key="distributor_notes",
+                source_value=engine_notes,
+                normalized_value=engine_notes,
+            )
+        ],
+    )
+    return manufacturing_options
 
 
 def _ensure_return_connection_size(connections: dict[str, FieldValue]) -> None:

@@ -1160,6 +1160,30 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP Rev H (authored by John Kim, Dec 2025)", "John direction 2026-06-11", "CHK HGRH coating note (older/incorrect wording, to update)"]
 
+  # Distributor extension note (DX only). Orientation branches on product line exactly
+  # like R-031 (DOWN) / R-032 (UP): Ventum+ mounts the distributor ConnectionUP, every
+  # other DX line mounts down. The 6" length is R-033 (dist_extension). Two mutually
+  # exclusive rules over the ProductFamily enum -> exactly one note per DX, never both.
+  - rule_id: R-035a
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Distributor 6\" Extension Upwards"
+    kind: notes_append
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP", "R-032 dist_orientation UP", "R-033 dist_extension 6", "CHK DX!C58:C59"]
+
+  - rule_id: R-035b
+    applies_to: { coil_type: [DX], product_family: [NOVA, TERRA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Distributor 6\" Extension Downwards"
+    kind: notes_append
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "R-031 dist_orientation DOWN", "R-033 dist_extension 6", "CHK DX!C58:C59"]
+
   - rule_id: R-082
     applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }
     field: notes_mounting_holes
