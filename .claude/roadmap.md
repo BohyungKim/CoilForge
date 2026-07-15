@@ -34,7 +34,12 @@
 ## ⬜ 앞으로
 - [ ] 템플릿 eyeball 사인오프 — Ventum+ 11 + 공용 10, 실제 프로젝트 진행하며 확인 (MVP §1·§4)
 - [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
-- [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향
+- [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향.
+  **프리플라이트 드라이런 (2026-07-15, /ccsi-preflight, mutation 0건)**: CoilForge측 GREEN — 서버 up·
+  정적 맵 25셀렉터(13 base+12 멀티헤더)·브릿지 전역 3개(`coilforgeCoils`/`coilforgeCcsiCompare`/
+  `coilforgeSelectCoil`) 로드 시 resolve. **게이팅 NO-GO = CCSI 로그인 탭 부재(John 몫)**. John 로그인
+  후 T2 핸들러 typeof(`CopyRevision` 등 5)+코일 로스터 태그매칭을 마저 검증하면 GO 판정. Terra와 파일
+  무충돌(브라우저측+read-only)로 병행 진행한 작업.
 - [~] **Terra 스플릿 [EXT] — 점진적 병행 (John 2026-07-14 방식 확정)** — `TERRA` → `TERRA_H` + `TERRA_V`
   - [x] **Phase 1 (9be71fe)** — `TERRA_H`/`TERRA_V`를 1급 `ProductFamily`로 추가 + `prepopulate` 진입점에서
     `TERRA`+`terra_variant`로 정규화(model_copy). 모든 `[TERRA]` 룰·`product==TERRA` 직접검사(R-061v/R-065v)·
