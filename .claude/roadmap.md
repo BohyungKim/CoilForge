@@ -41,6 +41,7 @@
   후 T2 핸들러 typeof(`CopyRevision` 등 5)+코일 로스터 태그매칭을 마저 검증하면 GO 판정. Terra와 파일
   무충돌(브라우저측+read-only)로 병행 진행한 작업.
 - [~] **Terra 스플릿 [EXT] — 점진적 병행 (John 2026-07-14 방식 확정)** — `TERRA` → `TERRA_H` + `TERRA_V`
+  (Phase 1·2 완료; **Phase 3는 검증 후 의도적 보류** — 아래 참조)
   - [x] **Phase 1 (9be71fe)** — `TERRA_H`/`TERRA_V`를 1급 `ProductFamily`로 추가 + `prepopulate` 진입점에서
     `TERRA`+`terra_variant`로 정규화(model_copy). 모든 `[TERRA]` 룰·`product==TERRA` 직접검사(R-061v/R-065v)·
     R-076 size_key·terra_variant 분기 전부 무변경 동작; `TERRA_H_C` 서브변형 보존. 신·구 형태 결과 동일성
@@ -51,6 +52,16 @@
     정규화(리포트 display는 TERRA_H/TERRA_V 유지=구분 노출). 나머지(템플릿 선택·R-076/74/77 키·omission gate·UI·CCSI·
     스키마) 전부 SAFE(엔진 정규화 셔틀 덕). YAML·픽스처 변경 0건. 적대적 재검토(GO-WITH-CHANGES)로 테스트 라인 정정 +
     정규화를 lookup 헬퍼로 이동. 830 green.
-  - [ ] Phase 3 — `[TERRA]` 룰 25개를 `[TERRA_H,TERRA_V]`로 리키(10 TERRA-only, 3 multi-family, 12 variant-scoped=게이트 탈피
-    가능) + 엔진 테스트 ~22 사이트 마이그레이션 + coarse `TERRA` 은퇴 + 정규화 셔틀을 group-aware `_applies`로 진화 (최종 목표상태)
+  - [~] **Phase 3 (DEFER — John 2026-07-15 검증 후 보류)** — 작업 자체는 `[TERRA]` 룰 25개를 리키 + 엔진 테스트
+    ~22 사이트 마이그레이션 + coarse `TERRA` 은퇴 + 정규화 셔틀을 group-aware `_applies`로 진화(최종 목표상태).
+    **왜 보류:** 두 Explore 에이전트로 엔진·YAML·mechanical_fit 대조 검증 → Terra는 기능 정상(값 정확, 830 green),
+    셔틀은 진짜 no-op(숨은 취약점 없음), 외부 정규화-前 판독자 `mechanical_fit`은 `_coarse_terra_family()` 방어를
+    실제로 갖춤. Phase 3는 **사용자 이득 0**(도면·값 무변경)인 순수 표현 정리인데 **회귀 리스크는 실재**: ①값 뒤집힘 —
+    R-012/R-014/R-021/R-027/R-042/R-045b/R-061/R-065 8룰은 `[TERRA_H,TERRA_V]` 단순치환 시 Terra V가 last-writer-wins/`_v`
+    은퇴로 H 값으로 되돌아감(반드시 `[TERRA_H]`로만 좁혀야). ②키 단절 — R-077/R-078은 `TERRA` 키만 있어 coarse 은퇴 시
+    fit/drain-pan 조회 miss → Terra 코일 `CANNOT_EVALUATE`. 무이득+고위험이라 [[project_review_gate]]·Simplicity First에
+    정면 위배.
+    **재개 트리거:** 템플릿 선택이 Terra H/V로 갈라져야 하거나, Terra V 전용 casing/water 레퍼런스가 시드돼 variant가
+    first-class 표현을 실제로 요구할 때 — 그 작업과 묶어 원자적으로. (리키 분류: 단순치환 5 / variant 1:1 12 / 주의 8 —
+    상세는 memory `terra_split_phased.md`.)
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
