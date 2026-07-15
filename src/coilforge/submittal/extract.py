@@ -142,6 +142,20 @@ def _coerce_structured_lines(
     return lines
 
 
+def circuits_count_or_none(text: str | None) -> int | None:
+    """The circuit COUNT stated by a 'Circuits' cell, or None when the cell states
+    circuiting prose instead.
+
+    Some submittals put a circuiting descriptor in the Circuits cell rather than a
+    count -- e.g. "3 Feeds/26 Passes/2DT" (Junction City WWTP CDXC-1). That is not a
+    count and is never guessed into one.
+    """
+    if text is None:
+        return None
+    value, _ = _normalize_value(text)
+    return value if isinstance(value, int) else None
+
+
 def _build_field_value(
     line: SanitizedSubmittalLine,
     rule: SubmittalFieldRule,
@@ -169,6 +183,17 @@ def _build_field_value(
             blocked_reason = "Unrecognized header wall schedule source; no approved (L)/(K) mapping."
         else:
             value = canonical
+    elif rule.source_key == "CIRCUITS" and circuits_count_or_none(line.source_value) is None:
+        # The cell states circuiting prose, not a count (e.g. "3 Feeds/26 Passes/2DT").
+        # Block it rather than pass the string on: `circuits` is typed int downstream
+        # (HeaderPrepopulateRequest / checklist mapping), and the raw descriptor stays
+        # readable in source_evidence.
+        value = None
+        status = "blocked"
+        blocked_reason = (
+            f"Circuits cell {line.source_value!r} states circuiting, not a circuit "
+            "count; no count is stated in the source."
+        )
     evidence = _build_source_evidence(
         line,
         source_id,

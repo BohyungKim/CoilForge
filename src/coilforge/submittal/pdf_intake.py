@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from coilforge.submittal.candidate import SubmittalCoilCandidate
 from coilforge.submittal.extract import (
     SanitizedSubmittalLine,
+    circuits_count_or_none,
     extract_submittal_candidate_from_structured,
 )
 from coilforge.submittal.rules import SUBMITTAL_FIELD_RULES, SubmittalFieldRule, normalize_source_key
@@ -1685,6 +1686,15 @@ def _circuits_from_coil_style(text: str | None) -> int | None:
     return None
 
 
+def _circuits_cell_count(
+    extracted: dict[str, SanitizedSubmittalLine],
+) -> int | None:
+    """The circuit count stated by an extracted CIRCUITS line, or None when the line
+    is absent or holds circuiting prose instead of a count."""
+    line = extracted.get("CIRCUITS")
+    return circuits_count_or_none(line.source_value) if line else None
+
+
 def _candidate_from_cover_row(
     row: _CoverRow,
     *,
@@ -1697,8 +1707,10 @@ def _candidate_from_cover_row(
     order = _append_detail_lines(extracted, detail_lines, order)
     # Derive the circuit count from the "Coil Style" prose when no discrete "Circuits"
     # cell was extracted (e.g. "Coil Style: Interlaced 2 Circuits"). Inferred ->
-    # review-required; the explicit CIRCUITS label, when present, wins.
-    if "CIRCUITS" not in extracted and "COIL_STYLE" in extracted:
+    # review-required; the explicit CIRCUITS label, when present, wins -- but only when
+    # it states a COUNT. A Circuits cell holding circuiting prose ("3 Feeds/26 Passes/
+    # 2DT") is blocked in extract.py, so it must not suppress the Coil Style rescue.
+    if _circuits_cell_count(extracted) is None and "COIL_STYLE" in extracted:
         style_line = extracted["COIL_STYLE"]
         circuits_from_style = _circuits_from_coil_style(style_line.source_value)
         if circuits_from_style is not None:
