@@ -21,6 +21,7 @@
 
 - [x] Coil Checklist 자동화 (b8b2168) — analyze 시 백그라운드 자동채움(기본ON 토글, 수동 "Fill" 버튼 제거) + sha1(pdf_bytes) 캐시로 finalize 이중 Excel COM 제거; `_run_or_reuse_checklist`/`_CHECKLIST_CACHE`(analyze↔finalize source_id 무관 공유), 신규 10테스트+818 green, invariant-guard clean(WARN 2건 수정), 실서버 실측 270.3s→0.053s 재사용 + 브라우저 자동채움 실증 · **John eyeball 확인 완료(2026-07-14)** 🆕 이번 세션
 - [x] 미시드 Ventum+ DX = not-registered 차단 (003928f, John 2026-07-14) — 미시드 Ventum+ DX가 공유 ConnectionDOWN 템플릿으로 폴백하던 걸 차단(R-032 UP를 공용이 못 그림); `_gate_unseeded_ventum_plus_dx`(DX 전용, 비-DX는 공유 폴백 유지), 시드 DX는 전용 UP 그대로; 테스트 2건 갱신+818 green, CLAUDE.md+위키 3파일 정정, 런타임 eyeball 확인 · **John 브라우저 확인 완료(2026-07-14)** 🆕 이번 세션
+- [x] Analyze 진행 표시 = 확정형 % 바 + 단계명 (10544f1, John 요청 2026-07-14) — 회전 스피너+고정문구를 초록 % 바+단계 라벨(Extracting→Cover rows→Coil sections→Product line→Building drawing)로 교체; 백엔드는 단일 블로킹 POST라 클라 `pdfProgress` 트리클(92% 상한 감속, 결과 그리드가 카드 대체=완료, 강제100% 없음); 덤으로 John 스크린샷이 가리킨 빈 초록 띠 버그 수정(`#brain-case-banner[hidden]{display:none}` — `display:grid`가 UA `[hidden]`을 덮던 것); 실 27p submittal 라이브 검증(57%→89%→코일2개 결과), 라이트/다크 정상, 826 green · **John 라이브 확인(2026-07-14)** 🆕 이번 세션
 
 ## ▶️ 지금
 - [ ] MVP 사인오프 마무리 — 파라미터 완전성 감사(Stage 2b) — 다음 걸음:
