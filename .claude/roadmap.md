@@ -18,14 +18,22 @@
 - [x] Coil Checklist 자동화 (b8b2168) — analyze 시 백그라운드 자동채움(기본ON 토글, 수동 "Fill" 버튼 제거) + sha1(pdf_bytes) 캐시로 finalize 이중 Excel COM 제거; `_run_or_reuse_checklist`/`_CHECKLIST_CACHE`(analyze↔finalize source_id 무관 공유), 신규 10테스트+818 green, invariant-guard clean(WARN 2건 수정), 실서버 실측 270.3s→0.053s 재사용 + 브라우저 자동채움 실증 · **John eyeball 확인 완료(2026-07-14)**- [x] 미시드 Ventum+ DX = not-registered 차단 (003928f, John 2026-07-14) — 미시드 Ventum+ DX가 공유 ConnectionDOWN 템플릿으로 폴백하던 걸 차단(R-032 UP를 공용이 못 그림); `_gate_unseeded_ventum_plus_dx`(DX 전용, 비-DX는 공유 폴백 유지), 시드 DX는 전용 UP 그대로; 테스트 2건 갱신+818 green, CLAUDE.md+위키 3파일 정정, 런타임 eyeball 확인 · **John 브라우저 확인 완료(2026-07-14)**- [x] Analyze 진행 표시 = 확정형 % 바 + 단계명 (10544f1, John 요청 2026-07-14) — 회전 스피너+고정문구를 초록 % 바+단계 라벨(Extracting→Cover rows→Coil sections→Product line→Building drawing)로 교체; 백엔드는 단일 블로킹 POST라 클라 `pdfProgress` 트리클(92% 상한 감속, 결과 그리드가 카드 대체=완료, 강제100% 없음); 덤으로 John 스크린샷이 가리킨 빈 초록 띠 버그 수정(`#brain-case-banner[hidden]{display:none}` — `display:grid`가 UA `[hidden]`을 덮던 것); 실 27p submittal 라이브 검증(57%→89%→코일2개 결과), 라이트/다크 정상, 826 green · **John 라이브 확인(2026-07-14)**- [x] 커버리지 대시보드 생성기 (16b0852) — 수기 HTML → `scripts/generate_coverage_dashboard.py`가 `catalog.list_template_entries()`에서 자동생성(+`--check` 드리프트 가드, CI에서 인코딩된 MVP 택소노미와 라이브 SHARED 버킷 불일치 시 실패)- [x] Drawing Notes 자동채움 (4b6d29f, John 확정 차트 2026-07-14) — "Drawing Notes" 필드가 (제품군×코일타입)으로 자동채움; 엔진이 이미 조립하던 노트(R-007/008/080/081)를 폼필드+검토용 SVG에 배선 + **신규 R-035a/b 분배기 노트**('Distributor 6" Extension Upwards' Ventum+ DX=R-032 UP 미러 / '...Downwards' 그 외 DX=R-031 DOWN 미러, 상호배타 2룰 → DX당 정확히 1개). `assemble_drawing_notes` 헬퍼 + `_NOTES_APPEND_IDS`/루프 등록; 엔진노트를 **기존** `distributor_notes`의 CANONICAL 사본에 주입(신규 레지스트리 필드 없음=52필드 표면 무churn) — 도면 렌더러는 slot.DISTRIBUTORS를 raw candidate/typed draft에서 읽으므로 분배기 콜아웃 오염 없음; product-gated(제품/사이즈 미상 시 공란, 무발명). 828 green, 착수 전 adversarial 재검토가 블로커 2건 포착·정정. ⚠️ **미결**: DX template.svg의 NOTES는 하드코딩("Copper Straps Required", `{{slot.NOTES}}` 플레이스홀더 없음)이라 신규 노트가 템플릿 도면엔 미표시 — 재시드(DO-NOT-TOUCH) 필요, John 판정 대기
 - [x] Human-in-the-loop 수동 채움 (bc0c145, John 요청 2026-07-15) — 코일 데이터 blocked 시 엔지니어가 브라우저에서 누락값을 채우면 도면이 재생성됨(멈춰서 Claude로 돌아오는 루프 제거). Tier A=엔진입력 재계산(동결 `pdf_to_template_drawing` 대신 비동결 `derive_coil_template_drawing`에서 `build_drawing_slots` 재실행+`slot.X` 병합, 세 입력 application/header_count/qty_conn 있을 때만 발화=무회귀 byte-identical), Tier B=도면파라미터 직접 override(패널만, SVG 불변). 자동노출 fill-plan(product/size picker 포함) + tag기준 헤드리스 `/derive` 재적용 + `ManualOverride` 감사로그 + 하드중단 가드(`UnknownCoilInputError`/unknown_unit_size→picker) + API 검증(500 없음) + `COILFORGE_MANUAL_FILL` 킬스위치. **착수 전 4회 독립 적대검토**(C1 동결파일 위반·멀티코일 재분석 캐시결함 등 전건 해소 후 GO). 신규 17테스트(tests/test_manual_fill.py), 857 green, 라이브 eyeball(CD 5.5 un-gate 확인). ⚠️ 실 고객 PDF 브라우저 최종확인은 John 몫(고객데이터 gitignore) 🆕 이번 세션
 
+- [x] **MVP 사인오프 마무리 (John 2026-07-15)** — 파라미터 완전성 감사(Stage 2b) 판정 전부 해소.
+  **템플릿 eyeball 사인오프 승인**(Ventum+ 11 + 공용 10, review-aid only·`export_allowed=False`·프로덕션 승인 아님) +
+  대기 3건 처분: **R-048** supply≠return 결함 수정(supply를 문서 공식 `CD−[(Xmax+2)D+(Xmax−1)1.5]`로 —
+  단 미검증·음수가능(CD 부족 시)이라 **HIGH 아닌 MEDIUM/review-required** 발화, return은 HIGH 유지; R-048
+  테스트 2건 green; 공식 검증은 open-questions 유지) · **R-085** back_to_back 실경로 배선 **보류**(입력 출처
+  정의 선행) · **R-074** casing 외부 2차출처 **MEDIUM 수용**(단일출처 CHK, review-required 유지). ⚠️ **R-048
+  코드 커밋 보류**: 동시 HGBP 세션이 같은 `header_prepopulate_engine.py`를 미커밋 편집 중(5테스트 red=그들
+  WIP)이라 트리 정리 후 R-048+문서 일괄 커밋 예정. 🆕 이번 세션
+
 ## ▶️ 지금
-- [ ] MVP 사인오프 마무리 — 파라미터 완전성 감사(Stage 2b) — 다음 걸음:
-  승격 판정 전부 해소(승격5·유지2·재분류3, R-074/R-048/R-085 후속까지 확정 기록). 이제 남은 것은
-  **템플릿 eyeball 사인오프**(Ventum+ 11 + 공용 10) + John 판정 대기 3건(R-048 supply 공식 수정 ·
-  R-085 back_to_back 실경로 배선 · R-074 외부 2차 출처 확보). 결정 기록은 docs/mvp_promotion_decisions.md.
+- [ ] R-048 사인오프 커밋 (동시 HGBP 세션 트리 정리 대기) — 다음 걸음:
+  동시 세션이 `header_prepopulate_engine.py` 미커밋 편집을 끝내고 `pytest -q`가 green이 되면 →
+  `git diff HEAD`로 내 R-048 헝크 생존 확인(없으면 재적용) → R-048 + 사인오프 문서(mvp_promotion_decisions·
+  open-questions·MVP 체크리스트) 일괄 커밋·푸시. **R-048 코드+테스트는 이미 완료, 커밋만 대기.**
 
 ## ⬜ 앞으로
-- [ ] 템플릿 eyeball 사인오프 — Ventum+ 11 + 공용 10, 실제 프로젝트 진행하며 확인 (MVP §1·§4)
 - [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
 - [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향.
   **프리플라이트 드라이런 (2026-07-15, /ccsi-preflight, mutation 0건)**: CoilForge측 GREEN — 서버 up·
