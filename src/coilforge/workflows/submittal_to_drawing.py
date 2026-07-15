@@ -9,6 +9,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from coilforge.contracts.canonical import ManualOverride
 from coilforge.direct_coil import map_canonical_to_direct_coil_draft
 from coilforge.direct_coil.draft import DirectCoilInputDraft
 from coilforge.direct_coil.paste_ready_fields import build_direct_coil_paste_ready_surface
@@ -719,15 +720,117 @@ def _gate_unseeded_ventum_plus_dx(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _rerun_slots_with_manual_inputs(
+    result: dict[str, Any], spec: dict[str, Any]
+) -> Any | None:
+    """Human-in-the-loop Tier-A un-gate: re-run ``build_drawing_slots`` in this
+    NON-frozen caller with the three engine inputs the frozen ``derive_slot_values``
+    path drops (``application`` / ``header_count`` / ``qty_conn_per_header``), and
+    merge the recomputed slots into ``result['slot_values']``. Fires ONLY when the
+    engineer actually supplied one of those three (so a coil with no manual fill is
+    byte-for-byte unchanged — the H4 regression guard). Returns the engine
+    ``HeaderPrepopulateResponse`` (for the fill plan / unknown_unit_size), or None
+    when the engine can't run (no product / size) or an input is invalid.
+    """
+    from coilforge.services.direct_coil_drawing_pipeline import (
+        UnknownCoilInputError,
+        build_drawing_slots,
+    )
+    from coilforge.services.drawing_param_resolver import _coerce_float
+
+    ex = result.get("extracted") or {}
+    product = result.get("product_type")
+    unit_size = result.get("unit_size")
+    coil_category = ex.get("coil_category")
+    if not (product and unit_size and coil_category):
+        return None
+    conn = ex.get("return_conn_size")
+    if conn is None:
+        conn = spec.get("suction_conn_size") or spec.get("return_conn_size")
+    try:
+        slots, response = build_drawing_slots(
+            coil_type=coil_category,
+            product_type=product,
+            unit_size=unit_size,
+            rows=ex.get("rows"),
+            feeds=ex.get("feeds"),
+            circuits=spec.get("circuits") or 1,
+            suction_conn_size=_coerce_float(conn),
+            qty_conn_per_header=spec.get("qty_conn_per_header"),
+            application=spec.get("application"),
+            header_count=spec.get("header_count"),
+            finned_height=ex.get("finned_height"),
+            finned_length=ex.get("finned_length"),
+            tag=ex.get("tag"),
+        )
+    except (UnknownCoilInputError, ValueError):
+        return None
+    # setdefault: a gated/omitted result may lack the slot_values key. update() is
+    # additive/overwrite so a base input the re-run didn't produce can never drop a slot.
+    result.setdefault("slot_values", {}).update(slots)
+    return response
+
+
+# Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
+_MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
+    "application", "header_count", "qty_conn_per_header",
+)
+
+
+def manual_overrides_from_fills(spec: dict[str, Any]) -> list[ManualOverride]:
+    """Build the ``ManualOverride`` audit trail for one /derive fill. Every human
+    value is logged review-required (``review_status='unreviewed'``); nothing is
+    promoted to confirmed. Engine-input fills note the recompute; param overrides
+    note that they are preview-only and never flip ``export_allowed``."""
+    reason = str(spec.get("override_reason") or "manual fill (human-in-the-loop)")
+    reviewed_by = spec.get("reviewed_by")
+    overrides: list[ManualOverride] = []
+    for key in _MANUAL_ENGINE_INPUT_KEYS:
+        if spec.get(key) is not None:
+            overrides.append(
+                ManualOverride(
+                    target_field=key,
+                    override_value=spec.get(key),
+                    override_reason=reason,
+                    reviewed_by=reviewed_by,
+                    review_status="unreviewed",
+                    downstream_effects=["rule_engine_recompute"],
+                )
+            )
+    for item in spec.get("param_overrides") or []:
+        key = (item or {}).get("key") if isinstance(item, dict) else getattr(item, "key", None)
+        value = (item or {}).get("value") if isinstance(item, dict) else getattr(item, "value", None)
+        if not key:
+            continue
+        overrides.append(
+            ManualOverride(
+                target_field=f"drawing_parameters.{key}",
+                override_value=value,
+                override_reason=(
+                    (item.get("override_reason") if isinstance(item, dict) else None) or reason
+                ),
+                reviewed_by=reviewed_by,
+                review_status="unreviewed",
+                downstream_effects=["preview_only", "export_allowed=false"],
+            )
+        )
+    return overrides
+
+
 def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     """Re-derive ONE coil's template drawing given its classification + geometry
-    plus an engineer-chosen product line + unit size (the UI product/size picker).
+    plus an engineer-chosen product line + unit size (the UI product/size picker)
+    and any human-in-the-loop manual fills (Tier-A engine inputs + Tier-B param
+    overrides).
 
     With product line + unit size present the rule engine runs, so the dimensions
     (CD/TF/BF/CH/HDx1/HD2/SL/I/O/R) become logic-derived instead of REVIEW
     REQUIRED. Stays review-aid only — the engineer explicitly chose the product.
+    Every manual value stays review-required (never promoted to HIGH/confirmed) and
+    ``export_allowed`` stays False.
     """
     from coilforge.services.drawing_param_resolver import (
+        build_manual_fill_plan,
         parameter_set_from_template_drawing,
     )
     from coilforge.submittal.pdf_to_template_drawing import pdf_text_to_template_drawing
@@ -750,16 +853,37 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "panel": spec.get("panel"),
     }
     result = pdf_text_to_template_drawing("", cover_text="", header_context=ctx)
+
+    # Tier-A un-gate (1.1a): only when a genuinely-dropped engine input was supplied —
+    # keeps non-manual-fill coils byte-for-byte unchanged (H4). Keeps the engine
+    # response for the fill plan (missing_inputs) and unknown_unit_size surfacing.
+    fill_response = None
+    if any(spec.get(key) is not None for key in _MANUAL_ENGINE_INPUT_KEYS):
+        fill_response = _rerun_slots_with_manual_inputs(result, spec)
+
     # Refresh the Drawing Parameters panel from the same slot values the re-derived
-    # drawing renders, so picking a product line + unit size updates BOTH. Pass the
-    # circuit count so multi-header assemblies (I2/S2/...) surface for 2HD+ coils.
-    result["drawing_parameter_set"] = parameter_set_from_template_drawing(
-        result, circuits=ctx.get("circuits")
-    ).model_dump()
+    # drawing renders (Tier-B param overrides injected panel-only). Pass the circuit
+    # count so multi-header assemblies (I2/S2/...) surface for 2HD+ coils.
+    parameter_set = parameter_set_from_template_drawing(
+        result, circuits=ctx.get("circuits"), param_overrides=spec.get("param_overrides")
+    )
+    result["drawing_parameter_set"] = parameter_set.model_dump()
+
     _gate_unregistered_product_line(result)
     _prefer_dedicated_family_template(result)
     _gate_unseeded_ventum_plus_dx(result)
     _flag_distributor_orientation_review(result)
+
+    # Auto-surface fill plan — built AFTER the gates so a gate-omitted coil surfaces a
+    # "drawing withheld" note instead of fill inputs (filling cannot un-gate it).
+    result["manual_fill_plan"] = build_manual_fill_plan(
+        result, fill_response, parameter_set
+    ).model_dump()
+    # Audit trail (session store on the result). Kept review-required; never confirmed.
+    result["manual_overrides"] = [mo.model_dump() for mo in manual_overrides_from_fills(spec)]
+    # Safety: a manual fill must never flip export_allowed.
+    result["export_allowed"] = False
+
     if result.get("svg"):
         result["svg"] = _clean_template_svg(
             result["svg"], (result.get("extracted") or {}).get("coil_category")
@@ -1109,6 +1233,17 @@ def _run_candidate_to_drawing_payload(
         )
     else:
         panel_parameter_set = parameter_set
+
+    # Auto-surface fill plan so a blocked coil shows "fill these to complete the
+    # drawing" on the very first analyze (before any /derive). Built from the
+    # template drawing's review_items + the panel's blocked params (no engine
+    # response here — the resolver falls back to the review_items strings).
+    if isinstance(template_drawing, dict) and "error" not in template_drawing:
+        from coilforge.services.drawing_param_resolver import build_manual_fill_plan
+
+        template_drawing["manual_fill_plan"] = build_manual_fill_plan(
+            template_drawing, None, panel_parameter_set
+        ).model_dump()
 
     # Surface the engine-computed drawing dimensions (already rendered on the SVG)
     # in the paste-ready "DRAWING / DIMENSION" review table by wiring them through

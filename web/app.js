@@ -2135,11 +2135,13 @@ function renderTemplateDrawingPreview(templateDrawing) {
     <div class="template-drawing-preview">
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
       ${templateDrawingPicker(templateDrawing)}
+      ${renderManualFillPanel(templateDrawing)}
       ${distributorOrientationBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
     </div>
   `;
   attachCoilDrawingPicker(templateDrawing);
+  attachManualFillPanel(templateDrawing);
 }
 
 // NOTE: the per-coil "Drawing package (steps 9-12)" card (single-coil
@@ -2267,26 +2269,60 @@ function attachCoilDrawingPicker(templateDrawing) {
   });
 }
 
-async function deriveCoilDrawing(templateDrawing, productLine, unitSize) {
+// Build the /api/coil-drawing/derive request body from a coil's extracted geometry
+// plus the engineer's product/size pick and any human-in-the-loop manual fills. Manual
+// engine inputs OVERRIDE the extracted spec value (a filled `rows` beats a blank/wrong
+// extracted `rows`); param overrides + reason ride along for Tier-B + the audit log.
+function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
   const ex = templateDrawing.extracted || {};
-  const spec = {
+  const f = fills || {};
+  const engineInputs = f.engineInputs || {};
+  const pick = (key, fallback) =>
+    engineInputs[key] !== undefined && engineInputs[key] !== "" ? engineInputs[key] : fallback;
+  return {
     coil_category: ex.coil_category,
     coil_hand: ex.hand,
-    circuits: ex.circuits,
+    circuits: pick("circuits", ex.circuits),
     special_feature: ex.special_feature,
     tag: ex.tag,
-    rows: ex.rows,
-    feeds: ex.feeds,
+    rows: pick("rows", ex.rows),
+    feeds: pick("feeds", ex.feeds),
     finned_height: ex.finned_height,
     finned_length: ex.finned_length,
     suction_conn_size: ex.return_conn_size,
     product_type: productLine,
     unit_size: unitSize,
+    // The three engine inputs the frozen path drops (un-gate levers).
+    application: engineInputs.application,
+    header_count: engineInputs.header_count,
+    qty_conn_per_header: engineInputs.qty_conn_per_header,
+    param_overrides: f.paramOverrides || [],
+    override_reason: f.reason,
     // Round-trip the submittal spec-panel values so the right-side panel stays
     // populated after the dimensions are logic-derived.
     panel: templateDrawing.panel,
   };
-  if (elements.previewStatus) {
+}
+
+// Persist a re-derived result onto a PDF coil page so a page switch (which re-renders
+// from page.workflow via workflowToUiState) reproduces the fills without re-hitting the
+// engine. Also stashes the fills for re-apply after a full re-analyze. An explicit page
+// is passed (never the shared active index) so a concurrent headless fan-out can't race.
+function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
+  if (!page || !page.workflow) return;
+  page.workflow.template_drawing = updated;
+  if (updated.drawing_parameter_set) {
+    page.workflow.drawing_parameter_set = updated.drawing_parameter_set;
+  }
+  if (fills && (Object.keys(fills.engineInputs || {}).length || (fills.paramOverrides || []).length)) {
+    page.manualFills = { ...fills, productLine, unitSize };
+  }
+}
+
+async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, options) {
+  const opts = options || {};
+  const spec = deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills);
+  if (elements.previewStatus && !opts.headless) {
     elements.previewStatus.textContent = "Deriving…";
   }
   try {
@@ -2294,6 +2330,13 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize) {
       method: "POST",
       body: JSON.stringify(spec),
     });
+    // Headless (background re-apply) targets an explicit page; interactive persists to
+    // the active page. Never rely on the shared active index during a concurrent fan-out.
+    const targetPage = opts.page || state.pdfCoilPages[state.activePdfCoilPageIndex];
+    persistDerivedToPage(targetPage, updated, fills, productLine, unitSize);
+    if (opts.headless) {
+      return updated;  // background re-apply: store only, caller re-renders the active coil once
+    }
     // The panel mirrors the drawing's slot values: refresh it from the re-derived
     // response so the Drawing Parameters stay aligned with the new dimensions.
     if (updated.drawing_parameter_set && state.ui) {
@@ -2312,14 +2355,118 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize) {
     } else {
       refreshMechanicalFit([fitInput]);
     }
+    return updated;
   } catch (error) {
+    if (opts.headless) throw error;  // let the fan-out aggregate the failure
     if (elements.drawingTemplateStatus) {
       elements.drawingTemplateStatus.innerHTML = `
         <strong>Could not derive dimensions</strong>
         <span>${escapeHtml(error.message)}</span>
       `;
     }
+    return null;
   }
+}
+
+// Auto-surface "fill these to complete the drawing" panel (human-in-the-loop). The
+// product/unit-size pickers are rendered by templateDrawingPicker above, so this panel
+// shows only the OTHER fillable engine inputs + blocked drawing-param overrides.
+function renderManualFillPanel(templateDrawing) {
+  const plan = templateDrawing.manual_fill_plan;
+  if (!plan) return "";
+  if (plan.withheld_reason) {
+    return `
+      <div class="manual-fill-panel is-withheld">
+        <span class="manual-fill-title">Drawing withheld</span>
+        <span class="manual-fill-hint">${escapeHtml(plan.withheld_reason)}</span>
+      </div>`;
+  }
+  const items = (plan.items || []).filter(
+    (it) => it.key !== "product_type" && it.key !== "unit_size",
+  );
+  const errors = templateDrawing.manual_fill_errors || [];
+  if (!items.length && !errors.length) return "";
+  const rows = items
+    .map((it) => {
+      const opts = it.allowed || [];
+      let control;
+      if (opts.length) {
+        control = `<select data-manual-fill="${escapeHtml(it.key)}" data-fill-kind="${escapeHtml(it.kind)}">
+            <option value="">—</option>
+            ${opts.map((o) => `<option value="${escapeHtml(String(o))}">${escapeHtml(String(o))}</option>`).join("")}
+          </select>`;
+      } else {
+        const isText = it.key === "application";
+        control = `<input data-manual-fill="${escapeHtml(it.key)}" data-fill-kind="${escapeHtml(it.kind)}"
+            data-unit="${escapeHtml(it.unit || "in")}" type="${isText ? "text" : "number"}" step="0.01"
+            placeholder="${escapeHtml(String(it.current_value ?? ""))}" />`;
+      }
+      return `
+        <label class="manual-fill-row">
+          <span class="manual-fill-key">${escapeHtml(it.label)}</span>
+          ${control}
+          <span class="manual-fill-reason">${escapeHtml(it.reason)}</span>
+        </label>`;
+    })
+    .join("");
+  const errorHtml = errors.length
+    ? `<div class="manual-fill-errors">${errors.map((e) => `<span>⚠ ${escapeHtml(e)}</span>`).join("")}</div>`
+    : "";
+  return `
+    <div class="manual-fill-panel">
+      <span class="manual-fill-title">Fill these to complete the drawing</span>
+      ${rows}
+      <label class="manual-fill-row">
+        <span class="manual-fill-key">Reason</span>
+        <input id="manual-fill-reason" type="text" placeholder="Why (required to log the change)" />
+      </label>
+      ${errorHtml}
+      <button type="button" id="manual-fill-apply" class="manual-fill-apply">Apply &amp; complete drawing</button>
+    </div>`;
+}
+
+function attachManualFillPanel(templateDrawing) {
+  const applyBtn = document.querySelector("#manual-fill-apply");
+  if (!applyBtn) return;
+  applyBtn.addEventListener("click", () => submitManualFills(templateDrawing));
+}
+
+const _MANUAL_NUMERIC_INPUTS = new Set([
+  "header_count", "qty_conn_per_header", "rows", "feeds", "circuits",
+]);
+
+async function submitManualFills(templateDrawing) {
+  const reason = (document.querySelector("#manual-fill-reason")?.value || "").trim();
+  const engineInputs = {};
+  const paramOverrides = [];
+  document.querySelectorAll("[data-manual-fill]").forEach((el) => {
+    const key = el.dataset.manualFill;
+    const raw = (el.value || "").trim();
+    if (raw === "") return;
+    if (el.dataset.fillKind === "drawing_param") {
+      const value = numberOrFallback(raw, null);
+      if (value !== null) {
+        paramOverrides.push({ key, value, unit: el.dataset.unit || "in", override_reason: reason });
+      }
+    } else {
+      engineInputs[key] = _MANUAL_NUMERIC_INPUTS.has(key) ? numberOrFallback(raw, raw) : raw;
+    }
+  });
+  if (paramOverrides.length && !reason) {
+    if (elements.drawingTemplateStatus) {
+      elements.drawingTemplateStatus.innerHTML =
+        `<strong>Reason required</strong><span>Enter a reason to log the manual override.</span>`;
+    }
+    return;
+  }
+  // Current product/size come from the existing picker (or the already-derived drawing).
+  const productLine =
+    document.querySelector("#coil-product-line")?.value || templateDrawing.product_type || "";
+  const unitSize =
+    document.querySelector("#coil-unit-size")?.value || templateDrawing.unit_size || "";
+  await deriveCoilDrawing(templateDrawing, productLine, unitSize, {
+    engineInputs, paramOverrides, reason,
+  });
 }
 
 // Short coil classification summary (coil type / hand / header qty / HGBP) —
@@ -2992,6 +3139,14 @@ async function runWorkflowFromPdf() {
 // Shared hydration for both intake paths (manual PDF upload and the PO Release
 // board case deep link) — the case endpoint returns the same workflow shape.
 function hydratePdfWorkflow(workflow, statusText) {
+  // Capture any manual fills from the PRIOR analyze (keyed by tag) so a re-analyze of
+  // the same PDF re-applies them instead of dropping them (findings C-NEW-1/H-NEW-2:
+  // the workflow is PDF-bytes-memoized, so reproduction is a frontend /derive re-apply,
+  // never a cached workflow re-run). Tag is primary; a coil can reorder across analyses.
+  const priorFillsByTag = new Map();
+  for (const page of state.pdfCoilPages || []) {
+    if (page.manualFills && page.tag) priorFillsByTag.set(page.tag, page.manualFills);
+  }
   state.pdfIntakeSummary = workflow.pdf_intake_summary;
   state.pdfCoilPages = workflow.pdf_coil_pages || [];
   state.activePdfCoilPageIndex = state.pdfCoilPages.length ? 0 : -1;
@@ -3001,6 +3156,39 @@ function hydratePdfWorkflow(workflow, statusText) {
   elements.savedStatus.textContent = statusText;
   refreshMechanicalFit();
   maybeAutoFillChecklist();  // background, best-effort — never blocks analyze
+  if (priorFillsByTag.size) reapplyManualFills(priorFillsByTag);
+}
+
+// Headless re-apply of persisted manual fills after a full re-analyze. Each coil with
+// prior fills is re-derived via /api/coil-drawing/derive (which runs BOTH the Tier-A
+// engine re-run and Tier-B override), stored back onto its page WITHOUT rendering; the
+// active coil is re-rendered ONCE at the end (finding MEDIUM-1 — no active-UI churn from
+// background coils). Promise.allSettled isolates a single coil's failure (finding LOW-1).
+async function reapplyManualFills(priorFillsByTag) {
+  const jobs = [];
+  for (const page of state.pdfCoilPages) {
+    const fills = page.tag ? priorFillsByTag.get(page.tag) : null;
+    const td = (page.workflow || {}).template_drawing;
+    if (!fills || !td || td.error) continue;
+    page.manualFills = fills;  // restore so a subsequent re-analyze keeps them
+    jobs.push(
+      deriveCoilDrawing(
+        td, fills.productLine || td.product_type || "",
+        fills.unitSize || td.unit_size || "", fills, { headless: true, page },
+      ),
+    );
+  }
+  if (!jobs.length) return;
+  const results = await Promise.allSettled(jobs);
+  const failed = results.filter((r) => r.status === "rejected").length;
+  // Re-render the visible coil once from its (now re-derived) cached workflow.
+  if (state.activePdfCoilPageIndex >= 0) selectPdfCoilPage(state.activePdfCoilPageIndex);
+  if (elements.savedStatus) {
+    const ok = jobs.length - failed;
+    elements.savedStatus.textContent =
+      `Re-applied ${ok} of ${jobs.length} manual fill${jobs.length === 1 ? "" : "s"}` +
+      (failed ? ` (${failed} failed)` : "");
+  }
 }
 
 // --- PO Release board case prefill (?case=PRC-N deep link) ----------------- //

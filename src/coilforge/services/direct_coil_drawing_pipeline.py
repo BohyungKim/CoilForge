@@ -46,6 +46,21 @@ _PRODUCT = {
 }
 
 
+class UnknownCoilInputError(ValueError):
+    """A required classification input (coil_type / product_type) is not a known
+    value, so the header request cannot be built. Carries the offending ``field``
+    and the ``allowed`` set so a caller can prompt the engineer to pick a valid
+    value (human-in-the-loop) instead of crashing with a bare KeyError."""
+
+    def __init__(self, field: str, value: Any, allowed: list[str]) -> None:
+        self.field = field
+        self.value = value
+        self.allowed = allowed
+        super().__init__(
+            f"unknown {field}: {value!r} (allowed: {', '.join(allowed)})"
+        )
+
+
 @dataclass(frozen=True)
 class PipelineResult:
     header_response: HeaderPrepopulateResponse
@@ -74,6 +89,8 @@ def build_header_request(
     suction_conn_size: float | None = None,
     conn_size: float | None = None,
     qty_conn_per_header: int | None = None,
+    application: str | None = None,
+    header_count: int | None = None,
     handing: str | None = None,
     coating: str | None = None,
     with_hgrh: bool | None = None,
@@ -93,9 +110,18 @@ def build_header_request(
     """
     family, derived_variant = resolve_product_line(product_type)
     variant_str = terra_variant or derived_variant
+    # Guard the two hard halts: bare dict subscripts raise a bare KeyError on an
+    # unknown coil_type / product_type. Convert to a typed error carrying the allowed
+    # set so the caller can prompt the engineer to pick a valid value instead of 500ing.
+    coil_key = coil_type.upper()
+    if coil_key not in _COIL_TYPE:
+        raise UnknownCoilInputError("coil_type", coil_type, sorted(_COIL_TYPE))
+    product_key = (family or product_type).upper()
+    if product_key not in _PRODUCT:
+        raise UnknownCoilInputError("product_type", product_type, sorted(_PRODUCT))
     return HeaderPrepopulateRequest(
-        type_of_coil=_COIL_TYPE[coil_type.upper()],
-        product_type=_PRODUCT[(family or product_type).upper()],
+        type_of_coil=_COIL_TYPE[coil_key],
+        product_type=_PRODUCT[product_key],
         terra_variant=TerraVariant(variant_str) if variant_str else None,
         unit_size=unit_size,
         rows=rows,
@@ -104,6 +130,8 @@ def build_header_request(
         suction_conn_size=suction_conn_size,
         conn_size=conn_size,
         qty_conn_per_header=qty_conn_per_header,
+        application=application,
+        header_count=header_count,
         handing=handing,
         coating=coating,
         with_hgrh=with_hgrh,
@@ -225,6 +253,8 @@ def build_drawing_slots(
     suction_conn_size: float | None = None,
     conn_size: float | None = None,
     qty_conn_per_header: int | None = None,
+    application: str | None = None,
+    header_count: int | None = None,
     finned_height: float | None = None,
     finned_length: float | None = None,
     tag: str | None = None,
@@ -253,6 +283,7 @@ def build_drawing_slots(
         coil_type=coil_type, product_type=product_type, unit_size=unit_size,
         rows=rows, feeds=feeds, circuits=circuits, suction_conn_size=suction_conn_size,
         conn_size=conn_size, qty_conn_per_header=qty_conn_per_header,
+        application=application, header_count=header_count,
         terra_variant=terra_variant,
     )
     response = prepopulate(request)

@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import hashlib
+import os
 
 from collections import OrderedDict
 from pathlib import Path
@@ -817,11 +818,107 @@ async def coil_drawing_product_options():
     return {"product_lines": product_size_options()}
 
 
+def _manual_fill_enabled() -> bool:
+    """Kill switch (M-NEW-5): when ``COILFORGE_MANUAL_FILL`` is off, the /derive
+    endpoint strips human-in-the-loop fills and the manual_fill_plan, restoring
+    today's product/size-only behavior WITHOUT reverting the branch. Read at request
+    time so it can be toggled in a running process / tests. Default ON."""
+    return os.environ.get("COILFORGE_MANUAL_FILL", "1").strip().lower() not in (
+        "0", "false", "no", "off", "",
+    )
+
+
+def _known_drawing_param_key(key: str) -> bool:
+    from coilforge.drawing.parameters import DRAWING_PARAMETER_KEYS
+    from coilforge.services.drawing_param_resolver import (
+        EXTRA_DRAWING_PARAMS,
+        is_multi_header_param_key,
+    )
+
+    return (
+        key in DRAWING_PARAMETER_KEYS
+        or key in EXTRA_DRAWING_PARAMS
+        or is_multi_header_param_key(key)
+    )
+
+
+def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """API-boundary validation for /derive fills (M-NEW-2): require override_reason,
+    coerce numeric params, reject unknown keys — so a bad fill yields a surfaced error,
+    never a 500 or a stored junk value. Honors the kill switch. Returns (clean, errors)."""
+    from coilforge.services.drawing_param_resolver import _coerce_float
+
+    clean = dict(spec or {})
+    errors: list[str] = []
+
+    if not _manual_fill_enabled():
+        clean.pop("param_overrides", None)
+        for key in ("application", "header_count", "qty_conn_per_header"):
+            clean.pop(key, None)
+        return clean, errors
+
+    valid_overrides: list[dict[str, Any]] = []
+    for item in spec.get("param_overrides") or []:
+        if not isinstance(item, dict):
+            errors.append("param override must be an object")
+            continue
+        key = str(item.get("key") or "").strip()
+        if not key or not _known_drawing_param_key(key):
+            errors.append(f"unknown drawing param: {item.get('key')!r}")
+            continue
+        if not str(item.get("override_reason") or "").strip():
+            errors.append(f"{key}: override_reason is required")
+            continue
+        value = _coerce_float(item.get("value"))
+        if value is None:
+            errors.append(f"{key}: value must be a number (got {item.get('value')!r})")
+            continue
+        if value < 0:
+            errors.append(f"{key}: value must not be negative")
+            continue
+        valid_overrides.append({**item, "key": key, "value": value})
+    if "param_overrides" in clean:
+        clean["param_overrides"] = valid_overrides
+
+    for key in ("header_count", "qty_conn_per_header"):
+        if clean.get(key) is not None:
+            coerced = _coerce_float(clean.get(key))
+            if coerced is None:
+                errors.append(f"{key}: must be a number")
+                clean.pop(key, None)
+            else:
+                clean[key] = int(coerced)
+    return clean, errors
+
+
 @app.post("/api/coil-drawing/derive")
 async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dict)):
     """Re-derive a coil's template drawing with an engineer-chosen product line +
-    unit size so the engine fills the dimensions. Review-aid only."""
-    return jsonable_encoder(derive_coil_template_drawing(request or {}))
+    unit size and any human-in-the-loop manual fills (Tier-A engine inputs + Tier-B
+    param overrides) so the engine fills / the user completes the dimensions.
+    Review-aid only; never flips export_allowed. A bad fill is surfaced, never a 500."""
+    from pydantic import ValidationError
+    from coilforge.services.direct_coil_drawing_pipeline import UnknownCoilInputError
+
+    spec = request or {}
+    clean, errors = _sanitize_derive_spec(spec)
+    try:
+        result = derive_coil_template_drawing(clean)
+    except (UnknownCoilInputError, ValidationError) as exc:
+        # Never 500 on a fill: return a minimal payload naming what to fix.
+        return jsonable_encoder(
+            {
+                "manual_fill_plan": {"items": [], "withheld_reason": None},
+                "manual_fill_errors": errors + [str(exc)],
+                "export_allowed": False,
+            }
+        )
+    if not _manual_fill_enabled():
+        result.pop("manual_fill_plan", None)
+    if errors:
+        result["manual_fill_errors"] = errors
+    _journal_milestone("coil_manual_fill", result=result)
+    return jsonable_encoder(result)
 
 
 @app.post("/api/package/assemble")

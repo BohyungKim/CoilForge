@@ -175,6 +175,22 @@ colouring each field green(match)/red(mismatch) at `POST /api/ccsi-compare`. Reu
 R 3.317 vs 1.3125) flags red before John saves. Review aid only (`export_allowed: False`);
 multi-header keys (I2/S2…) push only when present in `parameters` AND in the field map.
 
+**Manual fill (human-in-the-loop)** (`services/drawing_param_resolver.py::build_manual_fill_plan`,
+`workflows/submittal_to_drawing.py::_rerun_slots_with_manual_inputs`, `web/app.js::renderManualFillPanel`)
+— when a coil blocks, the engineer fills the missing data in the browser and the drawing regenerates
+instead of halting and bouncing back to Claude. Tier A = engine inputs (rule engine recomputes,
+un-gating CD→CH→S→SL); Tier B = drawing-param direct override (**panel-only** — never rewrites
+`slot_values`/SVG, John's call). GOTCHA: the three inputs the derive path drops
+(`application`/`header_count`/`qty_conn_per_header`) are un-gated by re-running `build_drawing_slots`
+in the NON-frozen caller `derive_coil_template_drawing` and merging `slot.X` keys into
+`result["slot_values"]` — NEVER edit the frozen `pdf_to_template_drawing.py::derive_slot_values` to
+thread them. The re-run fires ONLY when one of the three is supplied, so a coil with no manual fill
+is byte-identical (H4 regression guard). `POST /api/coil-drawing/derive` is the SINGLE fill endpoint;
+a multi-coil re-analyze re-applies fills via the frontend (headless `/derive` per coil, keyed by tag)
+— the PDF workflow is PDF-bytes-memoized, so a server header would hit the pre-fill cache. Every value
+stays `review_required`/`manual_override` and `export_allowed` stays False; a `ManualOverride` audit
+entry is logged per fill; env `COILFORGE_MANUAL_FILL=0` disables the feature (rollback without reverting).
+
 **Engineering Wiki** (`docs/wiki/`, schema `docs/wiki/WIKI.md`) — an LLM-maintained,
 interlinked markdown knowledge base (Karpathy "LLM Wiki" pattern) that is the human-readable
 synthesis layer ABOVE the YAML rule table: one page per coil category / product family / concept,

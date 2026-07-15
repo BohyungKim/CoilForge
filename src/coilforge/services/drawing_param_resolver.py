@@ -19,18 +19,22 @@ Only HIGH engine values are emitted as generated; MEDIUM/blocked stay review.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from coilforge.direct_coil.draft import DirectCoilInputDraft
 from coilforge.drawing.parameters import (
     DRAWING_PARAMETER_KEYS,
     REQUIRED_PREVIEW_PARAMETER_KEYS,
     DrawingParameter,
+    DrawingParameterOverride,
     DrawingParameterSet,
     PreviewDefaultValue,
 )
 from coilforge.services.direct_coil_drawing_pipeline import build_header_request
 from coilforge.services.header_prepopulate_engine import prepopulate
+from coilforge.submittal.coilmaster_drawing_extract import product_size_options
 
 # Drawing param key -> scalar engine field (HIGH values).
 PARAM_TO_ENGINE_FIELD: dict[str, str] = {
@@ -353,7 +357,10 @@ def _coerce_float(value: Any) -> float | None:
 
 
 def parameter_set_from_template_drawing(
-    template_drawing: dict[str, Any], *, circuits: int | None = None
+    template_drawing: dict[str, Any],
+    *,
+    circuits: int | None = None,
+    param_overrides: list[DrawingParameterOverride | dict[str, Any]] | None = None,
 ) -> DrawingParameterSet:
     """Build the Drawing Parameters panel from the SAME slot values the template
     drawing renders, so the panel and the drawing never diverge.
@@ -438,6 +445,32 @@ def parameter_set_from_template_drawing(
             )
         review_required.append(key)
 
+    # Tier-B manual overrides (panel-only): a user-supplied value wins over the derived/
+    # blank slot value for that key. Stays review-required + manual_override — never
+    # promoted to HIGH/confirmed, export_allowed stays False, and the value is NOT written
+    # back into slot_values, so the template SVG geometry is untouched (per John: panel-only).
+    override_notes: list[str] = []
+    for override in (
+        DrawingParameterOverride.model_validate(item) for item in (param_overrides or [])
+    ):
+        if override.value in (None, ""):
+            continue
+        parameters[override.key] = DrawingParameter(
+            key=override.key,
+            label=override.key,
+            value=override.value,
+            unit=override.unit or "in",
+            mode="manual",
+            source_evidence=list(override.source_evidence),
+            status="review_required",
+            review_required=True,
+            blocked_reason=None,
+            manual_override=True,
+        )
+        if override.key not in review_required:
+            review_required.append(override.key)
+        override_notes = ["Manual override params are review-only and not reflected in the SVG geometry."]
+
     return DrawingParameterSet(
         parameters=parameters,
         preview_allowed=True,
@@ -445,5 +478,166 @@ def parameter_set_from_template_drawing(
         blocked_parameters=blocked,
         review_required_parameters=review_required,
         required_preview_parameters=list(REQUIRED_PREVIEW_PARAMETER_KEYS),
-        notes=["Panel mirrors the template drawing's slot values (review-aid only)."],
+        notes=["Panel mirrors the template drawing's slot values (review-aid only)."]
+        + override_notes,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Manual-fill plan (human-in-the-loop): what the engineer can fill to complete
+# the drawing, surfaced automatically when a coil is blocked/missing data.
+# --------------------------------------------------------------------------- #
+
+# Engine inputs the engineer can supply to un-gate the rule engine. label + unit
+# for the panel; only these known-fillable inputs are surfaced (a missing_input
+# token not in this map is left to show as a blocked dimension, not a fill field).
+_ENGINE_INPUT_META: dict[str, tuple[str, str]] = {
+    "rows": ("Rows deep", ""),
+    "feeds": ("Number of feeds", ""),
+    "circuits": ("Circuits", ""),
+    "suction_conn_size": ("Suction/return connection size", "in"),
+    "conn_size": ("Connection size", "in"),
+    "qty_conn_per_header": ("Connections per header", ""),
+    "application": ("Application (casing class)", ""),
+    "header_count": ("Header count (1HD–4HD)", ""),
+}
+
+
+class ManualFillItem(BaseModel):
+    """One thing the engineer can fill to complete the drawing. ``kind`` routes the
+    UI widget (engine input vs. a direct drawing-param override) and ``allowed``
+    (when present) turns it into a picker (product line / unit size)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    kind: Literal["engine_input", "drawing_param"]
+    label: str
+    reason: str
+    allowed: list[Any] = Field(default_factory=list)
+    current_value: Any = None
+    unit: str = "in"
+
+
+class ManualFillPlan(BaseModel):
+    """The auto-surfaced 'fill these to complete the drawing' list for one coil.
+    ``withheld_reason`` is set (and ``items`` empty) when the drawing is gate-omitted
+    — filling cannot un-gate it, so no fill inputs are offered."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ManualFillItem] = Field(default_factory=list)
+    withheld_reason: str | None = None
+
+
+def build_manual_fill_plan(
+    template_drawing: dict[str, Any],
+    response: Any = None,
+    param_set: DrawingParameterSet | None = None,
+) -> ManualFillPlan:
+    """Assemble the human-in-the-loop fill plan for one coil's drawing.
+
+    Sources (all read-only against the already-built drawing/panel):
+    - product/unit-size picker when no product line is chosen (the normal gated
+      state, not an error — so surfaced unconditionally, with ``allowed``);
+    - engine-input items from ``response.missing_inputs`` (or, when no engine
+      response is available, parsed from ``template_drawing['review_items']``),
+      filtered to the known-fillable un-gate levers;
+    - drawing-param items for panel params the engine left blocked (``mode=='blocked'``);
+    - a ``withheld_reason`` instead of fill inputs when the drawing is gate-omitted.
+
+    Never invents a value — every item names WHAT to supply and WHY, review-aid only.
+    """
+    td = template_drawing or {}
+
+    # Gate-omit: the drawing is withheld regardless of fills (Terra V water, unseeded
+    # Ventum+ DX). Do NOT present its dims as fillable — filling cannot un-gate it.
+    withheld = td.get("not_registered_reason")
+    if withheld:
+        return ManualFillPlan(items=[], withheld_reason=str(withheld))
+
+    items: list[ManualFillItem] = []
+    seen: set[str] = set()
+
+    # An invalid (not merely absent) unit_size — the engine returned unknown_unit_size —
+    # also needs the picker, even though product_type/unit_size are both truthy.
+    bad_unit_size = (
+        response is not None
+        and getattr(response, "blocked_reason", None) == "unknown_unit_size"
+    )
+
+    # Product / unit-size picker — the HEADLINE "no product line" case. product_chosen
+    # is recomputed from the top-level result keys (the resolver's local is not exposed).
+    product_type = td.get("product_type")
+    unit_size = td.get("unit_size")
+    if not (product_type and unit_size) or bad_unit_size:
+        opts = product_size_options()
+        if not product_type:
+            items.append(
+                ManualFillItem(
+                    key="product_type", kind="engine_input", label="Product line",
+                    reason="Pick a product line to derive dimensions.",
+                    allowed=sorted(opts.keys()), current_value=product_type,
+                )
+            )
+            seen.add("product_type")
+        if not unit_size or bad_unit_size:
+            sizes = (
+                list(opts.get(product_type, []))
+                if product_type
+                else sorted({s for group in opts.values() for s in group})
+            )
+            reason = (
+                f"'{unit_size}' is not a valid unit size for this product — pick one."
+                if bad_unit_size
+                else "Pick a unit size to derive dimensions."
+            )
+            items.append(
+                ManualFillItem(
+                    key="unit_size", kind="engine_input", label="Unit size",
+                    reason=reason, allowed=sizes, current_value=unit_size,
+                )
+            )
+            seen.add("unit_size")
+
+    # Engine inputs the engineer can supply to un-gate cascades. Prefer the live
+    # response's missing_inputs; fall back to parsing the review_items strings.
+    missing_inputs: list[str] = []
+    if response is not None and getattr(response, "missing_inputs", None):
+        missing_inputs = list(response.missing_inputs)
+    else:
+        for raw in td.get("review_items") or []:
+            text = str(raw)
+            if text.startswith("missing_input:"):
+                missing_inputs.append(text.split(":", 1)[1].strip())
+    for inp in missing_inputs:
+        if inp in seen or inp not in _ENGINE_INPUT_META:
+            continue
+        seen.add(inp)
+        label, unit = _ENGINE_INPUT_META[inp]
+        items.append(
+            ManualFillItem(
+                key=inp, kind="engine_input", label=label,
+                reason="Required by the rule engine to derive dimensions — supply to un-gate.",
+                unit=unit or "in",
+            )
+        )
+
+    # Drawing-param items: panel params the engine left blocked (mode=='blocked' ONLY —
+    # NOT value is None, which also matches 'unmapped' non-fillable rows).
+    if param_set is not None:
+        for key, parameter in param_set.parameters.items():
+            if parameter.mode == "blocked" and key not in seen:
+                seen.add(key)
+                items.append(
+                    ManualFillItem(
+                        key=key, kind="drawing_param", label=parameter.label,
+                        reason=str(
+                            parameter.blocked_reason
+                            or "Engine did not derive this dimension; supply directly."
+                        ),
+                        unit=parameter.unit or "in",
+                    )
+                )
+
+    return ManualFillPlan(items=items)
