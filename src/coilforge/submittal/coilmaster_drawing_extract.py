@@ -146,10 +146,17 @@ TERRA_V_LABEL = "TERRA V"
 
 # Picker label -> (engine product_family, terra_variant or None). Only Terra is
 # special-cased; every other product line maps to itself with no variant.
+# Terra split phase 2 (John 2026-07-14): the engine product_family is now the split
+# TERRA_H / TERRA_V (first-class families), not the coarse TERRA. terra_variant still
+# carries the H-C sub-variant. The engine folds TERRA_H/TERRA_V back to TERRA + variant
+# internally (phase 1), so every [TERRA] rule keeps working. Underscore enum-value forms
+# are accepted too so a re-resolution of an already-split value stays correct.
 _PRODUCT_LINE_RESOLUTION: dict[str, tuple[str, str | None]] = {
-    TERRA_H_LABEL: ("TERRA", "TERRA_H_C"),
-    TERRA_V_LABEL: ("TERRA", "TERRA_V"),
-    "TERRA": ("TERRA", "TERRA_H_C"),  # bare Terra defaults to the resolved H C set
+    TERRA_H_LABEL: ("TERRA_H", "TERRA_H_C"),
+    TERRA_V_LABEL: ("TERRA_V", "TERRA_V"),
+    "TERRA": ("TERRA_H", "TERRA_H_C"),  # bare Terra defaults to the resolved H C set
+    "TERRA_H": ("TERRA_H", "TERRA_H_C"),
+    "TERRA_V": ("TERRA_V", "TERRA_V"),
 }
 
 

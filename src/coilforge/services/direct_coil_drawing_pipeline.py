@@ -39,6 +39,8 @@ _COIL_TYPE = {"DX": CoilType.DX, "HGRH": CoilType.HGRH, "CWC": CoilType.CWC, "HW
 _PRODUCT = {
     "NOVA": ProductFamily.NOVA,
     "TERRA": ProductFamily.TERRA,
+    "TERRA_H": ProductFamily.TERRA_H,
+    "TERRA_V": ProductFamily.TERRA_V,
     "VENTUM_H": ProductFamily.VENTUM_H,
     "VENTUM_PLUS": ProductFamily.VENTUM_PLUS,
 }

@@ -399,10 +399,11 @@ def test_product_size_options_lists_the_four_product_lines() -> None:
 def test_terra_picker_labels_resolve_to_product_family_and_variant() -> None:
     from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 
-    # "TERRA H" -> resolved Terra H C; "TERRA V" -> Terra V; others unchanged.
-    assert resolve_product_line("TERRA H") == ("TERRA", "TERRA_H_C")
-    assert resolve_product_line("TERRA V") == ("TERRA", "TERRA_V")
-    assert resolve_product_line("TERRA") == ("TERRA", "TERRA_H_C")
+    # Terra split phase 2: the family is now the first-class TERRA_H / TERRA_V; the
+    # terra_variant still carries the H-C sub-variant. "TERRA V" -> Terra V; others unchanged.
+    assert resolve_product_line("TERRA H") == ("TERRA_H", "TERRA_H_C")
+    assert resolve_product_line("TERRA V") == ("TERRA_V", "TERRA_V")
+    assert resolve_product_line("TERRA") == ("TERRA_H", "TERRA_H_C")
     assert resolve_product_line("NOVA") == ("NOVA", None)
     assert resolve_product_line(None) == (None, None)
 
@@ -418,7 +419,7 @@ def test_terra_v_picker_selection_drives_engine_variant() -> None:
     req_v = build_header_request(
         coil_type="HGRH", product_type="TERRA V", unit_size="024", feeds=2, circuits=2
     )
-    assert req_v.product_type == ProductFamily.TERRA
+    assert req_v.product_type == ProductFamily.TERRA_V  # phase 2: first-class family
     assert req_v.terra_variant == TerraVariant.TERRA_V
     values_v = prepopulate(req_v).values
     assert values_v["supply_io"].value == 2.75  # R-046 (SOP, HIGH)
@@ -428,6 +429,7 @@ def test_terra_v_picker_selection_drives_engine_variant() -> None:
     req_h = build_header_request(
         coil_type="HGRH", product_type="TERRA H", unit_size="024", feeds=2, circuits=2
     )
+    assert req_h.product_type == ProductFamily.TERRA_H  # phase 2: first-class family
     assert req_h.terra_variant == TerraVariant.TERRA_H_C
     values_h = prepopulate(req_h).values
     assert values_h["supply_io"].value == 2  # R-040b (Terra H/H C, unchanged)

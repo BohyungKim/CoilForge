@@ -48,6 +48,15 @@ _DX_CWC_APPLICATION = {
 }
 
 
+def _coarse_terra_family(product_family: str) -> str:
+    """Collapse the split Terra families onto the coarse ``TERRA`` used as the key in
+    the R-077 / R-078 / application lookup tables. Terra split phase 2 emits the
+    first-class ``TERRA_H`` / ``TERRA_V`` product families; those tables are still
+    keyed by coarse ``TERRA``, so normalize ONLY for the lookup. The mechanical-fit
+    report keeps displaying the split family (``entry.product_family``)."""
+    return "TERRA" if product_family in ("TERRA_H", "TERRA_V") else product_family
+
+
 @dataclass(frozen=True)
 class FitCheck:
     """One directional fit verdict (width or height)."""
@@ -115,7 +124,7 @@ def _drain_pan_row(
     is TBD, Terra H C without an option, or an unknown size).
     """
     lookup = _rule_index()[_R077]["lookup"]
-    if product_family == ProductFamily.TERRA.value:
+    if _coarse_terra_family(product_family) == ProductFamily.TERRA.value:
         if not drain_pan_option:
             return None
         return lookup.get(f"TERRA|{drain_pan_option}")
@@ -139,7 +148,7 @@ def _fit_clearance_row(
             return None
         cls = size_class
     else:
-        cls = product_family
+        cls = _coarse_terra_family(product_family)
     return _rule_index()[_R078]["lookup"].get(f"{coil_type}|{cls}")
 
 
@@ -391,7 +400,7 @@ def build_coil_fit(
         # DX/HGRH/CWC application is deterministic per family (see _DX_CWC_APPLICATION);
         # derive it so R-074 casing dims resolve. HWC is ambiguous -> left as given.
         if application is None and engine_coil_type in ("DX", "HGRH", "CWC"):
-            application = _DX_CWC_APPLICATION.get(family)
+            application = _DX_CWC_APPLICATION.get(_coarse_terra_family(family))
         if application is not None:
             request = request.model_copy(update={"application": application})
         response = prepopulate(request)
@@ -599,7 +608,7 @@ def evaluate_drain_pan_fit(
         )
     row = _drain_pan_row(product_family, unit_size, drain_pan_option)
     if row is None:
-        if product_family == ProductFamily.TERRA.value and not drain_pan_option:
+        if _coarse_terra_family(product_family) == ProductFamily.TERRA.value and not drain_pan_option:
             reason = (
                 "Terra drain-pan width is keyed by option D1/D2/D3, which is not a "
                 "captured input — provide the drain-pan option to evaluate"

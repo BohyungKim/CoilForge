@@ -71,6 +71,23 @@ def test_dx_terra_uses_ch_for_height():
     assert res.height.available == 16.125 and res.height.verdict == "PASS"
 
 
+def test_terra_split_families_evaluate_via_coarse_lookup():
+    # Terra split phase 2: the resolver now emits TERRA_H / TERRA_V, and the R-078/R-077
+    # lookup tables are still keyed by coarse TERRA. The fit lookups must normalize the
+    # split family so a Terra V / Terra H coil evaluates identically to coarse TERRA
+    # (no silent CANNOT_EVALUATE regression).
+    kw = dict(
+        coil_type="DX", size_class=None,
+        casing_width=44, casing_height=20, fl=30, fh=99, ch=15, oal=None,
+    )
+    base = evaluate_coil_fit(product_family="TERRA", **kw)
+    for fam in ("TERRA_H", "TERRA_V"):
+        res = evaluate_coil_fit(product_family=fam, **kw)
+        assert res.width.verdict == base.width.verdict == "PASS", fam
+        assert res.width.margin == base.width.margin, fam
+        assert res.height.basis == "CH" and res.height.verdict == "PASS", fam
+
+
 def test_ventum_plus_dx_half_height():
     # R-074 VENTUM_PLUS|INTEGRATED|V20 => W=56.375 H=52 ; half-height: 52/2 - 8.25
     res = evaluate_coil_fit(
