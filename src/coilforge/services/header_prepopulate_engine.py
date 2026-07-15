@@ -268,6 +268,22 @@ def _condition_met(only_when: str, req: HeaderPrepopulateRequest) -> bool:
 def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     rules = load_rule_table()
     index = _rule_index()
+    # Terra split (phased): TERRA_H / TERRA_V are first-class product families that
+    # normalize onto the coarse TERRA family + terra_variant here at the engine entry.
+    # Every downstream rule (product_family: [TERRA]) and terra_variant branch then
+    # works unchanged. terra_variant, if already supplied, is never overridden.
+    if request.product_type in (ProductFamily.TERRA_H, ProductFamily.TERRA_V):
+        request = request.model_copy(
+            update={
+                "product_type": ProductFamily.TERRA,
+                "terra_variant": request.terra_variant
+                or (
+                    TerraVariant.TERRA_V
+                    if request.product_type == ProductFamily.TERRA_V
+                    else TerraVariant.TERRA_H
+                ),
+            }
+        )
     product = request.product_type
     coil = request.type_of_coil
 

@@ -65,6 +65,8 @@ def _in_values(resp, field):
 VALID_SIZE = {
     ProductFamily.NOVA: "B20",
     ProductFamily.TERRA: "024",
+    ProductFamily.TERRA_H: "024",
+    ProductFamily.TERRA_V: "060",
     ProductFamily.VENTUM_H: "H15",
     ProductFamily.VENTUM_PLUS: "V40",
 }
@@ -589,6 +591,40 @@ def test_distributor_extension_note_up_for_ventum_plus_dx_else_down() -> None:
     for coil in (CoilType.CWC, CoilType.HWC):
         water = prepopulate(_req(coil, ProductFamily.NOVA, "C30", feeds=2, rows=2))
         assert not any("Distributor" in n for n in water.values["notes"].value)
+
+
+def test_terra_split_phase1_new_families_normalize_to_terra_variant() -> None:
+    # Terra split (phased): TERRA_H / TERRA_V are first-class product families that
+    # normalize onto TERRA + terra_variant at the engine entry, so results are identical
+    # to the old (TERRA, terra_variant) form. Exercises the DX note/spacing path AND the
+    # CWC direct-check path (product == ProductFamily.TERRA branches).
+    def vals(r):
+        return {k: r.values[k].value for k in r.values}
+
+    # Terra V DX
+    assert vals(prepopulate(_req(CoilType.DX, ProductFamily.TERRA_V, "060"))) == vals(
+        prepopulate(
+            _req(CoilType.DX, ProductFamily.TERRA, "060", terra_variant=TerraVariant.TERRA_V)
+        )
+    )
+    # Terra H DX (H is the default variant)
+    assert vals(prepopulate(_req(CoilType.DX, ProductFamily.TERRA_H, "024"))) == vals(
+        prepopulate(_req(CoilType.DX, ProductFamily.TERRA, "024"))
+    )
+    # Terra V CWC — hits the product == ProductFamily.TERRA direct checks (R-061v/R-065v)
+    assert vals(prepopulate(_req(CoilType.CWC, ProductFamily.TERRA_V, "060", feeds=2, rows=2))) == vals(
+        prepopulate(
+            _req(
+                CoilType.CWC, ProductFamily.TERRA, "060",
+                terra_variant=TerraVariant.TERRA_V, feeds=2, rows=2,
+            )
+        )
+    )
+    # An explicit TERRA_H_C sub-variant is preserved (never overridden by normalization).
+    hc = prepopulate(
+        _req(CoilType.DX, ProductFamily.TERRA_H, "024", terra_variant=TerraVariant.TERRA_H_C)
+    )
+    assert hc.values["notes"].value[-1] == DX_DIST_NOTE_DOWN
 
 
 def test_t18_dx_nova_hot_gas_bypass() -> None:

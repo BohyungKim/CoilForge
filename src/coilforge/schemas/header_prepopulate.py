@@ -34,10 +34,19 @@ class ProductFamily(str, Enum):
 
     distinguishes Terra H / Terra H C / Terra V and W-Ctrl vs D-Ctrl, which is
     why Terra-variant-dependent rules are gated behind ``terra_variant``.
+
+    Terra split (phased, John 2026-07-14): ``TERRA_H`` and ``TERRA_V`` are the
+    first-class target families. Phase 1 accepts them as valid ``product_type``
+    inputs and normalizes them onto ``TERRA`` + ``terra_variant`` at the engine
+    entry (``prepopulate``), so every ``[TERRA]``-scoped rule and ``terra_variant``
+    branch keeps working unchanged. Later phases relink rules to key on
+    ``TERRA_H`` / ``TERRA_V`` natively and retire the coarse ``TERRA``.
     """
 
     NOVA = "NOVA"
     TERRA = "TERRA"
+    TERRA_H = "TERRA_H"
+    TERRA_V = "TERRA_V"
     VENTUM_H = "VENTUM_H"
     VENTUM_PLUS = "VENTUM_PLUS"
 
