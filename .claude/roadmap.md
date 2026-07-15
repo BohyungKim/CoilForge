@@ -40,7 +40,12 @@
     `TERRA`+`terra_variant`로 정규화(model_copy). 모든 `[TERRA]` 룰·`product==TERRA` 직접검사(R-061v/R-065v)·
     R-076 size_key·terra_variant 분기 전부 무변경 동작; `TERRA_H_C` 서브변형 보존. 신·구 형태 결과 동일성
     테스트로 검증(DX 노트/스페이싱 + CWC 직접검사 경로), 829 green. **파운데이션만** — resolver는 아직 TERRA 발화.
-  - [ ] Phase 2 — resolver(`build_header_request`/`detect_product_and_size`)가 TERRA_H/TERRA_V를 **발화**하도록
-    (product_type가 템플릿·UI로 흐름 → 드로잉 경로 영향, 신중히) + `[TERRA]` 룰을 `[TERRA_H,TERRA_V]`로 점진 리키
-  - [ ] Phase 3 — coarse `TERRA` 은퇴 + 정규화 셔틀 제거 (최종 목표상태)
+  - [x] **Phase 2 (6bc5c76)** — resolver가 TERRA_H/TERRA_V를 **발화**(`_PRODUCT_LINE_RESOLUTION` family 요소 +
+    `_PRODUCT` 키 2개). blast radius 검증 결과 외부 직접 판독자는 `mechanical_fit`뿐(`request.product_type.value`를
+    정규화 前 읽어 R-077/R-078/application을 TERRA-키로 조회) → `_coarse_terra_family()` 헬퍼로 **조회 내부에서만**
+    정규화(리포트 display는 TERRA_H/TERRA_V 유지=구분 노출). 나머지(템플릿 선택·R-076/74/77 키·omission gate·UI·CCSI·
+    스키마) 전부 SAFE(엔진 정규화 셔틀 덕). YAML·픽스처 변경 0건. 적대적 재검토(GO-WITH-CHANGES)로 테스트 라인 정정 +
+    정규화를 lookup 헬퍼로 이동. 830 green.
+  - [ ] Phase 3 — `[TERRA]` 룰 25개를 `[TERRA_H,TERRA_V]`로 리키(10 TERRA-only, 3 multi-family, 12 variant-scoped=게이트 탈피
+    가능) + 엔진 테스트 ~22 사이트 마이그레이션 + coarse `TERRA` 은퇴 + 정규화 셔틀을 group-aware `_applies`로 진화 (최종 목표상태)
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
