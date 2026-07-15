@@ -35,8 +35,12 @@
 - [ ] 템플릿 eyeball 사인오프 — Ventum+ 11 + 공용 10, 실제 프로젝트 진행하며 확인 (MVP §1·§4)
 - [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
 - [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향
-- [ ] **Terra 스플릿 [EXT] ← 다음 구현 대상** — `ProductFamily.TERRA` → `TERRA_H` + `TERRA_V`
-  (Terra H C = Terra H 하위변형), CLAUDE.md "Current code vs target" 표 첫 행. 착수 전 스코프
-  플랜 필요(enum + `terra_variant` 게이트 + R-076/R-074 분기 + ~다수 룰의 `product_family: [TERRA]`
-  리키 + 골든픽스처 churn). John 요청 2026-07-14.
+- [~] **Terra 스플릿 [EXT] — 점진적 병행 (John 2026-07-14 방식 확정)** — `TERRA` → `TERRA_H` + `TERRA_V`
+  - [x] **Phase 1 (9be71fe)** — `TERRA_H`/`TERRA_V`를 1급 `ProductFamily`로 추가 + `prepopulate` 진입점에서
+    `TERRA`+`terra_variant`로 정규화(model_copy). 모든 `[TERRA]` 룰·`product==TERRA` 직접검사(R-061v/R-065v)·
+    R-076 size_key·terra_variant 분기 전부 무변경 동작; `TERRA_H_C` 서브변형 보존. 신·구 형태 결과 동일성
+    테스트로 검증(DX 노트/스페이싱 + CWC 직접검사 경로), 829 green. **파운데이션만** — resolver는 아직 TERRA 발화.
+  - [ ] Phase 2 — resolver(`build_header_request`/`detect_product_and_size`)가 TERRA_H/TERRA_V를 **발화**하도록
+    (product_type가 템플릿·UI로 흐름 → 드로잉 경로 영향, 신중히) + `[TERRA]` 룰을 `[TERRA_H,TERRA_V]`로 점진 리키
+  - [ ] Phase 3 — coarse `TERRA` 은퇴 + 정규화 셔틀 제거 (최종 목표상태)
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
