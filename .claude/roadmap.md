@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-14
+> 마지막 갱신: 2026-07-14 (Drawing Notes 자동채움 완료)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -22,6 +22,8 @@
 - [x] Coil Checklist 자동화 (b8b2168) — analyze 시 백그라운드 자동채움(기본ON 토글, 수동 "Fill" 버튼 제거) + sha1(pdf_bytes) 캐시로 finalize 이중 Excel COM 제거; `_run_or_reuse_checklist`/`_CHECKLIST_CACHE`(analyze↔finalize source_id 무관 공유), 신규 10테스트+818 green, invariant-guard clean(WARN 2건 수정), 실서버 실측 270.3s→0.053s 재사용 + 브라우저 자동채움 실증 · **John eyeball 확인 완료(2026-07-14)** 🆕 이번 세션
 - [x] 미시드 Ventum+ DX = not-registered 차단 (003928f, John 2026-07-14) — 미시드 Ventum+ DX가 공유 ConnectionDOWN 템플릿으로 폴백하던 걸 차단(R-032 UP를 공용이 못 그림); `_gate_unseeded_ventum_plus_dx`(DX 전용, 비-DX는 공유 폴백 유지), 시드 DX는 전용 UP 그대로; 테스트 2건 갱신+818 green, CLAUDE.md+위키 3파일 정정, 런타임 eyeball 확인 · **John 브라우저 확인 완료(2026-07-14)** 🆕 이번 세션
 - [x] Analyze 진행 표시 = 확정형 % 바 + 단계명 (10544f1, John 요청 2026-07-14) — 회전 스피너+고정문구를 초록 % 바+단계 라벨(Extracting→Cover rows→Coil sections→Product line→Building drawing)로 교체; 백엔드는 단일 블로킹 POST라 클라 `pdfProgress` 트리클(92% 상한 감속, 결과 그리드가 카드 대체=완료, 강제100% 없음); 덤으로 John 스크린샷이 가리킨 빈 초록 띠 버그 수정(`#brain-case-banner[hidden]{display:none}` — `display:grid`가 UA `[hidden]`을 덮던 것); 실 27p submittal 라이브 검증(57%→89%→코일2개 결과), 라이트/다크 정상, 826 green · **John 라이브 확인(2026-07-14)** 🆕 이번 세션
+- [x] 커버리지 대시보드 생성기 (16b0852) — 수기 HTML → `scripts/generate_coverage_dashboard.py`가 `catalog.list_template_entries()`에서 자동생성(+`--check` 드리프트 가드, CI에서 인코딩된 MVP 택소노미와 라이브 SHARED 버킷 불일치 시 실패) 🆕 이번 세션
+- [x] Drawing Notes 자동채움 (4b6d29f, John 확정 차트 2026-07-14) — "Drawing Notes" 필드가 (제품군×코일타입)으로 자동채움; 엔진이 이미 조립하던 노트(R-007/008/080/081)를 폼필드+검토용 SVG에 배선 + **신규 R-035a/b 분배기 노트**('Distributor 6" Extension Upwards' Ventum+ DX=R-032 UP 미러 / '...Downwards' 그 외 DX=R-031 DOWN 미러, 상호배타 2룰 → DX당 정확히 1개). `assemble_drawing_notes` 헬퍼 + `_NOTES_APPEND_IDS`/루프 등록; 엔진노트를 **기존** `distributor_notes`의 CANONICAL 사본에 주입(신규 레지스트리 필드 없음=52필드 표면 무churn) — 도면 렌더러는 slot.DISTRIBUTORS를 raw candidate/typed draft에서 읽으므로 분배기 콜아웃 오염 없음; product-gated(제품/사이즈 미상 시 공란, 무발명). 828 green, 착수 전 adversarial 재검토가 블로커 2건 포착·정정. ⚠️ **미결**: DX template.svg의 NOTES는 하드코딩("Copper Straps Required", `{{slot.NOTES}}` 플레이스홀더 없음)이라 신규 노트가 템플릿 도면엔 미표시 — 재시드(DO-NOT-TOUCH) 필요, John 판정 대기 🆕 이번 세션
 
 ## ▶️ 지금
 - [ ] MVP 사인오프 마무리 — 파라미터 완전성 감사(Stage 2b) — 다음 걸음:
@@ -33,6 +35,8 @@
 - [ ] 템플릿 eyeball 사인오프 — Ventum+ 11 + 공용 10, 실제 프로젝트 진행하며 확인 (MVP §1·§4)
 - [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
 - [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향
-- [ ] Terra 스플릿 [EXT] — TERRA → TERRA_H + TERRA_V (Terra H C = 하위변형), ~15룰 리키
-- [ ] 커버리지 대시보드 생성기 [EXT] — 수기 HTML → catalog.list_template_entries() 자동생성
+- [ ] **Terra 스플릿 [EXT] ← 다음 구현 대상** — `ProductFamily.TERRA` → `TERRA_H` + `TERRA_V`
+  (Terra H C = Terra H 하위변형), CLAUDE.md "Current code vs target" 표 첫 행. 착수 전 스코프
+  플랜 필요(enum + `terra_variant` 게이트 + R-076/R-074 분기 + ~다수 룰의 `product_family: [TERRA]`
+  리키 + 골든픽스처 churn). John 요청 2026-07-14.
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
