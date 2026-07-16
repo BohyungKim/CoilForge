@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-16 (Capture Ledger 1b `correction` 완료 — before→after 교정 캡처, 1c 대기[seam=A])
+> 마지막 갱신: 2026-07-16 (Ambient Dynamics 서플라이어 확장 완료 — quote comparison + Coil Utilities 테이블; 별개 트랙. 주 트랙은 Capture Ledger 1b 완료·1c 대기[seam=A])
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -101,6 +101,18 @@
   **5라운드 독립 플랜검토(HIGH 2→0 수렴)** 후 착수. 계획서 `~/.claude/plans/1b-1c-1d-snazzy-lemur.md`.
   ⚠️ 커밋은 Ambient Dynamics(동시 세션) 제외 hunk 격리. 🆕 이번 세션
 
+- [x] **[별개 트랙] Ambient Dynamics quick-ship 서플라이어 확장 (e30c36f, 2026-07-16)** — Direct Coil(기본)
+  vs Ambient 선택 축. Ambient는 도면생성이 아니라 **성능 검증** 워크플로: Ambient 회신 Performance PDF 파싱 →
+  baseline submittal과 coil별 비교 → capacity/coil-volume을 **Coil Utilities acceptance 밴드**로 판정.
+  Direct Coil 경로 byte-identical(신규 패키지+신규 라우트만). **`coil_utilities/` 재사용 내부 테이블** —
+  `Coil Utilities - HWC DX.xlsx`에서 이식(R32 14-킷 EKEXVA→tonnage capacity/volume 밴드, circuits 스케일,
+  geometry 엔진, heating 용량식, Allowable Ranges; R410a는 상수 미확보로 빈 TODO=invent 금지). `ambient/`
+  (pdf_intake Btu/hr→MBH·degraded-OCR 방어, model/mapping/compare category-keyed+whole-coil not_compared,
+  range_provider baseline→Ambient 폴백, rfq). web: `/api/ambient/compare`(multipart)·`/rfq`·`COILFORGE_AMBIENT`
+  킬스위치·supplier 토글+green/red/grey 패널. `_match` keyword-only 확장(byte-safe). **독립 재검토 2라운드**
+  (HIGH 2+MEDIUM 3+LOW 1 전건 반영) + **실 2975 데이터 브라우저 눈 확인**(FPI 10 vs 9 mismatch, Capacity/Volume
+  Range in-band green). 963 green(+34). 계획서 `~/.claude/plans/ambient-cozy-barto.md`. 🆕 이번 세션
+
 ## ▶️ 지금
 - [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
   `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). **seam=A 확정(John 2026-07-16):** Tier-A-fill
@@ -155,4 +167,10 @@
     **재개 트리거:** 템플릿 선택이 Terra H/V로 갈라져야 하거나, Terra V 전용 casing/water 레퍼런스가 시드돼 variant가
     first-class 표현을 실제로 요구할 때 — 그 작업과 묶어 원자적으로. (리키 분류: 단순치환 5 / variant 1:1 12 / 주의 8 —
     상세는 memory `terra_split_phased.md`.)
+- [ ] **[Ambient 트랙] Phase 6 엑셀 write-back** (`ambient/excel_writer.py`) — 실제 `Coilmaster-Ambiant
+  Dynamics Coil Comparison.xlsx` 템플릿 라벨/열 전사 필요(**John 제공 대기**). `checklist/excel_writer.py` 미러.
+- [ ] **[Ambient 트랙] Material 문자열 false-positive 정규화** — baseline이 `"Copper - 0.016 Plain"`처럼
+  재질+두께+표면을 한 문자열로 저장 → Ambient `"Copper"`와 differ(정직하나 노이즈). 재질 토큰만 비교(John 확인).
+- [ ] **[Ambient 트랙] circuits 검출 + baseline 용량 소스 + % 허용오차 확정** — 현재 circuits 기본 1,
+  킷 선택 Ambient 폴백, review-only tolerance. John 결정 후 정밀화. (상세: `docs/SESSION_LOG.md` 2026-07-16)
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류

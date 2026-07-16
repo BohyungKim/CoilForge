@@ -5,6 +5,31 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-07-16 (Toronto) · base 5573f05..e30c36f · claude/ambient-supplier
+### ✅ 구현/결정된 것
+- **Ambient Dynamics quick-ship 서플라이어 확장** — Direct Coil(기본) vs Ambient 선택 축. Ambient는 성능 검증 워크플로: Ambient 회신 Performance PDF를 파싱해 baseline submittal과 coil별 비교, capacity/coil-volume을 Coil Utilities acceptance 밴드로 판정. Direct Coil 경로 byte-identical. (커밋 `e30c36f`, 25 files +2251, 963 tests pass — 929→963 +34)
+- **`coil_utilities/` 재사용 내부 테이블** — `Coil Utilities - HWC DX.xlsx`에서 이식: R32 14-킷 capacity/coil-volume 밴드(EKEXVA 킷→tonnage, circuits 스케일), geometry 엔진(volume/passes/drop-tubes/face-area), heating 용량식, Allowable Ranges 기준. R410a는 상수 미확보 → **빈 TODO(invent 금지)**. (`charts.py`/`geometry.py`/`ranges.py`, `test_coil_utilities.py`)
+- **`ambient/`** — `pdf_intake`(DX/Condensing Report 파서, Btu/hr→MBH 단위 감지, degraded-OCR 방어), `model`/`mapping`/`compare`(태그 페어링, category-keyed, whole-coil 불일치 `not_compared_reason`), `range_provider`(baseline 용량→킷, 없으면 Ambient 폴백), `rfq`(성능 타깃 요약).
+- web: `POST /api/ambient/compare`(multipart baseline+ambient), `/api/ambient/rfq`, `COILFORGE_AMBIENT` kill-switch; supplier 토글 + green/red/grey 패널.
+- `checklist/compare._match` 확장(keyword-only `tol`/`rel_tol`, 기존 positional 호출 byte-safe).
+- **실제 2975 데이터 브라우저 눈 확인**: FPI 10 vs 9 mismatch 포착, Capacity Range 171.5∈[169,189]·Coil Volume Range 363.6∈[287,778] green match.
+- 독립 재검토 게이트 통과(HIGH-1 multipart·HIGH-2 OCR·MEDIUM-1 단위감지·MEDIUM-2 whole-coil·MEDIUM-3 kill-switch·LOW-2 category-keyed 전부 반영).
+
+### ⏭️ 다음 스텝
+- [ ] **Material 문자열 false-positive 정규화** — baseline이 `"Copper - 0.016 Plain"`/`"Aluminum 0.008"`처럼 재질+두께+표면을 한 문자열로 저장 → Ambient `"Copper"`/`"Aluminum"`과 `differ`로 뜸. **정직한 차이지만 노이즈** — 재질 토큰만 비교하도록 정규화 필요(John 확인: 어디까지 무시할지). 위치: `ambient/compare.py` 또는 `mapping.py` string 필드 처리.
+- [ ] **Phase 6 엑셀 write-back** (`ambient/excel_writer.py`) — 실제 `<proj> - Coilmaster-Ambiant Dynamics Coil Comparison.xlsx` 템플릿의 라벨/열 전사 필요(**John 제공 대기**). `checklist/excel_writer.py` 미러(DispatchEx 격리, SaveCopyAs Downloads, C열 baseline/D열 Ambient, Range·Volume 공식 셀 미변경).
+- [ ] **circuits 검출** — 현재 기본 1. Ambient `System Type Intertwined (x2)` 파싱 미구현 → 멀티서킷 밴드 스케일 부정확 가능.
+- [ ] **baseline 용량 소스 결정** — Oxygen8 submittal은 per-coil 용량 미파싱 → 킷 선택이 Ambient 폴백. Coilmaster EZ-Coil PDF를 baseline으로 쓸지 / 파싱 확장할지 John 결정.
+- [ ] **% 허용오차 확정** — 현재 review-only 기본값(capacity ±2%, PD ±5%, temp ±0.5°F). John 확정 필요.
+- [ ] **R410a 차트 전 컬럼 전사** — 필요 시(현재 R32만; R410a 빈 TODO).
+- [ ] **다음 리뷰 포인트**: `coilforge-invariant-guard`로 이 diff 재검토 권장(three-layer/never-invent/gated-slot 확인). 커밋은 됐으니 리뷰는 사후.
+
+### 🔎 Resume anchors
+- branch: `claude/ambient-supplier` · HEAD: `e30c36f7e90e9b8bdb5c873329991b7c89a6ae40` · 미커밋: 없음(내 파일)
+- ⚠️ 워킹트리 나머지(`services/direct_coil_drawing_pipeline.py`의 HGRH 파라미터, `.agents/`, `.codex/`)는 **동시세션/기존 소유 — 내 것 아님**, 커밋에서 제외함.
+- 핵심 경로: `src/coilforge/coil_utilities/`, `src/coilforge/ambient/`, `web/{index.html,app.js,style.css}`, `web_app.py` `/api/ambient/*`
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ambient-cozy-barto.md` · 소스 워크북 `Coil Utilities - HWC DX.xlsx` · 예시 프로젝트 2975(baseline=DirectCoil REV1, ambient=Downloads Ambient PDF)
+
 ## 2026-07-04 (Toronto) · Tier 1 BUILT (T1+T2+T3, CCSI quote-revision workflow) · base `11d1c7b..4d46013` · claude/ccsi-autofill
 ### ✅ 구현/결정된 것
 - **Tier 1 전체 빌드 — John의 CCSI 견적-리비전 워크플로우를 confirm-gated 스킬 체인으로.** 5개 스킬: `/ccsi-fill`(push) · `/ccsi-compare`(compare) · `/ccsi-sync-all`(T1 멀티코일) · `/ccsi-rfo`(T2 프로젝트 nav) · `/ccsi-revise`(T3 마무리).
