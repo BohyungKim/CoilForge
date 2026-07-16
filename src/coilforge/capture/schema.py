@@ -199,8 +199,38 @@ _M1_INITIAL = (
     "CREATE INDEX ix_capture_error_ts ON capture_error(ts_utc)",
 )
 
+# The correction half of the (input -> proposal -> correction) triple (1b). The
+# machine's pre-override "before" value is NOT stored raw -- it is recomputed
+# deterministically by re-resolving the drawing-param panel WITHOUT the Tier-B
+# overrides (parameter_set_from_template_drawing over the same slot_values, which
+# the panel-only overrides never mutate). One row per field a human actually
+# changed: previous == machine proposal, new == the manual override.
+_M2_CORRECTION = (
+    """
+    CREATE TABLE correction (
+        correction_id       INTEGER PRIMARY KEY,
+        run_id              TEXT NOT NULL,
+        coil_uid            TEXT NOT NULL,
+        field_key           TEXT NOT NULL,
+        stage               TEXT NOT NULL,
+        previous_value_json TEXT,
+        previous_value_num  REAL,
+        previous_mode       TEXT,
+        new_value_json      TEXT,
+        new_value_num       REAL,
+        new_mode            TEXT,
+        override_reason     TEXT,
+        evidence_json       TEXT
+    )
+    """,
+    "CREATE INDEX ix_correction_coil ON correction(coil_uid)",
+    "CREATE INDEX ix_correction_field ON correction(field_key)",
+    "CREATE INDEX ix_correction_run ON correction(run_id)",
+)
+
 # (description, statements). Index + 1 == PRAGMA user_version after it applies.
 # APPEND ONLY -- never edit or remove an entry that has shipped.
 MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("initial capture ledger (1a)", _M1_INITIAL),
+    ("correction table (1b)", _M2_CORRECTION),
 )

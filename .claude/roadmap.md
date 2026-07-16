@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-16 (Capture Ledger 5a·5b·5c 완료 — 원장+저널복구+compare캡처, 1b 대기)
+> 마지막 갱신: 2026-07-16 (Capture Ledger 1b `correction` 완료 — before→after 교정 캡처, 1c 대기[seam=A])
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -90,14 +90,24 @@
   라이브: mechanical-fit 6행(tag+PASS), ccsi 2행(NULL+match/mismatch, R 3.317 vs 1.3125 실사례), run
   coil_count 0, capture_error 0. **감사 BLOCKER 0**, NIT 2건(drain_pan label=partner_tag / 죽은 enum 제거) 수정. 🆕 이번 세션
 
+## ✅ 완료 (이어서)
+- [x] **1b — D2 `previous_value` 복구 (2026-07-16)** — Tier-B 수동 override의 (before→after) 교정을 `correction`
+  테이블(M2)에 기록. before는 저장 없이 `parameter_set_from_template_drawing`을 override 없이 재호출해
+  결정론적 재계산(Tier-B는 panel-only라 slot_values 무변경 → baseline 재현 성립). 훅은 `capture_milestone`의
+  per-view 루프(coil_uid 발급 지점), `view.params`의 `mode=="manual"` 키로 교정 식별 + `circuits` 스레딩
+  (previous_mode 정확성), `_correction_rows`는 자체 예외를 삼켜 `[]` 반환(마일스톤 전체 유실 방지, `.get`으로
+  KeyError 원천 차단). **962 green**(+4 테스트), invariant-guard clean(BLOCKER/HIGH/MEDIUM 0), **헤드리스
+  라이브**: `/api/coil-drawing/derive` CD override → `correction` 행 `5.5(default)→3.25(manual)`, capture_error 0.
+  **5라운드 독립 플랜검토(HIGH 2→0 수렴)** 후 착수. 계획서 `~/.claude/plans/1b-1c-1d-snazzy-lemur.md`.
+  ⚠️ 커밋은 Ambient Dynamics(동시 세션) 제외 hunk 격리. 🆕 이번 세션
+
 ## ▶️ 지금
-- [ ] **1b — D2 `previous_value` 복구** (**1단계 필수** — 그 전 correction은 "무엇을→무엇으로"의 절반이
-  영구히 빈다). 다음 걸음: H4 + Tier-B baseline = `parameter_set_from_template_drawing`을 overrides 없이
-  재호출(멀티헤더/ZD 자동해결, rev4에서 실증) + `correction` 테이블 + `DrawingParameter.mode` 재사용.
-- [ ] **1a′ (분리됨)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
-  `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
-  `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). 착수 전 phase5 워크트리 병합 여부 확인
+  `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). **seam=A 확정(John 2026-07-16):** Tier-A-fill
+  derive 단독 캡처로 시작, PDF-analyze 엔진 confidence는 out-of-scope(코퍼스 얇으면 C=비동결 래퍼 파리티 증명).
+  착수 전 phase5 워크트리 병합 여부 확인(미병합 → `rule_id` 기본값 필수).
+- [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
+  `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [ ] **1d** — `/api/capture/health` + `run_dedup` 뷰 + `scripts/replay_run.py`(Time Machine) +
   **랜덤 감사 샘플 추출기**(주당 3~5코일 — 4단계 소비지만 *시간이 만드는 데이터*라 1단계 착수)
 - [ ] **2단계 Case Retrieval** (~2주, n≥50) — "이 코일 전에 본 적 있어?" 21필드 최근접이웃으로 John의

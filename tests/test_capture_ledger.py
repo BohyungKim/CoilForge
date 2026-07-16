@@ -503,3 +503,111 @@ def test_journal_outcome_is_recorded_on_the_run(ledger, monkeypatch, tmp_path):
     assert any(e["event_id"] == event_id for e in events), "run must link a real JSONL line"
     (coil_line,) = [e for e in events if e["value"]["milestone"] == "coil_manual_fill"]
     assert coil_line["value"]["coil_tags"] == ["CDXC-1"], "the singular /derive tag must survive"
+
+
+# --- 1b: correction capture (previous_value recovery) ------------------------
+
+def _derive_with_override(*, panel, slot_values, circuits=None):
+    """A /derive-shaped result: the result IS the template_drawing, with a
+    drawing_parameter_set whose overridden fields carry mode=='manual' (exactly what
+    parameter_set_from_template_drawing stamps on a Tier-B override)."""
+    result = {
+        "extracted": {"coil_category": "DX", "tag": "CDXC-1"},
+        "product_type": "TERRA H",
+        "unit_size": "040",
+        "slot_values": slot_values,
+        "slot_sources": {},
+        "drawing_parameter_set": {"parameters": panel, "preview_allowed": True},
+    }
+    payload = {"tag": "CDXC-1"}
+    if circuits is not None:
+        payload["circuits"] = circuits
+    return result, payload
+
+
+def test_correction_captures_tier_b_before_and_after(ledger):
+    """The correction half of the triple: a Tier-B override records BOTH the machine
+    proposal (previous) and the human value (new). The 'before' is not stored raw —
+    it is recomputed by re-resolving the panel WITHOUT overrides, which is
+    deterministic because Tier-B is panel-only and never mutates slot_values."""
+    panel = {
+        "R": {"key": "R", "value": 3.5, "mode": "manual", "status": "review_required",
+              "review_required": True, "blocked_reason": None, "source_evidence": [], "unit": "in"},
+        "CD": {"key": "CD", "value": 5.5, "mode": "default", "status": "review_required",
+               "review_required": True, "source_evidence": []},
+    }
+    # slot.R2 is R's representative slot -> baseline R re-resolves to 0.5 (machine value).
+    result, payload = _derive_with_override(
+        panel=panel, slot_values={"slot.R2": 0.5, "slot.CD": 5.5, "slot.TAG": "CDXC-1"},
+    )
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+
+    rows = _rows(
+        ledger,
+        "SELECT field_key, previous_value_num, previous_mode, new_value_num, new_mode"
+        " FROM correction",
+    )
+    # Only R was overridden (mode=='manual'); CD stayed 'default' -> not a correction.
+    assert rows == [("R", 0.5, "default", 3.5, "manual")]
+
+
+def test_no_override_writes_no_correction(ledger):
+    """A derive with no Tier-B override (no manual-mode panel field) writes no
+    correction rows — the table only holds fields a human actually changed."""
+    panel = {"CD": {"key": "CD", "value": 5.5, "mode": "default", "status": "review_required",
+                    "review_required": True, "source_evidence": []}}
+    result, payload = _derive_with_override(panel=panel, slot_values={"slot.CD": 5.5})
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+    assert _rows(ledger, "SELECT COUNT(*) FROM correction")[0][0] == 0
+
+
+def test_correction_survives_missing_baseline(ledger, monkeypatch):
+    """A recompute failure must degrade to no correction row, never propagate. It
+    runs inside capture_milestone's single pre-transaction build, so an exception
+    would sink the WHOLE milestone — including the human 'after' values already built
+    for field_observation. Failure -> [] + a capture_error row (never silent)."""
+    from coilforge.services import drawing_param_resolver
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("baseline recompute failed")
+
+    monkeypatch.setattr(drawing_param_resolver, "parameter_set_from_template_drawing", _boom)
+
+    panel = {"R": {"key": "R", "value": 3.5, "mode": "manual", "status": "review_required",
+                   "review_required": True, "source_evidence": []}}
+    result, payload = _derive_with_override(panel=panel, slot_values={"slot.R2": 0.5})
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+
+    # No correction row, but the request survived and the human "after" value is kept.
+    assert _rows(ledger, "SELECT COUNT(*) FROM correction")[0][0] == 0
+    after = _rows(
+        ledger,
+        "SELECT value_num FROM field_observation WHERE stage='drawing_param' AND field_key='R'",
+    )
+    assert after == [(3.5,)]
+    # The failure was logged, not swallowed silently.
+    assert _rows(ledger, "SELECT COUNT(*) FROM capture_error")[0][0] >= 1
+
+
+def test_multi_header_override_previous_uses_circuits(ledger):
+    """A multi-header override (I2) is surfaced only when circuits raises the header
+    count above what the slots imply. The baseline recompute must thread the SAME
+    circuits the live derive used, or the baseline has no I2 and previous_mode reads
+    None instead of the real 'blocked' the machine panel showed. (previous_value stays
+    None either way — the resolver uses .get, so the correction set is never dropped;
+    circuits' load-bearing effect here is previous_mode fidelity.)"""
+    panel = {"I2": {"key": "I2", "value": 2.0, "mode": "manual", "status": "review_required",
+                    "review_required": True, "source_evidence": []}}
+    # Only header-1 slots -> slot-inferred header count == 1; circuits=2 raises it so
+    # the baseline surfaces I2 as a blocked (engine-underived) field.
+    result, payload = _derive_with_override(
+        panel=panel, slot_values={"slot.I1": 1.0, "slot.R2": 0.5}, circuits=2,
+    )
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+
+    (row,) = _rows(
+        ledger,
+        "SELECT field_key, previous_value_num, previous_mode, new_value_num FROM correction",
+    )
+    # previous_mode=='blocked' proves circuits was threaded; None would mean it wasn't.
+    assert row == ("I2", None, "blocked", 2.0)

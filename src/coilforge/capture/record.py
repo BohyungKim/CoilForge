@@ -346,6 +346,77 @@ def _compare_rows(run_id: str, compare: dict[str, Any]) -> list[tuple]:
     return rows
 
 
+def _correction_rows(
+    run_id: str, coil_uid: str, view: _CoilView, circuits: Any
+) -> list[tuple]:
+    """The correction half of the triple (1b): one row per drawing-param field a
+    human actually overrode.
+
+    ``view.params`` is the review panel WITH the Tier-B overrides applied, so a field
+    carrying ``mode == "manual"`` is exactly a human override. ``previous`` is the
+    machine value from re-resolving the panel WITHOUT overrides — deterministic,
+    because Tier-B is panel-only and never mutates ``slot_values`` (so the override-
+    free re-resolve reproduces the pre-override proposal). No "before" value is stored
+    raw; it is recomputed.
+
+    ``circuits`` MUST match the live derive (``spec.get("circuits") or 1``) so the
+    baseline surfaces the SAME multi-header keys (I2/S2…) the panel did — without it a
+    baseline lookup of an unraised header key is absent and a real correction is lost.
+
+    NEVER propagates: ``parameter_set_from_template_drawing`` can raise, and this runs
+    inside ``capture_milestone``'s single pre-transaction build, so an exception here
+    would sink the WHOLE milestone — including the human "after" values already built
+    for ``field_observation``. Any failure -> ``[]`` (a missing correction, never a
+    lost run).
+    """
+    try:
+        panel = view.params.get("parameters") or {}
+        overridden = {
+            key: param
+            for key, param in panel.items()
+            if isinstance(param, dict) and param.get("mode") == "manual"
+        }
+        if not overridden:
+            return []
+
+        from coilforge.services.drawing_param_resolver import (
+            parameter_set_from_template_drawing,
+        )
+
+        try:
+            circuits_int = int(circuits) if circuits else None
+        except (TypeError, ValueError):
+            circuits_int = None
+        baseline = parameter_set_from_template_drawing(
+            view.td, circuits=circuits_int
+        ).parameters
+
+        rows: list[tuple] = []
+        for key, param in overridden.items():
+            new_value = param.get("value")
+            base = baseline.get(key)
+            prev_value = base.value if base is not None else None
+            prev_mode = base.mode if base is not None else None
+            # An override that matches the machine value is not a correction.
+            if prev_value == new_value:
+                continue
+            rows.append(
+                (
+                    run_id, coil_uid, key, "drawing_param",
+                    _json(prev_value), _num(prev_value), prev_mode,
+                    _json(new_value), _num(new_value), param.get("mode"),
+                    None,  # override_reason: not carried on the panel param dict
+                    _json(param.get("source_evidence")),
+                )
+            )
+        return rows
+    except Exception as exc:  # noqa: BLE001 — a correction bug must not sink the run
+        db.record_error(
+            f"correction_rows:{run_id}", f"{type(exc).__name__}: {exc}", run_id=run_id
+        )
+        return []
+
+
 def capture_milestone(
     milestone: str,
     *,
@@ -419,7 +490,14 @@ def capture_milestone(
             None,
         )
 
+        # Corrections (1b) are captured only on the manual-fill milestone, where the
+        # panel already carries the human overrides (mode=="manual"). circuits comes
+        # from the same source the live derive used (spec.get("circuits")).
+        capture_corrections = milestone == "coil_manual_fill"
+        circuits_hint = payload.get("circuits")
+
         coil_rows, field_rows, artifact_rows, input_rows = [], [], [], []
+        correction_rows: list[tuple] = []
         coil_uids: list[str] = []
         for view in views:
             coil_uid = uuid.uuid4().hex
@@ -428,6 +506,10 @@ def capture_milestone(
             field_rows.extend(_field_rows(run_id, coil_uid, view))
             artifact_rows.extend(_artifact_rows(run_id, coil_uid, view))
             input_rows.extend(_input_rows(run_id, view))
+            if capture_corrections:
+                correction_rows.extend(
+                    _correction_rows(run_id, coil_uid, view, circuits_hint)
+                )
 
         if pdf_bytes:
             artifact_rows.append(
@@ -491,6 +573,14 @@ def capture_milestone(
                         " key, slot, label, left_json, right_json, verdict)"
                         " VALUES (" + ",".join("?" * 9) + ")",
                         compare_rows,
+                    )
+                if correction_rows:
+                    conn.executemany(
+                        "INSERT INTO correction (run_id, coil_uid, field_key, stage,"
+                        " previous_value_json, previous_value_num, previous_mode,"
+                        " new_value_json, new_value_num, new_mode, override_reason,"
+                        " evidence_json) VALUES (" + ",".join("?" * 12) + ")",
+                        correction_rows,
                     )
         finally:
             conn.close()
