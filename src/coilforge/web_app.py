@@ -12,6 +12,7 @@ from fastapi.encoders import jsonable_encoder
 
 from coilforge import brain_case
 from coilforge.adapters import load_sanitized_ez_json
+from coilforge.capture import capture_milestone
 from coilforge.direct_coil import (
     parse_direct_coil_page,
     verify_entered_against_candidate,
@@ -55,22 +56,61 @@ from coilforge.case_journal import record_coil_milestone
 def _journal_milestone(milestone: str, result: dict | None = None,
                        request_payload: dict | None = None,
                        detail: dict | None = None,
-                       identity: str | None = None) -> None:
-    """Best-effort PO Release Case journal write (append-only, review-aid only —
-    records that a milestone request ran; never claims approval). Skipped when
-    no project identity is available (demo/sanitized-text paths).
+                       identity: str | None = None,
+                       pdf_bytes: bytes | None = None,
+                       cover_page_hint: int | None = None,
+                       product: str | None = None,
+                       size: str | None = None,
+                       gate: dict | None = None) -> None:
+    """Capture the run into the ledger, then best-effort write the PO Release Case
+    journal line (append-only, review-aid only — records that a milestone request
+    ran; never claims approval). The journal line is skipped when no project
+    identity is available (demo/sanitized-text paths); the LEDGER is not.
 
     ``identity`` is the REQUEST initiator (the ``X-CoilForge-Identity`` header —
     who/what fired the request), recorded as ``value.request_identity``. It is a
     distinct concept from the event's project identity (project_number/name);
-    the two are never merged."""
+    the two are never merged.
+
+    ``pdf_bytes`` / ``cover_page_hint`` / ``product`` / ``size`` are ledger-only
+    dedup components — the route layer is the one place that holds the real PDF
+    bytes (some bodies are a base64 envelope, and case-to-drawing's body is just
+    ``{case_id}`` with the PDF read from disk inside the route).
+
+    ``gate`` is the project gate the route already computed. Pass it whenever the
+    route has one: the ledger must record the verdict John was actually shown, not
+    a re-derivation the caller fed different inputs."""
+    # Journal FIRST so its event_id can be linked to the ledger run — the ledger is
+    # append-only, so it cannot be back-patched after the fact. The journal is
+    # identity-gated (returns (None, None) on demo/derive paths); the ledger is not.
+    journal_event_id, journal_error = _write_journal_line(
+        milestone, result, request_payload, detail, identity
+    )
+    # Ledger always, carrying the journal outcome. capture_milestone never raises.
+    # This is the run that closes the gap: demo / sanitized / derive runs the journal
+    # deliberately drops are still ML data and land here.
+    capture_milestone(
+        milestone, result=result, request_payload=request_payload,
+        pdf_bytes=pdf_bytes, cover_page_hint=cover_page_hint,
+        product=product, size=size, identity=identity, gate=gate,
+        journal_event_id=journal_event_id, journal_error=journal_error,
+    )
+
+
+def _write_journal_line(milestone: str, result: dict | None, request_payload: dict | None,
+                        detail: dict | None, identity: str | None) -> tuple[str | None, str | None]:
+    """Best-effort PO Release Case journal write. Returns ``(event_id, error)`` —
+    ``(None, None)`` when no project identity exists (the journal deliberately skips
+    demo/sanitized paths). NEVER raises: a hook failure comes back as ``error`` so it
+    is surfaced on the ledger run rather than discarded (discarding it is how four
+    milestones journaled nothing for months)."""
     try:
         summary = (result or {}).get("pdf_intake_summary") or {}
         payload = request_payload or {}
         project_number = summary.get("project_number") or payload.get("project_number")
         project_name = summary.get("project_name") or payload.get("project_name")
         if not (project_number or project_name):
-            return
+            return None, None
         tags: list[str] = []
         for page in (result or {}).get("pdf_coil_pages") or []:
             tag = page.get("tag") if isinstance(page, dict) else None
@@ -80,19 +120,26 @@ def _journal_milestone(milestone: str, result: dict | None = None,
             tag = coil.get("tag") if isinstance(coil, dict) else None
             if tag and tag not in tags:
                 tags.append(tag)
+        # /derive is a single-coil path: its tag is payload["tag"] (singular), and
+        # its result is the template_drawing itself (no pdf_coil_pages). Without
+        # this the coil_manual_fill line journals coil_tags:[] -- the project
+        # survives but the coil dies, exactly the identifier Case Retrieval needs.
+        single_tag = payload.get("tag")
+        if single_tag and single_tag not in tags:
+            tags.append(single_tag)
         record_detail = dict(detail or {})
         if identity:
             # Request initiator (R12c) — kept separate from project identity.
             record_detail["request_identity"] = identity
-        record_coil_milestone(
+        return record_coil_milestone(
             milestone,
             project_number=project_number,
             project_name=project_name,
             coil_tags=tags,
             detail=record_detail,
         )
-    except Exception:  # noqa: BLE001 — journaling must never break a request
-        pass
+    except Exception as exc:  # noqa: BLE001 — journaling must never break a request
+        return None, f"journal hook failed: {type(exc).__name__}: {exc}"
 
 
 def _cover_page_hint_from_request(request: Request) -> int | None:
@@ -357,7 +404,9 @@ async def workflow_pdf_to_direct_draft(request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _journal_milestone("intake_draft", result=result,
                        detail={"candidates": len(result.get("candidates") or [])},
-                       identity=_identity_from_request(request))
+                       identity=_identity_from_request(request),
+                       pdf_bytes=pdf_bytes,
+                       cover_page_hint=_cover_page_hint_from_request(request))
     return result
 
 
@@ -375,7 +424,9 @@ async def workflow_pdf_to_drawing(request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _journal_milestone("intake_drawing", result=result,
                        detail={"candidates": len(result.get("candidates") or [])},
-                       identity=_identity_from_request(request))
+                       identity=_identity_from_request(request),
+                       pdf_bytes=pdf_bytes,
+                       cover_page_hint=_cover_page_hint_from_request(request))
     return result
 
 
@@ -444,7 +495,8 @@ async def workflow_case_to_drawing(request: Request, payload: dict = Body(...)):
     _journal_milestone("intake_drawing", result=result,
                        detail={"candidates": len(result.get("candidates") or []),
                                "brain_case_id": case_id},
-                       identity=_identity_from_request(request))
+                       identity=_identity_from_request(request),
+                       pdf_bytes=pdf_bytes)
     return result
 
 
@@ -618,6 +670,10 @@ async def checklist_fill(request: Request):
             "checklist_filled", result=outcome.workflow_result,
             detail={"saved_path": outcome.saved_path},
             identity=_identity_from_request(request),
+            pdf_bytes=pdf_bytes,
+            cover_page_hint=_cover_page_hint_from_request(request),
+            product=request.headers.get("x-coilforge-product"),
+            size=request.headers.get("x-coilforge-size"),
         )
     return jsonable_encoder(outcome.review)
 
@@ -807,7 +863,12 @@ async def review_project(request: Request):
     _journal_milestone("project_review", result=result,
                        detail={"coils": gate["summary"]["coils"],
                                "exceptions_K": gate["summary"]["exceptions_K"]},
-                       identity=_identity_from_request(request))
+                       identity=_identity_from_request(request),
+                       pdf_bytes=pdf_bytes,
+                       cover_page_hint=_cover_page_hint_from_request(request),
+                       # The gate John is actually shown — it may fold in the
+                       # checklist cross-check, which a re-derivation would miss.
+                       gate=gate)
     return jsonable_encoder(gate)
 
 
@@ -917,7 +978,12 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
         result.pop("manual_fill_plan", None)
     if errors:
         result["manual_fill_errors"] = errors
-    _journal_milestone("coil_manual_fill", result=result)
+    # request_payload=clean carries the coil tag (singular) and the project
+    # identity the frontend now sends; derive's result has neither pdf_intake_summary
+    # nor pdf_coil_pages, so without this the milestone hits the identity gate and
+    # journals nothing. (clean is a plain dict copy -- _sanitize_derive_spec never
+    # dropped project_number/project_name, so they pass straight through.)
+    _journal_milestone("coil_manual_fill", result=result, request_payload=clean)
     return jsonable_encoder(result)
 
 

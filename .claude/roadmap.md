@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-15 (Human-in-the-loop 수동 채움 완료)
+> 마지막 갱신: 2026-07-16 (Capture Ledger 5b 완료 — coil_manual_fill 저널 복구, 5c 대기)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -31,12 +31,75 @@
   상호배타 only_when 게이팅) + coating 노트 게이팅(R-080 coating_set) + pdf_intake HGBP 검지 +
   템플릿 선택 + web UI + wiki/커버리지 문서. 제가 트리 정리 커밋(공유 엔진 파일에 R-048과 동반). 🆕 이번 세션
 
-## ▶️ 지금
-- [ ] 다음 방향 확정 — MVP 사인오프 완료(템플릿+R-048/R-085/R-074 처분·커밋). 다음 걸음:
-  **AI implementation 로드맵**(다른 세션 작성 중)을 수령해 착수 지점 결정. 그 전까지 남은 백로그는
-  PR #3 머지(drawing 세션 충돌 조율)·CCSI Tier 1 라이브(John 로그인)·Terra 스플릿 Phase 3(보류).
+- [x] **AI 로드맵 확정 + 계획 승인 (John 2026-07-15)** — "코일 선정/견적마다 쌓이는 데이터를 SQL로
+  축적해 AI/ML에 쓴다"는 브레인스토밍 → **7단계 로드맵 확정**(Capture Ledger → Case Retrieval →
+  Review Triage → Rule Observatory → Auto-YAML → Format-Agnostic Extraction → Commercial
+  Intelligence). John 확정: 볼륨 주당 코일 50~150(연 2,600~7,800 = **3~6개월이면 실학습 가능**),
+  상업데이터는 `outcome` seam만 비워둠. **재구성:** CoilForge는 도면생성기가 아니라 *사람 오라클이
+  붙은 전문가 시스템* — 매 실행이 `(입력→제안→교정)` 3항조합을 만드는데 **전부 HTTP 응답과 함께
+  증발 중**(DB 없음, `coil_manual_fill` 저널은 `web_app.py:72` 신원 early-return으로 조용히 드롭).
+  계획서 `~/.claude/plans/ultrathink-hazy-gizmo.md` (rev4). **착수 전 3라운드 독립 적대검토** —
+  매 라운드 "내가 새로 쓴 부분"에서 BLOCKER: rev1 근본원인 오진(화이트리스트가 아니라 신원
+  early-return) / rev2 미들웨어는 `_StreamingResponse`라 응답 dict 못 봄 / rev3 body 5종이라
+  미들웨어가 `input_hash` 못 만듦(`case-to-drawing`은 `{case_id}`뿐). **rev4 구조적 결정:
+  `dedup_key`를 정의하지 않고 컴포넌트 컬럼+뷰로 파생** → 3연속 틀린 정의의 비가역성 자체를 제거
+  ("소급 불가"라던 전제가 틀렸다 — 비가역성은 파생값을 원시값처럼 저장할 때 생긴다). 🆕 이번 세션
 
-## ⬜ 앞으로
+- [x] **1단계 Capture Ledger — 5a 원장 코어 완료 (2026-07-16)** — 엔진 무수정, **912 green**(895+17),
+  라이브 4코일 submittal 실증. 신규 `src/coilforge/capture/`(`db.py` WAL+`busy_timeout=5000`+`.git`탐색
+  리포경로거부+`COILFORGE_CAPTURE=0` 킬스위치 / `schema.py` forward-only 9테이블 / `record.py` 어댑터).
+  **훅은 1개** — `_journal_milestone`의 신원 게이트 **앞**에서 `capture_milestone` 호출 → 기존 11개
+  호출부가 코드변경 0으로 캡처를 얻고, 저널이 버리는 데모/derive run도 잡힘.
+  **미들웨어·워크플로훅 불필요 판명**(rev4 대비 구조 변경): 라우트가 `pdf_bytes`+`result`+`cover_page_hint`를
+  동시에 보유 → B2(contextvar/to_thread)·R10(`_StreamingResponse`)·R11(body 5종) 소멸.
+  **잡은 함정 3개:** ①`page["coil_type"]`=커버행 item텍스트, `page["product_type"]`=기본값"DX"인 패밀리
+  → 진짜 값은 `workflow.template_drawing.extracted` ②`result["drawing_parameter_set"]`=선택된 1코일뿐
+  → per-coil은 `page["workflow"]` ③engine stage는 **1a로 불가능 확정**(`HeaderPrepopulateResponse`가
+  `pdf_to_template_drawing.py:286`에서 폐기) → 1c 필요성 코드로 증명. `terra_variant`는 `resolve_product_line`
+  순수 파생. **구현 중 자체 발견:** 스위트가 진짜 코퍼스에 픽스처 19run/21coil을 쓰고 있었음 →
+  `tests/conftest.py` 세션 격리 + 오염분 삭제. **불변식 감사 BLOCKER 0** + 감사가 잡은 라벨오염
+  (`_gate_rows`가 checklist 없이 게이트 재계산 → exception 코일이 `pass`로 저장) 수정 + 회귀테스트.
+  라이브 결과: project 2862, 4코일(DX/HGRH×NOVA/TERRA H), 394 field_obs, `capture_error` 0. 🆕 이번 세션
+
+- [x] **5b — D1 저널 복구 3부작 완료 (2026-07-16)** — `coil_manual_fill`(유일한 사람 라벨)이 저널에서
+  100% 유실되던 걸 복구. **914 green**(+2) + 라이브 실증. **크로스-리포 계약 먼저 확인:** Case Reader
+  (`PO_Release_Case/src/case_reader/correlate.py:683,1470`)가 `value.milestone`을 화이트리스트로 대조 안 하고
+  `setdefault`로 rollup(`direct_coil_verified`만 특별취급) → 4개 추가 forward-compatible 확정.
+  **(a)** `web/app.js::deriveSpecFromTemplate`가 `state.pdfIntakeSummary`의 project identity를 스펙에 실음 +
+  `:958`이 `request_payload=clean` 전달(derive result엔 `pdf_intake_summary`/`pdf_coil_pages` 둘 다 없음).
+  **(a2)** `_journal_milestone`에 단수 `payload["tag"]` 수집(derive tag는 단수, 없으면 `coil_tags:[]`).
+  **(b)** `MILESTONES` 4개 추가(coil_manual_fill/project_review/ccsi_export_audit/deliverable_finalized).
+  **(c)** `record_coil_milestone` 반환을 `(event_id, error)` 튜플로 변경(내부 계약만, JSONL 라인포맷 불변)
+  → **append-only 위해 journal을 capture보다 먼저 실행**(`_write_journal_line` 추출), event_id를 `run`에 링크,
+  journal 실패를 `run.journal_error`로 표면화 + **AST 가드**(모든 `_journal_milestone` 리터럴 ⊆ MILESTONES →
+  7번째 재발 불가). 라이브: derive → 저널에 `coil_manual_fill` + `tags:['CDXC-1']` + project 24-118,
+  원장 run에 `journal_event_id` 링크, `capture_error` 0, 진짜 저널 무오염(임시 dir 격리). 🆕 이번 세션
+
+## ▶️ 지금
+- [ ] **5c — 우회 라우트 어댑터**. "각 1줄"이 아님(shape 이질적, 대부분 결과를 이름에 바인딩조차 안 함);
+  `/api/review/build-packet`은 `workflow_input` 조건부바인딩 `UnboundLocalError` 함정;
+  `/api/ccsi-compare`는 body에 코일 신원이 없어 **어댑터로 불가** → 1a′ 프론트+백 tag 스레딩
+- [ ] **1b** — H4 + **D2**(`previous_value` 복구; Tier-B baseline = `parameter_set_from_template_drawing`을
+  overrides 없이 재호출 → 멀티헤더/ZD 자동해결) + `correction` 테이블. **1단계 필수** — 그 전 correction은
+  "무엇을→무엇으로"의 절반이 영구히 빈다
+- [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
+  `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). 착수 전 phase5 워크트리 병합 여부 확인
+- [ ] **1d** — `/api/capture/health` + `run_dedup` 뷰 + `scripts/replay_run.py`(Time Machine) +
+  **랜덤 감사 샘플 추출기**(주당 3~5코일 — 4단계 소비지만 *시간이 만드는 데이터*라 1단계 착수)
+- [ ] **2단계 Case Retrieval** (~2주, n≥50) — "이 코일 전에 본 적 있어?" 21필드 최근접이웃으로 John의
+  과거 교정을 증거로 검색(값 발명 아님 = never-invent 호환). numpy brute force면 충분, 벡터DB 불필요
+- [ ] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
+  틀린 값 자동승인). 실제 override율은 1단계가 처음 알려줌 → **그 숫자를 보고 착수, 미리 약속 안 함**
+- [ ] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
+  위험** — John은 flag된 코일만 보므로 안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다. 1d 감사샘플이
+  유일한 통계적 수단; 모든 수치는 "리뷰 조건부" 라벨
+- [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →
+  John 승인. **제안 규칙은 MEDIUM 진입** = 기존 confidence gate가 공짜로 안전을 보장(자동으로 안 그려짐)
+- [ ] **6단계 Format-Agnostic Extraction** — **의존성은 1단계뿐, 순서상 6일 뿐** (타사 서밋털 수요 생기면
+  앞당김). 여기가 진짜 ML(지각) — 원장의 실패 코퍼스가 곧 테스트셋
+- [ ] **7단계 Commercial Intelligence** — `outcome` seam만 유지, 비워둠 (John 확정). 착수 시
+  `raw_private_data_returned:False` 철학 재검토 필요
+
 - [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
 - [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향.
   **프리플라이트 드라이런 (2026-07-15, /ccsi-preflight, mutation 0건)**: CoilForge측 GREEN — 서버 up·

@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="case_journal_test_") as tmp:
 
     from coilforge.case_journal import record_coil_milestone
 
-    err = record_coil_milestone(
+    event_id, err = record_coil_milestone(
         "checklist_filled",
         project_number="3023",
         project_name="Kenton Elementary",
@@ -27,7 +27,10 @@ with tempfile.TemporaryDirectory(prefix="case_journal_test_") as tmp:
                 "coils": 2},
     )
     assert err is None, err
-    assert "unknown milestone" in record_coil_milestone("launched", "3023", "X")
+    assert event_id, "a successful write returns its event_id"
+    _bad_event_id, bad_err = record_coil_milestone("launched", "3023", "X")
+    assert _bad_event_id is None
+    assert "unknown milestone" in bad_err
 
     target = Path(tmp) / f"coil-{datetime.now():%Y%m%d}.jsonl"
     event = json.loads(target.read_text(encoding="utf-8").splitlines()[0])

@@ -2302,6 +2302,11 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     // Round-trip the submittal spec-panel values so the right-side panel stays
     // populated after the dimensions are logic-derived.
     panel: templateDrawing.panel,
+    // Project identity so the coil_manual_fill milestone journals to the right case
+    // and Case Retrieval can name the project. derive's result carries no
+    // pdf_intake_summary, so the backend cannot recover these on its own.
+    project_number: state.pdfIntakeSummary?.project_number,
+    project_name: state.pdfIntakeSummary?.project_name,
   };
 }
 
