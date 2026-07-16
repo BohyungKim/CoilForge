@@ -23,15 +23,18 @@
   대기 3건 처분: **R-048** supply≠return 결함 수정(supply를 문서 공식 `CD−[(Xmax+2)D+(Xmax−1)1.5]`로 —
   단 미검증·음수가능(CD 부족 시)이라 **HIGH 아닌 MEDIUM/review-required** 발화, return은 HIGH 유지; R-048
   테스트 2건 green; 공식 검증은 open-questions 유지) · **R-085** back_to_back 실경로 배선 **보류**(입력 출처
-  정의 선행) · **R-074** casing 외부 2차출처 **MEDIUM 수용**(단일출처 CHK, review-required 유지). ⚠️ **R-048
-  코드 커밋 보류**: 동시 HGBP 세션이 같은 `header_prepopulate_engine.py`를 미커밋 편집 중(5테스트 red=그들
-  WIP)이라 트리 정리 후 R-048+문서 일괄 커밋 예정. 🆕 이번 세션
+  정의 선행) · **R-074** casing 외부 2차출처 **MEDIUM 수용**(단일출처 CHK, review-required 유지).
+  **커밋 완료: 91a50cb(feat, R-048 수정) + 58329c1(docs, 사인오프 기록)** — 동시 HGBP 기능과 공유
+  엔진 파일에 함께 랜딩, 895 green. 🆕 이번 세션
+- [x] Hot-gas-bypass(HGBP) 코일 지원 (91a50cb, 동시 세션 작업 · John 완벽동작 확인 2026-07-15) —
+  R-035c 분배기 노트('Distributor Down w/ ASC & 6" Extension', HGBP DX Nova/Ventum H, R-035b와
+  상호배타 only_when 게이팅) + coating 노트 게이팅(R-080 coating_set) + pdf_intake HGBP 검지 +
+  템플릿 선택 + web UI + wiki/커버리지 문서. 제가 트리 정리 커밋(공유 엔진 파일에 R-048과 동반). 🆕 이번 세션
 
 ## ▶️ 지금
-- [ ] R-048 사인오프 커밋 (동시 HGBP 세션 트리 정리 대기) — 다음 걸음:
-  동시 세션이 `header_prepopulate_engine.py` 미커밋 편집을 끝내고 `pytest -q`가 green이 되면 →
-  `git diff HEAD`로 내 R-048 헝크 생존 확인(없으면 재적용) → R-048 + 사인오프 문서(mvp_promotion_decisions·
-  open-questions·MVP 체크리스트) 일괄 커밋·푸시. **R-048 코드+테스트는 이미 완료, 커밋만 대기.**
+- [ ] 다음 방향 확정 — MVP 사인오프 완료(템플릿+R-048/R-085/R-074 처분·커밋). 다음 걸음:
+  **AI implementation 로드맵**(다른 세션 작성 중)을 수령해 착수 지점 결정. 그 전까지 남은 백로그는
+  PR #3 머지(drawing 세션 충돌 조율)·CCSI Tier 1 라이브(John 로그인)·Terra 스플릿 Phase 3(보류).
 
 ## ⬜ 앞으로
 - [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
