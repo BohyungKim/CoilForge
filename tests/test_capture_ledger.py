@@ -408,6 +408,78 @@ def test_every_journaled_milestone_is_in_the_allowlist():
     assert not missing, f"milestones fired but not in the allowlist (silent drop): {missing}"
 
 
+# --- 5c: bypass-route capture ------------------------------------------------
+
+def test_mechanical_fit_capture_records_nested_verdicts_with_tags(ledger):
+    """mechanical_fit's verdict is NESTED (width/height/drain_pan .verdict), one row
+    per dimension, vocab PASS/FAIL/CANNOT_EVALUATE. The coil tag is present, so a row
+    can join a coil later. Reading the entry-level (there is none) would capture 0."""
+    report = {
+        "coils": [
+            {
+                "tag": "CDXC-1",
+                "width": {"verdict": "PASS", "basis": "FL", "margin": 2.5},
+                "height": {"verdict": "CANNOT_EVALUATE", "basis": "FH", "margin": None},
+                # drain_pan is a DrainPanFitResult (no basis) — labeled by partner_tag.
+                "drain_pan": {"verdict": "PASS", "partner_tag": "RHHGRC-1"},
+            },
+            {"tag": "RHHGRC-1", "width": {"verdict": "FAIL", "basis": "OAL", "margin": -1.0},
+             "height": None, "drain_pan": None},
+        ],
+        "review_required": True,
+    }
+    assert capture_milestone("mechanical_fit", compare={"comparator": "mechanical_fit", "report": report})
+
+    rows = _rows(
+        ledger,
+        "SELECT coil_tag, key, label, verdict FROM compare_observation"
+        " WHERE comparator='mechanical_fit' ORDER BY coil_tag, key",
+    )
+    # CDXC-1: width+height+drain_pan (3), RHHGRC-1: width only (height/drain_pan None) (1)
+    assert rows == [
+        ("CDXC-1", "drain_pan", "RHHGRC-1", "PASS"),   # drain_pan labeled by partner
+        ("CDXC-1", "height", "FH", "CANNOT_EVALUATE"),
+        ("CDXC-1", "width", "FL", "PASS"),
+        ("RHHGRC-1", "width", "OAL", "FAIL"),
+    ]
+
+
+def test_ccsi_capture_records_flat_verdicts_as_orphan_rows(ledger):
+    """ccsi's verdict is FLAT (fields[j].verdict), vocab match/mismatch/... The body
+    has NO coil identity, so coil_tag is NULL — orphan rows recorded on purpose, so
+    '0 rows' can't masquerade as 'captured'. Threading the tag is deferred to 1a'."""
+    report = {
+        "fields": [
+            {"key": "CD", "coilforge": 5.5, "ccsi": 5.5, "verdict": "match"},
+            {"key": "R", "coilforge": 3.317, "ccsi": 1.3125, "verdict": "mismatch"},
+        ],
+        "compared": 2, "mismatch_count": 1,
+    }
+    assert capture_milestone("ccsi_compare", compare={"comparator": "ccsi", "report": report})
+
+    rows = _rows(
+        ledger,
+        "SELECT coil_tag, key, verdict FROM compare_observation WHERE comparator='ccsi'"
+        " ORDER BY key",
+    )
+    assert rows == [(None, "CD", "match"), (None, "R", "mismatch")]
+    # The orphan-ness is explicit: every ccsi row is coil_tag NULL by design.
+    assert all(r[0] is None for r in rows)
+
+
+def test_compare_capture_makes_a_coil_less_run(ledger):
+    """A compare route carries no workflow dict, so the run has zero coils and only
+    compare_observation rows — not a masquerade as a coil-bearing run."""
+    assert capture_milestone(
+        "mechanical_fit",
+        compare={"comparator": "mechanical_fit",
+                 "report": {"coils": [{"tag": "X", "width": {"verdict": "PASS"}}]}},
+    )
+    assert _rows(ledger, "SELECT coil_count FROM run")[0][0] == 0
+    assert _rows(ledger, "SELECT COUNT(*) FROM coil")[0][0] == 0
+    assert _rows(ledger, "SELECT COUNT(*) FROM compare_observation")[0][0] == 1
+
+
 def test_journal_outcome_is_recorded_on_the_run(ledger, monkeypatch, tmp_path):
     """The journal's event_id links the ledger run to its JSONL line, and a journal
     failure surfaces as journal_error instead of vanishing. The journal runs first

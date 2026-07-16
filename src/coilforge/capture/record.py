@@ -295,6 +295,57 @@ def _identity(result: dict[str, Any], payload: dict[str, Any]) -> tuple[Any, Any
     )
 
 
+def _compare_rows(run_id: str, compare: dict[str, Any]) -> list[tuple]:
+    """Weak-label rows for the review comparators. compare == {"comparator", "report"}.
+
+    Two comparators with DIFFERENT verdict vocabularies — do not conflate:
+      - mechanical_fit: verdict is NESTED (coils[i].width/height/drain_pan .verdict),
+        one row per dimension, vocab PASS|FAIL|CANNOT_EVALUATE(+NOT_APPLICABLE). The
+        coil tag IS present, so a row can join a coil later.
+      - ccsi: verdict is FLAT (fields[j].verdict), one row per field, vocab
+        match|mismatch|missing_one|both_missing. The body has NO coil identity, so
+        coil_tag is NULL — an orphan row, recorded on purpose (1a'), never silently
+        dropped. The count is surfaced so "0 rows" can't masquerade as "captured".
+
+    columns: (run_id, coil_tag, comparator, key, slot, label, left_json, right_json, verdict)
+    """
+    comparator = (compare or {}).get("comparator")
+    report = (compare or {}).get("report") or {}
+    rows: list[tuple] = []
+
+    if comparator == "mechanical_fit":
+        for entry in report.get("coils") or []:
+            if not isinstance(entry, dict):
+                continue
+            tag = entry.get("tag")
+            for key in ("width", "height", "drain_pan"):
+                check = entry.get(key)
+                if not isinstance(check, dict) or not check.get("verdict"):
+                    continue
+                # label: width/height are a FitCheck (basis = FL/OAL/FH/CH); drain_pan
+                # is a DrainPanFitResult with no basis, so label it by the paired coil.
+                label = check.get("basis") if key != "drain_pan" else check.get("partner_tag")
+                # available vs required lives entirely on the left side; there is no
+                # right-hand comparand (it is a fit check, not a value diff).
+                rows.append((
+                    run_id, tag, "mechanical_fit", key, None,
+                    label, _json(check), None, check["verdict"],
+                ))
+        return rows
+
+    if comparator == "ccsi":
+        for field in report.get("fields") or []:
+            if not isinstance(field, dict) or not field.get("verdict"):
+                continue
+            rows.append((
+                run_id, None, "ccsi", field.get("key"), None, None,
+                _json(field.get("coilforge")), _json(field.get("ccsi")), field["verdict"],
+            ))
+        return rows
+
+    return rows
+
+
 def capture_milestone(
     milestone: str,
     *,
@@ -306,6 +357,7 @@ def capture_milestone(
     size: str | None = None,
     identity: str | None = None,
     gate: dict[str, Any] | None = None,
+    compare: dict[str, Any] | None = None,
     journal_event_id: str | None = None,
     journal_error: str | None = None,
 ) -> str | None:
@@ -315,6 +367,10 @@ def capture_milestone(
     ``gate`` is the project gate the route already computed — pass it whenever the
     route has one, so the ledger records the verdict John was actually shown rather
     than a re-derivation that may have been given different inputs.
+
+    ``compare`` == {"comparator", "report"} weak-labels from the review comparators
+    (mechanical_fit / ccsi). These routes carry no workflow dict, so they produce a
+    run with zero coils and only compare_observation rows.
 
     ``journal_event_id`` / ``journal_error`` are the outcome of the PO Release Case
     journal write (which runs first, since the ledger is append-only and cannot be
@@ -380,6 +436,7 @@ def capture_milestone(
             )
 
         gate_rows = _gate_rows(run_id, result, coil_uids, gate)
+        compare_rows = _compare_rows(run_id, compare) if compare else []
 
         conn = db.connect()
         try:
@@ -427,6 +484,13 @@ def capture_milestone(
                         "INSERT INTO artifact (run_id, coil_uid, kind, sha256, byte_len,"
                         " page_count, filename_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         artifact_rows,
+                    )
+                if compare_rows:
+                    conn.executemany(
+                        "INSERT INTO compare_observation (run_id, coil_tag, comparator,"
+                        " key, slot, label, left_json, right_json, verdict)"
+                        " VALUES (" + ",".join("?" * 9) + ")",
+                        compare_rows,
                     )
         finally:
             conn.close()

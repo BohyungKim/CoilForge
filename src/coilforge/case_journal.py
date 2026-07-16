@@ -47,6 +47,11 @@ MILESTONES = (
     "project_review",       # exceptions-first project gate ran
     "ccsi_export_audit",    # CCSI printed-value audit exported
     "deliverable_finalized",# one-click deliverable filed + draft opened
+    # Added 2026-07-16 (5c): the review-packet text workflow now journals (it produces
+    # coils via the standard workflow dict). mechanical_fit / ccsi_compare are NOT
+    # listed here on purpose — those routes call capture_milestone directly (ledger
+    # only, no journal), so their milestone strings never reach record_coil_milestone.
+    "review_packet",        # review packet built (workflow + intake)
 )
 
 

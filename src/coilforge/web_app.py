@@ -61,7 +61,8 @@ def _journal_milestone(milestone: str, result: dict | None = None,
                        cover_page_hint: int | None = None,
                        product: str | None = None,
                        size: str | None = None,
-                       gate: dict | None = None) -> None:
+                       gate: dict | None = None,
+                       compare: dict | None = None) -> None:
     """Capture the run into the ledger, then best-effort write the PO Release Case
     journal line (append-only, review-aid only — records that a milestone request
     ran; never claims approval). The journal line is skipped when no project
@@ -92,7 +93,7 @@ def _journal_milestone(milestone: str, result: dict | None = None,
     capture_milestone(
         milestone, result=result, request_payload=request_payload,
         pdf_bytes=pdf_bytes, cover_page_hint=cover_page_hint,
-        product=product, size=size, identity=identity, gate=gate,
+        product=product, size=size, identity=identity, gate=gate, compare=compare,
         journal_event_id=journal_event_id, journal_error=journal_error,
     )
 
@@ -246,6 +247,10 @@ async def review_build_packet(request: dict[str, Any] = Body(default_factory=dic
             workflow_output = run_submittal_to_drawing_workflow(workflow_input)
     intake_payload = payload.get("intake_input") or payload.get("workflow_input") or payload.get("input")
     intake = build_po_based_intake(intake_payload or {})
+    # Capture the coil surface (workflow_output), not the packet — it is the standard
+    # workflow dict coil_views understands. workflow_output may be None (no input);
+    # capture then records a coil-less run, which is fine.
+    _journal_milestone("review_packet", result=workflow_output, request_payload=payload)
     return jsonable_encoder(
         build_review_packet(
             workflow_output,
@@ -295,12 +300,18 @@ async def compatibility_review_packet(request: dict[str, Any] = Body(default_fac
 
 @app.post("/api/workflow/submittal-to-direct-draft")
 async def workflow_submittal_to_direct_draft(request: dict[str, Any] = Body(default_factory=dict)):
-    return run_submittal_to_direct_draft_workflow(request or {})
+    result = run_submittal_to_direct_draft_workflow(request or {})
+    # Same step as the PDF intake_draft path but a text workflow — reuse the
+    # existing milestone so the AST guard passes and the journal accepts it.
+    _journal_milestone("intake_draft", result=result, request_payload=request or {})
+    return result
 
 
 @app.post("/api/workflow/submittal-to-drawing")
 async def workflow_submittal_to_drawing(request: dict[str, Any] = Body(default_factory=dict)):
-    return run_submittal_to_drawing_workflow(request or {})
+    result = run_submittal_to_drawing_workflow(request or {})
+    _journal_milestone("intake_drawing", result=result, request_payload=request or {})
+    return result
 
 
 @app.post("/api/mechanical-fit")
@@ -322,7 +333,15 @@ async def mechanical_fit(request: dict[str, Any] = Body(default_factory=dict)):
         payload.get("coils") or [],
         installed_on_drain_pan=bool(payload.get("installed_on_drain_pan")),
     )
-    return mechanical_fit_report_dict(report)
+    report_dict = mechanical_fit_report_dict(report)
+    # Weak label for stage 3/4. The body has coil tags, so these rows join a coil
+    # later. No project identity -> journal skips it, ledger keeps it (its reason
+    # for existing), so call capture_milestone directly rather than via the journal.
+    capture_milestone(
+        "mechanical_fit",
+        compare={"comparator": "mechanical_fit", "report": report_dict},
+    )
+    return report_dict
 
 
 @app.post("/api/ccsi-compare")
@@ -337,7 +356,12 @@ async def ccsi_compare(request: dict[str, Any] = Body(default_factory=dict)):
     from coilforge.ccsi.compare import compare_ccsi_fields
 
     payload = request or {}
-    return compare_ccsi_fields(payload.get("fields") or [])
+    result = compare_ccsi_fields(payload.get("fields") or [])
+    # Weak label for stage 3/4. The body carries NO coil identity, so these rows are
+    # recorded with coil_tag NULL — orphan rows, on purpose (1a'), never silently
+    # dropped. Threading the tag from the frontend/CCSI skill is deferred to 1a'.
+    capture_milestone("ccsi_compare", compare={"comparator": "ccsi", "report": result})
+    return result
 
 
 def _load_ccsi_field_map() -> dict[str, Any]:

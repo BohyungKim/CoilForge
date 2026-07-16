@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-16 (Capture Ledger 5b 완료 — coil_manual_fill 저널 복구, 5c 대기)
+> 마지막 갱신: 2026-07-16 (Capture Ledger 5a·5b·5c 완료 — 원장+저널복구+compare캡처, 1b 대기)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -74,14 +74,28 @@
   journal 실패를 `run.journal_error`로 표면화 + **AST 가드**(모든 `_journal_milestone` 리터럴 ⊆ MILESTONES →
   7번째 재발 불가). 라이브: derive → 저널에 `coil_manual_fill` + `tags:['CDXC-1']` + project 24-118,
   원장 run에 `journal_event_id` 링크, `capture_error` 0, 진짜 저널 무오염(임시 dir 격리). 🆕 이번 세션
+- [x] **5a+5b 커밋·푸시 (8bc8ef7, 2026-07-16)** — 브랜치 claude/ccsi-autofill, 이번 세션 11파일만
+  (`.agents`/`.codex` 제외; DB 0). 914 green 재확인 후 **push 완료**(`b1001d7..8bc8ef7`).
+  **PO_Release_Case 계약문서 별도 커밋(ae086f7)** — 그 리포엔 진행중인 대규모 작업(200+ case) 존재라
+  계약문서 1파일만 격리 스테이징, push 안 함(그 리포 관례 미상). 🆕 이번 세션
+- [x] **5c — 우회 라우트 캡처 완료 (2026-07-16)** — `_journal_milestone`을 안 부르던 5개 라우트 배선.
+  **917 green**(+3) + 라이브 실증. **탐색이 rev5 §5c 오류 2개 정정:** ①`compare_observation`은
+  스키마만 있고 삽입코드 없는 **죽은 테이블**이었음(진짜 일은 hoist가 아니라 `_compare_rows` 신설)
+  ②`build-packet` UnboundLocalError 함정은 **없음**(`workflow_input`은 변수 재참조 안 됨).
+  **워크플로 3라우트**(submittal-to-drawing/-direct-draft=기존 intake milestone 재사용, build-packet=신규
+  review_packet)는 hoist만. **compare 2라우트**는 `_compare_rows` 신설이 핵심 — **verdict 어휘 2종**:
+  mechanical_fit은 중첩(coils[i].{width,height,drain_pan}.verdict, PASS/FAIL/CANNOT_EVALUATE, tag 있음→조인가능),
+  ccsi는 flat(fields[j].verdict, match/mismatch/…, **신원 없음→coil_tag NULL 고아행 명시**=1a′로 분리).
+  둘 다 `capture_milestone` 직접 호출(신원 없어 저널 스킵, ledger만) → MILESTONES엔 review_packet만 추가.
+  라이브: mechanical-fit 6행(tag+PASS), ccsi 2행(NULL+match/mismatch, R 3.317 vs 1.3125 실사례), run
+  coil_count 0, capture_error 0. **감사 BLOCKER 0**, NIT 2건(drain_pan label=partner_tag / 죽은 enum 제거) 수정. 🆕 이번 세션
 
 ## ▶️ 지금
-- [ ] **5c — 우회 라우트 어댑터**. "각 1줄"이 아님(shape 이질적, 대부분 결과를 이름에 바인딩조차 안 함);
-  `/api/review/build-packet`은 `workflow_input` 조건부바인딩 `UnboundLocalError` 함정;
-  `/api/ccsi-compare`는 body에 코일 신원이 없어 **어댑터로 불가** → 1a′ 프론트+백 tag 스레딩
-- [ ] **1b** — H4 + **D2**(`previous_value` 복구; Tier-B baseline = `parameter_set_from_template_drawing`을
-  overrides 없이 재호출 → 멀티헤더/ZD 자동해결) + `correction` 테이블. **1단계 필수** — 그 전 correction은
-  "무엇을→무엇으로"의 절반이 영구히 빈다
+- [ ] **1b — D2 `previous_value` 복구** (**1단계 필수** — 그 전 correction은 "무엇을→무엇으로"의 절반이
+  영구히 빈다). 다음 걸음: H4 + Tier-B baseline = `parameter_set_from_template_drawing`을 overrides 없이
+  재호출(멀티헤더/ZD 자동해결, rev4에서 실증) + `correction` 테이블 + `DrawingParameter.mode` 재사용.
+- [ ] **1a′ (분리됨)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
+  `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
   `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). 착수 전 phase5 워크트리 병합 여부 확인
 - [ ] **1d** — `/api/capture/health` + `run_dedup` 뷰 + `scripts/replay_run.py`(Time Machine) +
