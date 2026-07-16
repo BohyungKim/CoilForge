@@ -115,3 +115,30 @@ YAML confidence stale(MEDIUM)를 HIGH로 동반 정정(엔진 무영향, 문서 
    - 참고: manual `/api/coil-drawing/derive`는 설계상 모든 슬롯을 review_required로 표시하고
      이 필드들은 paste-ready 필드값(도면 지오메트리 아님)이라, 승격의 HIGH 진입은 엔진 출력/
      submittal 필드패널에서 확인하는 것이 정확함(도면 렌더로는 안 보임).
+
+## MVP 사인오프 마무리 (John 2026-07-15)
+
+Stage 2b(파라미터 완전성 감사) 판정을 전부 해소하고 MVP 사인오프를 마무리했다.
+
+### 템플릿 eyeball 사인오프 — 승인
+Ventum+ 11 + 공용 10 템플릿을 **review-aid로 사인오프**(John 2026-07-15). production 승인
+아님 — `export_allowed=False`·워터마크 유지, 실제 프로젝트 진행 중 이상 발견 시 재검토.
+MVP 체크리스트 §4 반영.
+
+### 대기 3건 처분
+- **R-048 supply≠return 결함 — 수정(단, MEDIUM/review-required 발화).** 엔진이
+  `supply_position`에 `return_position`과 동일 리스트를 내던 결함을 수정: 문서 공식
+  `Supply = CD − [(Xmax+2)·D + (Xmax−1)·1.5]`(Xmax=circuits, D=conn_size, CD=casing_depth)로
+  발화하도록 변경(`header_prepopulate_engine.py` R-048 블록). **다만 HIGH가 아니라
+  MEDIUM/review-required로 발화** — 이 SOP 공식은 실사례 미검증이고 CD가 연결 런보다 작으면
+  음수 위치(예: NOVA B20 circuits=2 → CD 3.75, supply −0.25)를 낼 수 있어, confirmed 자동표기는
+  invariant("never invent engineering values")에 위배되기 때문. `return_position`은 검증된
+  공식이라 HIGH 유지. supply_position/return_position은 현재 어떤 도면·출력도 소비하지 않는
+  필드라 실 도면 영향은 0이나, 결함 자체는 제거. 테스트 `test_r048_hgrh_positions_multi_circuit`
+  갱신(supply≠return, supply∈suggestions/MEDIUM). **공식 자체의 실사례 검증은 open-questions 유지.**
+- **R-085 back_to_back 실경로 배선 — 보류.** 룰 정확성은 유닛레벨 확인됐으나 `back_to_back`
+  입력이 실 파이프라인(`build_header_request`/submittal)에 배선되지 않음. 입력 출처 정의가
+  선행돼야 배선 가능 → **보류**(John 2026-07-15). open-questions 유지.
+- **R-074 casing 외부 2차 출처 — MEDIUM 수용.** casing dims는 단일출처(CHK only)라 외부 2차
+  출처가 없으면 review-required로 두는 것이 안전 기본값. **MEDIUM 유지 수용**(John 2026-07-15),
+  출처 확보 시 승격 가능하도록 open-questions 유지.

@@ -120,7 +120,9 @@ The two mechanisms that make this work (the "logic", not just the values):
 - [ ] **[MVP]** John confirms the **inferred JSON→slot mappings** still flagged uncertain:
   `L-009/L-010` (HF/RF ambiguous), `L-013/L-014` (derived offsets), `L-050–052` (OAL
   derived), `L-041` (ASC orientation deferred).
-- [ ] **[MVP]** Template review-aid sign-off recorded for each of the 10 seeded templates.
+- [x] **[MVP]** Template review-aid sign-off recorded for the seeded templates (Ventum+ 11 +
+  shared 10) — John 2026-07-15, review-aid only (`export_allowed=False`, not production
+  approval). See docs/mvp_promotion_decisions.md "MVP 사인오프 마무리 (John 2026-07-15)".
 
 ## 5. UI & coverage visibility
 
