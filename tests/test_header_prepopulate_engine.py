@@ -11,6 +11,12 @@ now backed by rule R-044c (MEDIUM suggestion), so it matches the golden case.
 T13 labels feeds-absent ``io``/``hd`` as ``Confidence=High``, contradicting T12
 which makes the identical feeds-absent fields MEDIUM suggestions. John confirmed
 (2026-06-11) that they stay MEDIUM suggestions, so the engine follows T12.
+
+T17's coating note is HIGH, not the doc's blocked CONFLICT (John 2026-06-11 resolved
+the SOP-vs-CHK wording in favour of SOP Rev H). It now fires ONLY for a stated,
+non-NONE coating (John 2026-07-15), superseding that same day's "no coating trigger
+field, so always append" — so the uncoated golden cases (T01/T03/T05/T08) carry no
+coating note.
 """
 
 from __future__ import annotations
@@ -71,14 +77,17 @@ VALID_SIZE = {
     ProductFamily.VENTUM_PLUS: "V40",
 }
 
-# Coating notes are always appended to drawing notes (no coating trigger field
-# in Direct Coil selection); SOP Rev H wording (John, 2026-06-11).
+# Coating notes (SOP Rev H wording, John 2026-06-11) fire ONLY when a custom coating
+# is required -- `only_when: coating_set` (John 2026-07-15). DX/HGRH only.
 DX_COATING_NOTE = "Do Not Coat Last 5-6 inches of Distributor Extensions."
 HGRH_COATING_NOTE = "Do Not Coat Last 5-6 inches of Supply Stubouts."
 # Distributor extension note (R-035a/b): Ventum+ DX mounts ConnectionUP, every other
 # DX line mounts down. Appended after the coating note.
 DX_DIST_NOTE_DOWN = 'Distributor 6" Extension Downwards'
 DX_DIST_NOTE_UP = 'Distributor 6" Extension Upwards'
+# R-035c: hot gas bypass restates the distributor note in one combined line and
+# DISPLACES the plain Down note (Nova / Ventum H only -- John 2026-07-15).
+DX_DIST_NOTE_HGBP = 'Distributor Down w/ ASC & 6" Extension'
 
 
 def test_r022_return_spacing_terra_h_generic_terra_v_sop_formula() -> None:
@@ -161,9 +170,10 @@ def test_t01_dx_nova_b20_happy_path_1in() -> None:
     assert r.values["suction_io"].value == 2
     assert r.values["collared_holes"].value is True
     assert r.values["stacking_flanges"].value is False
+    # No coating input -> no coating note (R-080 is gated on coating_set,
+    # John 2026-07-15). See test_t17_* for the coated case.
     assert r.values["notes"].value == [
         "Copper Straps Required.",
-        DX_COATING_NOTE,
         DX_DIST_NOTE_DOWN,
     ]
     assert r.values["size_class"].value == "NOVA_1IN"
@@ -195,8 +205,7 @@ def test_t03_dx_ventum_plus_v40() -> None:
     # Ventum+ DX distributor mounts up (R-035a), so the note reads "Upwards".
     assert r.values["notes"].value == [
         "Copper Straps Required.",
-        DX_COATING_NOTE,
-        DX_DIST_NOTE_UP,
+        DX_DIST_NOTE_UP,  # no coating input -> no coating note (R-080 coating_set)
     ]
     assert r.values["return_bend"].value == 1.5
     assert r.values["suction_hd"].value == 3.5
@@ -258,9 +267,10 @@ def test_t05_dx_terra_24_gate() -> None:
     assert r.values["dist_i"].value == 3
     assert r.values["dist_orientation"].value == "DOWN"
     assert r.values["dist_extension"].value == 6
+    # No coating input -> no coating note (R-080 is gated on coating_set,
+    # John 2026-07-15). See test_t17_* for the coated case.
     assert r.values["notes"].value == [
         "Copper Straps Required.",
-        DX_COATING_NOTE,
         DX_DIST_NOTE_DOWN,
     ]
     # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
@@ -353,7 +363,8 @@ def test_t08_hgrh_nova_c20() -> None:
     assert r.values["conn_angle"].value == "LAS"
     assert r.values["top_flange"].value == 0.625
     assert r.values["return_bend"].value == 1.5
-    assert r.values["notes"].value == ["Copper Straps Required.", HGRH_COATING_NOTE]
+    # No coating input -> no coating note (R-081 coating_set, John 2026-07-15).
+    assert r.values["notes"].value == ["Copper Straps Required."]
     # supply_sl is MEDIUM (R-044a) -> suggestion only.
     assert r.suggestions["supply_sl"].value == 6
     assert "supply_sl" not in r.values
@@ -373,26 +384,26 @@ def test_t09_hgrh_ventum_plus_v20() -> None:
     assert "supply_sl" not in r.suggestions
 
 
-def test_r048_hgrh_positions_high_when_multi_circuit() -> None:
+def test_r048_hgrh_positions_multi_circuit() -> None:
     """R-048 conditional emission: HGRH with circuits+conn_size+rows present emits
-    supply_position/return_position at HIGH (promoted 2026-07-07). Verifies the
-    trigger gate fires and lands in ``values`` (auto-drawn), not ``suggestions``.
-
-    NOTE (known defect, tracked in docs/wiki/open-questions.md): the engine gives
-    supply_position the SAME list as return_position, while the YAML formula makes
-    Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5] (a different position). This test
-    pins the current behaviour so the promotion is verified; correcting the Supply
-    formula is a separate, John-gated change."""
+    return_position at HIGH (auto-drawn) and supply_position at MEDIUM (review-
+    required). John 2026-07-15: the supply≠return defect is corrected — supply uses
+    the documented Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5], NOT the return list —
+    but stays review-required (never HIGH) because that SOP formula is unverified and
+    can yield out-of-range values (here CD=3.75 < the 4.0 connection run -> -0.25);
+    formula verification is open in docs/wiki/open-questions.md."""
     r = prepopulate(
         _req(CoilType.HGRH, ProductFamily.NOVA, "B20", circuits=2, conn_size=0.625, rows=2)
     )
-    # x=1: 0.625 ; x=2: 2*0.625 + 1.5 = 2.75
-    assert r.values["supply_position"].value == [0.625, 2.75]
+    # return: x=1 -> 0.625 ; x=2 -> 2*0.625 + 1.5 = 2.75 (HIGH, verified)
     assert r.values["return_position"].value == [0.625, 2.75]
-    assert r.values["supply_position"].confidence == Confidence.HIGH
     assert r.values["return_position"].confidence == Confidence.HIGH
-    assert "supply_position" not in r.suggestions
-    assert "return_position" not in r.suggestions
+    # supply is a distinct value from the OPPOSITE edge: CD - [(2+2)*0.625 + (2-1)*1.5]
+    cd = r.values["casing_depth"].value
+    assert r.suggestions["supply_position"].value == round(cd - (4 * 0.625 + 1.5), 4)
+    assert r.suggestions["supply_position"].value != r.values["return_position"].value
+    assert r.suggestions["supply_position"].confidence == Confidence.MEDIUM
+    assert "supply_position" not in r.values  # never auto-drawn as confirmed
 
 
 def test_r048_hgrh_positions_missing_inputs_when_no_circuits() -> None:
@@ -548,18 +559,57 @@ def test_terra_flanges_h_c_asymmetric_v_symmetric_all_coil_types() -> None:
         assert terra_v.values["top_flange"].value == 0.625, coil  # R-012v / R-014v
 
 
-def test_t17_dx_coating_note_always_on_drawing_notes() -> None:
-    # Per John (2026-06-11): Direct Coil selection has no coating trigger field,
-    # so the coating note (SOP Rev H wording) is always appended to drawing
-    # notes -- regardless of any `coating` input -- never held back as a conflict.
+def test_t17_dx_coating_note_only_when_a_custom_coating_is_required() -> None:
+    """T17's golden case IS a coated coil (DX/NOVA/B20, coating=HERESITE).
+
+    Per John (2026-07-15) the coating note fires only when a custom coating is
+    actually required — "do not coat the last 5-6 inches" says nothing about a coil
+    nobody is coating. This SUPERSEDES John 2026-06-11 ("no coating trigger field, so
+    always append"); the trigger now flows from the submittal's coil_coating. The note
+    itself is still HIGH (SOP Rev H wording), never held back as a conflict.
+    """
     with_coating = prepopulate(
         _req(CoilType.DX, ProductFamily.NOVA, "B20", coating="HERESITE")
     )
-    without_coating = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20"))
-    expected = ["Copper Straps Required.", DX_COATING_NOTE, DX_DIST_NOTE_DOWN]
-    assert with_coating.values["notes"].value == expected
-    assert without_coating.values["notes"].value == expected
+    assert with_coating.values["notes"].value == [
+        "Copper Straps Required.",
+        DX_COATING_NOTE,
+        DX_DIST_NOTE_DOWN,
+    ]
     assert "coating_note" not in with_coating.blocked
+
+    # Uncoated, and coating simply not stated, both drop the note. Oxygen8 submittals
+    # do not mention coating when there is none, so absent must read as "no coating".
+    for coating in (None, "NONE", "none", " None "):
+        notes = prepopulate(
+            _req(CoilType.DX, ProductFamily.NOVA, "B20", coating=coating)
+        ).values["notes"].value
+        assert notes == ["Copper Straps Required.", DX_DIST_NOTE_DOWN], coating
+
+
+def test_t17b_hgrh_coating_note_only_when_a_custom_coating_is_required() -> None:
+    # R-081 is the HGRH twin of R-080 and is gated identically.
+    with_coating = prepopulate(
+        _req(CoilType.HGRH, ProductFamily.NOVA, "B20", coating="ELECTROFIN")
+    )
+    assert HGRH_COATING_NOTE in with_coating.values["notes"].value
+    without = prepopulate(_req(CoilType.HGRH, ProductFamily.NOVA, "B20"))
+    assert HGRH_COATING_NOTE not in without.values["notes"].value
+
+
+def test_every_non_none_coating_option_triggers_the_note() -> None:
+    """"Custom coating" == any stated non-NONE value: every option in the checklist
+    vocabulary other than NONE is a custom coating process, so `coating_set` and
+    "custom coating required" coincide. Pins that, so adding a *standard* coating to
+    the vocabulary later fails here instead of silently mis-noting every coil."""
+    from coilforge.checklist.template_map import COATING_DEFAULT, COATING_OPTIONS
+
+    assert COATING_DEFAULT == "NONE"
+    for option in COATING_OPTIONS:
+        notes = prepopulate(
+            _req(CoilType.DX, ProductFamily.NOVA, "B20", coating=option)
+        ).values["notes"].value
+        assert (DX_COATING_NOTE in notes) is (option != "NONE"), option
 
 
 def test_distributor_extension_note_up_for_ventum_plus_dx_else_down() -> None:
@@ -591,6 +641,49 @@ def test_distributor_extension_note_up_for_ventum_plus_dx_else_down() -> None:
     for coil in (CoilType.CWC, CoilType.HWC):
         water = prepopulate(_req(coil, ProductFamily.NOVA, "C30", feeds=2, rows=2))
         assert not any("Distributor" in n for n in water.values["notes"].value)
+
+
+def test_hot_gas_bypass_distributor_note_replaces_the_plain_down_note() -> None:
+    # R-035c displaces R-035b (gated not_hot_gas_bypass) rather than adding to it, so
+    # the "exactly one distributor note per DX" invariant holds. Nova / Ventum H are the
+    # only lines that can select hot gas bypass (John 2026-07-15).
+    for pf, size in ((ProductFamily.NOVA, "B20"), (ProductFamily.VENTUM_H, "H10")):
+        notes = prepopulate(_req(CoilType.DX, pf, size, hot_gas_bypass=True)).values[
+            "notes"
+        ].value
+        assert notes[-1] == DX_DIST_NOTE_HGBP, pf
+        assert DX_DIST_NOTE_DOWN not in notes, pf  # displaced, not duplicated
+        assert len([n for n in notes if "Distributor 6" in n or "ASC" in n]) == 1, pf
+
+
+def test_non_hgbp_dx_keeps_the_plain_down_note() -> None:
+    # Regression guard for the R-035b `not_hot_gas_bypass` gate: an ordinary DX coil
+    # (hot_gas_bypass False or simply absent) is unchanged.
+    for hgbp in (False, None):
+        notes = prepopulate(
+            _req(CoilType.DX, ProductFamily.NOVA, "B20", hot_gas_bypass=hgbp)
+        ).values["notes"].value
+        assert notes[-1] == DX_DIST_NOTE_DOWN, hgbp
+        assert DX_DIST_NOTE_HGBP not in notes, hgbp
+
+
+def test_ventum_plus_hgbp_keeps_the_up_note() -> None:
+    # R-035c is Nova/Ventum-H-only, so it never displaces the Ventum+ Up note (R-035a).
+    notes = prepopulate(
+        _req(CoilType.DX, ProductFamily.VENTUM_PLUS, "V40", hot_gas_bypass=True)
+    ).values["notes"].value
+    assert notes[-1] == DX_DIST_NOTE_UP
+    assert DX_DIST_NOTE_HGBP not in notes
+
+
+def test_terra_hgbp_yields_no_distributor_note() -> None:
+    # Terra cannot select hot gas bypass, so DX+Terra+HGBP is an impossible combo (its
+    # drawing is omitted at the submittal gate). It yields NO distributor note --
+    # fail-closed beats emitting a wrong one.
+    notes = prepopulate(
+        _req(CoilType.DX, ProductFamily.TERRA, "024", hot_gas_bypass=True)
+    ).values["notes"].value
+    assert not any("Distributor 6" in n or "ASC" in n for n in notes)
 
 
 def test_terra_split_phase1_new_families_normalize_to_terra_variant() -> None:

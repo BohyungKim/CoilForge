@@ -244,3 +244,138 @@ def test_non_ventum_line_never_gets_dedicated_ventum_template() -> None:
     )
     assert out["template_id"] == "coilmaster_dx_rh_header1"  # shared, NOT the vplus one
     assert out.get("dedicated_family_template") is None
+
+
+# --------------------------------------------------------------------------- #
+# Hot gas bypass (HGBP / ASC) is selectable on Nova and Ventum H ONLY (John,
+# 2026-07-15). The two seeded HGBP templates are Nova/Ventum-H-class references,
+# so an HGBP coil resolving to another line is a misclassification, not an exotic
+# coil — its drawing is omitted rather than borrowing another line's geometry.
+# --------------------------------------------------------------------------- #
+def _hgbp_spec(product_type: str | None, hand: str = "Left") -> dict:
+    return dict(coil_category="DX", coil_hand=hand, circuits=1,
+                special_feature="HGBP", product_type=product_type, unit_size="B20",
+                rows=4, finned_height=12, finned_length=15, suction_conn_size=0.625)
+
+
+def test_hgbp_draws_for_nova_and_ventum_h() -> None:
+    # The two lines that may select the option draw from the seeded HGBP bucket,
+    # with no unverified-line caveat (their product line resolved).
+    for product_type in ("NOVA", "VENTUM_H"):
+        out = derive_coil_template_drawing(_hgbp_spec(product_type))
+        assert out["template_id"] == "coilmaster_dx_lh_hgbp", product_type
+        assert out["generation_allowed"] is True, product_type
+        assert out["svg"], product_type
+        assert out.get("unsupported_hgbp_product_line") is None, product_type
+        assert out.get("hgbp_product_line_warning") is None, product_type
+        assert out["export_allowed"] is False, product_type  # review aid only
+
+
+def test_hgbp_rh_draws_for_nova() -> None:
+    out = derive_coil_template_drawing(_hgbp_spec("NOVA", hand="Right"))
+    assert out["template_id"] == "coilmaster_dx_rh_hgbp"
+    assert out["svg"]
+
+
+def test_hgbp_omitted_for_lines_that_cannot_select_the_option() -> None:
+    for product_type, family in (("TERRA H", "TERRA_H"), ("TERRA V", "TERRA_V")):
+        out = derive_coil_template_drawing(_hgbp_spec(product_type))
+        assert not out["svg"], product_type
+        assert out["template_found"] is False, product_type
+        assert out["generation_allowed"] is False, product_type
+        assert out.get("unsupported_hgbp_product_line") == family, product_type
+        reason = out.get("not_registered_reason") or ""
+        assert "Nova and Ventum H only" in reason, product_type
+
+
+def test_hgbp_unknown_product_line_draws_with_a_warning() -> None:
+    """An unresolved product line means the Nova/Ventum-H premise is unverified.
+    Blanking on that absence would kill legitimate Nova HGBP coils whose model code
+    merely failed to parse, so the drawing stands and the premise is surfaced instead.
+    Flipping this to strict must be a conscious test-breaking act.
+
+    Note the line resolves from EITHER product_type OR unit_size (a Nova size like
+    "B20" implies Nova), so neither may be present for the line to be unknown.
+    """
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Left", circuits=1, special_feature="HGBP",
+             rows=4, finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert out["svg"]
+    assert out["template_id"] == "coilmaster_dx_lh_hgbp"
+    assert out.get("unsupported_hgbp_product_line") is None
+    assert "UNVERIFIED" in (out.get("hgbp_product_line_warning") or "")
+
+
+def test_hgbp_product_line_inferred_from_unit_size_is_not_warned() -> None:
+    # A Nova unit size implies the Nova line even with no product_type, so the premise
+    # is verified and no caveat rides along.
+    out = derive_coil_template_drawing(_hgbp_spec(None))
+    assert out["svg"]
+    assert out.get("hgbp_product_line_warning") is None
+
+
+def test_ventum_plus_hgbp_reads_as_nonexistent_not_as_an_unseeded_bucket() -> None:
+    """Ventum+ DX HGBP does not exist (John 2026-07-15) — hot gas bypass is a Nova /
+    Ventum H option. It would also trip _gate_unseeded_ventum_plus_dx, whose reason
+    ("no seeded Ventum+ DX reference matches ... must be seeded first") reads as a
+    coverage gap someone could close by finding a reference PDF. There is no such
+    reference, so the HGBP gate runs FIRST and owns the message — pins the ordering."""
+    out = derive_coil_template_drawing(_hgbp_spec("VENTUM_PLUS"))
+    assert not out["svg"]
+    assert out["template_found"] is False
+    assert out["generation_allowed"] is False
+    assert out.get("unsupported_hgbp_product_line") == "VENTUM_PLUS"
+    reason = out.get("not_registered_reason") or ""
+    assert "Nova and Ventum H only" in reason
+    # Must NOT invite anyone to go seed a Ventum+ DX HGBP reference (the vplus gate's
+    # wording) — no such reference can be produced.
+    assert "must be seeded first" not in reason
+    assert "R-032" not in reason
+    assert out.get("unregistered_ventum_plus_dx") is None
+
+
+def test_ventum_plus_dx_without_hgbp_still_reports_the_r032_reason() -> None:
+    """The reordering must not steal the R-032 message from a genuinely unseeded
+    Ventum+ DX hand/header — that one IS a real, closeable coverage gap."""
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Right", circuits=3,
+             product_type="VENTUM_PLUS", unit_size="V20", rows=4,
+             finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert not out["svg"]
+    assert out.get("unregistered_ventum_plus_dx") is True
+    reason = out.get("not_registered_reason") or ""
+    assert "R-032" in reason and "ConnectionUP" in reason
+    assert out.get("unsupported_hgbp_product_line") is None
+
+
+def test_non_hgbp_dx_is_untouched_by_the_hgbp_gates() -> None:
+    # Regression guard: a plain Terra DX Header 1 coil (no HGBP) is unaffected.
+    out = derive_coil_template_drawing(
+        dict(coil_category="DX", coil_hand="Left", circuits=1, product_type="TERRA H",
+             unit_size="024", rows=4, finned_height=12, finned_length=15,
+             suction_conn_size=0.625)
+    )
+    assert out["template_id"] == "coilmaster_dx_lh_header1"
+    assert out["svg"]
+    assert out.get("unsupported_hgbp_product_line") is None
+    assert out.get("hgbp_product_line_warning") is None
+
+
+def test_hgbp_drawing_notes_carry_the_asc_distributor_note() -> None:
+    """R-035c end-to-end: the SAME special_feature that selects the HGBP template also
+    picks the distributor note, so the note and the drawing can never disagree about
+    whether this coil is HGBP. Guards the _engine_drawing_notes -> build_header_request
+    hot_gas_bypass thread (without it R-035c never fires)."""
+    from coilforge.workflows.submittal_to_drawing import _engine_drawing_notes
+
+    ctx = dict(product_type="NOVA", unit_size="B20", coil_category="DX",
+               rows=4, feeds=2, circuits=1)
+    hgbp_notes = _engine_drawing_notes({**ctx, "special_feature": "HGBP"})
+    assert 'Distributor Down w/ ASC & 6" Extension' in hgbp_notes
+    assert 'Distributor 6" Extension Downwards' not in hgbp_notes
+
+    plain_notes = _engine_drawing_notes({**ctx, "special_feature": None})
+    assert 'Distributor 6" Extension Downwards' in plain_notes
+    assert not any("ASC" in note for note in plain_notes)

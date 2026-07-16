@@ -249,6 +249,25 @@ A recognized code is safe (the per-candidate `header_context` wins over the full
 scan in `pdf_to_template_drawing.py`); an *unrecognized* code falls through to that loose
 scan, where a stray `V###` filter-appendix token poisons it into a VENTUM_PLUS hard-block.
 
+**Hot gas bypass (HGBP) is NOT a category** — it is an orthogonal `special_feature` axis
+(`catalog.py`: `{ASC, HOT_GAS_BYPASS, HGBP}` → `HGBP`), **DX-only** (`_entry_for_dx_hgbp`
+is the sole HGBP-bucket producer) and **header-agnostic** (`_header_matches` short-circuits
+to True for HGBP; `pdf_to_template_drawing.py` nulls `header_type` when a special is set).
+Tagging an HGRH/CWC/HWC coil HGBP matches no bucket → `found=False` → the drawing blanks
+**silently**, so the DX restriction is load-bearing, not cosmetic.
+
+**`ASC` is a COUNT, not a flag.** The EZ drawing states it inside the distributor string —
+`(1)501-2-3/16-1.5(0 ASC)` means **NO hot gas bypass**. Hence two deliberately different
+detectors: `pdf_intake._package_hgbp_pages` (project-level, scans the WHOLE document, so it
+matches only an EXPLICIT `HGBP`/`hot gas bypass` statement and **excludes ASC** — that
+exclusion is what makes the whole-document scan safe from one coil's drawing page blanketing
+the package), and `submittal_to_drawing._detect_hgbp` (per-coil, also honours a count `>= 1`).
+Both use word boundaries; a bare `"ASC" in blob` test inverts the truth for every `0 ASC`
+coil and matches inside "C**asc**ade". The cover HGBP adder is a line item, not a coil row
+(`_is_cover_coil_row` correctly discards it via the `"valve"` token), so it is read from page
+text and carried to **DX candidates only** via a candidate note — the note's literal `HGBP`
+token is what `_detect_hgbp` matches, so do not reword one side alone.
+
 ### Product family rules
 
 First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
@@ -285,6 +304,49 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   so the shared water template is withheld (not borrowed); Terra V DX/HGRH and Terra H
   water still draw. The Terra V water engine rules (R-067 etc.) stay intact — only the
   drawing is withheld.
+- **Hot gas bypass (HGBP) is a Nova / Ventum H option ONLY** (John 2026-07-15). Both HGBP
+  DX templates (`coilmaster_dx_{lh,rh}_hgbp`, seeded from real `(1 ASC)` 1-header references)
+  are Nova/Ventum-H-class, so `_gate_hgbp_unsupported_product_line` **omits** an HGBP drawing
+  whose family resolves to anything else rather than lending them out. **Gate-only** — no
+  `product_family`-scoped HGBP bucket exists and the shared buckets are untouched. Since HGBP
+  is header-agnostic, those two hands are the *entire* HGBP bucket space — **coverage is
+  complete; nothing is left to seed.**
+- **Ventum+ DX HGBP is not an unseeded bucket — it is a configuration that does not exist.**
+  That distinction sets the gate ORDER: `_gate_unseeded_ventum_plus_dx` also catches the coil,
+  but its reason ("no seeded Ventum+ DX reference matches this hand/header … *must be seeded
+  first*") reads as a closeable coverage gap, and no such reference can be produced. So the
+  HGBP gate runs **before** it and owns the message. Same reason `SPECIAL_FAMILIES` in
+  `scripts/generate_coverage_dashboard.py` drops HGBP from the Ventum+ column — until
+  2026-07-15 the dashboard counted those two phantom cells as `not_registered`. An
+  **unresolved** line is NOT gated — it draws with `hgbp_product_line_warning` instead
+  (`_flag_hgbp_product_line_unverified`), because absence of a detected code is not evidence
+  of an unsupported line, and the line also resolves from `unit_size` alone
+  (`pdf_to_template_drawing`: `ctx.product_type or det_product or product_for_unit_size(...)`).
+- **Coating notes (R-080/R-081) fire only when a custom coating is required** (John
+  2026-07-15, superseding the 2026-06-11 "no trigger field, so always append") — a "do not
+  coat the last 5-6 inches" instruction is meaningless on an uncoated coil. Gated
+  `only_when: coating_set` (stated and not `NONE`); every non-NONE value in the checklist
+  vocabulary is a custom coating, so *set* and *custom* coincide. Coating is threaded from
+  the submittal's `manufacturing_options.coil_coating` → `ctx["coating"]` →
+  `build_header_request`; **without that thread the rule silently degrades to "never"**,
+  since Oxygen8 submittals omit the field entirely when there is no coating (which is also
+  why absent correctly reads as no-coating rather than unknown). Golden cases
+  T01/T03/T05/T08 carry no coating note as a result; T17 is the coated case.
+- **R-035c** carries the HGBP drawing note `Distributor Down w/ ASC & 6" Extension` and
+  **displaces** R-035b (now gated `only_when: not_hot_gas_bypass`) — preserving the *exactly
+  one distributor note per DX* invariant. Two gotchas: the engine's **notes-assembly loop now
+  honours `only_when`** (it previously read `_applies` only, so a gated note rule was inert —
+  the `_SPECIAL_IDS` "edit the helper, not just the YAML" rule in action), and
+  `_engine_drawing_notes` must pass `hot_gas_bypass=(ctx["special_feature"] == "HGBP")` into
+  `build_header_request` or R-035c never fires. Reusing the same `special_feature` that drove
+  template selection is what keeps that field and the chosen template in agreement. The R-035
+  family lands in the paste "Drawing Notes" field / preview title block — **the DX
+  `template.svg` NOTES text is hardcoded and does not slot-render.** Its sibling `slot.NOTES`
+  always carries the R-035b wording even for an HGBP coil (`build_drawing_slots` takes no
+  `hot_gas_bypass` arg), which is inert only because **no `template.svg` has a
+  `{{slot.NOTES}}` placeholder** — redacting NOTES to a real slot (see *Redaction gotcha*)
+  would start printing "Downwards" on HGBP coils, so thread `hot_gas_bypass` through
+  `build_drawing_slots` first.
 
 ### Header count rules
 

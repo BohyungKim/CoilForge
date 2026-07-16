@@ -50,6 +50,15 @@ EXPECTED_TAXONOMY: dict[str, dict[str, tuple]] = {
     "CWC": {"hands": ("LH", "RH"), "headers": ("Header 1",), "specials": ()},
 }
 
+# Which product families a special is even selectable on — a special is NOT part of
+# every family's bucket space. Hot gas bypass is a Nova / Ventum H option only (John
+# 2026-07-15), and both draw from the SHARED (product-agnostic) buckets, so `None`
+# (= SHARED) is the whole story: **a Ventum+ HGBP cell is not an unseeded gap, it is a
+# configuration that does not exist**, and listing it would ask someone to go seed a
+# reference drawing that cannot be produced. A special absent from this map is assumed
+# selectable on every family.
+SPECIAL_FAMILIES: dict[str, frozenset[str | None]] = {"HGBP": frozenset({None})}
+
 # Gap classification for a dedicated-family bucket that is not seeded.
 GAP_BLOCKED = "not_registered"  # Ventum+ DX — must be seeded from a real UP reference
 GAP_FALLBACK = "shared_fallback"  # Ventum+ non-DX — draws via the shared template
@@ -60,14 +69,19 @@ def _bucket_key(category: str, hand: str, header, special) -> tuple:
     return (category, hand, header if not special else None, special)
 
 
-def expected_buckets(category: str) -> list[tuple]:
-    """Every ``(category, hand, header, special)`` bucket the taxonomy expects."""
+def expected_buckets(category: str, family: str | None = None) -> list[tuple]:
+    """Every ``(category, hand, header, special)`` bucket the taxonomy expects for one
+    product family (``None`` = SHARED). Specials the family cannot select are omitted —
+    they are non-existent configurations, not gaps (see :data:`SPECIAL_FAMILIES`)."""
     spec = EXPECTED_TAXONOMY[category]
     out: list[tuple] = []
     for hand in spec["hands"]:
         for header in spec["headers"]:
             out.append(_bucket_key(category, hand, header, None))
         for special in spec["specials"]:
+            families = SPECIAL_FAMILIES.get(special)
+            if families is not None and family not in families:
+                continue
             out.append(_bucket_key(category, hand, None, special))
     return out
 
@@ -113,7 +127,7 @@ def build_family_cells(family: str | None) -> list[Cell]:
     seeded = _seeded_index(family)
     cells: list[Cell] = []
     for category in EXPECTED_TAXONOMY:
-        for key in expected_buckets(category):
+        for key in expected_buckets(category, family):
             _, hand, header, special = key
             entry = seeded.get(key)
             cells.append(

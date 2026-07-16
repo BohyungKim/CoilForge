@@ -19,6 +19,7 @@
 ## 개념
 - [[confidence-gate]] `[CONFIRMED]` — HIGH→values / MEDIUM→suggestions / LOW·CONFLICT→blocked; 중심 불변식.
 - [[multi-header-geometry]] `[CONFIRMED]` — circuits/feeds → I2/S2/R2…; N interlaced circuits = N 공급 헤더 (John 2026-07-06).
+- [[hot-gas-bypass]] `[CONFIRMED]` — HGBP/ASC: 카테고리가 아닌 직교 special_feature 축, DX 전용·header 무관, Nova/Ventum H 전용 (John 2026-07-15); `(N ASC)`는 개수 — `0 ASC` = HGBP 아님.
 
 ## 스텁 (참조되지만 아직 시드 안 됨 — `/wiki-ingest`로 자라남)
 - `[[dx]]`, `[[hwc]]`, `[[cwc]]` — 나머지 세 카테고리.

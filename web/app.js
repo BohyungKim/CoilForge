@@ -2137,6 +2137,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
       ${templateDrawingPicker(templateDrawing)}
       ${renderManualFillPanel(templateDrawing)}
       ${distributorOrientationBanner(templateDrawing)}
+      ${hgbpProductLineBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
     </div>
   `;
@@ -2586,6 +2587,18 @@ function distributorOrientationBanner(templateDrawing) {
   return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
 }
 
+// Loud review-required banner when an HGBP drawing was produced without a resolved
+// product line — hot gas bypass is a Nova / Ventum H option, so an unknown line leaves
+// that premise unverified. Empty string when not flagged. See
+// submittal_to_drawing._flag_hgbp_product_line_unverified.
+function hgbpProductLineBanner(templateDrawing) {
+  const warning = templateDrawing && templateDrawing.hgbp_product_line_warning;
+  if (!warning) {
+    return "";
+  }
+  return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
+}
+
 function renderDrawingParameters(uiState) {
   const parameters = uiState.drawing_parameters?.parameters || {};
   const casing = DRAWING_PARAM_COLUMNS[0];
@@ -2719,6 +2732,7 @@ function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
           <strong>${rendered ? "Reproduced from PDF — review aid" : "Links — artwork not seeded"}</strong>
         </div>
         ${distributorOrientationBanner(templateDrawing)}
+        ${hgbpProductLineBanner(templateDrawing)}
         <div class="dc-coil-drawing-canvas">
           ${templateDrawingBody(templateDrawing, rendered)}
         </div>

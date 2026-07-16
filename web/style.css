@@ -1559,6 +1559,32 @@ h4 {
   margin: 8px 0;
 }
 
+/* The CCSI payload copy is pressed on every coil, so it is the panel's hero action —
+   not a .secondary-action ghost that reads as the card behind it. Brand gold is the
+   one fill defined identically in both themes (--brand-gold / --text-on-gold), so it
+   stays high-contrast in dark mode without a [data-theme] override. */
+.ccsi-copy-action {
+  background: var(--brand-gold);
+  color: var(--text-on-gold);
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px rgba(212, 166, 74, 0.3);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  min-height: 42px;
+  padding: 10px 18px;
+}
+
+.ccsi-copy-action:hover {
+  background: var(--brand-gold);
+  filter: brightness(1.08);
+}
+
+.ccsi-copy-action:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .ccsi-autofill-setup {
   margin: 4px 0 8px;
   font-size: 12px;

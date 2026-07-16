@@ -97,6 +97,12 @@ class PdfCoilIntakeSummary(BaseModel):
     cover_page_ocr_required: bool = False
     cover_page_user_input_required: bool = False
     cover_page_review_note: str | None = None
+    # Project-level hot-gas-bypass (HGBP/ASC) option, stated as a cover line item
+    # ("HGBP VALVE - DANFOSS AXV-H and hot-gas bypass stub-out on coils adder"). The
+    # pages are surfaced as evidence because the flag is applied package-wide to DX
+    # coils -- see _package_hgbp_pages.
+    cover_page_hgbp_detected: bool = False
+    cover_page_hgbp_pages: list[int] = Field(default_factory=list)
     ocr_attempted: bool = False
     ocr_status: str = "not_requested"
     ocr_provider: str | None = None
@@ -158,6 +164,35 @@ class _CoverPageDetection:
     ocr_required: bool = False
     user_page_input_required: bool = False
     review_note: str | None = None
+
+
+# Hot gas bypass is quoted as a project-level cover line item, never as a coil row --
+# "660024-001 HGBP VALVE - DANFOSS AXV-H and hot-gas bypass stub-out on coils adder".
+# That row is (correctly) discarded by _is_cover_coil_row as an accessory, so the flag
+# is read from PAGE TEXT rather than from parsed rows.
+#
+# Deliberately NARROWER than workflows.submittal_to_drawing._detect_hgbp: this scans the
+# WHOLE document, so it must match only an EXPLICIT statement of the option. The EZ coil
+# drawing states hot gas bypass as an ASC count -- "(1)501-2-3/16-1.5(1 ASC)" -- and
+# matching that here would let one HGBP coil's drawing page blanket every DX coil in the
+# package. Excluding ASC is what keeps the whole-document scan safe.
+_PACKAGE_HGBP_RE = re.compile(
+    r"\bHGBP\b|\bHOT[\s\-]*GAS[\s\-]*BY[\s\-]?PASS\b", re.IGNORECASE
+)
+
+
+def _package_hgbp_pages(pages: list[_TextPage]) -> tuple[int, ...]:
+    """Page numbers explicitly stating the hot-gas-bypass (HGBP) option, ascending.
+
+    Empty when the option is absent. Callers treat a non-empty result as a
+    PROJECT-level fact applied to the package's DX coils (never water/reheat coils --
+    no HGBP template bucket exists for those).
+    """
+    return tuple(
+        page.page_number
+        for page in sorted(pages, key=lambda p: p.page_number)
+        if _PACKAGE_HGBP_RE.search(page.text or "")
+    )
 
 
 @dataclass(frozen=True)
@@ -608,6 +643,9 @@ def extract_coil_candidate_from_pdf_bytes(
     )
     cover_shared_lines = _shared_unit_lines_for_cover_candidates(pages)
     cover_detail_lines = _detail_lines_by_cover_row(pages, cover_detection)
+    # Read after both OCR passes have rebuilt `pages`, so the scan covers every cover
+    # detection tier -- including the two that never look at page text themselves.
+    hgbp_pages = _package_hgbp_pages(pages)
     cover_candidates = [
         _candidate_from_cover_row(
             row,
@@ -617,6 +655,7 @@ def extract_coil_candidate_from_pdf_bytes(
                 *cover_shared_lines,
                 *cover_detail_lines.get(row.tag, ()),
             ),
+            package_hgbp_pages=hgbp_pages,
         )
         for index, row in enumerate(cover_detection.rows, start=1)
     ]
@@ -671,6 +710,8 @@ def extract_coil_candidate_from_pdf_bytes(
         cover_page_ocr_required=cover_detection.ocr_required,
         cover_page_user_input_required=cover_detection.user_page_input_required,
         cover_page_review_note=cover_detection.review_note,
+        cover_page_hgbp_detected=bool(hgbp_pages),
+        cover_page_hgbp_pages=list(hgbp_pages),
         reused_rule_sources=[
             "PO_Release_Engineering_Workflow/pdf_extractor: cover-page Qty/Tag table structure",
             "PO_Release_Engineering_Workflow/pdf_extractor: deterministic line regex style",
@@ -1701,6 +1742,7 @@ def _candidate_from_cover_row(
     source_id: str,
     index: int,
     detail_lines: tuple[SanitizedSubmittalLine, ...] = (),
+    package_hgbp_pages: tuple[int, ...] = (),
 ) -> SubmittalCoilCandidate:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = _add_cover_row_lines(extracted, row, 1)
@@ -1765,6 +1807,23 @@ def _candidate_from_cover_row(
     model_notes = (
         [f"Cover product/model code: {row.model}"] if row.model else []
     )
+    # Hot gas bypass is quoted once for the whole project, so carry the package-level
+    # fact onto each DX coil -- DX ONLY. _entry_for_dx_hgbp is the sole producer of HGBP
+    # template buckets and it is DX-only, so tagging an HGRH/CWC/HWC coil HGBP would find
+    # no bucket and blank its drawing silently. Leaving water/reheat coils alone routes
+    # them to their normal Header N bucket, unchanged.
+    #
+    # The note is the transport: workflows.submittal_to_drawing._detect_hgbp reads the
+    # joined candidate notes and matches the literal "HGBP" token below. Keep both sides
+    # in step -- rewording this string without that regex silently drops the routing.
+    hgbp_notes = (
+        [
+            "Cover option: hot-gas bypass (HGBP) adder stated on cover page "
+            + ", ".join(str(p) for p in package_hgbp_pages)
+        ]
+        if package_hgbp_pages and _is_dx_cover_row(row)
+        else []
+    )
     return candidate.model_copy(
         update={
             "candidate_id": f"SCC-{source_id}-{_candidate_slug(row.tag, index)}",
@@ -1772,6 +1831,7 @@ def _candidate_from_cover_row(
                 *candidate.notes,
                 "Created from one cover-page coil row for separate review page generation.",
                 *model_notes,
+                *hgbp_notes,
             ],
         }
     )
@@ -2553,6 +2613,13 @@ def _derive_coil_type(tag: str, item: str) -> str:
     if "dxc" in normalized_item or "dxcoil" in normalized_item or "coolingcoil" in normalized_item:
         return "DX COIL"
     return _clean_value(item)
+
+
+def _is_dx_cover_row(row: _CoverRow) -> bool:
+    """True when a cover row is a DX coil -- the only category with an HGBP bucket.
+    Reuses _derive_coil_type so "is DX" has one definition and inherits its tag-alias
+    fixes."""
+    return _derive_coil_type(row.tag, row.item) == "DX COIL"
 
 
 def _match_field_value(line: str, field_pattern: _FieldPattern) -> str | None:

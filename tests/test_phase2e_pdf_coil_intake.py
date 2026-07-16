@@ -21,6 +21,7 @@ from coilforge.submittal.pdf_intake import (
     _is_cover_coil_row,
     _normalize_fin_surface,
     _OcrPageResult,
+    _package_hgbp_pages,
     _TextPage,
     _extract_detail_lines_from_page,
     detect_cover_page_from_pdf_pages,
@@ -1715,3 +1716,99 @@ def test_plain_connection_size_label_maps_to_return_connection_size() -> None:
     assert _match_detail_label("Connection Size", "coil") == "RETURN_CONNECTION_SIZE"
     # Exact-match only: must NOT swallow the qualified supply/return connection labels.
     assert _match_detail_label("Supply Connection Size", "coil") != "RETURN_CONNECTION_SIZE"
+
+
+# --------------------------------------------------------------------------- #
+# Hot gas bypass (HGBP / ASC) is quoted as a PROJECT-level cover line item, never
+# as a coil row -- "660024-001 HGBP VALVE - DANFOSS AXV-H and hot-gas bypass
+# stub-out on coils adder". That row is correctly discarded as an accessory by
+# _is_cover_coil_row (the "valve" token), so the flag is read from page TEXT and
+# applied package-wide to DX coils only. Real source: 2910 Airreps WA / CBRE
+# Hilltop KS submittal (John 2026-07-15).
+# --------------------------------------------------------------------------- #
+_HGBP_COVER_LINE = (
+    "1 Miscellaneous 660024-001 HGBP VALVE - DANFOSS AXV-H "
+    "and hot-gas bypass stub-out on coils adder"
+)
+
+
+def test_package_hgbp_detected_from_real_cover_line_item() -> None:
+    pages = [
+        _TextPage(page_number=1, text="1 CDXC-1 DX Cooling Coil"),
+        _TextPage(page_number=2, text=_HGBP_COVER_LINE),
+    ]
+    assert _package_hgbp_pages(pages) == (2,)
+
+
+def test_package_hgbp_detected_on_continuation_page_yielding_no_coil_rows() -> None:
+    """The adder sits on a later page that produces NO coil rows. The continuation
+    scan breaks on the first such page, so the HGBP read must not depend on it."""
+    pages = [
+        _TextPage(page_number=1, text="1 CDXC-1 DX Cooling Coil"),
+        _TextPage(page_number=2, text="Notes    Start Up Assistance"),  # no coil rows
+        _TextPage(page_number=3, text=_HGBP_COVER_LINE),
+    ]
+    assert _package_hgbp_pages(pages) == (3,)
+
+
+def test_package_hgbp_ignores_asc_count_on_a_coil_drawing_page() -> None:
+    """The EZ drawing states hot gas bypass as an ASC COUNT, not the HGBP token.
+    The package scan spans the whole document, so it must ignore ASC entirely --
+    otherwise one HGBP coil's drawing page would blanket every DX in the package.
+    Excluding ASC is what makes the whole-document scan safe."""
+    pages = [
+        _TextPage(page_number=1, text="1 CDXC-1 DX Cooling Coil"),
+        _TextPage(page_number=2, text="DISTRIBUTORS (1)501-2-3/16-1.5(1 ASC) OD:5/8"),
+        _TextPage(page_number=3, text="DISTRIBUTORS (1)501-2-3/16-1.5(0 ASC) OD:5/8"),
+    ]
+    assert _package_hgbp_pages(pages) == ()
+
+
+def test_package_hgbp_absent_when_no_option_stated() -> None:
+    pages = [_TextPage(page_number=1, text="1 CDXC-1 DX Cooling Coil")]
+    assert _package_hgbp_pages(pages) == ()
+
+
+def test_cover_hgbp_note_flows_into_dx_drawing_context_as_special_feature() -> None:
+    """End-to-end producer -> consumer: the intake note carries the package fact and
+    _detect_hgbp reads it back off the candidate notes. Guards note/regex drift."""
+    candidate = _candidate_from_cover_row(
+        _CoverRow(page_number=1, row_number=1, qty=1, tag="CDXC-1",
+                  item="DX Cooling Coil", model="DXM05C13", handing="LH"),
+        source_id="TEST", index=1, package_hgbp_pages=(3,),
+    )
+    assert any("HGBP" in note for note in candidate.notes)
+    ctx = _template_header_context_from_candidate(candidate)
+    assert ctx["special_feature"] == "HGBP"
+
+
+@pytest.mark.parametrize(
+    "tag, item",
+    [
+        ("RHHGRC-1", "HGRH Coil"),
+        ("HHWC-1", "Hot Water Coil"),
+        ("CCWC-1", "Chilled Water Coil"),
+    ],
+)
+def test_cover_hgbp_never_tags_water_or_reheat_coils(tag: str, item: str) -> None:
+    """Only DX has an HGBP template bucket (_entry_for_dx_hgbp). Tagging a water or
+    reheat coil HGBP would match no bucket and blank its drawing silently, so the
+    package flag must stop at DX."""
+    candidate = _candidate_from_cover_row(
+        _CoverRow(page_number=1, row_number=1, qty=1, tag=tag, item=item, handing="LH"),
+        source_id="TEST", index=1, package_hgbp_pages=(3,),
+    )
+    assert not any("HGBP" in note for note in candidate.notes)
+    ctx = _template_header_context_from_candidate(candidate)
+    assert "special_feature" not in ctx
+
+
+def test_cover_row_without_package_hgbp_gets_no_note() -> None:
+    """Regression guard: a coil in a package with no HGBP adder is unchanged."""
+    candidate = _candidate_from_cover_row(
+        _CoverRow(page_number=1, row_number=1, qty=1, tag="CDXC-1",
+                  item="DX Cooling Coil", handing="LH"),
+        source_id="TEST", index=1,
+    )
+    assert not any("HGBP" in note for note in candidate.notes)
+    assert "special_feature" not in _template_header_context_from_candidate(candidate)

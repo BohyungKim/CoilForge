@@ -36,7 +36,7 @@ _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules
 
 # Rule IDs handled by dedicated phases rather than the generic constant emitter.
 _NOTES_BASE_IDS = {"R-007", "R-008"}
-_NOTES_APPEND_IDS = {"R-080", "R-081", "R-035a", "R-035b"}
+_NOTES_APPEND_IDS = {"R-080", "R-081", "R-035a", "R-035b", "R-035c"}
 _CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
 _RETURN_SPACING_IDS = {"R-022", "R-023", "R-052"}
 _CWC_IO_HD_SL_IDS = {
@@ -251,6 +251,8 @@ def _condition_met(only_when: str, req: HeaderPrepopulateRequest) -> bool:
         return _coating_set(req)
     if only_when == "hot_gas_bypass":
         return bool(req.hot_gas_bypass)
+    if only_when == "not_hot_gas_bypass":
+        return not bool(req.hot_gas_bypass)
     if only_when == "with_hgrh":
         return bool(req.with_hgrh)
     if only_when == "back_to_back":
@@ -377,11 +379,17 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     # --- Notes assembly: base (R-007/R-008) then coating append (R-080/R-081) ---
     # Direct Coil selection has no coating trigger field, so the coating note is
     # always appended to the drawing notes (per John, 2026-06-11).
+    # `only_when` is honoured here as well as in the generic emitter: the distributor
+    # note rules branch on hot_gas_bypass (R-035b vs R-035c), and without this a gated
+    # rule's condition would be inert and BOTH notes would append.
     note_lines: list[str] = []
     note_refs: list[str] = []
-    for rid in ("R-007", "R-008", "R-080", "R-081", "R-035a", "R-035b"):
+    for rid in ("R-007", "R-008", "R-080", "R-081", "R-035a", "R-035b", "R-035c"):
         rule = index[rid]
-        if _applies(rule, request):
+        only_when = rule.get("only_when")
+        if _applies(rule, request) and (
+            only_when is None or _condition_met(only_when, request)
+        ):
             note_lines.append(rule["value"])
             for ref in rule["evidence_refs"]:
                 if ref not in note_refs:
@@ -528,19 +536,46 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
             and request.conn_size is not None
             and request.rows is not None
         ):
-            positions = [
-                x * request.conn_size + (x - 1) * 1.5
-                for x in range(1, request.circuits + 1)
+            d = request.conn_size
+            # Return X = X*D + (X-1)*1.5, per connection X=1..circuits (from one edge).
+            return_positions = [
+                x * d + (x - 1) * 1.5 for x in range(1, request.circuits + 1)
             ]
-            for field in ("supply_position", "return_position"):
+            place(
+                "return_position",
+                FieldResult(
+                    value=return_positions,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                ),
+            )
+            # Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5] (John 2026-07-15: corrected —
+            # the supply header references the OPPOSITE edge, so it is NOT the return
+            # list; the prior "supply == return" was a defect). Xmax = circuits. Needs
+            # casing_depth (CD), already emitted above.
+            # Emitted MEDIUM (review-required), NEVER HIGH: this SOP formula is still
+            # unverified against real cases and can produce out-of-range values (e.g.
+            # a negative position when CD is smaller than the connection run), so it
+            # must never auto-draw as confirmed. return_position stays HIGH (verified).
+            # Formula verification stays open in docs/wiki/open-questions.md. If CD is
+            # unavailable, supply is omitted, never guessed.
+            cd_result = values.get("casing_depth") or suggestions.get("casing_depth")
+            if cd_result is not None and isinstance(cd_result.value, (int, float)):
+                x_max = request.circuits
+                supply = round(
+                    cd_result.value - ((x_max + 2) * d + (x_max - 1) * 1.5), 4
+                )
                 place(
-                    field,
+                    "supply_position",
                     FieldResult(
-                        value=positions,
-                        confidence=Confidence.HIGH,
+                        value=supply,
+                        confidence=Confidence.MEDIUM,
                         evidence_refs=rule["evidence_refs"],
+                        review_required=True,
                     ),
                 )
+            else:
+                add_missing(["casing_depth"])
         else:
             add_missing(["circuits", "conn_size", "rows"])
 
@@ -586,8 +621,10 @@ def assemble_drawing_notes(request: HeaderPrepopulateRequest) -> list[str]:
 
     Wraps :func:`prepopulate` so callers (the paste-ready "Drawing Notes" field and
     the SVG title block) share ONE source with the drawing. The ``notes`` field is only
-    placed when at least one note rule fires (R-007/008/080/081/035a/035b), so read it
-    with ``.get`` — an unknown product line yields no distributor note (never invented).
+    placed when at least one note rule fires (R-007/008/080/081/035a/035b/035c), so read
+    it with ``.get`` — an unknown product line yields no distributor note (never
+    invented). The distributor note needs ``request.hot_gas_bypass`` to pick between
+    R-035b and R-035c — a caller that omits it always gets the non-HGBP wording.
     """
     result = prepopulate(request).values.get("notes")
     return [str(v) for v in result.value] if result else []

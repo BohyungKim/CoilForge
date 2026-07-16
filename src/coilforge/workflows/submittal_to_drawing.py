@@ -699,7 +699,12 @@ def _gate_unseeded_ventum_plus_dx(result: dict[str, Any]) -> dict[str, Any]:
     reference) already drew UP and set ``dedicated_family_template``, so it is kept.
     HGRH/HWC/CWC have no distributor and are NOT gated (they still draw via the shared
     template). Runs AFTER :func:`_prefer_dedicated_family_template`; no-op unless a
-    drawing was produced from a NON-dedicated (shared) template for a Ventum+ DX coil."""
+    drawing was produced from a NON-dedicated (shared) template for a Ventum+ DX coil.
+
+    This gate is about a real but UNSEEDED hand/header, so it must not speak for a
+    Ventum+ **HGBP** coil -- that configuration does not exist and has no reference to
+    seed. :func:`_gate_hgbp_unsupported_product_line` runs first and omits it, leaving
+    the ``svg`` guard here to no-op."""
     if not isinstance(result, dict) or not result.get("svg"):
         return result
     if result.get("dedicated_family_template") == "VENTUM_PLUS":
@@ -717,6 +722,75 @@ def _gate_unseeded_ventum_plus_dx(result: dict[str, Any]) -> dict[str, Any]:
             "Ventum+ DX reference for this hand/header must be seeded first.",
         )
         result["unregistered_ventum_plus_dx"] = True
+    return result
+
+
+# Hot gas bypass is selectable on Nova and Ventum H ONLY (John, 2026-07-15) -- no other
+# product line offers the option, so an HGBP coil resolving to another line means the
+# classification is wrong, not that the coil is exotic. The two seeded HGBP templates
+# (coilmaster_dx_{lh,rh}_hgbp) are Nova/Ventum-H-class references; lending them to a
+# Terra would draw another line's geometry under this coil's tag.
+_HGBP_PRODUCT_LINES = {"NOVA", "VENTUM_H"}
+
+
+def _gate_hgbp_unsupported_product_line(result: dict[str, Any]) -> dict[str, Any]:
+    """Omit an HGBP drawing whose product line cannot select the option.
+
+    Runs BEFORE :func:`_gate_unseeded_ventum_plus_dx` on purpose. A Ventum+ DX HGBP coil
+    would trip that gate too, but its reason ("no seeded Ventum+ DX reference matches --
+    seed one first") reads as a coverage gap someone could close. **Ventum+ DX HGBP is
+    not a gap; it is a configuration that does not exist** (John 2026-07-15), so there is
+    no reference to seed and this gate must own the message.
+
+    An UNKNOWN line is left alone (see :func:`_flag_hgbp_product_line_unverified`) --
+    absence of a detected product code is not evidence of an unsupported one.
+    """
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    if str((result.get("extracted") or {}).get("special_feature") or "") != "HGBP":
+        return result
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    family, _ = resolve_product_line(result.get("product_type"))
+    if not family or family in _HGBP_PRODUCT_LINES:
+        return result
+    label = str(family).replace("_", " ").title()
+    _omit_drawing(
+        result,
+        f"Hot gas bypass (HGBP) is selectable on Nova and Ventum H only, but this coil "
+        f"resolves to {label} — the seeded HGBP templates are Nova/Ventum-H references "
+        "and are not borrowed for another line. Review the product line / the cover "
+        "HGBP option before a drawing can be linked.",
+    )
+    result["unsupported_hgbp_product_line"] = family
+    return result
+
+
+def _flag_hgbp_product_line_unverified(result: dict[str, Any]) -> dict[str, Any]:
+    """Warn when an HGBP drawing was produced without a resolved product line.
+
+    HGBP is Nova/Ventum-H only, but ``product_type`` is set only when a model code
+    validates, so an undetected line is the common case. Blanking the drawing on that
+    absence would kill legitimate Nova HGBP coils whose code merely failed to parse, so
+    the drawing stands and the unverified premise is surfaced instead. Once the engineer
+    picks the line, the re-derive runs :func:`_gate_hgbp_unsupported_product_line` with
+    the fact present. Never blocks -- surfaces the caveat only.
+    """
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    if str((result.get("extracted") or {}).get("special_feature") or "") != "HGBP":
+        return result
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    family, _ = resolve_product_line(result.get("product_type"))
+    if family:
+        return result
+    result["hgbp_product_line_warning"] = (
+        "Hot gas bypass (HGBP) is selectable on Nova and Ventum H only, but this coil's "
+        "product line could not be resolved from its model code — so it is UNVERIFIED "
+        "that this coil may carry the option. The HGBP drawing shown is a review aid on "
+        "that unconfirmed premise; pick the product line to have it checked."
+    )
     return result
 
 
@@ -848,6 +922,9 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "suction_conn_size": spec.get("suction_conn_size") or spec.get("return_conn_size"),
         "product_type": spec.get("product_type"),
         "unit_size": spec.get("unit_size"),
+        # Carried through the re-derive so the coating note (R-080/R-081) survives a
+        # product/size pick; absent -> no coating -> no note (same fail-closed rule).
+        "coating": spec.get("coating"),
         # Carry the submittal spec-panel values back through the re-derive so the
         # right-side panel stays populated once dimensions are logic-derived.
         "panel": spec.get("panel"),
@@ -871,7 +948,9 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
 
     _gate_unregistered_product_line(result)
     _prefer_dedicated_family_template(result)
+    _gate_hgbp_unsupported_product_line(result)
     _gate_unseeded_ventum_plus_dx(result)
+    _flag_hgbp_product_line_unverified(result)
     _flag_distributor_orientation_review(result)
 
     # Auto-surface fill plan — built AFTER the gates so a gate-omitted coil surfaces a
@@ -912,10 +991,29 @@ def _coil_category_from_type(coil_type: str | None) -> str | None:
     return None
 
 
+# ``ASC`` is EZ Coil's hot-gas-bypass term, but on the drawing it is a COUNT, not a
+# flag: the distributor string reads "(1)501-2-3/16-1.5(0 ASC)" where **0 ASC means NO
+# hot gas bypass**. A bare "ASC" substring test therefore INVERTS the truth for every
+# non-HGBP DX coil whose Drawing Notes reach ``manufacturing_options`` — so only a
+# count >= 1 counts. Word boundaries likewise keep "CASCADE" / "economizer bypass"
+# from routing an ordinary coil to the HGBP template.
+_HGBP_RE = re.compile(
+    r"\bHGBP\b"
+    r"|\bHOT[\s\-]*GAS[\s\-]*BY[\s\-]?PASS\b"
+    r"|\b[1-9]\d*\s*ASC\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_hgbp(*texts: str | None) -> bool:
-    """Best-effort hot-gas-bypass detection from coil-type/item/option text."""
-    blob = " ".join(str(t or "") for t in texts).upper()
-    return "HGBP" in blob or "HOT GAS BYPASS" in blob or "BYPASS" in blob or "ASC" in blob
+    """Best-effort hot-gas-bypass detection from coil-type/item/option text.
+
+    Also matches the ``Cover option: hot-gas bypass (HGBP) ...`` note that
+    ``pdf_intake._candidate_from_cover_row`` attaches to DX candidates when the cover
+    page states an HGBP adder — the two sides share the literal ``HGBP`` token, so do
+    not reword one without the other.
+    """
+    return bool(_HGBP_RE.search(" ".join(str(t or "") for t in texts)))
 
 
 def _header_count_from_type(header_type: str | None) -> int | None:
@@ -975,6 +1073,12 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         "finned_height": _candidate_field_value(candidate, "geometry", "finned_height"),
         "finned_length": _candidate_field_value(candidate, "geometry", "finned_length"),
         "suction_conn_size": _candidate_connection_size(candidate),
+        # Gates the coating note (R-080/R-081) -- "do not coat the last 5-6 inches" is
+        # meaningless unless a custom coating is actually being applied (John
+        # 2026-07-15). Absent on an uncoated coil: Oxygen8 submittals simply do not
+        # mention coating when there is none, so a missing value correctly reads as
+        # "no coating" and the note is omitted rather than invented.
+        "coating": _candidate_field_value(candidate, "manufacturing_options", "coil_coating"),
         # Submittal-stated right-side spec panel values (materials, weight,
         # circuiting, connection). Mapped review-required; independent of the
         # rule engine (which only drives the dimension geometry).
@@ -1127,6 +1231,21 @@ def _engine_drawing_notes(ctx: dict[str, Any]) -> list[str]:
             rows=ctx.get("rows"),
             feeds=ctx.get("feeds"),
             circuits=ctx.get("circuits"),
+            # Gates the coating note (R-080/R-081) -- it fires only for a stated,
+            # non-NONE coating. Omitted here and the note could never appear at all.
+            coating=ctx.get("coating"),
+            # Picks the distributor note between R-035b ("Distributor 6" Extension
+            # Downwards") and R-035c ("Distributor Down w/ ASC & 6" Extension"). Reuses
+            # the SAME special_feature that drove template selection, so this field and
+            # the chosen template agree on whether the coil is HGBP.
+            #
+            # NOTE the sibling `slot.NOTES` does NOT: `build_drawing_slots` takes no
+            # hot_gas_bypass argument, so it always emits the R-035b wording. That is
+            # inert today -- no template.svg carries a `{{slot.NOTES}}` placeholder, so
+            # slot.NOTES renders nowhere -- but it IS a trap: redacting a template's
+            # hardcoded NOTES text to a real slot would start printing "Downwards" on
+            # HGBP coils. Thread hot_gas_bypass through build_drawing_slots first.
+            hot_gas_bypass=(ctx.get("special_feature") == "HGBP"),
         )
     except Exception:  # never break the workflow on an engine-input mismatch
         return []
@@ -1209,7 +1328,9 @@ def _run_candidate_to_drawing_payload(
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)
         _prefer_dedicated_family_template(template_drawing)
+        _gate_hgbp_unsupported_product_line(template_drawing)
         _gate_unseeded_ventum_plus_dx(template_drawing)
+        _flag_hgbp_product_line_unverified(template_drawing)
         _flag_distributor_orientation_review(template_drawing)
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
         template_drawing["svg"] = _clean_template_svg(

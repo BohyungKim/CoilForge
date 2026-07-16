@@ -1133,8 +1133,16 @@ rules:
       "CWC|VENTUM_PLUS":  { w_sub: 6.5,  w_basis: OAL, h_sub: 8.25,  h_basis: CH, h_half: true }
 
   # --- 2.7 Notes / special-case conflicts ------------------------------------
-  # R-080/R-081: Direct Coil selection has no coating trigger field, so the
-  # coating note is always appended to the drawing notes (John, 2026-06-11).
+  # R-080/R-081: the coating note fires ONLY when a custom coating is actually
+  # required (John, 2026-07-15) -- a "do not coat the last 5-6 inches" instruction is
+  # meaningless on a coil nobody is coating. `only_when: coating_set` = coating is
+  # stated and is not NONE; every non-NONE value in the checklist vocabulary
+  # (FINKOTE*/HERESITE*/ELECTROFIN*/BLYGOLD*/BLACK POLY) is a custom coating, so
+  # "set" and "custom" coincide. Coating UNKNOWN -> no note (fail-closed; never
+  # invent a coating process the source did not state).
+  # SUPERSEDES John 2026-06-11 ("Direct Coil has no coating trigger field, so the
+  # note is always appended") -- the trigger now flows from the submittal's
+  # `manufacturing_options.coil_coating` via _engine_drawing_notes.
   # SOP Rev H wording wins (authored by John Kim) -> conflict resolved -> HIGH.
   # CHK still carries the older wording and should be updated to match.
   # NOTE: coating notes apply to DX and HGRH only. CWC/HWC intentionally have
@@ -1145,6 +1153,8 @@ rules:
     field: notes
     value: "Do Not Coat Last 5-6 inches of Distributor Extensions."
     kind: notes_append
+    only_when: coating_set
+    requires_inputs: [coating]
     confidence: HIGH
     review_required: false
     blocked_reason: null
@@ -1155,6 +1165,8 @@ rules:
     field: notes
     value: "Do Not Coat Last 5-6 inches of Supply Stubouts."
     kind: notes_append
+    only_when: coating_set
+    requires_inputs: [coating]
     confidence: HIGH
     review_required: false
     blocked_reason: null
@@ -1162,8 +1174,10 @@ rules:
 
   # Distributor extension note (DX only). Orientation branches on product line exactly
   # like R-031 (DOWN) / R-032 (UP): Ventum+ mounts the distributor ConnectionUP, every
-  # other DX line mounts down. The 6" length is R-033 (dist_extension). Two mutually
-  # exclusive rules over the ProductFamily enum -> exactly one note per DX, never both.
+  # other DX line mounts down. The 6" length is R-033 (dist_extension). Mutually
+  # exclusive rules over the ProductFamily enum -> exactly one note per DX, never two.
+  # R-035c carries the hot-gas-bypass wording and DISPLACES R-035b (which is gated
+  # not_hot_gas_bypass) rather than adding to it -- hence the mutual exclusion holds.
   - rule_id: R-035a
     applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
     field: notes
@@ -1179,10 +1193,27 @@ rules:
     field: notes
     value: "Distributor 6\" Extension Downwards"
     kind: notes_append
+    only_when: not_hot_gas_bypass
     confidence: HIGH
     review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §DX-TNVH", "R-031 dist_orientation DOWN", "R-033 dist_extension 6", "CHK DX!C58:C59"]
+
+  # Hot gas bypass restates the distributor note in one combined line (John 2026-07-15).
+  # Nova/Ventum H only -- the two lines that can select the option; a Terra DX carrying
+  # hot_gas_bypass is an impossible combo (its drawing is omitted at the submittal gate)
+  # so it yields NO distributor note rather than a wrong one.
+  - rule_id: R-035c
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Distributor Down w/ ASC & 6\" Extension"
+    kind: notes_append
+    only_when: hot_gas_bypass
+    requires_inputs: [hot_gas_bypass]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John direction 2026-07-15", "R-031 dist_orientation DOWN", "R-033 dist_extension 6", "R-083 asc selected"]
 
   - rule_id: R-082
     applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }

@@ -36,13 +36,32 @@ def test_shared_all_seeded_22() -> None:
 
 def test_ventum_plus_gaps_split_dx_blocked_vs_nondx_fallback() -> None:
     v = gen.build_coverage_model()["ventum_plus"]["summary"]
-    assert v["total"] == 22  # same taxonomy space as shared
+    # 20, not 22: hot gas bypass is a Nova / Ventum H option (John 2026-07-15), so the
+    # two DX HGBP cells are NOT part of Ventum+'s bucket space -- see the test below.
+    assert v["total"] == 20
     assert v["seeded"] == 11  # DX 5 + HGRH 3 + HWC 2 + CWC 1
-    # Un-seeded DX (LH-H4, RH-H3, RH-H4, LH-HGBP, RH-HGBP) -> not registered (R-032 UP).
-    assert v["blocked"] == 5
+    # Un-seeded DX (LH-H4, RH-H3, RH-H4) -> not registered (R-032 UP).
+    assert v["blocked"] == 3
     # Un-seeded non-DX (HGRH LH-H2/LH-H3/RH-H3/LH-H4/RH-H4, CWC RH) -> shared fallback.
     assert v["fallback"] == 6
     assert v["seeded"] + v["blocked"] + v["fallback"] == v["total"]
+
+
+def test_ventum_plus_hgbp_is_not_a_bucket_at_all() -> None:
+    """A Ventum+ HGBP cell must not exist in ANY state -- not seeded, and NOT a gap.
+    Listing it as `not_registered` asks someone to seed a Ventum+ DX HGBP reference
+    drawing, which cannot be produced: the configuration does not exist. Meanwhile the
+    SHARED HGBP buckets (which Nova / Ventum H draw from) stay seeded."""
+    model = gen.build_coverage_model()
+    assert [c for c in model["ventum_plus"]["cells"] if c.special == "HGBP"] == []
+
+    shared_hgbp = [c for c in model["shared"]["cells"] if c.special == "HGBP"]
+    assert {c.hand for c in shared_hgbp} == {"LH", "RH"}
+    assert all(c.seeded for c in shared_hgbp)
+    assert {c.template_id for c in shared_hgbp} == {
+        "coilmaster_dx_lh_hgbp",
+        "coilmaster_dx_rh_hgbp",
+    }
 
 
 def test_all_ventum_plus_blocked_cells_are_dx() -> None:

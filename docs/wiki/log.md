@@ -90,3 +90,58 @@ John을 위해 라이브 위키↔코드 / 문서↔문서 드리프트 3건을 
 `submittal_to_drawing.py`에서 "Header N" 템플릿 키를 옳게 이끈다(버그 아님). 근거: 세션 라이브 확인
 (ALS Palmetto `CDXC-1` "Interlaced 2 Circuits" → circuits=2 → Header 2). 인덱스: 스텁 → 개념 섹션으로
 이동. `src/` 변경 없음. 관련 공식 규칙 R-022/R-034/R-048/R-052/R-072/R-073 참조.
+
+## 2026-07-15 · ingest — hot-gas-bypass 개념 페이지 시드 (실코드 버그 2건 동반 수정)
+`[[hot-gas-bypass]]`를 시드함 — 시드된 버킷 2개와 `special_feature` 축이 있는데도 위키에 HGBP
+언급이 **0건**이던 실제 공백. 핵심 `[CONFIRMED]` 사실:
+1. **`(N ASC)`는 플래그가 아니라 개수** — `(0 ASC)` = HGBP 없음(`ez_style_grid.py:417`). 위키가
+   존재하는 이유 그 자체인 도메인 사실: `_detect_hgbp`의 `"ASC" in blob` 부분 매칭이 이를 **거꾸로**
+   읽어, HGBP가 아닌 DX 코일이 조용히 HGBP 템플릿을 받을 수 있었다(이 함수는 테스트 0개였음).
+2. **HGBP는 카테고리가 아님** — DX 전용·header 무관의 직교 `special_feature`. 물/재열 코일에 붙이면
+   `found=False`로 도면이 조용히 빈다.
+3. **Nova/Ventum H 전용** (John 2026-07-15) — 게이트-only, 새 버킷/재시딩 없음.
+4. **재시딩 불필요**: John이 RH 참조로 제시한 2720 Crestwood 도면은 **이미 시딩된 그 코일**
+   (Coil ID 560562 일치); 모델 문자열 포맷만 EZ-Coil 5.5.0.0로 달랐다.
+
+동반 `src/` 변경(John 승인): `_detect_hgbp` 단어경계+카운트 수정, cover-page HGBP 감지
+(`_package_hgbp_pages`, DX 한정 note 전달), Nova/VH 게이트 2개, R-035c 노트
+(`Distributor Down w/ ASC & 6" Extension`, R-035b를 `not_hot_gas_bypass`로 대체). 엔진의 노트 조립
+루프가 이제 `only_when`을 존중한다 — 그 전엔 무시해서 게이트된 노트 규칙이 inert였다.
+검증: 891 tests green(baseline 857 → +34), 2910 Hilltop 실물에서 라우팅+노트 확인,
+HGBP 없는 대조군 3건(0748/1701/1702) SVG 해시까지 byte-identical.
+
+## 2026-07-15 · 정정 — Ventum+ DX HGBP는 "미시딩 gap"이 아니라 **존재하지 않는 조합**
+John 확인: HGBP LH & RH (Nova & Ventum H)는 **시딩 완료**이고, **Ventum+ DX HGBP는 존재하지 않는다.**
+이는 같은 날 앞선 결정을 뒤집는다 — 그때는 Ventum+ DX HGBP를 "전용 버킷이 아직 없는 조합"으로 보고
+HGBP 게이트를 `_gate_unseeded_ventum_plus_dx` **뒤에** 두어 R-032 사유를 남겼다. 그 사유는
+*"…must be seeded first"* 라서 **참조 PDF만 구하면 닫을 수 있는 공백**처럼 읽혔다 — 만들 수 없는
+참조를 찾으라는 지시. 수정 3건:
+1. **게이트 순서 뒤집음** — HGBP 게이트가 먼저 실행되어 진짜 사유("Nova and Ventum H only")를 소유.
+   HGBP 없는 Ventum+ DX 미시딩 hand/header는 여전히 R-032 사유를 받는다(그건 진짜 닫을 수 있는 공백).
+2. **대시보드 유령 gap 제거** — `SPECIAL_FAMILIES`로 Ventum+ 열에서 HGBP 칸 제외. Ventum+ 22칸 →
+   **20칸**, blocked 5 → **3**. SHARED의 HGBP 2칸(둘 다 seeded)은 유지. `--check` 드리프트 0.
+3. 문서/테스트 정정 — 옛 순서를 고정하던 테스트를 반대로 뒤집고, 대시보드 테스트가 명시적으로 세던
+   `LH-HGBP, RH-HGBP -> not registered`를 제거.
+**HGBP 커버리지는 완료** — header-agnostic이라 (hand × 2)가 버킷 공간 전부이며 남은 시딩 항목 없음.
+
+## 2026-07-15 · ingest — 코팅 노트(R-080/R-081)는 custom coating일 때만
+John 2026-07-15: *"Do Not Coat Last 5-6 inches of Supply Stubouts" 는 FinCoat / AA Coat 같은 custom
+coating이 필요할 때만 포함. 아니면 넣을 필요 없음.* 같은 날 앞선(2026-06-11) *"Direct Coil에 coating
+trigger 필드가 없으니 항상 붙인다"* 를 **뒤집는다** — 아무도 코팅하지 않는 코일에 "마지막 5-6인치는
+코팅하지 마라"는 지시는 의미가 없다.
+
+- `only_when: coating_set`으로 게이트(이미 `_condition_met`에 있었으나 **쓰는 규칙이 0개인 죽은
+  조건**이었다). 방금 노트 조립 루프가 `only_when`을 존중하게 고친 덕에 그대로 동작한다.
+- `coating_set` = 명시되었고 `NONE`이 아님. checklist vocab(`COATING_OPTIONS`) 14개 중 `NONE` 외
+  13개(FINKOTE*/HERESITE*/ELECTROFIN*/BLYGOLD*/BLACK POLY)가 **전부 custom coating**이라
+  "set"과 "custom"이 일치한다. 표준 코팅이 나중에 vocab에 추가되면 실패하도록 테스트로 고정.
+- **함정:** `coating`이 엔진에 도달하지 않고 있었다 → 규칙만 바꿨으면 노트가 **영원히** 사라졌을
+  것(우연히 "항상 생략"). `manufacturing_options.coil_coating` → `ctx["coating"]` →
+  `build_header_request`로 연결함.
+- `[CONFIRMED]` 실측: 2910/0748 submittal 모두 **coating 언급 0건** — Oxygen8 submittal은 코팅이
+  없으면 필드 자체를 안 쓴다. 그래서 "미명시 = 코팅 없음"으로 읽는 것이 옳고(fail-closed), 2910의
+  Drawing Notes에서 코팅 노트가 정확히 사라졌다.
+- 골든 케이스 5건 갱신: T01/T03/T05/T08(코팅 입력 없음 → 노트 없음), T17(원래 케이스가
+  `coating=HERESITE`인 **코팅된** 코일 → 노트 유지). 새 동작이 오히려 T17의 원래 의도에 가깝다.
+- `[REVIEW-REQUIRED]` John이 예시로 든 **"FinCoat" / "AA Coat"** 는 `COATING_OPTIONS`에 그 철자로
+  없다("FINKOTE 2/CC/HP/ZX" 계열은 있음). 별칭인지, vocab에 빠진 항목인지 확인 필요.
