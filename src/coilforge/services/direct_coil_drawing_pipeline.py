@@ -242,6 +242,23 @@ _PER_HEADER_ENGINE_FIELDS: dict[str, dict[str, str]] = {
 }
 
 
+def _hgrh_supply_s(request, cd: float, conn: float) -> float:  # type: ignore[no-untyped-def]
+    """Checklist HGRH!C46 supply S (family-branched), NON-Terra-V only.
+
+    TERRA H / VENTUM+ -> the connection size directly; NOVA / VENTUM H ->
+    CD - ((n+2)*conn + (n-1)*1.5), where n = qty_conn_per_header (else circuits).
+    Unlike the DX distributor S (k*CD/(circuits+1)), every odd HGRH S is the SAME
+    value (the sheet's S1=S3=S5 share one formula), so this is not k-scaled. Terra V
+    keeps its own S = CD - Rn path in the caller and never reaches here."""
+    if request.product_type == ProductFamily.VENTUM_PLUS or request.terra_variant in (
+        TerraVariant.TERRA_H,
+        TerraVariant.TERRA_H_C,
+    ):
+        return round(conn, 4)
+    n = request.qty_conn_per_header or request.circuits or 1
+    return round(cd - ((n + 2) * conn + (n - 1) * 1.5), 4)
+
+
 def build_drawing_slots(
     *,
     coil_type: str,
@@ -255,6 +272,8 @@ def build_drawing_slots(
     qty_conn_per_header: int | None = None,
     application: str | None = None,
     header_count: int | None = None,
+    with_hgrh: bool | None = None,
+    hgrh_conn_size: float | None = None,
     finned_height: float | None = None,
     finned_length: float | None = None,
     tag: str | None = None,
@@ -284,6 +303,7 @@ def build_drawing_slots(
         rows=rows, feeds=feeds, circuits=circuits, suction_conn_size=suction_conn_size,
         conn_size=conn_size, qty_conn_per_header=qty_conn_per_header,
         application=application, header_count=header_count,
+        with_hgrh=with_hgrh, hgrh_conn_size=hgrh_conn_size,
         terra_variant=terra_variant,
     )
     response = prepopulate(request)
@@ -374,19 +394,30 @@ def build_drawing_slots(
                     and isinstance(return_spacing, list)
                     and k <= len(return_spacing)
                 ):
-                    # Terra V DX: distributor S = CD - Rn (SOP), where Rn is the Terra V
-                    # return spacing (R-023). Replaces the checklist even-spacing.
+                    # Terra V DX AND HGRH: distributor/supply S = CD - Rn (SOP), where Rn is
+                    # the Terra V return spacing (R-023). Replaces the checklist even-spacing;
+                    # this branch wins for Terra V so the checklist-family HGRH S below never
+                    # applies to Terra V (guards the SOP-confirmed Terra V geometry).
                     slots[f"slot.S{supply_id}"] = round(cd - return_spacing[k - 1], 4)
+                elif is_hgrh and not is_terra_v and conn_size is not None:
+                    # HGRH supply S is family-branched (checklist HGRH!C46), NOT the DX
+                    # even-spacing: TERRA H / VENTUM+ -> conn, NOVA / VENTUM H -> CD-formula.
+                    slots[f"slot.S{supply_id}"] = _hgrh_supply_s(request, cd, conn_size)
                 else:
                     slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
-                # HGRH supply-side (odd) SL = stub POSITION = 6 + return_conn/2 - S
-                # (John 2026-06-26). Sn is the per-slot drawing S just computed (differs
-                # per slot). The even SL (length) stays the return_sl clearance. HGRH only;
-                # conn_size carries the return connection size.
+                # HGRH supply-side (odd) SL = stub POSITION (checklist HGRH!C58):
+                # Terra V -> 5 (SOP); single feed/circuit -> 3; else 6 + return_conn/2 - S
+                # (John 2026-06-26). The even SL (length) stays the return_sl clearance.
                 if is_hgrh and conn_size is not None:
                     if is_terra_v:
                         # Terra V HGRH: all Supply SL = 5 (SOP), not the position formula.
                         slots[f"slot.SL{supply_id}"] = 5
+                    elif (feeds if feeds is not None else circuits) == 1:
+                        # CHK HGRH!C58 single feed/circuit branch (short "Add Headers" stub).
+                        # Keyed on the SAME value the checklist's "FEEDS/CIRCUITS" cell holds
+                        # (feeds, else circuits — see checklist/mapping.py) so this matches the
+                        # sheet exactly even when the submittal states only one of the two.
+                        slots[f"slot.SL{supply_id}"] = 3
                     else:
                         slots[f"slot.SL{supply_id}"] = round(
                             6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4

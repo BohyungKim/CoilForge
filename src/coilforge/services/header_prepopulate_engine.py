@@ -652,6 +652,28 @@ def _emit_copper_straps(request, place, add_missing) -> None:  # type: ignore[no
         place("copper_straps_required", result)
 
 
+def _hgrh_cd_multi(request) -> float | None:  # type: ignore[no-untyped-def]
+    """Checklist HGRH!C27 multi-header casing-depth term (family-branched), or None
+    when it cannot apply. The caller takes ``max(base, this)`` — the checklist's MAX
+    form — so this only ever RAISES CD above the rows-based base, never blanks or
+    lowers it (the failure mode that got R-073 disabled).
+
+    Terra V is excluded: its CD stays rows-based (SOP), which its S = CD - Rn depends
+    on. ``n`` follows the R-052 idiom (qty_conn_per_header, else circuits); ``conn`` is
+    the HGRH connection size (``conn_size``)."""
+    if request.terra_variant == TerraVariant.TERRA_V:
+        return None
+    conn = request.conn_size
+    n = request.qty_conn_per_header or request.circuits
+    if conn is None or n is None:
+        return None
+    if request.product_type == ProductFamily.VENTUM_PLUS:
+        return 3 * conn                                       # CHK HGRH!C27 VENTUM+
+    if request.terra_variant in (TerraVariant.TERRA_H, TerraVariant.TERRA_H_C):
+        return (n + 2) * conn + (n - 1) * 1.5 + 0.5           # CHK HGRH!C27 TERRA H
+    return (n + 1) * conn + (n - 1) * 1.5                     # CHK HGRH!C27 NOVA / VENTUM H
+
+
 def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-untyped-def]
     coil = request.type_of_coil
     index = _rule_index()
@@ -678,18 +700,24 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                 ),
             )
         else:  # HGRH
-            # Casing depth is the rows-based base depth (R-070, HIGH) for ALL HGRH, single
-            # or multi-circuit (John 2026-07-03). The R-073 multi-circuit formula
-            # ((c+1)*D+(c-1)*1.5) is NOT a physical casing depth (e.g. 1.0"/1.25" for a
-            # single circuit) and must never replace R-070: doing so flipped casing_depth to
-            # MEDIUM once conn_size was routed, blanking slot.CD and corrupting Terra V's
-            # S = CD - Rn. R-073 stays a YAML data rule but is no longer emitted for drawing.
+            # Casing depth = MAX(rows-based base R-070, family multi-header term R-073),
+            # matching the Coil Checklist HGRH!C27 formula (David 2026-07-16, the source
+            # of truth for CD/S/SL). The MAX form is the fix for the earlier R-073 bug:
+            # the old code REPLACED base with the multi term, which for a single circuit
+            # was a non-physical 1.0"/1.25" that blanked slot.CD and corrupted Terra V's
+            # S = CD - Rn. As a floor-preserving MAX it can only raise CD above base, and
+            # ``_hgrh_cd_multi`` returns None for Terra V, so Terra V CD stays rows-based.
+            multi = _hgrh_cd_multi(request)
             place(
                 "casing_depth",
                 FieldResult(
-                    value=base,
+                    value=base if multi is None else max(base, multi),
                     confidence=Confidence.HIGH,
-                    evidence_refs=index["R-070"]["evidence_refs"],
+                    evidence_refs=(
+                        _refs("R-070", "R-073")
+                        if multi is not None
+                        else index["R-070"]["evidence_refs"]
+                    ),
                 ),
             )
     else:  # CWC / HWC

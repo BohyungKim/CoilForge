@@ -23,6 +23,7 @@ from coilforge.drawing.label_authority import direct_coil_label
 from coilforge.submittal import extract_submittal_candidates_from_text
 from coilforge.submittal.pdf_intake import (
     _normalize_handing,
+    drain_pan_partner_tag,
     extract_coil_candidate_from_pdf_bytes,
 )
 from coilforge.submittal.to_canonical import map_submittal_candidate_to_canonical_result
@@ -374,6 +375,7 @@ def _run_pdf_to_drawing_workflow_uncached(
             preview_defaults=preview_defaults,
             title_block=title_block,
             pdf_text=pdf_text,
+            hgrh_partner_conn=_hgrh_partner_conn_for(candidate, candidates),
         )
         for candidate in candidates
     ]
@@ -845,6 +847,71 @@ def _rerun_slots_with_manual_inputs(
     return response
 
 
+def _apply_hgrh_pairing_cd(
+    template_drawing: dict[str, Any], hgrh_partner_conn: Any
+) -> None:
+    """DX-with-reheat casing-depth correction, applied in this NON-frozen caller.
+
+    The frozen ``derive_slot_values`` runs ``build_drawing_slots`` per coil in
+    isolation, so a DX paired with an HGRH reheat never takes the with-HGRH R-072
+    branch and its CD (and the S = k*CD/(circuits+1) it feeds) comes out low
+    (e.g. 7.5 instead of the checklist's 8). Re-run ``build_drawing_slots`` with the
+    SAME extracted inputs plus ``with_hgrh``/``hgrh_conn_size`` and merge the
+    recomputed CD-family slots back in — mirroring ``_rerun_slots_with_manual_inputs``
+    (never edit the frozen path). No-op unless the coil is a DX with a partner
+    connection size, so standalone DX / non-DX coils stay byte-for-byte unchanged.
+    """
+    if not isinstance(template_drawing, dict) or "error" in template_drawing:
+        return
+    ex = template_drawing.get("extracted") or {}
+    if str(ex.get("coil_category") or "").strip().upper() != "DX":
+        return
+    product = template_drawing.get("product_type")
+    unit_size = template_drawing.get("unit_size")
+    if not (product and unit_size and hgrh_partner_conn is not None):
+        return
+    from coilforge.services.direct_coil_drawing_pipeline import (
+        UnknownCoilInputError,
+        build_drawing_slots,
+    )
+    from coilforge.services.drawing_param_resolver import _coerce_float
+
+    conn = ex.get("return_conn_size")
+    try:
+        slots, _resp = build_drawing_slots(
+            coil_type="DX",
+            product_type=product,
+            unit_size=unit_size,
+            rows=ex.get("rows"),
+            feeds=ex.get("feeds"),
+            circuits=ex.get("circuits") or 1,
+            suction_conn_size=_coerce_float(conn),
+            with_hgrh=True,
+            hgrh_conn_size=_coerce_float(hgrh_partner_conn),
+            finned_height=ex.get("finned_height"),
+            finned_length=ex.get("finned_length"),
+            tag=ex.get("tag"),
+        )
+    except (UnknownCoilInputError, ValueError):
+        return
+    # Only the CD-family slots change (CD and the S/derived it feeds); every other
+    # slot recomputes identically. update() keeps it additive/overwrite.
+    merged = template_drawing.setdefault("slot_values", {})
+    merged.update(slots)
+    # The template SVG (the packet drawing) renders slot.CD / slot.S1/S3/S5, and it
+    # was rendered inside the frozen path from the pre-correction slots. Re-populate
+    # it from the merged slots so the drawing itself shows CD=8 (not just the panel).
+    template_id = template_drawing.get("template_id")
+    if template_id and template_drawing.get("svg"):
+        from coilforge.template_population.slot_population import populate_template_slots
+
+        repop = populate_template_slots(template_id, merged)
+        if repop.svg:
+            template_drawing["svg"] = repop.svg
+            template_drawing["populated_slots"] = list(repop.populated_slots)
+            template_drawing["missing_required_slots"] = list(repop.missing_required_slots)
+
+
 # Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
 _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "application", "header_count", "qty_conn_per_header",
@@ -1252,6 +1319,35 @@ def _engine_drawing_notes(ctx: dict[str, Any]) -> list[str]:
     return assemble_drawing_notes(request)
 
 
+def _hgrh_partner_conn_for(selected_candidate, candidates) -> Any:
+    """The reheat-HGRH partner's connection size for a DX candidate (else None).
+
+    Feeds the with-HGRH casing-depth correction (``_apply_hgrh_pairing_cd``). Needs
+    the sibling candidates (drain-pan partner lives on another cover row), so it is
+    resolved here where the full list is available, not inside the per-candidate
+    context builder. None for a standalone DX or any non-DX coil.
+    """
+    if _coil_category_from_type(_candidate_attr_value(selected_candidate, "coil_type")) != "DX":
+        return None
+    tag = _candidate_attr_value(selected_candidate, "tag")
+    if not tag:
+        return None
+    all_tags = [
+        t for t in (_candidate_attr_value(c, "tag") for c in candidates) if t
+    ]
+    partner_tag = drain_pan_partner_tag(str(tag), all_tags)
+    if not partner_tag:
+        return None
+    partner = next(
+        (c for c in candidates if _candidate_attr_value(c, "tag") == partner_tag), None
+    )
+    if partner is None or _coil_category_from_type(
+        _candidate_attr_value(partner, "coil_type")
+    ) != "HGRH":
+        return None
+    return _candidate_connection_size(partner)
+
+
 def _run_candidate_to_drawing_payload(
     selected_candidate,
     *,
@@ -1260,6 +1356,7 @@ def _run_candidate_to_drawing_payload(
     preview_defaults: list[dict[str, Any]] | None,
     title_block: dict[str, Any] | None,
     pdf_text: str | None = None,
+    hgrh_partner_conn: Any = None,
 ) -> dict[str, Any]:
     direct_result = _run_candidate_to_direct_draft_workflow(
         selected_candidate,
@@ -1332,6 +1429,10 @@ def _run_candidate_to_drawing_payload(
         _gate_unseeded_ventum_plus_dx(template_drawing)
         _flag_hgbp_product_line_unverified(template_drawing)
         _flag_distributor_orientation_review(template_drawing)
+        # DX-with-reheat casing-depth correction (R-072 with-HGRH branch). Runs on the
+        # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
+        # every downstream artifact shows the corrected CD. No-op unless DX + partner.
+        _apply_hgrh_pairing_cd(template_drawing, hgrh_partner_conn)
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
         template_drawing["svg"] = _clean_template_svg(
             template_drawing["svg"],

@@ -133,9 +133,11 @@ def test_slot_sl2_is_17_for_dx_ventum_h_h05() -> None:
     assert slots["slot.SL2"] == 17
 
 
-def test_hgrh_supply_sl_odd_position_formula_differs_per_slot() -> None:
-    """HGRH odd SL (supply position) = 6 + return_conn/2 - S{odd}; differs per slot
-    (John 2026-06-26). circuits=2/feeds=2 so the single-feed exception does not fire."""
+def test_hgrh_supply_sl_odd_position_formula_same_per_slot() -> None:
+    """HGRH odd SL (supply position) = 6 + return_conn/2 - S{odd}. Per the Coil Checklist
+    (HGRH!C46/C58, David 2026-07-16, the source of truth — supersedes the 2026-06-26
+    "differs per slot" call), every odd HGRH S shares one formula, so S1=S3 and the
+    positions are EQUAL per slot. circuits=2/feeds=2 so the single-feed branch doesn't fire."""
     conn = 0.625
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="NOVA", unit_size="C20",
@@ -143,19 +145,20 @@ def test_hgrh_supply_sl_odd_position_formula_differs_per_slot() -> None:
     )
     assert slots["slot.SL1"] == round(6 + conn / 2 - slots["slot.S1"], 4)
     assert slots["slot.SL3"] == round(6 + conn / 2 - slots["slot.S3"], 4)
-    assert slots["slot.SL1"] != slots["slot.SL3"]
+    assert slots["slot.S1"] == slots["slot.S3"]      # checklist: one S formula per family
+    assert slots["slot.SL1"] == slots["slot.SL3"]
 
 
-def test_hgrh_single_feed_uses_same_sl_formula_as_multi_feed() -> None:
-    # John 2026-06-27: the single-feed (feeds==1) SL1=SL2=3 exception is removed — a
-    # single-feed HGRH coil is drawn identically to a multi-feed one. SL1 follows the
-    # supply position formula; SL2 is the return_sl length (8 for NOVA), not the old 3.
+def test_hgrh_single_feed_sl1_is_three() -> None:
+    # Coil Checklist HGRH!C58 = IF(feeds/circuits==1, 3, ...), David 2026-07-16 (source of
+    # truth). Supersedes the 2026-06-27 call that had removed the single-feed SL1=3 branch.
+    # SL2 stays the return_sl length (8 for NOVA).
     conn = 0.625
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="NOVA", unit_size="C20",
         rows=4, circuits=1, feeds=1, conn_size=conn,
     )
-    assert slots["slot.SL1"] == round(6 + conn / 2 - slots["slot.S1"], 4)
+    assert slots["slot.SL1"] == 3
     assert slots["slot.SL2"] == 8
 
 
@@ -375,3 +378,97 @@ def test_hgrh_cd_stays_rows_based_when_conn_present() -> None:
     assert tv["slot.R2"] == 0.5
     assert tv["slot.SL1"] == 5 and tv["slot.SL2"] == 12
     assert tv["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn uses the real (rows-based) CD
+
+
+def test_dx_cd_with_hgrh_reheat_pair_uses_checklist_branch() -> None:
+    """Regression (3058 Apple Coconut Point, David 2026-07-16): a DX paired with a reheat
+    HGRH takes the with-HGRH R-072 casing-depth branch, matching the Coil Checklist
+    DX!C24 IF(W/HGRH=TRUE, circuits*(D+1.5)+(D-D_hgrh)/2, ...). CDXC-2 (rows=5, circuits=3,
+    suction D=1.125, paired RHHGRC-2 conn=0.875) must resolve CD=8.0, NOT the standalone
+    7.5 — and S1/S3/S5 = k*CD/(circuits+1) follow to 2.0/4.0/6.0."""
+    base = dict(
+        coil_type="DX", product_type="TERRA H", unit_size="048",
+        rows=5, circuits=3, suction_conn_size=1.125, tag="CDXC-2",
+    )
+    # Standalone DX (no reheat partner) keeps the plain multi-circuit branch.
+    standalone, _ = build_drawing_slots(**base)
+    assert standalone["slot.CD"] == 7.5
+    assert (standalone["slot.S1"], standalone["slot.S3"], standalone["slot.S5"]) == (
+        1.875, 3.75, 5.625,
+    )
+    # Reheat-paired DX takes the with-HGRH branch: 3*(1.125+1.5)+(1.125-0.875)/2 = 8.0.
+    paired, _ = build_drawing_slots(with_hgrh=True, hgrh_conn_size=0.875, **base)
+    assert paired["slot.CD"] == 8.0
+    assert (paired["slot.S1"], paired["slot.S3"], paired["slot.S5"]) == (2.0, 4.0, 6.0)
+
+
+def test_hgrh_cd_s_sl_align_to_checklist_family_branches() -> None:
+    """Regression (3058 Apple Coconut Point, David 2026-07-16): HGRH CD/S1/SL1 match the
+    Coil Checklist HGRH!C27/C46/C58 family branches (the confirmed source of truth):
+      CD  = MAX(base, TERRA H:(n+2)conn+(n-1)1.5+0.5 | NOVA/VH:(n+1)conn+(n-1)1.5 | VP:3conn)
+      S1  = conn (TERRA H / VENTUM+)  |  CD-((n+2)conn+(n-1)1.5) (NOVA / VENTUM H)
+      SL1 = 5 (Terra V) | 3 (single feed) | 6+conn/2-S1
+    Values verified against the sheet's recomputed cells for the 3058 reheat coils."""
+    def hgrh(prod, size, rows, conn, n, feeds):
+        s, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=rows, conn_size=conn, qty_conn_per_header=n, feeds=feeds, circuits=1,
+        )
+        return s["slot.CD"], s["slot.S1"], s["slot.SL1"]
+
+    # RHHGRC-2 TERRA H rows=1 conn=0.875 n=1 feeds=3: CD 2.875->3.125, S1=conn, SL1=6+conn/2-S1.
+    assert hgrh("TERRA H", "048", 1, 0.875, 1, 3) == (3.125, 0.875, 5.5625)
+    # RHHGRC-3 VENTUM H rows=2 conn=0.5 n=1 feeds=1: base dominates CD; S1=CD-formula; single feed SL1=3.
+    assert hgrh("VENTUM_H", "H10", 2, 0.5, 1, 1) == (3.75, 2.25, 3)
+    # RHHGRC-5 TERRA H rows=1 conn=0.625 n=1 feeds=2: SL1 takes the position formula (not 3).
+    assert hgrh("TERRA H", "032", 1, 0.625, 1, 2) == (2.875, 0.625, 5.6875)
+
+
+def test_hgrh_sl1_single_feed_branch_keys_on_feeds_then_circuits() -> None:
+    """The single-feed SL1=3 branch keys on the SAME value the checklist's FEEDS/CIRCUITS
+    cell holds — ``feeds`` if stated, else ``circuits`` (checklist/mapping.py). So a
+    submittal that omits feeds but states 1 circuit still triggers SL1=3 (matches the
+    sheet), while feeds omitted + 2 circuits takes the position formula."""
+    def sl1(feeds, circuits):
+        s, _ = build_drawing_slots(
+            coil_type="HGRH", product_type="NOVA", unit_size="C20",
+            rows=4, circuits=circuits, feeds=feeds, conn_size=0.625,
+        )
+        return s["slot.SL1"]
+
+    assert sl1(None, 1) == 3                       # feeds absent, 1 circuit -> single feed
+    assert sl1(1, 2) == 3                          # feeds stated =1 wins over circuits=2
+    conn = 0.625
+    s, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="C20",
+        rows=4, circuits=2, feeds=None, conn_size=conn,
+    )
+    assert s["slot.SL1"] == round(6 + conn / 2 - s["slot.S1"], 4)  # feeds absent, 2 circuits
+
+
+def test_hgrh_terra_v_unchanged_by_checklist_alignment() -> None:
+    """The HGRH checklist alignment must NOT touch Terra V: its CD stays rows-based (SOP)
+    and its S = CD - Rn / supply SL = 5 path is preserved (guards the R-073 disable
+    rationale — Terra V CD must never be replaced by a multi-header term)."""
+    s, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA V", unit_size="012",
+        rows=2, circuits=1, suction_conn_size=0.5,
+    )
+    assert s["slot.CD"] == 3.75              # rows-based base, not a multi term
+    assert s["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn (R-023), unchanged
+    assert s["slot.SL1"] == 5                 # Terra V supply SL (SOP), not 3 or the formula
+
+
+def test_dx_cd_with_hgrh_noop_when_base_dominates() -> None:
+    """The with-HGRH branch is a MAX with the rows-based base, so a low-circuit DX is
+    unchanged by the flag (base wins). CDXC-3 (rows=5, circuits=1, D=0.875, partner 0.5):
+    with-HGRH term 1*(0.875+1.5)+(0.875-0.5)/2 = 2.5625 < base 6.375 -> CD stays 6.375.
+    Guards standalone/low-circuit coils against drift."""
+    base = dict(
+        coil_type="DX", product_type="VENTUM_H", unit_size="H10",
+        rows=5, circuits=1, suction_conn_size=0.875, tag="CDXC-3",
+    )
+    standalone, _ = build_drawing_slots(**base)
+    paired, _ = build_drawing_slots(with_hgrh=True, hgrh_conn_size=0.5, **base)
+    assert standalone["slot.CD"] == 6.375
+    assert paired["slot.CD"] == 6.375  # base dominates -> flag is a no-op here

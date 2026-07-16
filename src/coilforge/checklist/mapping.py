@@ -121,7 +121,13 @@ def _circuit_index(label: str) -> int | None:
 # --------------------------------------------------------------------------- #
 # Engine resolution (same path as mechanical_fit.build_coil_fit)
 # --------------------------------------------------------------------------- #
-def _resolve_engine(coil: dict[str, Any], application: str | None) -> tuple[dict[str, Any], Any]:
+def _resolve_engine(
+    coil: dict[str, Any],
+    application: str | None,
+    *,
+    with_hgrh: bool | None = None,
+    hgrh_conn_size: float | None = None,
+) -> tuple[dict[str, Any], Any]:
     """Run the slot layer (dims) + an application-aware engine pass (casing) for one coil.
 
     Returns ``(slots, response)`` where ``slots`` carries the drawing dims and
@@ -129,6 +135,11 @@ def _resolve_engine(coil: dict[str, Any], application: str | None) -> tuple[dict
     (R-074, keyed on product|application|size) resolve like ``mechanical_fit``.
     Returns ({}, None) when product line / unit size are unknown or the engine
     raises — the caller then leaves casing/dims blank and flags them.
+
+    ``with_hgrh``/``hgrh_conn_size`` (DX paired with a reheat HGRH) select the
+    engine's with-HGRH casing-depth branch (R-072), matching the checklist's
+    ``DX!C24 IF(C6=TRUE,...)`` formula so the CoilForge compare column agrees with
+    the sheet (else a reheat-paired DX shows CD=7.5 vs the sheet's 8).
     """
     from coilforge.services.direct_coil_drawing_pipeline import (
         build_drawing_slots,
@@ -146,6 +157,7 @@ def _resolve_engine(coil: dict[str, Any], application: str | None) -> tuple[dict
         rows=coil.get("rows"), feeds=coil.get("feeds"), circuits=coil.get("circuits"),
         suction_conn_size=coil.get("suction_conn_size"), conn_size=coil.get("conn_size"),
         qty_conn_per_header=coil.get("qty_conn_per_header"),
+        with_hgrh=with_hgrh, hgrh_conn_size=hgrh_conn_size,
     )
     try:
         slots, _ = build_drawing_slots(
@@ -243,7 +255,20 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
         application = coil.get("application")
     else:
         application = T.APPLICATION_FIXED.get(unit or "")
-    slots, response = _resolve_engine(coil, application)
+    # A DX paired with a reheat HGRH takes the engine's with-HGRH casing-depth
+    # branch (R-072), same as the sheet's DX!C24 IF(W/HGRH=TRUE,...). Source the
+    # partner connection size the same way the Excel "HGRH CONN SZ" cell is filled
+    # (partner.conn_size) so the CoilForge compare value matches the sheet.
+    dx_with_hgrh: bool | None = None
+    dx_hgrh_conn: float | None = None
+    if category == "DX":
+        _dx_partner = _partner(coil, coils)
+        if _dx_partner and _category_of(_dx_partner) == "HGRH":
+            dx_with_hgrh = True
+            dx_hgrh_conn = _dx_partner.get("conn_size")
+    slots, response = _resolve_engine(
+        coil, application, with_hgrh=dx_with_hgrh, hgrh_conn_size=dx_hgrh_conn
+    )
     engine_ok = response is not None
     # The comparison's CoilForge column is resolved with the checklist's OWN product
     # (apples-to-apples with the sheet's formulas). We deliberately do NOT reuse the
