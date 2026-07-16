@@ -30,14 +30,23 @@ def _norm(v: Any) -> Any:
     return v
 
 
-def _match(coilforge: Any, checklist: Any) -> str:
+def _match(coilforge: Any, checklist: Any, *, tol: float = _TOL, rel_tol: float | None = None) -> str:
+    """Compare two values -> match / mismatch / missing_one / both_missing.
+
+    ``tol`` is the absolute numeric tolerance (default ``_TOL`` = 0.01 in, the
+    dimensional agreement the checklist/ccsi callers rely on — they pass no kwargs, so
+    their behavior is unchanged). ``rel_tol``, when given, adds a relative band for
+    performance quantities (capacity, GPM, ...) whose absolute magnitude makes a fixed
+    0.01 tolerance meaningless: agreement = ``abs(a-b) <= max(tol, rel_tol*max(|a|,|b|))``.
+    """
     a, b = _norm(coilforge), _norm(checklist)
     if a is None and b is None:
         return "both_missing"
     if a is None or b is None:
         return "missing_one"
     if isinstance(a, float) and isinstance(b, float):
-        return "match" if abs(a - b) <= _TOL else "mismatch"
+        threshold = tol if rel_tol is None else max(tol, rel_tol * max(abs(a), abs(b)))
+        return "match" if abs(a - b) <= threshold else "mismatch"
     return "match" if a == b else "mismatch"
 
 

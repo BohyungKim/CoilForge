@@ -53,6 +53,10 @@
             <div id="breadcrumb" class="breadcrumb">CoilForge / Sanitized Demo / DX Header 1</div>
             <h2 id="page-title">Direct Coil Draft</h2>
           </div>
+          <div class="supplier-switch" role="group" aria-label="Coil supplier">
+            <button class="supplier-btn active" data-supplier="direct_coil" type="button">Direct Coil</button>
+            <button class="supplier-btn" data-supplier="ambient" type="button">Ambient (Quick-Ship)</button>
+          </div>
           <div class="topbar-actions">
             <span id="saved-status" class="saved-status">Draft saved locally</span>
             <button id="theme-toggle" class="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Toggle dark mode">
@@ -331,6 +335,38 @@
             <span id="ccsi-audit-summary" class="quote-package-summary"></span>
           </div>
           <div id="ccsi-audit-results" class="ccsi-audit-results"></div>
+        </section>
+
+        <section id="ambient-section" class="quote-package-section review-flow ambient-section" data-view="checklist" aria-label="Ambient Dynamics quote comparison">
+          <div class="section-heading">
+            <h3>Ambient Dynamics &mdash; Quote Comparison &mdash; Review Aid Only</h3>
+            <span class="subtle-label">Quick-ship supplier</span>
+          </div>
+          <p class="review-warning">
+            Quick-ship path. Drop the <strong>baseline submittal PDF</strong> and Ambient's returned
+            <strong>Performance PDF</strong>. CoilForge parses both, compares each coil's construction
+            and performance, and checks Ambient's capacity / coil-volume against the Coil Utilities
+            acceptance band (EKEXVA kit &rarr; tonnage). Green (match) / red (differ) / grey (cannot
+            evaluate). Review aid; nothing is exported.
+          </p>
+          <div class="ambient-drops">
+            <label id="ambient-baseline-drop" class="pdf-drop-zone" for="ambient-baseline-file">
+              <input id="ambient-baseline-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">1 &middot; Baseline submittal PDF</span>
+              <span id="ambient-baseline-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+            <label id="ambient-return-drop" class="pdf-drop-zone" for="ambient-return-file">
+              <input id="ambient-return-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">2 &middot; Ambient Performance PDF</span>
+              <span id="ambient-return-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+          </div>
+          <div class="quote-package">
+            <span id="ambient-summary" class="quote-package-summary"></span>
+          </div>
+          <div id="ambient-results" class="ambient-results"></div>
         </section>
 
         <section id="compatibility-section" class="inspector-card compatibility-card" data-view="compatibility">

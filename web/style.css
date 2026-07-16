@@ -966,6 +966,80 @@ body.is-init-stage .primary-intake-panel {
   margin: 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Supplier selector + Ambient Dynamics quote comparison (review aid). */
+/* Direct Coil is the default; the Ambient panel is gated on the body  */
+/* data-supplier flag so Direct Coil mode is byte-identical to today.  */
+/* ------------------------------------------------------------------ */
+.supplier-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-inset);
+}
+.supplier-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.supplier-btn.active {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+/* Ambient panel visibility: hidden unless the Ambient supplier is selected. In Ambient
+   mode the two Direct-Coil-specific review panels step aside to keep the flow focused. */
+.ambient-section {
+  display: none;
+}
+body[data-supplier="ambient"] .ambient-section {
+  display: block;
+}
+body[data-supplier="ambient"] #checklist-fill-section,
+body[data-supplier="ambient"] #ccsi-audit-section {
+  display: none;
+}
+
+.ambient-drops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ambient-drops .pdf-drop-zone {
+  flex: 1 1 240px;
+}
+
+.ambient-table tr.row-cannot td {
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+.ambient-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.ambient-not-compared {
+  font-size: 0.82rem;
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  margin: 6px 0 0;
+}
+.ambient-warns {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  color: var(--warn-text);
+}
+
 /* Project Review — exceptions first. Passing coils never render; only exceptions
    (red) and documented overrides (amber-ish) show. Reuses ok/danger theme tokens. */
 .project-review-opt {

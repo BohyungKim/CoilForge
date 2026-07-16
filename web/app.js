@@ -2,6 +2,9 @@ const state = {
   ui: null,
   defaultInput: null,
   activeTab: "checklist",
+  supplier: "direct_coil",
+  ambientBaselineFile: null,
+  ambientReturnFile: null,
   manualDrawingMode: false,
   compatibilityFilter: "all",
   pdfIntakeSummary: null,
@@ -4291,6 +4294,154 @@ document.querySelector("#ccsi-audit-file")?.addEventListener("change", (event) =
   if (file) {
     auditCcsiExport(file);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Supplier selector (Direct Coil default vs Ambient quick-ship). Persisted so the
+// choice sticks across reloads. Direct Coil = today's behavior (byte-identical); the
+// Ambient comparison panel is CSS-gated on body[data-supplier="ambient"].
+// ---------------------------------------------------------------------------
+const SUPPLIER_KEY = "coilforge.supplier";
+
+function applySupplier(supplier) {
+  state.supplier = supplier === "ambient" ? "ambient" : "direct_coil";
+  document.body.dataset.supplier = state.supplier;
+  document.querySelectorAll(".supplier-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.supplier === state.supplier);
+  });
+  const title = document.querySelector("#page-title");
+  if (title) {
+    title.textContent = state.supplier === "ambient" ? "Ambient (Quick-Ship)" : "Direct Coil Draft";
+  }
+}
+
+(function initSupplierSwitch() {
+  const stored = localStorage.getItem(SUPPLIER_KEY);
+  applySupplier(stored === "ambient" ? "ambient" : "direct_coil");
+  document.querySelectorAll(".supplier-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applySupplier(btn.dataset.supplier);
+      localStorage.setItem(SUPPLIER_KEY, state.supplier);
+    });
+  });
+})();
+
+// Ambient Dynamics quote comparison — baseline submittal + Ambient Performance PDF ->
+// per-coil green/red/grey compare with Coil Utilities acceptance bands. POSTs multipart
+// to /api/ambient/compare (headers:{} so the browser sets the multipart boundary — a
+// forced application/json would break form parsing). Review aid only; nothing exported.
+async function runAmbientCompare() {
+  const summary = document.querySelector("#ambient-summary");
+  const results = document.querySelector("#ambient-results");
+  if (!state.ambientBaselineFile || !state.ambientReturnFile) return;
+  summary.textContent = "Comparing Ambient performance vs the baseline…";
+  results.innerHTML = "";
+  try {
+    const form = new FormData();
+    form.append("baseline", state.ambientBaselineFile);
+    form.append("ambient", state.ambientReturnFile);
+    const report = await requestJson("/api/ambient/compare", {
+      method: "POST",
+      body: form,
+      headers: {},
+    });
+    renderAmbientCompare(report);
+  } catch (error) {
+    summary.textContent = `Ambient comparison failed: ${error.message || error}`;
+  }
+}
+
+function renderAmbientCompare(report) {
+  const summary = document.querySelector("#ambient-summary");
+  const results = document.querySelector("#ambient-results");
+  const coils = (report && report.coils) || [];
+  if (!coils.length) {
+    summary.textContent = "No coils to compare (check the two PDFs).";
+    results.innerHTML = "";
+    return;
+  }
+  const mismatchTotal = report.mismatch_total || 0;
+  const notCompared = (report.not_compared || []).length;
+  const warnings = (report.ambient_warnings || []).concat(report.warnings || []);
+  let head =
+    `${coils.length} coil(s) · <strong>${mismatchTotal}</strong> field(s) differ` +
+    (notCompared ? ` · <strong>${notCompared}</strong> not compared` : "") +
+    ` · review aid, not exported`;
+  if (warnings.length) {
+    head += `<div class="ambient-warns">${warnings.map((w) => `⚠ ${escapeHtml(w)}`).join("<br>")}</div>`;
+  }
+  summary.innerHTML = head;
+  results.innerHTML = coils.map(renderAmbientCoil).join("");
+}
+
+function renderAmbientCoil(coil) {
+  if (coil.not_compared_reason) {
+    return (
+      `<div class="ccsi-audit-coil ambient-coil"><h4>${escapeHtml(coil.tag || "Coil")} ` +
+      `<span class="subtle-label">${escapeHtml(coil.category || "")}</span> ` +
+      `<span class="ccsi-audit-badge has-mismatch">not compared</span></h4>` +
+      `<p class="ambient-not-compared">${escapeHtml(coil.not_compared_reason)}</p></div>`
+    );
+  }
+  const rows = (coil.rows || [])
+    .map((r) => {
+      const cls =
+        r.verdict === "match"
+          ? "dc-control--match"
+          : r.verdict === "mismatch"
+          ? "dc-control--mismatch"
+          : "row-cannot";
+      const fmt = (v) => (v === null || v === undefined ? "—" : v);
+      const mark =
+        r.verdict === "match"
+          ? "✓"
+          : r.verdict === "mismatch"
+          ? "⚠ differ"
+          : r.verdict === "cannot_evaluate"
+          ? "— n/a"
+          : r.verdict === "missing_one"
+          ? "missing"
+          : "";
+      const note = r.note ? ` <span class="ambient-note">${escapeHtml(r.note)}</span>` : "";
+      return (
+        `<tr class="${cls}"><td>${escapeHtml(r.label)}</td>` +
+        `<td>${escapeHtml(String(fmt(r.baseline)))}</td>` +
+        `<td>${escapeHtml(String(fmt(r.ambient)))}</td>` +
+        `<td>${escapeHtml(String(r.unit || ""))}</td>` +
+        `<td>${mark}${note}</td></tr>`
+      );
+    })
+    .join("");
+  const mismatch = coil.mismatch_count || 0;
+  const cannot = coil.cannot_evaluate_count || 0;
+  const badge =
+    mismatch > 0
+      ? `<span class="ccsi-audit-badge has-mismatch">⚠ ${mismatch} differ</span>`
+      : `<span class="ccsi-audit-badge">✓ all match</span>`;
+  const cannotNote = cannot ? `<span class="ccsi-audit-note">${cannot} cannot evaluate</span>` : "";
+  return (
+    `<div class="ccsi-audit-coil ambient-coil"><h4>${escapeHtml(coil.tag || "Coil")} ` +
+    `<span class="subtle-label">${escapeHtml(coil.category || "")}</span> ${badge} ${cannotNote}</h4>` +
+    `<table class="ccsi-audit-table ambient-table"><thead><tr>` +
+    `<th>Field</th><th>Baseline</th><th>Ambient</th><th>Unit</th><th></th>` +
+    `</tr></thead><tbody>${rows}</tbody></table></div>`
+  );
+}
+
+document.querySelector("#ambient-baseline-file")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0] || null;
+  state.ambientBaselineFile = file;
+  const nameEl = document.querySelector("#ambient-baseline-name");
+  if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  runAmbientCompare();
+});
+
+document.querySelector("#ambient-return-file")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0] || null;
+  state.ambientReturnFile = file;
+  const nameEl = document.querySelector("#ambient-return-name");
+  if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  runAmbientCompare();
 });
 
 // Bootstrap: always seed state.ui with the demo first (workflowToUiState spreads

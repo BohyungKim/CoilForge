@@ -34,6 +34,10 @@ from coilforge.phase2a.renderer import DEFAULT_VIEWBOX, REVIEW_WATERMARK
 from coilforge.review import build_default_review_packet, build_review_packet
 from coilforge.submittal.po_based_intake import build_po_based_intake
 from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate_fixture
+from coilforge.ambient.pdf_intake import parse_ambient_pdf
+from coilforge.ambient.mapping import build_ambient_comparison
+from coilforge.ambient.range_provider import coil_utilities_range_provider
+from coilforge.ambient.rfq import build_ambient_rfq
 from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
@@ -700,6 +704,155 @@ async def checklist_fill(request: Request):
             size=request.headers.get("x-coilforge-size"),
         )
     return jsonable_encoder(outcome.review)
+
+
+# ---------------------------------------------------------------------------
+# Ambient Dynamics quote comparison (quick-ship supplier — review aid).
+# ---------------------------------------------------------------------------
+_AMBIENT_CACHE_MAXSIZE = 32
+_AMBIENT_CACHE: "OrderedDict[tuple[str, str], dict[str, Any]]" = OrderedDict()
+
+
+def clear_ambient_cache() -> None:
+    """Drop all memoized Ambient comparisons (test hygiene / manual invalidation)."""
+    _AMBIENT_CACHE.clear()
+
+
+def _ambient_enabled() -> bool:
+    """Kill switch: when ``COILFORGE_AMBIENT`` is off, the /api/ambient/* routes no-op,
+    rolling back the feature WITHOUT reverting the branch. Read at request time. Default ON."""
+    return os.environ.get("COILFORGE_AMBIENT", "1").strip().lower() not in (
+        "0", "false", "no", "off", "",
+    )
+
+
+class _AmbientOutcome(NamedTuple):
+    """Result of :func:`_run_or_reuse_ambient_comparison`; ``payload`` is ``None`` on
+    failure with a ``reason``/``http_status``. Never raises."""
+
+    payload: dict[str, Any] | None
+    reason: str | None
+    http_status: int | None
+
+
+def _baseline_candidates(
+    pdf_bytes: bytes, *, source_id: str, filename: str | None, cover_page_hint: int | None
+) -> list[SubmittalCoilCandidate]:
+    """Parse the baseline submittal PDF into candidates via the standard workflow."""
+    result = run_pdf_to_drawing_workflow(
+        pdf_bytes, source_id=source_id, source_filename=filename, cover_page_hint=cover_page_hint
+    )
+    candidates: list[SubmittalCoilCandidate] = []
+    for dumped in result.get("candidates") or []:
+        try:
+            candidates.append(SubmittalCoilCandidate.model_validate(dumped))
+        except Exception:  # noqa: BLE001 -- skip an unparseable candidate, never abort
+            continue
+    return candidates
+
+
+async def _run_or_reuse_ambient_comparison(
+    baseline_bytes: bytes,
+    ambient_bytes: bytes,
+    *,
+    filename: str | None = None,
+    cover_page_hint: int | None = None,
+) -> _AmbientOutcome:
+    """Compare a baseline submittal PDF vs an Ambient PDF; memoized on both shas.
+    Never raises — returns an outcome whose ``payload`` is ``None`` with a reason."""
+    if not baseline_bytes or not ambient_bytes:
+        return _AmbientOutcome(
+            None,
+            "POST both PDFs as multipart form fields 'baseline' (submittal) and 'ambient'.",
+            400,
+        )
+    key = (hashlib.sha1(baseline_bytes).hexdigest(), hashlib.sha1(ambient_bytes).hexdigest())
+    cached = _AMBIENT_CACHE.get(key)
+    if cached is not None:
+        _AMBIENT_CACHE.move_to_end(key)
+        return _AmbientOutcome(copy.deepcopy(cached), None, None)
+
+    try:
+        baseline = _baseline_candidates(
+            baseline_bytes, source_id="AMBIENT-BASELINE-001",
+            filename=filename, cover_page_hint=cover_page_hint,
+        )
+    except ValueError as exc:
+        return _AmbientOutcome(None, f"Baseline PDF: {exc}", 400)
+    except Exception as exc:  # noqa: BLE001 -- never-raise contract
+        return _AmbientOutcome(None, f"Baseline workflow failed: {exc}", 500)
+
+    try:
+        intake = parse_ambient_pdf(ambient_bytes, source_id="AMBIENT-INTAKE-001", source_filename=filename)
+    except Exception as exc:  # noqa: BLE001
+        return _AmbientOutcome(None, f"Ambient PDF parse failed: {exc}", 500)
+
+    comparison = build_ambient_comparison(
+        baseline, intake.coils, range_provider=coil_utilities_range_provider
+    )
+    payload = comparison.as_dict()
+    payload["ambient_warnings"] = list(intake.warnings)
+    payload["raw_private_data_returned"] = False
+
+    _AMBIENT_CACHE[key] = payload
+    _AMBIENT_CACHE.move_to_end(key)
+    while len(_AMBIENT_CACHE) > _AMBIENT_CACHE_MAXSIZE:
+        _AMBIENT_CACHE.popitem(last=False)
+    return _AmbientOutcome(copy.deepcopy(payload), None, None)
+
+
+@app.post("/api/ambient/compare")
+async def ambient_compare(request: Request):
+    """Compare an Ambient Dynamics performance PDF vs the baseline submittal.
+
+    Multipart form ``baseline`` (submittal PDF) + ``ambient`` (Ambient PDF). Returns a
+    per-coil green/red/grey comparison with Coil-Utilities acceptance bands. Review aid
+    only (``export_allowed: False``); every Ambient value is a vendor claim,
+    review-required. Coils on only one side are surfaced with a ``not_compared_reason``."""
+    if not _ambient_enabled():
+        raise HTTPException(status_code=503, detail="Ambient comparison disabled (COILFORGE_AMBIENT=0).")
+    form = await request.form()
+    baseline_file = form.get("baseline")
+    ambient_file = form.get("ambient")
+    if baseline_file is None or ambient_file is None:
+        raise HTTPException(
+            status_code=400,
+            detail="multipart form must include 'baseline' and 'ambient' PDF files.",
+        )
+    baseline_bytes = await baseline_file.read() if hasattr(baseline_file, "read") else bytes(baseline_file)
+    ambient_bytes = await ambient_file.read() if hasattr(ambient_file, "read") else bytes(ambient_file)
+    outcome = await _run_or_reuse_ambient_comparison(
+        baseline_bytes, ambient_bytes,
+        filename=getattr(ambient_file, "filename", None),
+        cover_page_hint=_cover_page_hint_from_request(request),
+    )
+    if outcome.payload is None:
+        raise HTTPException(status_code=outcome.http_status or 400, detail=outcome.reason)
+    return jsonable_encoder(outcome.payload)
+
+
+@app.post("/api/ambient/rfq")
+async def ambient_rfq(request: Request):
+    """Build a structured performance-target summary for an Ambient RFQ (Feature 1).
+
+    POST the baseline submittal PDF bytes. Returns per-coil targets + the Coil-Utilities
+    acceptance band. Review aid only; no email is sent."""
+    if not _ambient_enabled():
+        raise HTTPException(status_code=503, detail="Ambient disabled (COILFORGE_AMBIENT=0).")
+    pdf_bytes = await request.body()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="POST the baseline submittal PDF bytes.")
+    try:
+        baseline = _baseline_candidates(
+            pdf_bytes, source_id="AMBIENT-RFQ-001",
+            filename=request.headers.get("x-coilforge-filename"),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Baseline PDF: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Baseline workflow failed: {exc}")
+    return jsonable_encoder(build_ambient_rfq(baseline))
 
 
 async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict):
