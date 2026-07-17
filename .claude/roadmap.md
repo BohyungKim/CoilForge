@@ -138,6 +138,16 @@
   **972 green(+4)** + invariant-guard clean(BLOCKER 0/WARN 0) + 실 HTTP(CD 3.75→9.5 slot·SVG 반영, before=5.5
   event-source, reason 보존). 실 고객 PDF 브라우저 눈확인은 John 몫. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`. 🆕 이번 세션
 
+- [x] **[신규 우선 트랙] 편집 spec data + 3자 비교 뷰 — Phase 2 완료 (b04bcf3, 2026-07-17)** — 엔지니어가
+  엔진 관련 spec(circuits/rows/feeds/return_conn_size/coating)을 **필드별 lock/unlock 패널**로 여유될 때 교정 →
+  편집 시 도면 재계산(conn→slot, coating→R-080/081/035c 노트) + `stage='spec_field'` correction 축적
+  (`spec_overrides`, event-sourced, reason 보존, 마이그레이션 0, 킬스위치 포함). 신규 `services/three_way_view.py`
+  (순수 read-only, derive 결과에 `three_way` 부착)가 **submittal(raw) vs CoilForge(engine) vs engineer(manual)**
+  를 나란히, `_match` 재사용 green/red. **MAJOR-1 라이브 증명:** override된 필드의 CoilForge 열은 event-source된
+  기계 제안(`previous_value`)을 읽음 — CD override 9.5여도 열엔 5.5 표시(도면·패널은 9.5). `rule_id`는 nullable
+  (1c가 "어느 룰" 열 채움). 안전: 값 변경/승인 없음·미지 키 거부·export_allowed False·프로즌 무접촉. **978 green(+6)**
+  + invariant-guard clean(0 findings) + 실 HTTP(rows 4→6, CD 열=5.5). 브라우저 눈확인은 John 몫(TR-2). 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -146,13 +156,14 @@
   clean·실 HTTP CD 9.5 반영·before=5.5 event-source); 남은 건 실 렌더의 사람 눈 확인뿐. **Phase 2는 이 TR과
   병행 착수(John 2026-07-17 승인)** — 반영/캡처 백엔드는 Phase 2가 재사용만 하므로 눈확인 결과가 Phase 2 코드를
   되돌리지 않음.
+- [ ] **[TR-2] Phase 2 편집 spec + 3자 뷰 브라우저 눈확인 (John)** — ⚠️ 서버 재시작 필요(Phase 2 코드 반영).
+  절차: 코일 분석/derive → "Spec data" 패널에서 필드(예 Rows) 자물쇠 열기 → 값 편집+이유 → Save → 도면 재계산
+  확인 + 코일 아래 **"Three-way review"** 테이블에서 submittal/CoilForge/engineer 3열 green/red 확인(특히 override한
+  drawing param의 CoilForge 열이 기계 원제안을 보이는지). 자동검증 완료(978 green·invariant clean·실 HTTP); 남은 건
+  사람 눈 확인.
 
 ## ▶️ 지금
-- [ ] **[신규 우선 트랙] 편집 Drawing Params — Phase 2 (spec lock + 3자 비교 뷰)** — 착수(2026-07-17).
-  `templateDrawingCaption` 필드별 자물쇠(coating은 Tier-A 재계산) + `spec_overrides`(stage=`spec_field` correction,
-  마이그레이션 0) + `POST /api/coil/three-way`(logic 열은 override시 `correction.previous_value`=MAJOR-1 가드) +
-  `_match` 재사용 green/red 렌더. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`. TR-1(위)와 병행.
-- [ ] **1c (위 신규 트랙 뒤로 밀림)** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
+- [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
   `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). **seam=A 확정(John 2026-07-16):** Tier-A-fill
   derive 단독 캡처로 시작, PDF-analyze 엔진 confidence는 out-of-scope(코퍼스 얇으면 C=비동결 래퍼 파리티 증명).
   착수 전 phase5 워크트리 병합 여부 확인(미병합 → `rule_id` 기본값 필수). 참고: 1c의 rule_id가 Phase 2 3자 뷰의
