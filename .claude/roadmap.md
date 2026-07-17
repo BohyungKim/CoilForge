@@ -138,13 +138,20 @@
   **972 green(+4)** + invariant-guard clean(BLOCKER 0/WARN 0) + 실 HTTP(CD 3.75→9.5 slot·SVG 반영, before=5.5
   event-source, reason 보존). 실 고객 PDF 브라우저 눈확인은 John 몫. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`. 🆕 이번 세션
 
+## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
+- [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
+  바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
+  drawing parameters" 체크 → CD 편집(예 3.75→9.5)+이유 → "Update drawing" → **도면 인쇄 CD가 9.5로 갱신 +
+  호박색 "✎ Manually overridden: CD" 배너 + 리뷰/watermark 유지** 확인. 자동검증은 완료(972 green·invariant
+  clean·실 HTTP CD 9.5 반영·before=5.5 event-source); 남은 건 실 렌더의 사람 눈 확인뿐. **Phase 2는 이 TR과
+  병행 착수(John 2026-07-17 승인)** — 반영/캡처 백엔드는 Phase 2가 재사용만 하므로 눈확인 결과가 Phase 2 코드를
+  되돌리지 않음.
+
 ## ▶️ 지금
-- [ ] **[신규 우선 트랙] 편집 Drawing Params — Phase 2 (spec lock + 3자 비교 뷰)** — 다음 걸음:
-  **먼저 John 브라우저 눈확인(Phase 1 게이트)** — 서버 재시작 후 :8011에서 submittal 재분석 → "Manual drawing
-  parameters" 체크 → CD 편집+이유 → "Update drawing" → 도면 인쇄 CD 갱신 + 호박색 배너 + 리뷰 유지 확인.
-  그 뒤 Phase 2 착수: `templateDrawingCaption` 필드별 자물쇠(coating은 Tier-A 재계산) + `spec_overrides`(stage=
-  `spec_field` correction, 마이그레이션 0) + `POST /api/coil/three-way`(logic 열은 override시 `correction.previous_value`
-  =MAJOR-1 가드) + `_match` 재사용 green/red 렌더. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`.
+- [ ] **[신규 우선 트랙] 편집 Drawing Params — Phase 2 (spec lock + 3자 비교 뷰)** — 착수(2026-07-17).
+  `templateDrawingCaption` 필드별 자물쇠(coating은 Tier-A 재계산) + `spec_overrides`(stage=`spec_field` correction,
+  마이그레이션 0) + `POST /api/coil/three-way`(logic 열은 override시 `correction.previous_value`=MAJOR-1 가드) +
+  `_match` 재사용 green/red 렌더. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`. TR-1(위)와 병행.
 - [ ] **1c (위 신규 트랙 뒤로 밀림)** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
   `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). **seam=A 확정(John 2026-07-16):** Tier-A-fill
   derive 단독 캡처로 시작, PDF-analyze 엔진 confidence는 out-of-scope(코퍼스 얇으면 C=비동결 래퍼 파리티 증명).
