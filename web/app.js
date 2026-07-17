@@ -2140,16 +2140,19 @@ function renderTemplateDrawingPreview(templateDrawing) {
   elements.drawingPreview.innerHTML = `
     <div class="template-drawing-preview">
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
+      ${renderSpecEditPanel(templateDrawing)}
       ${templateDrawingPicker(templateDrawing)}
       ${renderManualFillPanel(templateDrawing)}
       ${distributorOrientationBanner(templateDrawing)}
       ${hgbpProductLineBanner(templateDrawing)}
       ${manualOverrideBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
+      ${renderThreeWayView(templateDrawing)}
     </div>
   `;
   attachCoilDrawingPicker(templateDrawing);
   attachManualFillPanel(templateDrawing);
+  attachSpecEditPanel(templateDrawing);
 }
 
 // NOTE: the per-coil "Drawing package (steps 9-12)" card (single-coil
@@ -2297,7 +2300,10 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     feeds: pick("feeds", ex.feeds),
     finned_height: ex.finned_height,
     finned_length: ex.finned_length,
-    suction_conn_size: ex.return_conn_size,
+    // Editable spec fields (Phase 2): an unlocked return conn / coating edit overrides the
+    // extracted value so the engine recomputes (conn -> slots, coating -> R-080/081/035c notes).
+    suction_conn_size: pick("return_conn_size", ex.return_conn_size),
+    coating: pick("coating", ex.coating),
     product_type: productLine,
     unit_size: unitSize,
     // The three engine inputs the frozen path drops (un-gate levers).
@@ -2305,6 +2311,8 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     header_count: engineInputs.header_count,
     qty_conn_per_header: engineInputs.qty_conn_per_header,
     param_overrides: f.paramOverrides || [],
+    // Phase 2 spec-field corrections (parallel capture channel; stage 'spec_field').
+    spec_overrides: f.specOverrides || [],
     override_reason: f.reason,
     // Round-trip the submittal spec-panel values so the right-side panel stays
     // populated after the dimensions are logic-derived.
@@ -2618,6 +2626,121 @@ function templateDrawingCaption(templateDrawing) {
   return cells
     .map(([label, value]) => `<span><em>${escapeHtml(label)}</em><strong>${escapeHtml(value)}</strong></span>`)
     .join("");
+}
+
+// Phase 2 — the engine-relevant spec fields the engineer can feed/correct via a per-field
+// lock. An edit re-derives (conn -> slots, coating -> notes) AND logs a (before -> after)
+// correction. Mirrors web_app._KNOWN_SPEC_FIELD_KEYS; template-selection fields are excluded.
+const SPEC_EDIT_FIELDS = [
+  { key: "circuits", label: "Circuits", numeric: true },
+  { key: "rows", label: "Rows", numeric: true },
+  { key: "feeds", label: "Feeds", numeric: true },
+  { key: "return_conn_size", label: "Return conn.", numeric: true },
+  { key: "coating", label: "Coating", numeric: false },
+];
+
+function renderSpecEditPanel(templateDrawing) {
+  const ex = templateDrawing.extracted || {};
+  const rows = SPEC_EDIT_FIELDS.map((fld) => {
+    const value = ex[fld.key];
+    const shown = value === null || value === undefined || value === "" ? "—" : value;
+    return `
+      <div class="spec-edit-row" data-spec-field="${fld.key}" data-spec-numeric="${fld.numeric}" data-spec-prev="${escapeHtml(String(value ?? ""))}">
+        <span class="spec-edit-label">${escapeHtml(fld.label)}</span>
+        <span class="spec-edit-value">${escapeHtml(String(shown))}</span>
+        <input class="spec-edit-input dc-control" type="${fld.numeric ? "number" : "text"}" step="0.01" value="${escapeHtml(String(value ?? ""))}" hidden />
+        <input class="spec-edit-reason" type="text" placeholder="Reason (logged)" hidden />
+        <button type="button" class="spec-edit-lock" aria-label="Unlock ${escapeHtml(fld.label)}">🔒</button>
+        <button type="button" class="spec-edit-save manual-fill-apply" hidden>Save</button>
+      </div>`;
+  }).join("");
+  return `<details class="spec-edit-panel"><summary>Spec data — lock/unlock to edit &amp; log</summary>${rows}</details>`;
+}
+
+function attachSpecEditPanel(templateDrawing) {
+  document.querySelectorAll(".spec-edit-row").forEach((row) => {
+    const lock = row.querySelector(".spec-edit-lock");
+    const save = row.querySelector(".spec-edit-save");
+    const input = row.querySelector(".spec-edit-input");
+    const reason = row.querySelector(".spec-edit-reason");
+    const valueSpan = row.querySelector(".spec-edit-value");
+    if (!lock || !save || !input || !reason || !valueSpan) return;
+    lock.addEventListener("click", () => {
+      const locked = input.hidden;
+      input.hidden = !locked; reason.hidden = !locked; save.hidden = !locked;
+      valueSpan.hidden = locked;
+      lock.textContent = locked ? "🔓" : "🔒";
+      if (locked) input.focus();
+    });
+    save.addEventListener("click", () => submitSpecEdit(templateDrawing, row));
+  });
+}
+
+async function submitSpecEdit(templateDrawing, row) {
+  const field = row.dataset.specField;
+  const numeric = row.dataset.specNumeric === "true";
+  const prevRaw = row.dataset.specPrev;
+  const raw = (row.querySelector(".spec-edit-input")?.value || "").trim();
+  const reason = (row.querySelector(".spec-edit-reason")?.value || "").trim();
+  const setStatus = (title, msg) => {
+    if (elements.drawingTemplateStatus) {
+      elements.drawingTemplateStatus.innerHTML = `<strong>${title}</strong><span>${msg}</span>`;
+    }
+  };
+  if (raw === "") { setStatus("No value", "Enter a value before saving."); return; }
+  if (!reason) { setStatus("Reason required", "Enter a reason to log the change."); return; }
+  const newVal = numeric ? numberOrFallback(raw, null) : raw;
+  if (newVal === null) { setStatus("Invalid number", `${field}: enter a number.`); return; }
+  const prevVal = prevRaw === "" ? null : numeric ? numberOrFallback(prevRaw, prevRaw) : prevRaw;
+  if (String(prevVal ?? "") === String(newVal)) { setStatus("No change", "Value is unchanged."); return; }
+  const productLine =
+    document.querySelector("#coil-product-line")?.value || templateDrawing.product_type || "";
+  const unitSize =
+    document.querySelector("#coil-unit-size")?.value || templateDrawing.unit_size || "";
+  await deriveCoilDrawing(templateDrawing, productLine, unitSize, {
+    engineInputs: { [field]: numeric ? newVal : raw },
+    specOverrides: [
+      { field_key: field, previous_value: prevVal, new_value: newVal, override_reason: reason },
+    ],
+    reason,
+  });
+}
+
+// Phase 2b — three-way review table (submittal / CoilForge / engineer). Green cell = matches
+// the column to its left; red = differs. A red Engineer cell is the correction signal (where
+// the human diverged from the machine) — the raw material for mapping improvement.
+function threeWayCell(value, verdict) {
+  const cls =
+    verdict === "match" ? "tw-match" : verdict === "mismatch" ? "tw-mismatch" : "";
+  const shown = value === null || value === undefined || value === "" ? "—" : value;
+  return `<td class="${cls}">${escapeHtml(String(shown))}</td>`;
+}
+
+function renderThreeWayView(templateDrawing) {
+  const tw = templateDrawing.three_way;
+  if (!tw || !Array.isArray(tw.fields) || !tw.fields.length) return "";
+  const rows = tw.fields
+    .map(
+      (f) => `
+      <tr>
+        <td class="tw-field">${escapeHtml(String(f.field))}</td>
+        ${threeWayCell(f.submittal, null)}
+        ${threeWayCell(f.coilforge, f.submittal_vs_coilforge)}
+        ${threeWayCell(f.engineer, f.coilforge_vs_engineer)}
+      </tr>`,
+    )
+    .join("");
+  return `
+    <details class="three-way-panel">
+      <summary>Three-way review — submittal vs CoilForge vs engineer</summary>
+      <div class="three-way-scroll">
+        <table class="three-way-table">
+          <thead><tr><th>Field</th><th>Submittal</th><th>CoilForge</th><th>Engineer</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${tw.note ? `<p class="subtle-label">${escapeHtml(tw.note)}</p>` : ""}
+    </details>`;
 }
 
 function templateDrawingBody(templateDrawing, rendered) {

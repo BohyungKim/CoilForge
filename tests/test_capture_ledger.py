@@ -579,6 +579,29 @@ def test_correction_event_sourced_before_and_reason(ledger):
     assert rows == [("CD", 5.5, "default", 9.5, "manual", "field measured")]
 
 
+def test_spec_field_correction_captured(ledger):
+    """Phase 2: an edited spec field (circuits/rows/feeds/return_conn_size/coating) records a
+    (before -> after) correction at stage 'spec_field', event-sourced from the echoed
+    spec_overrides, carrying the reason. Independent of the drawing-param path."""
+    result, payload = _derive_with_override(panel={}, slot_values={"slot.CD": 5.5})
+    result["spec_overrides"] = [
+        {"field_key": "rows", "previous_value": 4, "new_value": 6, "override_reason": "BOM says 6"},
+        {"field_key": "coating", "previous_value": None, "new_value": "Phenolic",
+         "override_reason": "customer spec"},
+    ]
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+
+    rows = _rows(
+        ledger,
+        "SELECT field_key, stage, previous_value_num, new_value_json, new_mode, override_reason"
+        " FROM correction WHERE stage='spec_field' ORDER BY field_key",
+    )
+    assert rows == [
+        ("coating", "spec_field", None, '"Phenolic"', "manual", "customer spec"),
+        ("rows", "spec_field", 4.0, "6", "manual", "BOM says 6"),
+    ]
+
+
 def test_no_override_writes_no_correction(ledger):
     """A derive with no Tier-B override (no manual-mode panel field) writes no
     correction rows — the table only holds fields a human actually changed."""

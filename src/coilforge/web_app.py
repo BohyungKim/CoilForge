@@ -1080,6 +1080,16 @@ def _known_drawing_param_key(key: str) -> bool:
     )
 
 
+# Phase 2 spec-field edits (per-field lock): the engine-relevant spec inputs the engineer
+# can feed/correct. Each already flows through the derive spec/ctx, so an edit re-derives
+# (coating -> R-080/081/035c notes; the rest -> slots). Template-selection fields
+# (hand/header_type/product/unit_size) are deliberately NOT here — they change which
+# template is chosen and stay with the existing pickers/classification path.
+_KNOWN_SPEC_FIELD_KEYS: frozenset[str] = frozenset(
+    {"circuits", "rows", "feeds", "return_conn_size", "coating"}
+)
+
+
 def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """API-boundary validation for /derive fills (M-NEW-2): require override_reason,
     coerce numeric params, reject unknown keys — so a bad fill yields a surfaced error,
@@ -1091,6 +1101,7 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
 
     if not _manual_fill_enabled():
         clean.pop("param_overrides", None)
+        clean.pop("spec_overrides", None)
         for key in ("application", "header_count", "qty_conn_per_header"):
             clean.pop(key, None)
         return clean, errors
@@ -1117,6 +1128,37 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
         valid_overrides.append({**item, "key": key, "value": value})
     if "param_overrides" in clean:
         clean["param_overrides"] = valid_overrides
+
+    # Phase 2 spec-field overrides: {field_key, previous_value, new_value, override_reason}.
+    # Captured as (before -> after) corrections at stage 'spec_field'. Values may be strings
+    # (coating) or numbers (circuits/rows/feeds/conn) so they are NOT coerced to float here;
+    # the engine-relevant ones are separately threaded into the derive spec by the frontend.
+    valid_specs: list[dict[str, Any]] = []
+    for item in spec.get("spec_overrides") or []:
+        if not isinstance(item, dict):
+            errors.append("spec override must be an object")
+            continue
+        field_key = str(item.get("field_key") or "").strip()
+        if not field_key or field_key not in _KNOWN_SPEC_FIELD_KEYS:
+            errors.append(f"unknown spec field: {item.get('field_key')!r}")
+            continue
+        if not str(item.get("override_reason") or "").strip():
+            errors.append(f"{field_key}: override_reason is required")
+            continue
+        new_value = item.get("new_value")
+        if new_value is None or (isinstance(new_value, str) and not new_value.strip()):
+            errors.append(f"{field_key}: new_value is required")
+            continue
+        valid_specs.append(
+            {
+                "field_key": field_key,
+                "previous_value": item.get("previous_value"),
+                "new_value": new_value,
+                "override_reason": str(item.get("override_reason")).strip(),
+            }
+        )
+    if "spec_overrides" in clean:
+        clean["spec_overrides"] = valid_specs
 
     for key in ("header_count", "qty_conn_per_header"):
         if clean.get(key) is not None:

@@ -2345,6 +2345,116 @@ h4 {
   padding: 6px 10px;
 }
 
+/* Phase 2 — per-field spec lock/unlock */
+.spec-edit-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 8px 0;
+  padding: 4px 10px 8px;
+}
+
+.spec-edit-panel > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.spec-edit-row {
+  align-items: center;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.spec-edit-label {
+  color: var(--text-secondary);
+  flex: 0 0 96px;
+  font-size: 0.8rem;
+}
+
+.spec-edit-value {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.spec-edit-input {
+  flex: 0 0 120px;
+}
+
+.spec-edit-reason {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  flex: 1 1 180px;
+  font-size: 0.82rem;
+  padding: 5px 9px;
+}
+
+.spec-edit-lock {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 2px 6px;
+}
+
+/* Phase 2b — three-way review table */
+.three-way-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 10px 0 4px;
+  padding: 4px 10px 8px;
+}
+
+.three-way-panel > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.three-way-scroll {
+  overflow-x: auto;
+}
+
+.three-way-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.three-way-table th,
+.three-way-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.three-way-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.three-way-table .tw-field {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.three-way-table .tw-match {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.three-way-table .tw-mismatch {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
 .coil-drawing-picker.is-derived {
   background: var(--ok-bg);
   border-color: var(--ok-border);

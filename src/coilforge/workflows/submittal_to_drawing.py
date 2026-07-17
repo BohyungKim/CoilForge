@@ -1133,6 +1133,17 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     ).model_dump()
     # Audit trail (session store on the result). Kept review-required; never confirmed.
     result["manual_overrides"] = [mo.model_dump() for mo in manual_overrides_from_fills(spec)]
+    # Phase 2: echo the sanitized spec-field overrides so the capture ledger records them
+    # as (before -> after) corrections at stage 'spec_field'. The engine-relevant fields
+    # (circuits/rows/feeds/return_conn_size/coating) are already threaded into ctx above, so
+    # the drawing itself recomputes; this is the parallel capture channel.
+    if spec.get("spec_overrides"):
+        result["spec_overrides"] = spec["spec_overrides"]
+    # Phase 2b: attach the per-coil three-way review view (submittal / CoilForge / engineer).
+    # Review aid only; the override column reads the event-sourced machine proposal so a
+    # corrected field still shows what the engine originally proposed.
+    from coilforge.services.three_way_view import build_three_way_view
+    result["three_way"] = build_three_way_view(result)
     # Safety: a manual fill must never flip export_allowed.
     result["export_allowed"] = False
 

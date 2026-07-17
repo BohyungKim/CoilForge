@@ -346,96 +346,129 @@ def _compare_rows(run_id: str, compare: dict[str, Any]) -> list[tuple]:
     return rows
 
 
-def _correction_rows(
+def _drawing_param_correction_rows(
     run_id: str, coil_uid: str, view: _CoilView, circuits: Any
 ) -> list[tuple]:
-    """The correction half of the triple (1b): one row per drawing-param field a
-    human actually overrode — the machine proposal (before) paired with the human
-    override (after) + the reason.
+    """Drawing-param corrections (stage 'drawing_param'): one row per dimension a human
+    overrode — the machine proposal (before) paired with the human override (after).
 
     PRIMARY (event-sourced, 1b reflection): when the derive stored
     ``view.td['manual_override_events']``, read the before-value + reason straight from
-    that snapshot. This is required once Tier-B reflection merges the override into
-    ``slot_values`` — a later override-free re-resolve would read the OVERRIDDEN slot
-    and silently drop the correction. The before is captured at derive time, when the
-    slots were still pristine, and stored raw (not recomputed).
-
-    FALLBACK (recompute): older runs / Tier-A-only / the multi-coil analyze milestone
-    carry no event snapshot. There, ``view.params`` is the panel WITH overrides and a
-    field with ``mode == "manual"`` is a human override; the before is re-resolved
-    WITHOUT overrides — deterministic because those paths never merged an override into
-    ``slot_values``. ``circuits`` MUST match the live derive so the baseline surfaces
-    the SAME multi-header keys (I2/S2…) the panel did.
-
-    NEVER propagates: anything here can raise, and this runs inside
-    ``capture_milestone``'s single pre-transaction build, so an exception would sink the
-    WHOLE milestone — including the "after" values already built for
-    ``field_observation``. Any failure -> ``[]`` (a missing correction, never a lost run).
+    that snapshot. Required once Tier-B reflection merges the override into ``slot_values``
+    — a later override-free re-resolve would read the OVERRIDDEN slot and drop the
+    correction. FALLBACK (recompute): older runs / Tier-A-only / analyze carry no snapshot;
+    ``view.params`` is the panel WITH overrides (``mode == "manual"``) and the before is
+    re-resolved WITHOUT overrides (deterministic — those paths never merged into slots).
+    ``circuits`` MUST match the live derive so the baseline surfaces the same multi-header
+    keys (I2/S2…). May raise — the caller wraps it.
     """
-    try:
-        # PRIMARY: event-sourced before-value + reason from the derive snapshot.
-        events = view.td.get("manual_override_events") if isinstance(view.td, dict) else None
-        if events:
-            rows: list[tuple] = []
-            for ev in events:
-                if not isinstance(ev, dict):
-                    continue
-                prev_value = ev.get("previous_value")
-                new_value = ev.get("new_value")
-                # An override that matches the machine value is not a correction.
-                if prev_value == new_value:
-                    continue
-                rows.append(
-                    (
-                        run_id, coil_uid, ev.get("key"), "drawing_param",
-                        _json(prev_value), _num(prev_value), ev.get("previous_mode"),
-                        _json(new_value), _num(new_value), "manual",
-                        ev.get("override_reason"),  # carried through 1b
-                        _json(ev.get("source_evidence")),
-                    )
-                )
-            return rows
-
-        # FALLBACK: recompute the pre-override baseline (no event snapshot present).
-        panel = view.params.get("parameters") or {}
-        overridden = {
-            key: param
-            for key, param in panel.items()
-            if isinstance(param, dict) and param.get("mode") == "manual"
-        }
-        if not overridden:
-            return []
-
-        from coilforge.services.drawing_param_resolver import (
-            parameter_set_from_template_drawing,
-        )
-
-        try:
-            circuits_int = int(circuits) if circuits else None
-        except (TypeError, ValueError):
-            circuits_int = None
-        baseline = parameter_set_from_template_drawing(
-            view.td, circuits=circuits_int
-        ).parameters
-
-        rows = []
-        for key, param in overridden.items():
-            new_value = param.get("value")
-            base = baseline.get(key)
-            prev_value = base.value if base is not None else None
-            prev_mode = base.mode if base is not None else None
-            # An override that matches the machine value is not a correction.
-            if prev_value == new_value:
+    # PRIMARY: event-sourced before-value + reason from the derive snapshot.
+    events = view.td.get("manual_override_events") if isinstance(view.td, dict) else None
+    if events:
+        rows: list[tuple] = []
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            prev_value = ev.get("previous_value")
+            new_value = ev.get("new_value")
+            if prev_value == new_value:  # an override matching the machine value isn't one
                 continue
             rows.append(
                 (
-                    run_id, coil_uid, key, "drawing_param",
-                    _json(prev_value), _num(prev_value), prev_mode,
-                    _json(new_value), _num(new_value), param.get("mode"),
-                    None,  # override_reason: not carried on the panel param dict
-                    _json(param.get("source_evidence")),
+                    run_id, coil_uid, ev.get("key"), "drawing_param",
+                    _json(prev_value), _num(prev_value), ev.get("previous_mode"),
+                    _json(new_value), _num(new_value), "manual",
+                    ev.get("override_reason"),  # carried through 1b
+                    _json(ev.get("source_evidence")),
                 )
             )
+        return rows
+
+    # FALLBACK: recompute the pre-override baseline (no event snapshot present).
+    panel = view.params.get("parameters") or {}
+    overridden = {
+        key: param
+        for key, param in panel.items()
+        if isinstance(param, dict) and param.get("mode") == "manual"
+    }
+    if not overridden:
+        return []
+
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    try:
+        circuits_int = int(circuits) if circuits else None
+    except (TypeError, ValueError):
+        circuits_int = None
+    baseline = parameter_set_from_template_drawing(view.td, circuits=circuits_int).parameters
+
+    rows = []
+    for key, param in overridden.items():
+        new_value = param.get("value")
+        base = baseline.get(key)
+        prev_value = base.value if base is not None else None
+        prev_mode = base.mode if base is not None else None
+        if prev_value == new_value:
+            continue
+        rows.append(
+            (
+                run_id, coil_uid, key, "drawing_param",
+                _json(prev_value), _num(prev_value), prev_mode,
+                _json(new_value), _num(new_value), param.get("mode"),
+                None,  # override_reason: not carried on the panel param dict
+                _json(param.get("source_evidence")),
+            )
+        )
+    return rows
+
+
+def _spec_field_correction_rows(
+    run_id: str, coil_uid: str, view: _CoilView
+) -> list[tuple]:
+    """Spec-field corrections (Phase 2, stage 'spec_field'): one row per spec input the
+    engineer edited (circuits/rows/feeds/return_conn_size/coating). The before is the value
+    on screen at correction time (event-sourced from ``view.td['spec_overrides']``, echoed
+    by the derive from the validated request); no recompute, no slot mutation. May raise —
+    the caller wraps it."""
+    overrides = view.td.get("spec_overrides") if isinstance(view.td, dict) else None
+    if not overrides:
+        return []
+    rows: list[tuple] = []
+    for ov in overrides:
+        if not isinstance(ov, dict):
+            continue
+        prev_value = ov.get("previous_value")
+        new_value = ov.get("new_value")
+        if prev_value == new_value:  # not a correction
+            continue
+        rows.append(
+            (
+                run_id, coil_uid, ov.get("field_key"), "spec_field",
+                _json(prev_value), _num(prev_value), None,  # previous_mode: n/a for spec
+                _json(new_value), _num(new_value), "manual",
+                ov.get("override_reason"),
+                None,  # evidence_json
+            )
+        )
+    return rows
+
+
+def _correction_rows(
+    run_id: str, coil_uid: str, view: _CoilView, circuits: Any
+) -> list[tuple]:
+    """The correction half of the (input -> proposal -> correction) triple: drawing-param
+    overrides (1b) + spec-field overrides (Phase 2), combined.
+
+    NEVER propagates: anything here can raise, and this runs inside ``capture_milestone``'s
+    single pre-transaction build, so an exception would sink the WHOLE milestone — including
+    the "after" values already built for ``field_observation``. Any failure -> ``[]`` (a
+    missing correction, never a lost run).
+    """
+    try:
+        rows = _drawing_param_correction_rows(run_id, coil_uid, view, circuits)
+        rows.extend(_spec_field_correction_rows(run_id, coil_uid, view))
         return rows
     except Exception as exc:  # noqa: BLE001 — a correction bug must not sink the run
         db.record_error(
