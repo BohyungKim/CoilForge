@@ -241,6 +241,16 @@ async def review_default_packet():
     return jsonable_encoder(build_default_review_packet().to_dict())
 
 
+@app.get("/api/capture/health")
+async def capture_health():
+    """Read-only capture-ledger status (1d): enabled flag, schema version, per-table row
+    counts, and recent-error TYPES. Never returns raw customer data; never creates the DB
+    on a machine that has never captured."""
+    from coilforge.capture.observe import health
+
+    return jsonable_encoder(health())
+
+
 @app.post("/api/review/build-packet")
 async def review_build_packet(request: dict[str, Any] = Body(default_factory=dict)):
     payload = request or {}

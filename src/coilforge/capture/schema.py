@@ -265,10 +265,49 @@ _M3_ENGINE_PROVENANCE = (
     "CREATE INDEX ix_engine_call_run ON engine_call(run_id)",
 )
 
+# Observability (1d). A derived VIEW that folds re-analyze route multiplicity, plus the
+# audit-sample queue (a flag-INDEPENDENT random draw of coils for John to ground-truth —
+# the only way to break stage-4 sample bias where only flagged coils are ever reviewed).
+# The view intentionally EXCLUDES NULL input_hash rows (derive/text/coil_manual_fill have no
+# pdf bytes -> NULL) so it folds only genuine PDF re-analyses, and SQLite's "all NULLs are
+# one GROUP BY group" trap can't merge distinct fill runs. No latest_run_id column: run_id is
+# a random uuid4 (record.py), so MAX(run_id) would be arbitrary, not the most recent — a
+# consumer that needs the latest run of a group filters `run` by last_ts instead.
+_M4_OBSERVABILITY = (
+    """
+    CREATE VIEW run_dedup AS
+    SELECT
+        input_hash,
+        cover_page_hint,
+        product_line_hint,
+        unit_size_hint,
+        COUNT(*)     AS run_count,
+        MIN(ts_utc)  AS first_ts,
+        MAX(ts_utc)  AS last_ts
+    FROM run
+    WHERE input_hash IS NOT NULL
+    GROUP BY input_hash, cover_page_hint, product_line_hint, unit_size_hint
+    """,
+    """
+    CREATE TABLE audit_sample (
+        sample_id     INTEGER PRIMARY KEY,
+        drawn_ts_utc  TEXT NOT NULL,
+        coil_uid      TEXT NOT NULL,
+        run_id        TEXT,
+        tag           TEXT,
+        reviewed      INTEGER NOT NULL DEFAULT 0,
+        label_json    TEXT
+    )
+    """,
+    "CREATE INDEX ix_audit_sample_coil ON audit_sample(coil_uid)",
+    "CREATE INDEX ix_audit_sample_reviewed ON audit_sample(reviewed)",
+)
+
 # (description, statements). Index + 1 == PRAGMA user_version after it applies.
 # APPEND ONLY -- never edit or remove an entry that has shipped.
 MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("initial capture ledger (1a)", _M1_INITIAL),
     ("correction table (1b)", _M2_CORRECTION),
     ("engine provenance (1c)", _M3_ENGINE_PROVENANCE),
+    ("observability (1d)", _M4_OBSERVABILITY),
 )
