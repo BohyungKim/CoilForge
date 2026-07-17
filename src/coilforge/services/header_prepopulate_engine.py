@@ -186,6 +186,7 @@ def copper_strap_requirement(
             value=None,
             confidence=Confidence.LOW,
             evidence_refs=rule["evidence_refs"],
+            rule_id=rule["rule_id"],
             review_required=True,
             blocked_reason=rule["blocked_reason"],
         )
@@ -195,6 +196,7 @@ def copper_strap_requirement(
         value=header_count * multiplier,
         confidence=Confidence.HIGH,
         evidence_refs=rule["evidence_refs"],
+        rule_id=rule["rule_id"],
     )
 
 
@@ -356,6 +358,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=None,
                         confidence=confidence,
                         evidence_refs=rule["evidence_refs"],
+                        rule_id=rid,
                         review_required=True,
                         review_required_reason=review_reason,
                         blocked_reason=rule.get("blocked_reason"),
@@ -371,6 +374,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     value=field_value,
                     confidence=confidence,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rid,
                     review_required=review_required,
                     review_required_reason=review_reason if review_required else None,
                 ),
@@ -401,6 +405,8 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                 value=note_lines,
                 confidence=Confidence.HIGH,
                 evidence_refs=note_refs,
+                # multi-rule (R-007/008 + R-080/081/035x); primary = the base notes rule.
+                rule_id="R-007",
             ),
         )
 
@@ -419,6 +425,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     value=size_class,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
 
@@ -441,6 +448,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         ),
                         confidence=Confidence.HIGH,
                         evidence_refs=index["R-023"]["evidence_refs"],
+                        rule_id="R-023",
                     ),
                 )
             else:
@@ -457,6 +465,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                             ),
                             confidence=Confidence.HIGH,
                             evidence_refs=rule["evidence_refs"],
+                            rule_id=rule["rule_id"],
                         ),
                     )
                 else:
@@ -477,6 +486,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=[round(cd - r[k - 1], 4) for k in range(1, c + 1)],
                         confidence=Confidence.HIGH,
                         evidence_refs=index["R-034v"]["evidence_refs"],
+                        rule_id="R-034v",
                     ),
                 )
             else:
@@ -486,6 +496,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=[_excel_round(k * cd / (c + 1)) for k in range(1, c + 1)],
                         confidence=Confidence.HIGH,
                         evidence_refs=index["R-034"]["evidence_refs"],
+                        rule_id="R-034",
                     ),
                 )
         else:
@@ -518,6 +529,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=val,
                         confidence=Confidence.MEDIUM,
                         evidence_refs=rule["evidence_refs"],
+                        rule_id=rule["rule_id"],
                         review_required=True,
                     ),
                 )
@@ -547,6 +559,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     value=return_positions,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
             # Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5] (John 2026-07-15: corrected —
@@ -571,6 +584,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=supply,
                         confidence=Confidence.MEDIUM,
                         evidence_refs=rule["evidence_refs"],
+                        rule_id=rule["rule_id"],
                         review_required=True,
                     ),
                 )
@@ -595,6 +609,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     value=_hgrh_return_spacing(request.conn_size, n_conn, product),
                     confidence=Confidence.MEDIUM,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                     review_required=True,
                 ),
             )
@@ -697,6 +712,7 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                         if multi_circuit
                         else index["R-070"]["evidence_refs"]
                     ),
+                    rule_id="R-070",  # multi-rule (base R-070 + multi-circuit R-072); primary
                 ),
             )
         else:  # HGRH
@@ -718,6 +734,7 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                         if multi is not None
                         else index["R-070"]["evidence_refs"]
                     ),
+                    rule_id="R-070",  # multi-rule (base R-070 + family multi R-073); primary
                 ),
             )
     else:  # CWC / HWC
@@ -730,6 +747,7 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                 value=cd_cwc_hwc(request.rows),
                 confidence=Confidence.HIGH,
                 evidence_refs=index["R-071"]["evidence_refs"],
+                rule_id="R-071",
             ),
         )
 
@@ -759,6 +777,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
     elif feeds_one:
@@ -769,6 +788,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value="TBD",
                 confidence=Confidence.MEDIUM,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
                 review_required=True,
             ),
         )
@@ -781,6 +801,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=2.3125,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
         else:  # feeds absent
@@ -790,6 +811,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=2.3125,
                     confidence=Confidence.MEDIUM,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                     review_required=True,
                     missing_inputs=["feeds"],
                 ),
@@ -804,6 +826,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value="N/A",
                 confidence=Confidence.MEDIUM,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
                 review_required=True,
             ),
         )
@@ -816,6 +839,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=4,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
         else:  # feeds absent
@@ -825,6 +849,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=4,
                     confidence=Confidence.MEDIUM,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                     review_required=True,
                     missing_inputs=["feeds"],
                 ),
@@ -839,6 +864,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
     elif feeds_one:
@@ -850,6 +876,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value=value,
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
     else:
@@ -861,6 +888,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
 

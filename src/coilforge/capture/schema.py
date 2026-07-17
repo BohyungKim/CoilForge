@@ -230,9 +230,45 @@ _M2_CORRECTION = (
     "CREATE INDEX ix_correction_run ON correction(run_id)",
 )
 
+# Engine provenance (1c). Captures WHICH rule fired + its confidence, per field, for the
+# seam-A path (Tier-A-fill derive — the only wired non-frozen path that hands back the
+# HeaderPrepopulateResponse). rule_firing is the per-field grain; engine_call is the
+# per-invocation count summary (product/terra_variant/unit_size join to the coil table, so
+# they are NOT duplicated here). No rule_snapshot yet — _SPECIAL_IDS hardcode confidence in
+# Python so a YAML-declared value would mislead; rule_firing already carries the ACTUAL one.
+_M3_ENGINE_PROVENANCE = (
+    """
+    CREATE TABLE rule_firing (
+        firing_id       INTEGER PRIMARY KEY,
+        run_id          TEXT NOT NULL,
+        coil_uid        TEXT NOT NULL,
+        field_key       TEXT NOT NULL,
+        rule_id         TEXT,
+        confidence      TEXT,
+        review_required INTEGER,
+        blocked_reason  TEXT
+    )
+    """,
+    """
+    CREATE TABLE engine_call (
+        engine_call_id  INTEGER PRIMARY KEY,
+        run_id          TEXT NOT NULL,
+        coil_uid        TEXT NOT NULL,
+        n_values        INTEGER,
+        n_suggestions   INTEGER,
+        n_blocked       INTEGER
+    )
+    """,
+    "CREATE INDEX ix_rule_firing_coil ON rule_firing(coil_uid)",
+    "CREATE INDEX ix_rule_firing_rule ON rule_firing(rule_id)",
+    "CREATE INDEX ix_rule_firing_run ON rule_firing(run_id)",
+    "CREATE INDEX ix_engine_call_run ON engine_call(run_id)",
+)
+
 # (description, statements). Index + 1 == PRAGMA user_version after it applies.
 # APPEND ONLY -- never edit or remove an entry that has shipped.
 MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("initial capture ledger (1a)", _M1_INITIAL),
     ("correction table (1b)", _M2_CORRECTION),
+    ("engine provenance (1c)", _M3_ENGINE_PROVENANCE),
 )

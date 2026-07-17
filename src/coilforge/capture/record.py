@@ -477,6 +477,38 @@ def _correction_rows(
         return []
 
 
+def _rule_firing_rows(run_id: str, coil_uid: str, view: _CoilView) -> list[tuple]:
+    """1c: per-field (rule_id, confidence) from the seam-A engine response the derive echoed
+    onto the result under ``engine_provenance``. Empty unless it is present (only the
+    Tier-A-fill derive attaches it — PDF-analyze discards its response in the frozen path)."""
+    prov = view.td.get("engine_provenance") if isinstance(view.td, dict) else None
+    if not prov:
+        return []
+    rows: list[tuple] = []
+    for f in prov.get("firings") or []:
+        if not isinstance(f, dict):
+            continue
+        rows.append(
+            (
+                run_id, coil_uid, f.get("field_key"), f.get("rule_id"),
+                f.get("confidence"), _flag(f.get("review_required")), f.get("blocked_reason"),
+            )
+        )
+    return rows
+
+
+def _engine_call_rows(run_id: str, coil_uid: str, view: _CoilView) -> list[tuple]:
+    """1c: one per-invocation count summary (values/suggestions/blocked). product_line /
+    terra_variant / unit_size are NOT duplicated here — they join from the coil table."""
+    prov = view.td.get("engine_provenance") if isinstance(view.td, dict) else None
+    if not prov:
+        return []
+    call = prov.get("call") or {}
+    return [
+        (run_id, coil_uid, call.get("n_values"), call.get("n_suggestions"), call.get("n_blocked"))
+    ]
+
+
 def capture_milestone(
     milestone: str,
     *,
@@ -558,6 +590,8 @@ def capture_milestone(
 
         coil_rows, field_rows, artifact_rows, input_rows = [], [], [], []
         correction_rows: list[tuple] = []
+        rule_firing_rows: list[tuple] = []
+        engine_call_rows: list[tuple] = []
         coil_uids: list[str] = []
         for view in views:
             coil_uid = uuid.uuid4().hex
@@ -570,6 +604,10 @@ def capture_milestone(
                 correction_rows.extend(
                     _correction_rows(run_id, coil_uid, view, circuits_hint)
                 )
+            # 1c engine provenance: presence-gated (only the Tier-A-fill derive attaches
+            # engine_provenance), so no milestone check is needed — the builders return [].
+            rule_firing_rows.extend(_rule_firing_rows(run_id, coil_uid, view))
+            engine_call_rows.extend(_engine_call_rows(run_id, coil_uid, view))
 
         if pdf_bytes:
             artifact_rows.append(
@@ -641,6 +679,19 @@ def capture_milestone(
                         " new_value_json, new_value_num, new_mode, override_reason,"
                         " evidence_json) VALUES (" + ",".join("?" * 12) + ")",
                         correction_rows,
+                    )
+                if rule_firing_rows:
+                    conn.executemany(
+                        "INSERT INTO rule_firing (run_id, coil_uid, field_key, rule_id,"
+                        " confidence, review_required, blocked_reason)"
+                        " VALUES (" + ",".join("?" * 7) + ")",
+                        rule_firing_rows,
+                    )
+                if engine_call_rows:
+                    conn.executemany(
+                        "INSERT INTO engine_call (run_id, coil_uid, n_values, n_suggestions,"
+                        " n_blocked) VALUES (?, ?, ?, ?, ?)",
+                        engine_call_rows,
                     )
         finally:
             conn.close()

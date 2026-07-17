@@ -125,6 +125,11 @@ class FieldResult(BaseModel):
     review_required_reason: str | None = None
     missing_inputs: list[str] = Field(default_factory=list)
     blocked_reason: str | None = None
+    # Provenance (1c): the primary rule id that produced this result. Captured into the
+    # rule_firing ledger; NEVER part of the drawing/engine payload. exclude=True keeps
+    # every serialization byte-identical, and default=None keeps the unmerged phase5
+    # worktree's rule_id-less constructors merge-compatible (additive-only, on the model too).
+    rule_id: str | None = Field(default=None, exclude=True)
 
 
 class HeaderPrepopulateResponse(BaseModel):

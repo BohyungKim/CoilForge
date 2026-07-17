@@ -1013,6 +1013,38 @@ def _reflect_param_overrides_into_slots(
                 result["missing_required_slots"] = list(repop.missing_required_slots)
 
 
+def _attach_engine_provenance(result: dict[str, Any], response: Any) -> None:
+    """1c seam-A: capture WHICH rule fired + its confidence from the Tier-A-fill engine
+    response — the only wired non-frozen path that hands back the HeaderPrepopulateResponse
+    (`_rerun_slots_with_manual_inputs`). PDF-analyze is out of scope (its response is
+    discarded inside the frozen path). Pure provenance metadata under a single
+    ``engine_provenance`` key; the capture ledger writes rule_firing + engine_call from it.
+    Never changes a drawn value. No-op when the engine didn't run (response None)."""
+    if response is None or not isinstance(result, dict):
+        return
+    firings: list[dict[str, Any]] = []
+    for bucket in (response.values, response.suggestions, response.blocked):
+        for field_key, fr in bucket.items():
+            conf = fr.confidence
+            firings.append(
+                {
+                    "field_key": field_key,
+                    "rule_id": fr.rule_id,
+                    "confidence": conf.value if hasattr(conf, "value") else str(conf),
+                    "review_required": bool(fr.review_required),
+                    "blocked_reason": fr.blocked_reason,
+                }
+            )
+    result["engine_provenance"] = {
+        "firings": firings,
+        "call": {
+            "n_values": len(response.values),
+            "n_suggestions": len(response.suggestions),
+            "n_blocked": len(response.blocked),
+        },
+    }
+
+
 # Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
 _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "application", "header_count", "qty_conn_per_header",
@@ -1105,6 +1137,10 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     fill_response = None
     if any(spec.get(key) is not None for key in _MANUAL_ENGINE_INPUT_KEYS):
         fill_response = _rerun_slots_with_manual_inputs(result, spec)
+
+    # 1c seam-A: capture engine provenance (rule_id + confidence per field) from the
+    # Tier-A-fill response — the only wired non-frozen path that returns it.
+    _attach_engine_provenance(result, fill_response)
 
     # Tier-B reflection (1b): merge param overrides into slot_values + re-populate the
     # SVG so the drawing shows the corrected dimension, and event-source the pre-override

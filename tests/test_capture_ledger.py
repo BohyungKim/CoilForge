@@ -602,6 +602,44 @@ def test_spec_field_correction_captured(ledger):
     ]
 
 
+def test_rule_firing_captured_from_engine_provenance(ledger):
+    """1c: the seam-A engine response (echoed onto the result under engine_provenance)
+    records per-field rule_id + confidence into rule_firing and the count summary into
+    engine_call. Presence-gated — only the Tier-A-fill derive attaches it."""
+    result, payload = _derive_with_override(panel={}, slot_values={"slot.CD": 5.5})
+    result["engine_provenance"] = {
+        "firings": [
+            {"field_key": "casing_depth", "rule_id": "R-070", "confidence": "high",
+             "review_required": False, "blocked_reason": None},
+            {"field_key": "return_position", "rule_id": "R-048", "confidence": "medium",
+             "review_required": True, "blocked_reason": None},
+        ],
+        "call": {"n_values": 5, "n_suggestions": 1, "n_blocked": 0},
+    }
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+
+    firings = _rows(
+        ledger,
+        "SELECT field_key, rule_id, confidence, review_required FROM rule_firing"
+        " ORDER BY field_key",
+    )
+    assert firings == [
+        ("casing_depth", "R-070", "high", 0),
+        ("return_position", "R-048", "medium", 1),
+    ]
+    assert _rows(ledger, "SELECT n_values, n_suggestions, n_blocked FROM engine_call") == [
+        (5, 1, 0)
+    ]
+
+
+def test_no_engine_provenance_writes_no_rule_firing(ledger):
+    """A derive with no engine_provenance (no Tier-A fill) writes zero rule_firing rows."""
+    result, payload = _derive_with_override(panel={}, slot_values={"slot.CD": 5.5})
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+    assert _rows(ledger, "SELECT COUNT(*) FROM rule_firing")[0][0] == 0
+    assert _rows(ledger, "SELECT COUNT(*) FROM engine_call")[0][0] == 0
+
+
 def test_no_override_writes_no_correction(ledger):
     """A derive with no Tier-B override (no manual-mode panel field) writes no
     correction rows — the table only holds fields a human actually changed."""
