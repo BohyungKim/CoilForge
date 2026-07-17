@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-17 (편집 Drawing Params Phase 1·2 완료(3411453·b04bcf3) + **1단계 Capture Ledger 전체 종료**: 1c 엔진 provenance(418e8e0) + 1d 관측/재현/감사(41139a8). ▶️ 지금 = 2단계 Case Retrieval(원장 코퍼스 n≥50 대기). 미결: TR-1/TR-2 John 브라우저 눈확인)
+> 마지막 갱신: 2026-07-17 (편집 Drawing Params Phase 1·2 완료(3411453·b04bcf3) + **1단계 Capture Ledger 전체 종료**: 1c 엔진 provenance(418e8e0) + 1d 관측/재현/감사(41139a8) + **[quote-package 버그픽스] 다중 견적페이지 copper-strap 스탬핑(0366a79)**. ▶️ 지금 = 2단계 Case Retrieval(원장 코퍼스 n≥50 대기). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -172,6 +172,21 @@
   소스필터·샘플러 identity dedup(테스트가 잔여 재추출 포착)·seed Python·health no-create·last_error redact·킬스위치.
   invariant-guard(MAJOR last_error 누출 사후수정). **991 green(+9)** + 4도구 라이브(health 200/exists-false-무생성,
   replay overlay=not_replayable, 샘플 dedup, 스크립트 2개 실행). 🆕 이번 세션
+
+- [x] **[quote-package 트랙] 다중 견적페이지 copper-strap 스탬핑 (0366a79, John 리포트 2026-07-17)** —
+  코일 수량이 많아 견적 스케줄이 2페이지 이상으로 넘칠 때 **첫 견적 페이지만** copper-strap 노트가
+  찍히고 2번째+ 페이지 코일은 무시되던 버그. 근본원인: 연속 견적 페이지는 per-row `Cost Each` 앵커는
+  있으나 `COIL QUOTE` 헤더가 없는데(헤더는 1페이지에만) `_quote_page_index`가 `COIL QUOTE` 기준 첫
+  페이지만 반환 → `_stamp_quote_price_notes`가 한 페이지만 스탬핑. **가격 계산·도면 삽입 루프는 이미
+  정상**(코일 전수 순회) — 버그는 스탬핑 단계에 국한. **수정(assembler.py 1파일):** `_quote_page_indices`가
+  `Cost Each`(모든 가격 페이지에 존재) 기준 전 견적 페이지 반환(`_quote_page_index`는 하위호환 래퍼) +
+  `_stamp_quote_price_notes` 페이지별·**alias 인식**(`coil_tag_aliases` 재사용)·**2-pass**(pass1=이 페이지 태그
+  코일 정확배치, pass2=이전 페이지에서 넘어온 경계코일을 남은 행에 흡수) + 공유 `stamped` 집합 스레딩 +
+  `MultiCoilPackageResult.quote_page_indices` 가산 필드. **착수 전 독립 적대검토(REVISE→MAJOR 1건=경계코일
+  테스트 부재+MINOR 3 전건 반영)**. 신규 6테스트(경계-spill·alias 포함), **997 green**. **실 26p 2843 파일
+  실증**: 8코일 전부 노트 — 견적 p0 +4, **p1 +4(종전 0)**. 주의: 그 `_Revised.pdf`는 구버그 출력물이라
+  p0에 노트 4개 선존재 → **증분(delta)으로 검증**(절대개수 아님). review-aid 불변식 무변경(노트 오버레이만,
+  원본 견적 숫자 불변). 계획서 `~/.claude/plans/agile-nibbling-aurora.md`, memory `multi_page_quote_copper_strap.md`. 🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
