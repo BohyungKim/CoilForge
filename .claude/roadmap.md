@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-16 ([신규 우선 트랙] 편집 가능 Drawing Params → 도면 반영 + event-sourced 교정 Phase 1 완료 커밋 3411453 — John "1c 진행 전에" 요청; Phase 2(spec lock + 3자 비교 뷰)는 John 브라우저 눈확인 게이트. 주 트랙 1c는 이 뒤로 밀림[seam=A])
+> 마지막 갱신: 2026-07-17 (편집 Drawing Params Phase 1·2 완료(3411453·b04bcf3) + **1단계 Capture Ledger 전체 종료**: 1c 엔진 provenance(418e8e0) + 1d 관측/재현/감사(41139a8). ▶️ 지금 = 2단계 Case Retrieval(원장 코퍼스 n≥50 대기). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -161,6 +161,18 @@
   HIGH·dist_extension=R-033…, capture_error 0). ⚠️ **후속(소):** 캡처된 rule_id를 3자 뷰 "어느 룰" 열에 표시
   배선(현재 `three_way_view`는 `rule_id:None`; seam-A derive면 `engine_provenance`에서 바로 채울 수 있음). 🆕 이번 세션
 
+- [x] **1d — 관측·재현·감사 완료 (41139a8, 2026-07-17) → 1단계 Capture Ledger 전체 종료(1a·1b·1c·1d)** —
+  원장을 읽는/재현하는/샘플링하는 read-side 도구(엔진·프로즌 무접촉). **M4 additive**: `run_dedup` 뷰(재분석
+  다중성 접기, `WHERE input_hash IS NOT NULL`로 derive/text 제외+NULL-GROUP-BY 함정 회피, latest_run_id는 uuid라
+  제거) + `audit_sample` 큐 테이블. `capture/observe.py`: `health()`(상태+테이블별 카운트+에러 **타입만**·DB
+  미생성 read) / `draw_audit_sample()`(flag-무관 랜덤, **(tag,project) identity로 dedup**=multiplicity 편향 차단,
+  Python seed, 킬스위치 존중) / `replay_run()`(엔진-only 재실행 vs `stage='slot'`, overlay·복원불가=**not_replayable
+  never 거짓 mismatch**, 허용오차 `_match`). `GET /api/capture/health` + `scripts/replay_run.py` +
+  `scripts/draw_audit_sample.py`. **독립 적대검토(REVISE→MAJOR4+MINOR3 전건 해소)**: latest_run_id 제거·replay
+  소스필터·샘플러 identity dedup(테스트가 잔여 재추출 포착)·seed Python·health no-create·last_error redact·킬스위치.
+  invariant-guard(MAJOR last_error 누출 사후수정). **991 green(+9)** + 4도구 라이브(health 200/exists-false-무생성,
+  replay overlay=not_replayable, 샘플 dedup, 스크립트 2개 실행). 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -176,15 +188,14 @@
   사람 눈 확인.
 
 ## ▶️ 지금
-- [ ] **1d — 관측·재현·감사 샘플** — `/api/capture/health`(db.last_error+행카운트+schema_version) + `run_dedup`
-  뷰(M4, `WHERE input_hash IS NOT NULL`로 재분석 다중성만 접기) + `scripts/replay_run.py`(Time Machine,
-  PDF-analyze run 엔진 재실행+coil 조인 대조) + **랜덤 감사 샘플 추출기**(`audit_sample` 테이블, 주당 3~5코일 flag
-  무관 = 4단계 표본편향 깨는 유일 수단). 다음 걸음 → `/api/capture/health` + `run_dedup` 뷰부터(둘 다 read-only,
-  마이그레이션은 뷰만). 계획서 `~/.claude/plans/1b-1c-1d-snazzy-lemur.md` §1d.
+- [ ] **2단계 Case Retrieval** (~2주, n≥50) — 다음 걸음: **원장에 코퍼스가 쌓이길 기다리며**(1단계가 지금부터
+  데이터 축적) "이 코일 전에 본 적 있어?" — 21필드 최근접이웃으로 John의 과거 교정(`correction` 테이블)을 증거로
+  검색(값 발명 아님 = never-invent 호환). numpy brute force면 충분, 벡터DB 불필요. **착수 조건: n≥50** 코일
+  코퍼스(현 볼륨 주 50~150이면 수 주). 그 전까지는 라이브 사용으로 원장을 채우는 게 우선(TR-1/2 눈확인 포함).
+- [ ] **rule_id → 3자 뷰 표시 (micro-step, 선택)** — 1c가 캡처한 `rule_id`를 Phase 2 3자 뷰의 "어느 룰" 열에
+  표시(seam-A derive면 `result["engine_provenance"]`에서 바로; 현재 `three_way_view`는 `rule_id:None`). 가벼운 후속.
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
-- [ ] **2단계 Case Retrieval** (~2주, n≥50) — "이 코일 전에 본 적 있어?" 21필드 최근접이웃으로 John의
-  과거 교정을 증거로 검색(값 발명 아님 = never-invent 호환). numpy brute force면 충분, 벡터DB 불필요
 - [ ] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
   틀린 값 자동승인). 실제 override율은 1단계가 처음 알려줌 → **그 숫자를 보고 착수, 미리 약속 안 함**
 - [ ] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
