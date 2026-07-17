@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-16 (Ambient Dynamics 서플라이어 확장 완료 — quote comparison + Coil Utilities 테이블; 별개 트랙. 주 트랙은 Capture Ledger 1b 완료·1c 대기[seam=A])
+> 마지막 갱신: 2026-07-16 ([신규 우선 트랙] 편집 가능 Drawing Params → 도면 반영 + event-sourced 교정 Phase 1 완료 커밋 3411453 — John "1c 진행 전에" 요청; Phase 2(spec lock + 3자 비교 뷰)는 John 브라우저 눈확인 게이트. 주 트랙 1c는 이 뒤로 밀림[seam=A])
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -113,11 +113,43 @@
   (HIGH 2+MEDIUM 3+LOW 1 전건 반영) + **실 2975 데이터 브라우저 눈 확인**(FPI 10 vs 9 mismatch, Capacity/Volume
   Range in-band green). 963 green(+34). 계획서 `~/.claude/plans/ambient-cozy-barto.md`. 🆕 이번 세션
 
+- [x] **[3058 검토 트랙] Coil Checklist 공식 정렬 — DX/HGRH CD·S·SL (89727e8, 2026-07-16)** — David가 3058
+  packet에서 CDXC-2 CD=7.5(→8이어야)+stale S1/S3/S5, RHHGRC-2 CD/S1/SL1 지적. 근본원인: CoilForge가
+  **Coil Checklist Template.xlsx 공식(확정 엔지니어링 진실원)**에서 이탈. 3개 병렬 Explore 진단 → 초기
+  "stale 캐시" 가설을 실측 반증(전역 extract rows=None)하고 진짜 원인 확정. **Phase 1(DX):** 재열 HGRH와
+  페어인 DX는 체크리스트 with-HGRH 분기(`circuits·(D+1.5)+(D−D_hgrh)/2`)를 써야 함 — 공식은 엔진에 이미
+  있었으나 `with_hgrh`/`hgrh_conn_size`가 `build_drawing_slots`(도면+체크리스트 compare 공용)에 미배선. 배선
+  + 도면경로는 비동결 호출부에서 재실행+SVG 재-population(프로즌 `pdf_to_template_drawing` 미변경). CDXC-2
+  CD 7.5→8.0, S 2/4/6. **Phase 2(HGRH, John: 체크리스트가 이전결정 우선):** CD `max(base, 제품군 multi)`
+  (Terra V 제외=CD·S=CD−Rn 보존), S1 `TERRA H/VENTUM+→conn` else CD공식(k-비례 아님), SL1 `feeds/circuits=1→3`.
+  RHHGRC-2 CD 2.875→3.125·S1→0.875·SL1→5.5625, 4 HGRH코일 전부 일치(HGRH는 프로즌 경로 자동상속=배선0).
+  **John이 2026-06-26(SL slot마다 다름)/2026-06-27(single-feed SL1=3 제거) 결정 2개 폐기 확정** → 해당 테스트
+  갱신. 독립 invariant-guard 리뷰 clean(0 HIGH, MEDIUM feeds/circuits 대리값 정밀정렬+테스트 반영), **968 green**. 🆕 이번 세션
+
+- [x] **[신규 우선 트랙] 편집 가능 Drawing Params → 도면 반영 + event-sourced 교정 — Phase 1 완료 (3411453, John 요청 2026-07-16)** —
+  John: "체크리스트는 rule-of-thumb, 내가 조정할 때마다 그 변경을 DB에 누적해 CoilForge 값을 점점 신뢰 가능하게".
+  하단 Drawing Params를 **"Update drawing" 버튼**(기존 manual-drawing-mode 토글로 unlock)으로 편집→적용 시
+  Tier-B override가 **도면에 반영**(panel-only 결정 번복, John 2026-07-16): 비동결 `_reflect_param_overrides_into_slots`가
+  slot_values 병합 + `populate_template_slots`로 SVG 재-population(프로즌·resolver 패널빌더 무접촉).
+  **캡처는 event-sourcing**: 병합 前 기계 제안을 `manual_override_events`에 스냅샷 → `_correction_rows`가 그걸 읽어
+  (before + `override_reason` 배선, 종전 NULL 유실 수정), 스냅샷 없으면 재계산 폴백. 이 before가 Phase 2 3자 비교의
+  "CoilForge logic" 열이자 미래 ML 라벨. 안전: mode='manual'/review_required 유지·HIGH 승격 없음·export_allowed False·
+  watermark·no-override byte-identical·킬스위치 유지. **착수 전 5개 지적 독립 적대검토 반영**(MAJOR-1 3자 열 오염 등).
+  **972 green(+4)** + invariant-guard clean(BLOCKER 0/WARN 0) + 실 HTTP(CD 3.75→9.5 slot·SVG 반영, before=5.5
+  event-source, reason 보존). 실 고객 PDF 브라우저 눈확인은 John 몫. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`. 🆕 이번 세션
+
 ## ▶️ 지금
-- [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
+- [ ] **[신규 우선 트랙] 편집 Drawing Params — Phase 2 (spec lock + 3자 비교 뷰)** — 다음 걸음:
+  **먼저 John 브라우저 눈확인(Phase 1 게이트)** — 서버 재시작 후 :8011에서 submittal 재분석 → "Manual drawing
+  parameters" 체크 → CD 편집+이유 → "Update drawing" → 도면 인쇄 CD 갱신 + 호박색 배너 + 리뷰 유지 확인.
+  그 뒤 Phase 2 착수: `templateDrawingCaption` 필드별 자물쇠(coating은 Tier-A 재계산) + `spec_overrides`(stage=
+  `spec_field` correction, 마이그레이션 0) + `POST /api/coil/three-way`(logic 열은 override시 `correction.previous_value`
+  =MAJOR-1 가드) + `_match` 재사용 green/red 렌더. 계획서 `~/.claude/plans/bottom-twinkly-garden.md`.
+- [ ] **1c (위 신규 트랙 뒤로 밀림)** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
   `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). **seam=A 확정(John 2026-07-16):** Tier-A-fill
   derive 단독 캡처로 시작, PDF-analyze 엔진 confidence는 out-of-scope(코퍼스 얇으면 C=비동결 래퍼 파리티 증명).
-  착수 전 phase5 워크트리 병합 여부 확인(미병합 → `rule_id` 기본값 필수).
+  착수 전 phase5 워크트리 병합 여부 확인(미병합 → `rule_id` 기본값 필수). 참고: 1c의 rule_id가 Phase 2 3자 뷰의
+  "왜/어느 룰" 열을 채움(그 전엔 nullable 자리만).
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [ ] **1d** — `/api/capture/health` + `run_dedup` 뷰 + `scripts/replay_run.py`(Time Machine) +
@@ -173,4 +205,8 @@
   재질+두께+표면을 한 문자열로 저장 → Ambient `"Copper"`와 differ(정직하나 노이즈). 재질 토큰만 비교(John 확인).
 - [ ] **[Ambient 트랙] circuits 검출 + baseline 용량 소스 + % 허용오차 확정** — 현재 circuits 기본 1,
   킷 선택 Ambient 폴백, review-only tolerance. John 결정 후 정밀화. (상세: `docs/SESSION_LOG.md` 2026-07-16)
+- [ ] **[3058 트랙] Phase 3 — DIST EXTENTION 정렬** — R-033을 체크리스트 `C59=IF(SIZE in{H05,H10},17,6)`에
+  맞춤(현재 상수 6, H05/H10=17 누락) + 체크리스트 compare에 CoilForge 값 노출(현재 blank). John: "체크리스트에 6 push".
+- [ ] **[3058 트랙] Phase 4 — 코일별 product/size 오탐지 조사** — CDXC-3=VENTUM_H/H10 등 혼재(일부 전역폴백).
+  오탐지면 R-074 casing W/H + 위 C59(17 vs 6) 틀어짐. `detect_product_and_size` per-coil 추적, 실 유닛 대조(John/BOM).
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
