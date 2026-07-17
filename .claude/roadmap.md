@@ -148,6 +148,19 @@
   (1c가 "어느 룰" 열 채움). 안전: 값 변경/승인 없음·미지 키 거부·export_allowed False·프로즌 무접촉. **978 green(+6)**
   + invariant-guard clean(0 findings) + 실 HTTP(rows 4→6, CD 열=5.5). 브라우저 눈확인은 John 몫(TR-2). 🆕 이번 세션
 
+- [x] **1c — 엔진 provenance 캡처 완료 (418e8e0, 2026-07-17)** — 1a가 "불가능"이라 증명했던 엔진 단계(어느
+  룰이 발화했나 + confidence)를 캡처. **유일한 엔진 침습**이나 순수 additive: `FieldResult.rule_id: str|None =
+  Field(default=None, exclude=True)`(직렬화 바이트동일·phase5 미병합 병합안전) + **27개 생성자 전수 rule_id=**
+  (다중룰 primary: notes→R-007, DX·HGRH casing→R-070; 값·confidence·로직 무변경, 엔진 79테스트 불변). **seam=A**
+  (John 확정): Tier-A-fill derive 응답만 캡처(`_rerun_slots_with_manual_inputs` = 유일하게 응답 반환하는 비동결
+  경로), PDF-analyze는 out-of-scope. `_attach_engine_provenance`→`result["engine_provenance"]`→record.py가
+  `rule_firing`(필드 grain)+`engine_call`(카운트) 기록(presence-gated·fail-closed·킬스위치). **M3 additive**
+  (rule_snapshot 보류=_SPECIAL_IDS confidence inert; engine_call은 product/terra/size 제외=coil 조인). **착수 전
+  게이트 전부 이행**: 사전점검(27=one-liner) + exclude 코드검증 + **독립 적대검토(REVISE→MAJOR2+MINOR3 전건 해소,
+  engine_call 단순화)**. **983 green(+5)** + invariant clean(0) + 실 라이브(rule_firing 19행: casing_depth=R-070
+  HIGH·dist_extension=R-033…, capture_error 0). ⚠️ **후속(소):** 캡처된 rule_id를 3자 뷰 "어느 룰" 열에 표시
+  배선(현재 `three_way_view`는 `rule_id:None`; seam-A derive면 `engine_provenance`에서 바로 채울 수 있음). 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -163,15 +176,13 @@
   사람 눈 확인.
 
 ## ▶️ 지금
-- [ ] **1c** — `FieldResult.rule_id`(`exclude=True`) + 27개 생성자 + H3/H3b/H5 + `rule_firing`/`engine_call`/
-  `rule_snapshot`. **유일한 엔진 침습** (페이로드는 바이트 동일). **seam=A 확정(John 2026-07-16):** Tier-A-fill
-  derive 단독 캡처로 시작, PDF-analyze 엔진 confidence는 out-of-scope(코퍼스 얇으면 C=비동결 래퍼 파리티 증명).
-  착수 전 phase5 워크트리 병합 여부 확인(미병합 → `rule_id` 기본값 필수). 참고: 1c의 rule_id가 Phase 2 3자 뷰의
-  "왜/어느 룰" 열을 채움(그 전엔 nullable 자리만).
+- [ ] **1d — 관측·재현·감사 샘플** — `/api/capture/health`(db.last_error+행카운트+schema_version) + `run_dedup`
+  뷰(M4, `WHERE input_hash IS NOT NULL`로 재분석 다중성만 접기) + `scripts/replay_run.py`(Time Machine,
+  PDF-analyze run 엔진 재실행+coil 조인 대조) + **랜덤 감사 샘플 추출기**(`audit_sample` 테이블, 주당 3~5코일 flag
+  무관 = 4단계 표본편향 깨는 유일 수단). 다음 걸음 → `/api/capture/health` + `run_dedup` 뷰부터(둘 다 read-only,
+  마이그레이션은 뷰만). 계획서 `~/.claude/plans/1b-1c-1d-snazzy-lemur.md` §1d.
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
-- [ ] **1d** — `/api/capture/health` + `run_dedup` 뷰 + `scripts/replay_run.py`(Time Machine) +
-  **랜덤 감사 샘플 추출기**(주당 3~5코일 — 4단계 소비지만 *시간이 만드는 데이터*라 1단계 착수)
 - [ ] **2단계 Case Retrieval** (~2주, n≥50) — "이 코일 전에 본 적 있어?" 21필드 최근접이웃으로 John의
   과거 교정을 증거로 검색(값 발명 아님 = never-invent 호환). numpy brute force면 충분, 벡터DB 불필요
 - [ ] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
