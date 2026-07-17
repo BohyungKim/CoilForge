@@ -212,6 +212,127 @@ def test_multi_coil_superseded_watermark_can_be_disabled() -> None:
     doc.close()
 
 
+# --------------------------------------------------------------------------- #
+# Multi-PAGE quote schedule: a many-coil quote spills its pricing rows onto a
+# 2nd quote page that carries 'Cost Each' rows but NO 'COIL QUOTE' header. Every
+# such page must be stamped, and each coil's note must land on the page that
+# actually prices it — never only the first page (the reported bug).
+# --------------------------------------------------------------------------- #
+def _two_quote_page_source() -> bytes:
+    """p0: COIL QUOTE + CDXC-1/2 priced. p1 (no COIL QUOTE): CDXC-3/4 priced.
+
+    Followed by one drawing page per coil so insertion leaves the two quote pages
+    at output indices 0 and 1.
+    """
+    return _make_text_pdf(
+        [
+            "COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00\n"
+            "Tagged: CDXC-2\nCost Each: CAD$200.00",
+            # NOTE: no 'COIL QUOTE' header on the continuation quote page.
+            "Tagged: CDXC-3\nCost Each: CAD$300.00\nTagged: CDXC-4\nCost Each: CAD$400.00",
+            "CDXC-1\n47 F.L.\n4.33 FIN",
+            "CDXC-2\n47 F.L.\n4.33 FIN",
+            "CDXC-3\n47 F.L.\n4.33 FIN",
+            "CDXC-4\n47 F.L.\n4.33 FIN",
+        ]
+    )
+
+
+def _four_dx_coils() -> list[dict]:
+    return [
+        {"tag": f"CDXC-{i}", "coil_type": "DX", "our_svg": _SVG, "price_note": f"STRAP-{i}"}
+        for i in (1, 2, 3, 4)
+    ]
+
+
+def test_multi_page_quote_stamps_every_page() -> None:
+    result = assemble_multi_coil_package(source_pdf=_two_quote_page_source(), coils=_four_dx_coils())
+    # Both quote pages are detected and stamped (keyed on 'Cost Each', not 'COIL QUOTE').
+    assert result.quote_page_indices == [0, 1]
+    assert result.quote_page_index == 0  # back-compat scalar = first quote page
+    assert result.inserted_coil_count == 4
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    p0, p1 = doc[0].get_text(), doc[1].get_text()
+    # Every coil got its note, on the page that prices it — not just page 0.
+    assert "STRAP-1" in p0 and "STRAP-2" in p0
+    assert "STRAP-3" in p1 and "STRAP-4" in p1
+    doc.close()
+
+
+def test_multi_page_quote_note_lands_on_owning_page() -> None:
+    # A note for a coil priced on quote page 1 must NOT be stamped on page 0.
+    result = assemble_multi_coil_package(source_pdf=_two_quote_page_source(), coils=_four_dx_coils())
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    p0, p1 = doc[0].get_text(), doc[1].get_text()
+    assert "STRAP-3" in p1 and "STRAP-3" not in p0
+    assert "STRAP-1" in p0 and "STRAP-1" not in p1
+    doc.close()
+
+
+def test_multi_page_quote_boundary_spill_coil() -> None:
+    # The real 2843-file failure: a coil's TAG prints at the bottom of quote page 0
+    # but its 'Cost Each' pricing row spilled to the TOP of quote page 1, with a second
+    # coil also priced on page 1. Pass 1 places the page-1 coil on its own row; pass 2
+    # absorbs the boundary coil onto page 1's leftover top row — never onto page 0, and
+    # without displacing the page-1 coil.
+    source = _make_text_pdf(
+        [
+            # p0: CDXC-1 priced; RHHGRC-1 TAG only (its cost spilled to p1).
+            "COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00\nTagged: RHHGRC-1",
+            # p1 (no COIL QUOTE): RHHGRC-1's spilled cost row at top, then RHHGRC-2 priced.
+            "Cost Each: CAD$150.00\nTagged: RHHGRC-2\nCost Each: CAD$250.00",
+        ]
+    )
+    coils = [
+        {"tag": "CDXC-1", "coil_type": "DX", "price_note": "STRAP-CDXC1"},
+        {"tag": "RHHGRC-1", "coil_type": "HGRH", "price_note": "STRAP-RHHGRC1"},
+        {"tag": "RHHGRC-2", "coil_type": "HGRH", "price_note": "STRAP-RHHGRC2"},
+    ]
+    result = assemble_multi_coil_package(source_pdf=source, coils=coils)
+    assert result.quote_page_indices == [0, 1]
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    p0, p1 = doc[0].get_text(), doc[1].get_text()
+    # Boundary coil's note is on page 1 (where it is priced), NOT page 0 (where its tag is).
+    assert "STRAP-RHHGRC1" in p1 and "STRAP-RHHGRC1" not in p0
+    # The page-1 coil keeps its own note (not displaced by the boundary coil).
+    assert "STRAP-RHHGRC2" in p1
+    # Page 0 carries only its own coil's note.
+    assert "STRAP-CDXC1" in p0
+    doc.close()
+
+
+def test_multi_page_quote_alias_match() -> None:
+    # Reviewed tag RHHGRH-4; the source continuation page spells it RHHGRC-4. Alias-aware
+    # matching must still stamp its note on the continuation page (never dropped).
+    source = _make_text_pdf(
+        [
+            "COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00",
+            "Tagged: RHHGRC-4\nCost Each: CAD$400.00",
+        ]
+    )
+    coils = [
+        {"tag": "CDXC-1", "coil_type": "DX", "price_note": "STRAP-CDXC1"},
+        {"tag": "RHHGRH-4", "coil_type": "HGRH", "price_note": "STRAP-RH4"},
+    ]
+    result = assemble_multi_coil_package(source_pdf=source, coils=coils)
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    assert "STRAP-RH4" in doc[1].get_text()  # matched via RHHGRH-4 <-> RHHGRC-4 alias
+    doc.close()
+
+
+def test_single_quote_page_indices_unchanged() -> None:
+    # Single-quote-page package: indices collapse to [0] and the scalar stays 0.
+    source = _make_text_pdf(
+        ["COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00", "CDXC-1\nF.L."]
+    )
+    result = assemble_multi_coil_package(
+        source_pdf=source,
+        coils=[{"tag": "CDXC-1", "coil_type": "DX", "our_svg": _SVG, "price_note": "STRAP-1"}],
+    )
+    assert result.quote_page_indices == [0]
+    assert result.quote_page_index == 0
+
+
 def test_quote_note_right_edge_aligns_with_item_total_figure() -> None:
     # A pricing line with a far-right 'Item 1 Total' figure (mirrors the real quote
     # layout). The stamped note's right edge must align with that figure's right edge

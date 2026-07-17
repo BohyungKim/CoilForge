@@ -147,7 +147,8 @@ class MultiCoilPackageResult(BaseModel):
     source_page_count: int
     inserted_coil_count: int
     coils: list[dict] = Field(default_factory=list)
-    quote_page_index: int | None = None  # 0-based source index of the stamped quote page
+    quote_page_index: int | None = None  # 0-based source index of the FIRST stamped quote page
+    quote_page_indices: list[int] = Field(default_factory=list)  # every stamped quote page
     watermarked: bool = True
     # Safety contract — never relaxed by this layer.
     export_allowed: bool = False
@@ -184,11 +185,22 @@ def _coil_drawing_page_index(doc, tag: str) -> int | None:
     return hits[-1][0] if hits else None
 
 
+def _quote_page_indices(doc) -> list[int]:
+    """0-based indices of EVERY page carrying quoted pricing rows.
+
+    A many-coil quote schedule spills onto page 2+, and those continuation pages
+    carry the per-row ``Cost Each`` anchor but NOT the ``COIL QUOTE`` header (which
+    prints only on the first schedule page). ``Cost Each`` is the marker
+    ``_stamp_quote_price_notes`` actually needs, so keying on it finds every pricing
+    page — a ``COIL QUOTE`` page without any ``Cost Each`` row has nothing to stamp.
+    """
+    return [i for i in range(doc.page_count) if "COST EACH" in doc[i].get_text().upper()]
+
+
 def _quote_page_index(doc) -> int | None:
-    for i in range(doc.page_count):
-        if "COIL QUOTE" in doc[i].get_text().upper():
-            return i
-    return None
+    """First quote page (back-compat scalar; see ``_quote_page_indices``)."""
+    indices = _quote_page_indices(doc)
+    return indices[0] if indices else None
 
 
 def _stamp_watermark_banner(page) -> None:
@@ -244,46 +256,68 @@ def _stamp_superseded_watermark(page) -> None:
                      fontsize=8, color=red)
 
 
-def _stamp_quote_price_notes(page, coils: list[dict]) -> None:
+def _cost_each_rects(page) -> list:
+    """Sorted-by-y 'Cost Each' anchor rects on ``page`` (case-insensitive).
+
+    The page-detection predicate (``_quote_page_indices``) is case-insensitive, so the
+    per-row anchor search must be too, or a page whose header renders 'COST EACH' would
+    be detected yet yield zero anchors (silent no-op). Search both casings and dedupe by
+    position so a case-insensitive PyMuPDF build does not double-count.
+    """
+    rects = list(page.search_for("Cost Each")) + list(page.search_for("COST EACH"))
+    deduped: dict[tuple[float, float], object] = {}
+    for r in rects:
+        deduped.setdefault((round(r.x0, 1), round(r.y0, 1)), r)
+    return sorted(deduped.values(), key=lambda r: r.y0)
+
+
+def _tag_y_on_page(page, tag: str) -> float | None:
+    """Topmost y of ``tag`` (alias-tolerant) on ``page``, or None if absent.
+
+    Matches across the documented category-prefix aliases (e.g. reviewed ``RHHGRH-1``
+    vs source ``RHHGRC-1``) — mirroring ``_coil_drawing_page_index`` — so a spelling
+    difference never drops a coil's note.
+    """
+    ys = [
+        rect.y0
+        for alias in coil_tag_aliases(tag)
+        for rect in page.search_for(alias)
+    ]
+    return min(ys) if ys else None
+
+
+def _stamp_quote_price_notes(page, coils: list[dict], stamped: set[str] | None = None) -> None:
     """Draw each coil's copper-strap price note right above its 'Item Total' price.
 
-    Pairs a coil to the first 'Cost Each' occurrence at/below its tag (a stable
-    per-coil anchor), then places the note above the right-hand 'Item N Total'
-    figure on that same line. John 2026-06-25: the left-anchored note used to land
-    on the blank 'Header:' row directly above 'Cost Each' and read like a header
-    spec; anchoring it over the total puts it unambiguously above the pricing. A
-    tight opaque band keeps it legible. The source quote numbers are never modified.
+    Anchors the note above the right-hand 'Item N Total' figure on the coil's pricing
+    line. John 2026-06-25/26: right-edge alignment puts the note's trailing 'NN.00'
+    directly above the total's — see the anchoring block below. Source quote numbers are
+    never modified.
+
+    Multi-page aware: a many-coil schedule spills its pricing rows onto quote page 2+,
+    so this is called once per quote page with a shared ``stamped`` set (coil tags already
+    noted on an earlier page). Two passes per page keep a fallback coil from stealing a
+    tag-matched coil's row:
+
+    * **Pass 1 (precise):** coils whose tag/alias appears on THIS page anchor to the first
+      free 'Cost Each' at/below their tag.
+    * **Pass 2 (fill):** remaining not-yet-stamped coils (list order) fill any leftover
+      rows on this page — this absorbs a boundary coil whose tag printed on the previous
+      page but whose pricing row spilled onto this one. Pass 1 MUST complete before pass 2
+      so a fill never claims a row a tag-matched coil on this page still needs.
     """
     import fitz
 
+    if stamped is None:
+        stamped = set()
     fs = 7.2
-    cost_rects = sorted(page.search_for("Cost Each"), key=lambda r: r.y0)
+    cost_rects = _cost_each_rects(page)
     used: set[int] = set()
-    for coil in coils:
-        note = coil.get("price_note")
-        if not note:
-            continue
-        tag_rects = sorted(page.search_for(coil["tag"]), key=lambda r: r.y0)
-        tag_y = tag_rects[0].y0 if tag_rects else 0.0
-        target = target_idx = None
-        for idx, rect in enumerate(cost_rects):
-            if idx not in used and rect.y0 >= tag_y - 1:
-                target, target_idx = rect, idx
-                break
-        if target is None:  # fall back to the next free 'Cost Each' in reading order
-            for idx, rect in enumerate(cost_rects):
-                if idx not in used:
-                    target, target_idx = rect, idx
-                    break
-        if target is None:
-            continue
-        used.add(target_idx)
+
+    def _place(target, note: str) -> None:
         # Right-EDGE anchor: align the note's right edge to the rightmost text on
         # this coil's pricing line — the 'Item N Total' figure (e.g. CAD$1,952.00).
-        # John 2026-06-26: the previous left-edge-over-'Total'-label anchor still sat
-        # mid-page (too far left); aligning right edges puts the note's trailing
-        # 'NN.00' directly above the total's trailing 'NN.00'. Fall back to the line's
-        # rightmost word, then to 'Cost Each' x, if no Total figure is present.
+        # Fall back to the line's rightmost word, then to 'Cost Each' x, if no Total.
         line_x1 = [w[2] for w in page.get_text("words") if abs(w[1] - target.y0) <= 3]
         note_w = fitz.get_text_length(note, fontsize=fs)
         right_edge = max(line_x1, default=target.x0 + note_w)
@@ -292,6 +326,39 @@ def _stamp_quote_price_notes(page, coils: list[dict]) -> None:
         band = fitz.Rect(x - 2, target.y0 - 11, x + note_w + 4, target.y0 - 1)
         page.draw_rect(band, color=(0.80, 0.0, 0.0), fill=(1.0, 1.0, 1.0), width=0.4)
         page.insert_text((x, target.y0 - 3), note, fontsize=fs, color=(0.80, 0.0, 0.0))
+
+    # Pass 1 — precise: place coils whose tag is on this page at/below their tag row.
+    for coil in coils:
+        note = coil.get("price_note")
+        tag = coil.get("tag")
+        if not note or tag in stamped:
+            continue
+        tag_y = _tag_y_on_page(page, tag)
+        if tag_y is None:  # coil belongs to another page (or is fill-only) -> pass 2
+            continue
+        target_idx = next(
+            (idx for idx, rect in enumerate(cost_rects)
+             if idx not in used and rect.y0 >= tag_y - 1),
+            None,
+        )
+        if target_idx is None:  # tag here but no free row below it -> pass 2 fill
+            continue
+        used.add(target_idx)
+        _place(cost_rects[target_idx], note)
+        stamped.add(tag)
+
+    # Pass 2 — fill: remaining unstamped noted coils take any leftover row on this page.
+    for coil in coils:
+        note = coil.get("price_note")
+        tag = coil.get("tag")
+        if not note or tag in stamped:
+            continue
+        target_idx = next((idx for idx in range(len(cost_rects)) if idx not in used), None)
+        if target_idx is None:  # no free anchor here; a later quote page may take it
+            continue
+        used.add(target_idx)
+        _place(cost_rects[target_idx], note)
+        stamped.add(tag)
 
 
 def assemble_multi_coil_package(
@@ -347,9 +414,14 @@ def assemble_multi_coil_package(
             if will_insert:
                 by_drawing_page.setdefault(drawing_index, []).append(coil)
 
-        quote_idx = _quote_page_index(src)
-        if quote_idx is not None:
-            _stamp_quote_price_notes(src[quote_idx], coils)
+        # Stamp copper-strap price notes on EVERY quote page. A many-coil schedule
+        # spills its pricing rows onto page 2+, so a single-page stamp would drop the
+        # later coils' notes. The shared `stamped` set carries which coils are already
+        # noted, so each page only claims its own (and any coil spilled from a prior page).
+        quote_indices = _quote_page_indices(src)
+        stamped: set[str] = set()
+        for qi in quote_indices:
+            _stamp_quote_price_notes(src[qi], coils, stamped)
 
         for i in range(src.page_count):
             out.insert_pdf(src, from_page=i, to_page=i)
@@ -381,5 +453,6 @@ def assemble_multi_coil_package(
         source_page_count=source_page_count,
         inserted_coil_count=inserted,
         coils=summary,
-        quote_page_index=quote_idx,
+        quote_page_index=quote_indices[0] if quote_indices else None,
+        quote_page_indices=quote_indices,
     )
