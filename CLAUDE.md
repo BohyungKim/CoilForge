@@ -179,8 +179,14 @@ multi-header keys (I2/S2…) push only when present in `parameters` AND in the f
 `workflows/submittal_to_drawing.py::_rerun_slots_with_manual_inputs`, `web/app.js::renderManualFillPanel`)
 — when a coil blocks, the engineer fills the missing data in the browser and the drawing regenerates
 instead of halting and bouncing back to Claude. Tier A = engine inputs (rule engine recomputes,
-un-gating CD→CH→S→SL); Tier B = drawing-param direct override (**panel-only** — never rewrites
-`slot_values`/SVG, John's call). GOTCHA: the three inputs the derive path drops
+un-gating CD→CH→S→SL); Tier B = drawing-param direct override — since 2026-07-16 (John) the override
+is **reflected into the drawing**: the non-frozen `_reflect_param_overrides_into_slots` merges it into
+`slot_values` + re-populates the SVG (mirroring `_apply_hgrh_pairing_cd`; the resolver's panel builder
+`parameter_set_from_template_drawing` stays panel-only). It stays `mode='manual'`/review_required and
+`export_allowed` False (never HIGH/approved). The pre-override machine proposal is event-sourced into
+`result['manual_override_events']` at derive time so the `correction` ledger stores the true "before"
+(a later override-free recompute would read the overridden slot). Fires ONLY when `param_overrides` are
+present → no-override derive stays byte-identical. GOTCHA: the three inputs the derive path drops
 (`application`/`header_count`/`qty_conn_per_header`) are un-gated by re-running `build_drawing_slots`
 in the NON-frozen caller `derive_coil_template_drawing` and merging `slot.X` keys into
 `result["slot_values"]` — NEVER edit the frozen `pdf_to_template_drawing.py::derive_slot_values` to

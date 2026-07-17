@@ -445,10 +445,12 @@ def parameter_set_from_template_drawing(
             )
         review_required.append(key)
 
-    # Tier-B manual overrides (panel-only): a user-supplied value wins over the derived/
-    # blank slot value for that key. Stays review-required + manual_override — never
-    # promoted to HIGH/confirmed, export_allowed stays False, and the value is NOT written
-    # back into slot_values, so the template SVG geometry is untouched (per John: panel-only).
+    # Tier-B manual overrides: a user-supplied value wins over the derived/blank slot
+    # value for that key. Stays review-required + manual_override — never promoted to
+    # HIGH/confirmed, export_allowed stays False. This block sets the PANEL value; the
+    # non-frozen caller (_reflect_param_overrides_into_slots, 1b) also merges the same
+    # override into slot_values and re-populates the SVG so the drawing reflects it
+    # (John 2026-07-16 — reverses the earlier panel-only rule; still review-aid only).
     override_notes: list[str] = []
     for override in (
         DrawingParameterOverride.model_validate(item) for item in (param_overrides or [])
@@ -469,7 +471,7 @@ def parameter_set_from_template_drawing(
         )
         if override.key not in review_required:
             review_required.append(override.key)
-        override_notes = ["Manual override params are review-only and not reflected in the SVG geometry."]
+        override_notes = ["Manual override params are review-required; reflected into the drawing by the non-frozen caller (never HIGH/export-approved)."]
 
     return DrawingParameterSet(
         parameters=parameters,

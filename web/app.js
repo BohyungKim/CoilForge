@@ -108,6 +108,9 @@ const elements = {
   finnedLength: document.querySelector("#edit-finned-length"),
   airflowDirection: document.querySelector("#edit-airflow-direction"),
   manualDrawingMode: document.querySelector("#manual-drawing-mode"),
+  manualParamActions: document.querySelector("#manual-param-actions"),
+  manualParamReason: document.querySelector("#manual-param-reason"),
+  manualParamApply: document.querySelector("#manual-param-apply"),
   pdfIntakeFile: document.querySelector("#pdf-intake-file"),
   pdfIntakePanel: document.querySelector(".pdf-intake-panel"),
   pdfDropZone: document.querySelector("#pdf-drop-zone"),
@@ -2141,6 +2144,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
       ${renderManualFillPanel(templateDrawing)}
       ${distributorOrientationBanner(templateDrawing)}
       ${hgbpProductLineBanner(templateDrawing)}
+      ${manualOverrideBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
     </div>
   `;
@@ -2440,6 +2444,68 @@ function attachManualFillPanel(templateDrawing) {
   applyBtn.addEventListener("click", () => submitManualFills(templateDrawing));
 }
 
+// True when the engineer actually changed a drawing-param value. Numeric compare with a
+// 0.01 tolerance (mirrors the backend _match idea) so `8` vs the input string "8.0" is
+// NOT a change — a naive !== would mark every field changed and fabricate an override +
+// correction row per field on every Update click.
+function drawingParamChanged(baselineValue, inputStr) {
+  const a = numberOrFallback(String(baselineValue ?? ""), null);
+  const b = numberOrFallback(inputStr, null);
+  if (a === null || b === null) {
+    return String(baselineValue ?? "").trim() !== String(inputStr ?? "").trim();
+  }
+  return Math.abs(a - b) > 0.01;
+}
+
+// "Update drawing" (Phase 1): collect the edited top-grid drawing-param inputs, diff them
+// against the current resolved panel, and POST only the genuinely-changed keys as Tier-B
+// param overrides through the single /derive endpoint. The response reflects the edit into
+// the drawing (slot_values + SVG) and the ledger logs a (before -> after) correction.
+async function submitDrawingParamOverrides(templateDrawing) {
+  if (!templateDrawing) return;
+  const reason = (elements.manualParamReason?.value || "").trim();
+  const baseline = state.ui?.drawing_parameters?.parameters || {};
+  const paramOverrides = [];
+  document.querySelectorAll("#drawing-parameters [data-drawing-param]").forEach((el) => {
+    const key = el.dataset.drawingParam;
+    const raw = (el.value || "").trim();
+    if (raw === "") return;
+    const base = baseline[key];
+    if (!drawingParamChanged(base ? base.value : null, raw)) return;
+    const value = numberOrFallback(raw, null);
+    if (value === null) return;
+    paramOverrides.push({ key, value, unit: el.dataset.unit || "in", override_reason: reason });
+  });
+  if (!paramOverrides.length) {
+    if (elements.drawingTemplateStatus) {
+      elements.drawingTemplateStatus.innerHTML =
+        `<strong>No changes</strong><span>Edit a value before updating the drawing.</span>`;
+    }
+    return;
+  }
+  if (!reason) {
+    if (elements.drawingTemplateStatus) {
+      elements.drawingTemplateStatus.innerHTML =
+        `<strong>Reason required</strong><span>Enter a reason to log the manual override.</span>`;
+    }
+    return;
+  }
+  const productLine =
+    document.querySelector("#coil-product-line")?.value || templateDrawing.product_type || "";
+  const unitSize =
+    document.querySelector("#coil-unit-size")?.value || templateDrawing.unit_size || "";
+  await deriveCoilDrawing(templateDrawing, productLine, unitSize, {
+    engineInputs: {}, paramOverrides, reason,
+  });
+}
+
+// Show the "Update drawing" action row only when manual editing is unlocked.
+function syncManualParamActions() {
+  if (elements.manualParamActions) {
+    elements.manualParamActions.hidden = !state.manualDrawingMode;
+  }
+}
+
 const _MANUAL_NUMERIC_INPUTS = new Set([
   "header_count", "qty_conn_per_header", "rows", "feeds", "circuits",
 ]);
@@ -2607,6 +2673,18 @@ function hgbpProductLineBanner(templateDrawing) {
   return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
 }
 
+// Loud marker when one or more dimensions were manually overridden (Phase 1 reflection):
+// the drawing now shows an engineer-supplied value, not the machine proposal, so it must
+// never read as an approved as-built. Driven by result.manual_override_keys; empty when
+// no override was applied. See submittal_to_drawing._reflect_param_overrides_into_slots.
+function manualOverrideBanner(templateDrawing) {
+  const keys = templateDrawing && templateDrawing.manual_override_keys;
+  if (!keys || !keys.length) {
+    return "";
+  }
+  return `<div class="drawing-orientation-warning">✎ Manually overridden: ${escapeHtml(keys.join(", "))} — review aid, not approved</div>`;
+}
+
 function renderDrawingParameters(uiState) {
   const parameters = uiState.drawing_parameters?.parameters || {};
   const casing = DRAWING_PARAM_COLUMNS[0];
@@ -2643,6 +2721,7 @@ function renderDrawingParameters(uiState) {
       `,
     )
     .join("");
+  syncManualParamActions();
 }
 
 function renderParameterRow(parameter) {
@@ -3599,7 +3678,12 @@ document.querySelectorAll("[data-compat-filter]").forEach((button) => {
 elements.manualDrawingMode.addEventListener("change", () => {
   state.manualDrawingMode = elements.manualDrawingMode.checked;
   renderDrawingParameters(state.ui);
+  syncManualParamActions();
 });
+
+elements.manualParamApply?.addEventListener("click", () =>
+  submitDrawingParamOverrides(state.lastTemplateDrawing),
+);
 
 elements.copyVisibleTsv.addEventListener("click", () => {
   const rows = [...document.querySelectorAll("[data-paste-ready-row='true']")];

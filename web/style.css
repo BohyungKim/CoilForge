@@ -2323,6 +2323,28 @@ h4 {
   background: var(--accent-hover);
 }
 
+.manual-param-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.manual-param-actions[hidden] {
+  display: none;
+}
+
+.manual-param-reason {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  flex: 1 1 240px;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+}
+
 .coil-drawing-picker.is-derived {
   background: var(--ok-bg);
   border-color: var(--ok-border);

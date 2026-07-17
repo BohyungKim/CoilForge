@@ -551,6 +551,34 @@ def test_correction_captures_tier_b_before_and_after(ledger):
     assert rows == [("R", 0.5, "default", 3.5, "manual")]
 
 
+def test_correction_event_sourced_before_and_reason(ledger):
+    """1b reflection path: when the derive stored manual_override_events, the ledger
+    reads the before-value + reason straight from that snapshot — NOT a recompute.
+    This is load-bearing: reflection merges the override into slot_values, so slot.CD
+    is already 9.5 here; an override-free re-resolve would read 9.5 and drop the
+    correction (before == after). The stored snapshot keeps the true machine proposal
+    (5.5) and carries the reason (which the old panel-only path wrote as NULL)."""
+    panel = {
+        "CD": {"key": "CD", "value": 9.5, "mode": "manual", "status": "review_required",
+               "review_required": True, "source_evidence": [], "unit": "in"},
+    }
+    result, payload = _derive_with_override(
+        panel=panel, slot_values={"slot.CD": 9.5},  # already reflected by 1b
+    )
+    result["manual_override_events"] = [
+        {"key": "CD", "slot": "slot.CD", "previous_value": 5.5, "previous_mode": "default",
+         "new_value": 9.5, "override_reason": "field measured", "source_evidence": []},
+    ]
+    assert capture_milestone("coil_manual_fill", result=result, request_payload=payload)
+
+    rows = _rows(
+        ledger,
+        "SELECT field_key, previous_value_num, previous_mode, new_value_num, new_mode,"
+        " override_reason FROM correction",
+    )
+    assert rows == [("CD", 5.5, "default", 9.5, "manual", "field measured")]
+
+
 def test_no_override_writes_no_correction(ledger):
     """A derive with no Tier-B override (no manual-mode panel field) writes no
     correction rows — the table only holds fields a human actually changed."""

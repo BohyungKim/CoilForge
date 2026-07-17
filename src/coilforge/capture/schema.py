@@ -200,11 +200,13 @@ _M1_INITIAL = (
 )
 
 # The correction half of the (input -> proposal -> correction) triple (1b). The
-# machine's pre-override "before" value is NOT stored raw -- it is recomputed
-# deterministically by re-resolving the drawing-param panel WITHOUT the Tier-B
-# overrides (parameter_set_from_template_drawing over the same slot_values, which
-# the panel-only overrides never mutate). One row per field a human actually
-# changed: previous == machine proposal, new == the manual override.
+# machine's pre-override "before" value is event-sourced: the derive snapshots the
+# pristine baseline into result['manual_override_events'] BEFORE Tier-B reflection
+# merges the override into slot_values, and the ledger reads that snapshot (a later
+# recompute would read the overridden slot and drop the correction). Older runs /
+# Tier-A-only / the analyze milestone carry no snapshot and fall back to the
+# override-free recompute. One row per field a human actually changed: previous ==
+# machine proposal, new == the manual override, override_reason carried through.
 _M2_CORRECTION = (
     """
     CREATE TABLE correction (

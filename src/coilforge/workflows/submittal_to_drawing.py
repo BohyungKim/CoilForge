@@ -912,6 +912,107 @@ def _apply_hgrh_pairing_cd(
             template_drawing["missing_required_slots"] = list(repop.missing_required_slots)
 
 
+def _reflect_param_overrides_into_slots(
+    result: dict[str, Any], spec: dict[str, Any], circuits: Any
+) -> None:
+    """Tier-B reflection (1b, John 2026-07-16 — reverses the earlier panel-only rule).
+
+    Merge the engineer's drawing-param overrides into ``result['slot_values']`` and
+    re-populate the template SVG so the printed dimension text shows the corrected
+    value (not just the panel). Done in THIS non-frozen caller, mirroring
+    ``_apply_hgrh_pairing_cd``'s re-population (904-912) — the frozen
+    ``pdf_to_template_drawing`` is never touched. Fires ONLY when ``param_overrides``
+    are present, so a no-fill derive stays byte-for-byte unchanged (H4 guard).
+
+    Event-sources the before-value: BEFORE merging, it resolves the pristine baseline
+    panel (no overrides) and snapshots ``{previous_value, previous_mode}`` per key into
+    ``result['manual_override_events']``. The capture ledger reads that snapshot rather
+    than recomputing after the fact — once the override lands in ``slot_values`` a later
+    override-free re-resolve would read the OVERRIDDEN slot and silently drop the
+    correction. ZD (and any param with no slot) is captured as an event but not
+    reflected — it is not a drawn dimension.
+    """
+    overrides_raw = spec.get("param_overrides")
+    if not overrides_raw or not isinstance(result, dict) or "error" in result:
+        return
+
+    from coilforge.drawing.parameters import DrawingParameterOverride
+    from coilforge.services.drawing_param_resolver import (
+        PARAM_TO_SLOT,
+        _header_slot,
+        parameter_set_from_template_drawing,
+    )
+
+    try:
+        circuits_int = int(circuits) if circuits else None
+    except (TypeError, ValueError):
+        circuits_int = None
+
+    # Pristine baseline (no overrides) — the machine proposal each override replaces.
+    # Resolved BEFORE the merge so the slots it reads are still un-overridden.
+    baseline = parameter_set_from_template_drawing(
+        result, circuits=circuits_int
+    ).parameters
+
+    def _slot_for(key: str) -> str | None:
+        if key in PARAM_TO_SLOT:  # base keys incl. HDx1 (has digits, matched first)
+            return PARAM_TO_SLOT[key]
+        base = key.rstrip("0123456789")
+        digits = key[len(base):]
+        if digits and int(digits) >= 2:  # logical header key S2/O3/HD2 -> parity slot
+            return _header_slot(base, int(digits))
+        return None
+
+    slot_values = result.setdefault("slot_values", {})
+    events: list[dict[str, Any]] = []
+    keys: list[str] = []
+    merged_any = False
+    for item in overrides_raw:
+        try:
+            ov = DrawingParameterOverride.model_validate(item)
+        except Exception:  # noqa: BLE001 — a bad override is skipped, never a 500
+            continue
+        if ov.value in (None, ""):
+            continue
+        base = baseline.get(ov.key)
+        slot = _slot_for(ov.key)
+        events.append(
+            {
+                "key": ov.key,
+                "slot": slot,
+                "previous_value": base.value if base is not None else None,
+                "previous_mode": base.mode if base is not None else None,
+                "new_value": ov.value,
+                "override_reason": ov.override_reason,
+                "source_evidence": [se.model_dump() for se in ov.source_evidence],
+            }
+        )
+        keys.append(ov.key)
+        if slot is not None:
+            slot_values[slot] = ov.value
+            merged_any = True
+
+    if events:
+        result["manual_override_events"] = events
+        result["manual_override_keys"] = keys
+
+    # Re-populate the template SVG from the merged slots (mirrors _apply_hgrh_pairing_cd
+    # 904-912) so the drawing itself shows the override. watermark + export_allowed live
+    # on the result envelope, not in the slots, so re-population can't flip them.
+    if merged_any:
+        template_id = result.get("template_id")
+        if template_id and result.get("svg"):
+            from coilforge.template_population.slot_population import (
+                populate_template_slots,
+            )
+
+            repop = populate_template_slots(template_id, slot_values)
+            if repop.svg:
+                result["svg"] = repop.svg
+                result["populated_slots"] = list(repop.populated_slots)
+                result["missing_required_slots"] = list(repop.missing_required_slots)
+
+
 # Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
 _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "application", "header_count", "qty_conn_per_header",
@@ -1005,9 +1106,14 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     if any(spec.get(key) is not None for key in _MANUAL_ENGINE_INPUT_KEYS):
         fill_response = _rerun_slots_with_manual_inputs(result, spec)
 
+    # Tier-B reflection (1b): merge param overrides into slot_values + re-populate the
+    # SVG so the drawing shows the corrected dimension, and event-source the pre-override
+    # baseline for the correction ledger. No-op unless param_overrides are present.
+    _reflect_param_overrides_into_slots(result, spec, ctx.get("circuits"))
+
     # Refresh the Drawing Parameters panel from the same slot values the re-derived
-    # drawing renders (Tier-B param overrides injected panel-only). Pass the circuit
-    # count so multi-header assemblies (I2/S2/...) surface for 2HD+ coils.
+    # drawing renders (Tier-B param overrides also injected into the panel as mode=
+    # 'manual'). Pass the circuit count so multi-header assemblies (I2/S2/...) surface.
     parameter_set = parameter_set_from_template_drawing(
         result, circuits=ctx.get("circuits"), param_overrides=spec.get("param_overrides")
     )

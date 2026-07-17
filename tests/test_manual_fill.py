@@ -126,8 +126,59 @@ def test_tier_b_override_does_not_touch_slot_values():
     parameter_set_from_template_drawing(
         td, param_overrides=[{"key": "CD", "value": 3.25, "override_reason": "measured"}]
     )
-    # Panel-only: the override must NOT be written back into slot_values (SVG untouched).
+    # The PANEL resolver stays panel-only (correct layering): reflection into slot_values
+    # is the non-frozen caller's job (_reflect_param_overrides_into_slots), NOT this
+    # function's. So a direct call must still leave slot_values untouched.
     assert "slot.CD" not in td["slot_values"]
+
+
+# --------------------------------------------------------------------------- #
+# 1b — Tier-B reflection: the override reaches slot_values + the SVG, and the
+# pre-override machine proposal is event-sourced for the correction ledger.
+# --------------------------------------------------------------------------- #
+def test_tier_b_override_reflects_into_slot_and_events():
+    spec = _base_spec(
+        param_overrides=[{"key": "CD", "value": 9.5, "override_reason": "field measured"}]
+    )
+    result = derive_coil_template_drawing(dict(spec))
+
+    # Reflected into slot_values so the drawing renders the corrected dimension.
+    assert result["slot_values"]["slot.CD"] == 9.5
+    assert result["manual_override_keys"] == ["CD"]
+
+    # Event-sourced: the pre-override machine proposal is captured (and != the override).
+    events = result["manual_override_events"]
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["key"] == "CD" and ev["new_value"] == 9.5
+    assert ev["override_reason"] == "field measured"
+    assert ev["previous_value"] != 9.5  # the machine proposal, not the override
+
+    # Panel agrees with the slot (single source of truth) and stays review-required.
+    cd = result["drawing_parameter_set"]["parameters"]["CD"]
+    assert cd["value"] == 9.5 and cd["mode"] == "manual"
+    assert result["export_allowed"] is False
+    if result.get("svg"):
+        assert "9.5" in result["svg"]
+
+
+def test_tier_b_multi_header_override_maps_to_parity_slot():
+    # Logical UI header key S2 -> engine parity slot S3 (supply id 2*2-1).
+    spec = _base_spec(
+        circuits=2,
+        param_overrides=[{"key": "S2", "value": 4.25, "override_reason": "measured"}],
+    )
+    result = derive_coil_template_drawing(dict(spec))
+    assert result["slot_values"]["slot.S3"] == 4.25
+    assert result["manual_override_keys"] == ["S2"]
+
+
+def test_reflection_no_op_without_overrides():
+    # No param_overrides -> the reflection helper must not fire (no events key, and the
+    # H4 byte-identical guard below still holds).
+    result = derive_coil_template_drawing(dict(_base_spec()))
+    assert "manual_override_events" not in result
+    assert "manual_override_keys" not in result
 
 
 # --------------------------------------------------------------------------- #

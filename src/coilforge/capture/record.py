@@ -350,26 +350,53 @@ def _correction_rows(
     run_id: str, coil_uid: str, view: _CoilView, circuits: Any
 ) -> list[tuple]:
     """The correction half of the triple (1b): one row per drawing-param field a
-    human actually overrode.
+    human actually overrode — the machine proposal (before) paired with the human
+    override (after) + the reason.
 
-    ``view.params`` is the review panel WITH the Tier-B overrides applied, so a field
-    carrying ``mode == "manual"`` is exactly a human override. ``previous`` is the
-    machine value from re-resolving the panel WITHOUT overrides — deterministic,
-    because Tier-B is panel-only and never mutates ``slot_values`` (so the override-
-    free re-resolve reproduces the pre-override proposal). No "before" value is stored
-    raw; it is recomputed.
+    PRIMARY (event-sourced, 1b reflection): when the derive stored
+    ``view.td['manual_override_events']``, read the before-value + reason straight from
+    that snapshot. This is required once Tier-B reflection merges the override into
+    ``slot_values`` — a later override-free re-resolve would read the OVERRIDDEN slot
+    and silently drop the correction. The before is captured at derive time, when the
+    slots were still pristine, and stored raw (not recomputed).
 
-    ``circuits`` MUST match the live derive (``spec.get("circuits") or 1``) so the
-    baseline surfaces the SAME multi-header keys (I2/S2…) the panel did — without it a
-    baseline lookup of an unraised header key is absent and a real correction is lost.
+    FALLBACK (recompute): older runs / Tier-A-only / the multi-coil analyze milestone
+    carry no event snapshot. There, ``view.params`` is the panel WITH overrides and a
+    field with ``mode == "manual"`` is a human override; the before is re-resolved
+    WITHOUT overrides — deterministic because those paths never merged an override into
+    ``slot_values``. ``circuits`` MUST match the live derive so the baseline surfaces
+    the SAME multi-header keys (I2/S2…) the panel did.
 
-    NEVER propagates: ``parameter_set_from_template_drawing`` can raise, and this runs
-    inside ``capture_milestone``'s single pre-transaction build, so an exception here
-    would sink the WHOLE milestone — including the human "after" values already built
-    for ``field_observation``. Any failure -> ``[]`` (a missing correction, never a
-    lost run).
+    NEVER propagates: anything here can raise, and this runs inside
+    ``capture_milestone``'s single pre-transaction build, so an exception would sink the
+    WHOLE milestone — including the "after" values already built for
+    ``field_observation``. Any failure -> ``[]`` (a missing correction, never a lost run).
     """
     try:
+        # PRIMARY: event-sourced before-value + reason from the derive snapshot.
+        events = view.td.get("manual_override_events") if isinstance(view.td, dict) else None
+        if events:
+            rows: list[tuple] = []
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                prev_value = ev.get("previous_value")
+                new_value = ev.get("new_value")
+                # An override that matches the machine value is not a correction.
+                if prev_value == new_value:
+                    continue
+                rows.append(
+                    (
+                        run_id, coil_uid, ev.get("key"), "drawing_param",
+                        _json(prev_value), _num(prev_value), ev.get("previous_mode"),
+                        _json(new_value), _num(new_value), "manual",
+                        ev.get("override_reason"),  # carried through 1b
+                        _json(ev.get("source_evidence")),
+                    )
+                )
+            return rows
+
+        # FALLBACK: recompute the pre-override baseline (no event snapshot present).
         panel = view.params.get("parameters") or {}
         overridden = {
             key: param
@@ -391,7 +418,7 @@ def _correction_rows(
             view.td, circuits=circuits_int
         ).parameters
 
-        rows: list[tuple] = []
+        rows = []
         for key, param in overridden.items():
             new_value = param.get("value")
             base = baseline.get(key)
