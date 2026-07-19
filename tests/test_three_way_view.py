@@ -76,3 +76,29 @@ def test_all_empty_fields_are_skipped():
 
 def test_error_result_returns_empty():
     assert build_three_way_view({"error": "gated"})["fields"] == []
+
+
+def test_drawing_param_rule_id_from_engine_provenance():
+    # 1c seam-A: the CD param's engine field is casing_depth; its firing carries the rule.
+    result = {
+        "extracted": {},
+        "drawing_parameter_set": {"parameters": {
+            "CD": {"key": "CD", "value": 5.5, "mode": "default"},
+        }},
+        "engine_provenance": {"firings": [
+            {"field_key": "casing_depth", "rule_id": "R-070", "confidence": "HIGH"},
+        ]},
+    }
+    cd = _field(build_three_way_view(result), "CD")
+    assert cd["rule_id"] == "R-070"  # bridged CD -> casing_depth -> firing
+
+
+def test_rule_id_is_none_without_provenance():
+    # no engine_provenance (engine didn't run on this derive) -> never fabricated.
+    result = {
+        "extracted": {},
+        "drawing_parameter_set": {"parameters": {
+            "CD": {"key": "CD", "value": 5.5, "mode": "default"},
+        }},
+    }
+    assert _field(build_three_way_view(result), "CD")["rule_id"] is None

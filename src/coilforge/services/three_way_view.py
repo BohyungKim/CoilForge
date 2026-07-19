@@ -18,9 +18,11 @@ Sourcing (the load-bearing rule — MAJOR-1 from the plan review):
   ``spec_overrides[].previous_value``), falling back to the live resolved value only when no
   override exists for that field.
 
-``rule_id`` is carried as ``None`` for now — the engine does not yet attach it to a field
-result (the separate roadmap "1c"). The column is present so it can be filled later without
-reshaping the payload.
+``rule_id`` is filled from the seam-A engine provenance (``result['engine_provenance']``,
+roadmap 1c) via ``PARAM_TO_ENGINE_FIELD``: a drawing-param row's engine field (e.g. CD ->
+casing_depth) is looked up in the recorded firings. It stays ``None`` when the engine did not
+run on this derive (no Tier-A fill -> no provenance) or when no rule produced that field
+(e.g. a pure input like circuits, which the engine consumes rather than emits).
 """
 
 from __future__ import annotations
@@ -59,6 +61,17 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
         if isinstance(ov, dict) and ov.get("field_key")
     }
 
+    # rule_id per engine field, from the seam-A provenance (1c). Empty when the engine did
+    # not run on this derive -> every rule_id stays None (honest, never fabricated).
+    firing_rule = {
+        f.get("field_key"): f.get("rule_id")
+        for f in ((result.get("engine_provenance") or {}).get("firings") or [])
+        if isinstance(f, dict) and f.get("field_key")
+    }
+    # Bridge a drawing-param key (CD) to its engine field (casing_depth). Lazy import avoids
+    # any import-cycle with the resolver, which pulls in the engine + pipeline.
+    from coilforge.services.drawing_param_resolver import PARAM_TO_ENGINE_FIELD
+
     fields: list[dict[str, Any]] = []
 
     # --- Spec fields: submittal(raw extracted) / coilforge(logic) / engineer -----------
@@ -71,7 +84,10 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
         engineer = ov.get("new_value") if ov else None
         if submittal is None and coilforge is None and engineer is None:
             continue  # nothing to compare — never surface an all-empty row
-        fields.append(_row(key, "spec_field", submittal, coilforge, engineer))
+        # spec fields are engine INPUTS (circuits/rows/feeds…), which the engine consumes
+        # rather than emits, so a firing rarely exists — rule_id is None unless one matches.
+        fields.append(_row(key, "spec_field", submittal, coilforge, engineer,
+                           rule_id=firing_rule.get(key)))
 
     # --- Drawing params: no submittal-raw (engine-computed); coilforge(proposal)/engineer -
     for key, param in params.items():
@@ -90,7 +106,9 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
             coilforge = param.get("value")
         if coilforge is None and engineer is None:
             continue
-        fields.append(_row(key, "drawing_param", None, coilforge, engineer))
+        # bridge the param key to its engine field (CD -> casing_depth) to find the rule.
+        rule_id = firing_rule.get(PARAM_TO_ENGINE_FIELD.get(key, key))
+        fields.append(_row(key, "drawing_param", None, coilforge, engineer, rule_id=rule_id))
 
     note = (
         "Review aid — submittal (raw) vs CoilForge (engine) vs engineer (manual). "
@@ -100,7 +118,8 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _row(
-    field: str, kind: str, submittal: Any, coilforge: Any, engineer: Any
+    field: str, kind: str, submittal: Any, coilforge: Any, engineer: Any,
+    *, rule_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "field": field,
@@ -111,5 +130,5 @@ def _row(
         # verdicts drive the green/red cells; engineer verdict only when an override exists
         "submittal_vs_coilforge": _verdict(submittal, coilforge),
         "coilforge_vs_engineer": _verdict(coilforge, engineer) if engineer is not None else None,
-        "rule_id": None,  # filled by the separate 1c engine hook
+        "rule_id": rule_id,  # engine field's firing (1c); None when the engine didn't emit it
     }

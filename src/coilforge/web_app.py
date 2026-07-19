@@ -251,6 +251,45 @@ async def capture_health():
     return jsonable_encoder(health())
 
 
+@app.get("/api/capture/similar")
+async def capture_similar(coil_uid: str, k: int = 5, same_category: bool = True):
+    """Read-only case retrieval (Stage 2): the nearest past coils to ``coil_uid`` plus John's
+    own prior corrections as EVIDENCE (never auto-applied). Redacts the free-text override
+    reason + raw project_number on this unauthenticated surface (health() redacts for the same
+    reason); never creates the DB on a machine that has never captured."""
+    from coilforge.capture.retrieve import similar_by_coil_uid
+
+    return jsonable_encoder(
+        similar_by_coil_uid(coil_uid, k=k, same_category=same_category, redact=True)
+    )
+
+
+@app.post("/api/capture/similar")
+async def capture_similar_features(request: dict[str, Any] = Body(default_factory=dict)):
+    """What-if case retrieval: POST a feature dict (``coil_category``, ``product_line``,
+    ``unit_size``, ``rows``, ``feeds``, ``circuits``, ...) to find similar past coils. Accepts
+    either ``{"features": {...}, "k": 5, "same_category": true}`` or a bare feature dict. Same
+    redaction as the GET."""
+    from coilforge.capture.retrieve import similar_by_features
+
+    payload = request or {}
+    features = payload.get("features")
+    if not isinstance(features, dict):
+        features = {k: v for k, v in payload.items() if k not in ("k", "same_category", "features")}
+    try:
+        k = int(payload.get("k", 5))
+    except (TypeError, ValueError):
+        k = 5
+    return jsonable_encoder(
+        similar_by_features(
+            features,
+            k=k,
+            same_category=bool(payload.get("same_category", True)),
+            redact=True,
+        )
+    )
+
+
 @app.post("/api/review/build-packet")
 async def review_build_packet(request: dict[str, Any] = Body(default_factory=dict)):
     payload = request or {}

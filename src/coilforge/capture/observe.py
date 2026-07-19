@@ -54,6 +54,15 @@ def health() -> dict[str, Any]:
                 except Exception:  # noqa: BLE001 — a missing table must not sink health
                     counts[table] = -1
             base["counts"] = counts
+            # Corpus-readiness meter (Stage 2): distinct-identity coil count vs the n>=50 gate,
+            # computed on THIS already-open conn (a second connect() would risk materializing an
+            # empty DB — the exact invariant the exists() guard above preserves).
+            try:
+                from coilforge.capture.retrieve import _corpus_counts
+
+                base["corpus"] = _corpus_counts(conn)
+            except Exception:  # noqa: BLE001 — the meter must not sink health
+                base["corpus"] = {"error": True}
             # Recent errors: ts + phase + the exception TYPE only (the leading token of the
             # stored "Type: message" string) — never the full diagnostic, which could carry
             # an engineering value.
