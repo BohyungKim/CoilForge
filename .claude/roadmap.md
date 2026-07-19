@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-17 (편집 Drawing Params Phase 1·2 완료(3411453·b04bcf3) + **1단계 Capture Ledger 전체 종료**: 1c 엔진 provenance(418e8e0) + 1d 관측/재현/감사(41139a8) + **[quote-package 버그픽스] 다중 견적페이지 copper-strap 스탬핑(0366a79)**. ▶️ 지금 = 2단계 Case Retrieval(원장 코퍼스 n≥50 대기). 미결: TR-1/TR-2 John 브라우저 눈확인)
+> 마지막 갱신: 2026-07-19 (**2단계 Case Retrieval Phase 2.0 구축·커밋·푸시(66087fd)**: Gower kNN 엔진 + corpus 게이지 + `/api/capture/similar` + CLI, gated n≥50 + **rule_id→3자뷰 배선**. 코퍼스 46/50·**교정 0**(실 submittal 12개 배치 분석=feature-only). ▶️ 지금 = 2단계 원장 채우기 — 실사용으로 **교정** 축적이 진짜 관건(개수보다 이게 핵심). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -188,6 +188,21 @@
   p0에 노트 4개 선존재 → **증분(delta)으로 검증**(절대개수 아님). review-aid 불변식 무변경(노트 오버레이만,
   원본 견적 숫자 불변). 계획서 `~/.claude/plans/agile-nibbling-aurora.md`, memory `multi_page_quote_copper_strap.md`. 🆕 이번 세션
 
+- [x] **2단계 Case Retrieval Phase 2.0 구축·커밋 (66087fd, 2026-07-19)** — numpy masked-Gower 최근접이웃으로
+  원장에서 비슷한 과거 코일을 찾아 John의 `correction`(before→after→reason)을 **증거로 제시**(값 발명·자동적용
+  없음, never-invent 무손상). **핵심 설계 = `(tag, project_number)` identity 그레인**: feature(analyze run의
+  `run_input`)와 correction(`coil_manual_fill` run)이 **다른 coil_uid에 살아서** 단일 coil_uid로는 케이스 미완성
+  — 착수 전 **독립 적대검토가 이 BLOCKER를 잡음**. 신규 `capture/retrieve.py`(Gower kNN·numpy lazy-import)+corpus
+  게이지(health에 fold, distinct-identity 카운트)+`GET/POST /api/capture/similar`(HTTP=redact: reason·project_number
+  제거)+`scripts/find_similar.py`(로컬 full)+15테스트. unit_size/suction_conn_size 범주형(John)·same_category
+  프리필터·min_shared_axes=4·n<50 `insufficient_corpus` degrade. **동봉 micro-step: rule_id→3자뷰 배선**
+  (`engine_provenance.firings`→`PARAM_TO_ENGINE_FIELD`(CD→casing_depth)→"어느 룰" 열, 엔진 미실행 시 None). read-only·
+  additive·**마이그레이션 0**·frozen 무접촉·export_allowed 불변. **1014 green** + invariant-guard clean + E2E 스모크
+  (HTTP redaction·CLI·identity-그레인 증거 실증). **코퍼스 현황 46/50·교정 0** — 실 submittal 12개(2298/2519/2572/
+  2606/2667/2775/2808/2857/2870…) 배치 분석으로 22→46(feature-only). `submittals/` 소진(재분석=dedup 무증가);
+  `Case/` 83개는 템플릿 시드 레퍼런스라 미투입(오염 방지, John 동의). 계획서 `~/.claude/plans/playful-shimmying-donut.md`,
+  memory `case_retrieval_stage2.md`. 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -203,12 +218,12 @@
   사람 눈 확인.
 
 ## ▶️ 지금
-- [ ] **2단계 Case Retrieval** (~2주, n≥50) — 다음 걸음: **원장에 코퍼스가 쌓이길 기다리며**(1단계가 지금부터
-  데이터 축적) "이 코일 전에 본 적 있어?" — 21필드 최근접이웃으로 John의 과거 교정(`correction` 테이블)을 증거로
-  검색(값 발명 아님 = never-invent 호환). numpy brute force면 충분, 벡터DB 불필요. **착수 조건: n≥50** 코일
-  코퍼스(현 볼륨 주 50~150이면 수 주). 그 전까지는 라이브 사용으로 원장을 채우는 게 우선(TR-1/2 눈확인 포함).
-- [ ] **rule_id → 3자 뷰 표시 (micro-step, 선택)** — 1c가 캡처한 `rule_id`를 Phase 2 3자 뷰의 "어느 룰" 열에
-  표시(seam-A derive면 `result["engine_provenance"]`에서 바로; 현재 `three_way_view`는 `rule_id:None`). 가벼운 후속.
+- [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
+  **실사용으로 코퍼스 + 교정 축적**. 현황 **46/50 · 교정 0**. 착수조건 n≥50까지 4개 부족하나, **개수보다
+  교정이 진짜 관건** — John이 "거의 안 고침"이라 교정 0은 정직한 수치(캡처 버그 아님). Stage 2가 실제로 유용해지려면
+  앞으로 코일 조정을 **브라우저 edit(Update drawing / Spec data)**로 해야 `correction`이 쌓임. `submittals/` 12개
+  소진(재분석 dedup); `Case/` 레퍼런스는 미투입(오염 방지). Phase 2.1(가중치·min_shared_axes 튜닝 + 이웃 품질
+  눈검증 + 브라우저 "이전 교정" 패널)은 **교정이 실제로 쌓인 뒤** 착수(지금 하면 헛작업).
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [ ] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
