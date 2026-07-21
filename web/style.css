@@ -1008,6 +1008,65 @@ body[data-supplier="ambient"] #ccsi-audit-section {
   display: none;
 }
 
+/* Ambient mode toggle: "Compare two files" (default) vs "Generate package from submittal".
+   Package-only elements are hidden unless data-ambient-mode="package"; compare elements are
+   hidden only WHEN package mode is active. So an absent attribute (pre-JS / empty storage)
+   leaves the compare flow visible and byte-identical — no FOUC. */
+.ambient-mode-switch {
+  display: none;
+  gap: 2px;
+  padding: 3px;
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-inset);
+  width: fit-content;
+}
+body[data-supplier="ambient"] .ambient-mode-switch {
+  display: inline-flex;
+}
+.ambient-mode-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ambient-mode-btn.active {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+.ambient-package-only {
+  display: none;
+}
+/* The package drops also carry .ambient-drops (display:flex, defined earlier and equal
+   specificity), which would otherwise win the tie and show them in compare mode. Bump
+   specificity so the default hide wins; the package-mode rule below (higher still) shows. */
+.ambient-drops.ambient-package-only {
+  display: none;
+}
+body[data-ambient-mode="package"] .ambient-package-drops {
+  display: flex;
+}
+body[data-ambient-mode="package"] #ambient-package-warning,
+body[data-ambient-mode="package"] .ambient-package-summary,
+body[data-ambient-mode="package"] #ambient-package-results {
+  display: block;
+}
+body[data-ambient-mode="package"] .ambient-compare-only {
+  display: none;
+}
+/* In the Ambient package flow the top Direct-Coil intake is redundant (the package has
+   its own submittal drop) and confusing — hide it. Scoped to BOTH ambient supplier AND
+   package mode so a persisted data-ambient-mode never hides the intake in Direct Coil. */
+body[data-supplier="ambient"][data-ambient-mode="package"] #checklist-section {
+  display: none;
+}
+
 .ambient-drops {
   display: flex;
   flex-wrap: wrap;
@@ -1038,6 +1097,109 @@ body[data-supplier="ambient"] #ccsi-audit-section {
   margin-top: 6px;
   font-size: 0.76rem;
   color: var(--warn-text);
+}
+
+/* Ambient package (submittal -> performance page + drawing). Reuses the compare card
+   shell (ccsi-audit-coil / ambient-table); a few extras for the band, missing-field
+   callout, and drawing preview. Defined theme tokens only (no bare --surface/--text). */
+.ambient-band {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin: 4px 0;
+}
+.ambient-missing {
+  margin: 6px 0 0;
+  padding: 6px 9px;
+  font-size: 0.76rem;
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 6px;
+}
+.ambient-drawing-preview {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  overflow-x: auto;
+  background: var(--bg-inset);
+  cursor: zoom-in;
+}
+/* Draw on white "paper" in BOTH themes (defined --drawing-paper) so the dark template
+   strokes/dimension text stay legible in dark mode; non-scaling-stroke keeps the 0.1-unit
+   CoilMaster hairlines crisp — same treatment as .template-drawing-canvas. */
+.ambient-drawing-preview svg {
+  background: var(--drawing-paper);
+  border-radius: 4px;
+  max-width: 100%;
+  min-width: 560px;
+  height: auto;
+}
+.ambient-drawing-preview svg path {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1px;
+}
+.ambient-drawing-hint {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+/* Click-to-enlarge overlay: the same SVG at up to 95vw on white paper, scrollable. */
+.ambient-drawing-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.72);
+  cursor: zoom-out;
+  padding: 24px;
+  overflow: auto;
+}
+.ambient-drawing-modal.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ambient-drawing-modal-inner {
+  background: var(--drawing-paper);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 96vw;
+  overflow: auto;
+}
+.ambient-drawing-modal-inner svg {
+  background: var(--drawing-paper);
+  width: min(92vw, 1600px);
+  height: auto;
+}
+.ambient-drawing-modal-inner svg path {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1px;
+}
+.ambient-drawing-omitted {
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.ambient-package-hand {
+  margin: 6px 0 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.ambient-excel-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.ambient-excel-action button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+#ambient-excel-status {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
 }
 
 /* Project Review — exceptions first. Passing coils never render; only exceptions

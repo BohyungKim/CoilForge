@@ -38,6 +38,9 @@ from coilforge.ambient.pdf_intake import parse_ambient_pdf
 from coilforge.ambient.mapping import build_ambient_comparison
 from coilforge.ambient.range_provider import coil_utilities_range_provider
 from coilforge.ambient.rfq import build_ambient_rfq
+from coilforge.ambient.package import build_ambient_package
+from coilforge.ambient.excel_map import build_ambient_excel_fill
+from coilforge.ambient.excel_writer import write_ambient_excel
 from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
@@ -902,6 +905,209 @@ async def ambient_rfq(request: Request):
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Baseline workflow failed: {exc}")
     return jsonable_encoder(build_ambient_rfq(baseline))
+
+
+# ---------------------------------------------------------------------------
+# Ambient submittal -> package (generate a performance page + drawing to HAND to
+# Ambient from a submittal alone — no EZ Coil selection needed). Additive & optional;
+# the compare path above is untouched.
+# ---------------------------------------------------------------------------
+_AMBIENT_PACKAGE_CACHE: "OrderedDict[tuple[str, str], dict[str, Any]]" = OrderedDict()
+
+
+def clear_ambient_package_cache() -> None:
+    """Drop all memoized Ambient packages (test hygiene / manual invalidation)."""
+    _AMBIENT_PACKAGE_CACHE.clear()
+
+
+def _baseline_workflow_and_candidates(
+    pdf_bytes: bytes, *, source_id: str, filename: str | None, cover_page_hint: int | None
+) -> tuple[list[SubmittalCoilCandidate], dict[str, tuple[str | None, str | None, str | None]]]:
+    """Parse the submittal ONCE into candidates AND a ``tag -> (source, svg, omitted_reason)``
+    drawing map, read off the SAME workflow (no second parse). The per-coil drawing is the
+    gate-honest Track B ``template_drawing`` — the top-level ``svg`` is only the selected
+    coil's preview and is never blanked, so it must NOT be used here (per plan-review)."""
+    result = run_pdf_to_drawing_workflow(
+        pdf_bytes, source_id=source_id, source_filename=filename, cover_page_hint=cover_page_hint
+    )
+    candidates: list[SubmittalCoilCandidate] = []
+    for dumped in result.get("candidates") or []:
+        try:
+            candidates.append(SubmittalCoilCandidate.model_validate(dumped))
+        except Exception:  # noqa: BLE001 -- skip an unparseable candidate, never abort
+            continue
+
+    drawings: dict[str, tuple[str | None, str | None, str | None]] = {}
+    for page in result.get("pdf_coil_pages") or []:
+        tag = page.get("tag")
+        if not tag:
+            continue
+        template_drawing = (page.get("workflow") or {}).get("template_drawing") or {}
+        if not isinstance(template_drawing, dict) or "error" in template_drawing:
+            reason = "drawing unavailable"
+            if isinstance(template_drawing, dict) and template_drawing.get("error"):
+                reason = f"drawing unavailable: {template_drawing['error']}"
+            drawings[tag] = (None, None, reason)
+        elif template_drawing.get("svg"):
+            drawings[tag] = ("track_b_generated", template_drawing["svg"], None)
+        else:  # gate-withheld (svg == "") -> loud omission, never a borrowed drawing
+            drawings[tag] = (
+                None,
+                None,
+                template_drawing.get("not_registered_reason") or "drawing not generated",
+            )
+    return candidates, drawings
+
+
+async def _run_or_reuse_ambient_package(
+    submittal_bytes: bytes,
+    ez_drawing_bytes: bytes,
+    *,
+    filename: str | None = None,
+    cover_page_hint: int | None = None,
+) -> _AmbientOutcome:
+    """Build the submittal->Ambient package (performance page + per-coil drawing); memoized
+    on ``(sha1(submittal), sha1(ez_drawing))``. Never raises — mirrors the compare path."""
+    if not submittal_bytes:
+        return _AmbientOutcome(
+            None, "POST the submittal PDF as multipart form field 'submittal'.", 400
+        )
+    key = (
+        hashlib.sha1(submittal_bytes).hexdigest(),
+        hashlib.sha1(ez_drawing_bytes or b"").hexdigest(),
+    )
+    cached = _AMBIENT_PACKAGE_CACHE.get(key)
+    if cached is not None:
+        _AMBIENT_PACKAGE_CACHE.move_to_end(key)
+        return _AmbientOutcome(copy.deepcopy(cached), None, None)
+
+    try:
+        candidates, drawings = _baseline_workflow_and_candidates(
+            submittal_bytes, source_id="AMBIENT-PACKAGE-001",
+            filename=filename, cover_page_hint=cover_page_hint,
+        )
+    except ValueError as exc:
+        return _AmbientOutcome(None, f"Submittal PDF: {exc}", 400)
+    except Exception as exc:  # noqa: BLE001 -- never-raise contract
+        return _AmbientOutcome(None, f"Submittal workflow failed: {exc}", 500)
+
+    payload = build_ambient_package(candidates).as_dict()
+
+    # Attach the per-coil drawing (Track B), or the EZ Coil drawing if supplied. A single
+    # supplied EZ drawing can only be honestly mapped when there is exactly one coil;
+    # otherwise it is recorded at the package level rather than guessing which coil it is.
+    coils = payload.get("coils") or []
+    ez_supplied = bool(ez_drawing_bytes)
+    for coil in coils:
+        source, svg, omitted = drawings.get(coil.get("tag"), (None, None, "no matching coil drawing"))
+        coil["drawing"] = {"source": source, "svg": svg, "omitted_reason": omitted}
+    if ez_supplied:
+        if len(coils) == 1:
+            coils[0]["drawing"] = {"source": "ez_coil", "svg": None, "omitted_reason": None}
+        else:
+            payload.setdefault("warnings", []).append(
+                f"EZ Coil drawing supplied ({len(ez_drawing_bytes)} bytes) — use it in place of "
+                f"the generated drawing (not auto-mapped per coil across {len(coils)} coils)."
+            )
+    payload["raw_private_data_returned"] = False
+
+    _AMBIENT_PACKAGE_CACHE[key] = payload
+    _AMBIENT_PACKAGE_CACHE.move_to_end(key)
+    while len(_AMBIENT_PACKAGE_CACHE) > _AMBIENT_CACHE_MAXSIZE:
+        _AMBIENT_PACKAGE_CACHE.popitem(last=False)
+    return _AmbientOutcome(copy.deepcopy(payload), None, None)
+
+
+@app.post("/api/ambient/package")
+async def ambient_package(request: Request):
+    """Generate an Ambient-sendable performance page + drawing FROM A SUBMITTAL alone.
+
+    Multipart form ``submittal`` (required PDF, dropped like Direct Coil) + optional
+    ``ez_drawing`` (an EZ Coil selection drawing to use in place of the generated one).
+    Returns a per-coil transcribed performance page (every value review-required), a
+    Coil-Utilities acceptance band, and the per-coil drawing (Track B generated, or the
+    supplied EZ drawing, or a loud omitted_reason). Review aid only (``export_allowed:
+    False``); nothing is calculated, selected, or exported."""
+    if not _ambient_enabled():
+        raise HTTPException(status_code=503, detail="Ambient disabled (COILFORGE_AMBIENT=0).")
+    form = await request.form()
+    submittal_file = form.get("submittal")
+    if submittal_file is None:
+        raise HTTPException(
+            status_code=400, detail="multipart form must include a 'submittal' PDF file."
+        )
+    ez_file = form.get("ez_drawing")
+    submittal_bytes = (
+        await submittal_file.read() if hasattr(submittal_file, "read") else bytes(submittal_file)
+    )
+    ez_bytes = b""
+    if ez_file is not None:
+        ez_bytes = await ez_file.read() if hasattr(ez_file, "read") else bytes(ez_file)
+    outcome = await _run_or_reuse_ambient_package(
+        submittal_bytes, ez_bytes,
+        filename=getattr(submittal_file, "filename", None),
+        cover_page_hint=_cover_page_hint_from_request(request),
+    )
+    if outcome.payload is None:
+        raise HTTPException(status_code=outcome.http_status or 400, detail=outcome.reason)
+    return jsonable_encoder(outcome.payload)
+
+
+@app.post("/api/ambient/excel")
+async def ambient_excel(request: Request):
+    """Fill the Ambient comparison workbook (C=ours from submittal, D=Ambient) -> Downloads.
+
+    Multipart form ``baseline`` (submittal PDF) + ``ambient`` (Ambient PDF). Fills a COPY of
+    the master template in Downloads (one sheet per coil, DX/HGRH); the source template and
+    the OneDrive project file are NEVER touched. Review aid only (``export_allowed: False``);
+    absent values are left blank (never guessed), template formula cells are preserved."""
+    if not _ambient_enabled():
+        raise HTTPException(status_code=503, detail="Ambient disabled (COILFORGE_AMBIENT=0).")
+    form = await request.form()
+    baseline_file = form.get("baseline")
+    ambient_file = form.get("ambient")
+    if baseline_file is None or ambient_file is None:
+        raise HTTPException(
+            status_code=400, detail="multipart form must include 'baseline' and 'ambient' PDF files."
+        )
+    baseline_bytes = await baseline_file.read() if hasattr(baseline_file, "read") else bytes(baseline_file)
+    ambient_bytes = await ambient_file.read() if hasattr(ambient_file, "read") else bytes(ambient_file)
+    if not baseline_bytes or not ambient_bytes:
+        raise HTTPException(status_code=400, detail="both 'baseline' and 'ambient' PDFs are required.")
+
+    try:
+        baseline = _baseline_candidates(
+            baseline_bytes, source_id="AMBIENT-XLSX-BASE-001",
+            filename=getattr(baseline_file, "filename", None),
+            cover_page_hint=_cover_page_hint_from_request(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Baseline PDF: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Baseline workflow failed: {exc}")
+    try:
+        intake = parse_ambient_pdf(
+            ambient_bytes, source_id="AMBIENT-XLSX-INTAKE-001",
+            source_filename=getattr(ambient_file, "filename", None),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Ambient PDF parse failed: {exc}")
+
+    try:
+        fill = build_ambient_excel_fill(baseline, list(intake.coils))
+    except Exception as exc:  # noqa: BLE001 — never-raise route contract (JSON 500, not bare text)
+        raise HTTPException(status_code=500, detail=f"Excel fill mapping failed: {exc}")
+    try:
+        result = write_ambient_excel(fill)
+    except RuntimeError as exc:  # Excel COM / pywin32 unavailable
+        raise HTTPException(status_code=501, detail=str(exc))
+    except ValueError as exc:  # no coil sheets (e.g. only water coils)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Excel write failed: {exc}")
+    result["raw_private_data_returned"] = False
+    result["ambient_warnings"] = list(intake.warnings)
+    return jsonable_encoder(result)
 
 
 async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict):

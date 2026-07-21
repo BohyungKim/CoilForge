@@ -1,6 +1,11 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-19 (**2단계 Case Retrieval Phase 2.0 구축·커밋·푸시(66087fd)**: Gower kNN 엔진 + corpus 게이지 + `/api/capture/similar` + CLI, gated n≥50 + **rule_id→3자뷰 배선**. 코퍼스 46/50·**교정 0**(실 submittal 12개 배치 분석=feature-only). ▶️ 지금 = 2단계 원장 채우기 — 실사용으로 **교정** 축적이 진짜 관건(개수보다 이게 핵심). 미결: TR-1/TR-2 John 브라우저 눈확인)
+> 마지막 갱신: 2026-07-21 (**Ambient 서플라이어 확장 2건 구축(미커밋, John eyeball 대기)**: (1) submittal
+> 하나로 **Ambient용 성능페이지+도면 패키지** 생성(전사 only·selection 엔진 무접촉)+다크 도면 흰종이/클릭확대,
+> (2) **비교 Excel write-back** — submittal→C열·Ambient PDF→D열 자동채움 후 Downloads 복사본(원본 무접촉).
+> plan-review 각 2R APPROVED · **1058 green** · invariant-guard BLOCKER 0 · 실 COM 스모크(headless EXCEL
+> 누수 발견→PID 센티넬 teardown 수정). ⚠️ 트리에 무관 미커밋 다수(CCSI/Case Retrieval 2.1/services) 공존—
+> 커밋은 hunk 격리 필요. 이전: **2단계 Case Retrieval Phase 2.0 구축·커밋·푸시(66087fd)**: Gower kNN 엔진 + corpus 게이지 + `/api/capture/similar` + CLI, gated n≥50 + **rule_id→3자뷰 배선**. 코퍼스 46/50·**교정 0**(실 submittal 12개 배치 분석=feature-only). ▶️ 지금 = 2단계 원장 채우기 — 실사용으로 **교정** 축적이 진짜 관건(개수보다 이게 핵심). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
@@ -112,6 +117,31 @@
   킬스위치·supplier 토글+green/red/grey 패널. `_match` keyword-only 확장(byte-safe). **독립 재검토 2라운드**
   (HIGH 2+MEDIUM 3+LOW 1 전건 반영) + **실 2975 데이터 브라우저 눈 확인**(FPI 10 vs 9 mismatch, Capacity/Volume
   Range in-band green). 963 green(+34). 계획서 `~/.claude/plans/ambient-cozy-barto.md`. 🆕 이번 세션
+
+- [x] **[별개 트랙] Ambient submittal→패키지 경로 + 도면 UX (2026-07-21, 미커밋)** — 기존 Ambient는 비교하려면
+  EZ Coil selection을 손으로 뽑아야 했음. 신규 optional 경로: **submittal만 드롭하면**(Direct Coil처럼) Ambient
+  페이지에서 **Ambient용 성능페이지+도면 패키지**가 나와 Ambient에 전달 → EZ Coil selection 불필요. 성능페이지=
+  submittal에 이미 추출된 값 **전사(transcription) only**(신규 계산·selection 엔진 무접촉=AGENTS.md 준수),
+  밴드는 `coil_utilities.ranges` 조회 재사용. 도면=EZ Coil 있으면 그대로, 없으면 Track B 생성물(per-coil
+  `pdf_coil_pages[i].workflow.template_drawing`에서, 게이트 withhold는 omitted_reason 표면화). 신규 `ambient/
+  package.py`(`build_ambient_package`, `_PERFORMANCE_FIELDS`를 `PDF_INTAKE_FIELD_RULES`에서 파생+식별/도면 필드
+  제외 allowlist) + `POST /api/ambient/package`(never-raise·멱등캐시) + Ambient 패널 **모드 토글**(Compare/Package,
+  package 모드는 상단 Direct Coil 인테이크 숨김) + `renderAmbientPackage`. **도면 UX**: 다크모드에서 안 보이던
+  도면을 흰 "종이"(`--drawing-paper`)+non-scaling-stroke로 legible + **클릭 확대 모달**. plan-review 2R APPROVED
+  (BLOCKER-1: `build_ambient_rfq`가 실은 키 불일치로 깨져 있어 재사용 금지→submittal 실키로 파생·이중 용량키;
+  MAJOR-1: 도면 소스 키 정정) + invariant-guard(WARN 1=circuits 무언 기본값→`circuits_assumed` 정직 플래그).
+  계획서 `~/.claude/plans/i-d-like-to-discuss-calm-wolf.md`. 🆕 이번 세션
+- [x] **[별개 트랙] Ambient 비교 Excel write-back (Phase 6, 2026-07-21, 미커밋)** — 로드맵 "John 제공 대기"였던
+  `XXXX - Coilmaster-Ambiant Dynamics Coil Comparison.xlsx` 템플릿 확보(코일당 시트 CDXC-1/RHHGRC-1 마스터,
+  B열 라벨·**C열=우리(submittal)·D열=Ambient**). submittal+Ambient PDF → 코일별 시트에 C/D 자동채움 → Downloads
+  복사본. **체크리스트 writer 미러**(격리 DispatchEx·템플릿 read-only+SaveCopyAs·**원본/OneDrive 무접촉**) +
+  C/D **이중 키 매핑**(C=`finned_height`, D=`finned_height_in`) + **셀단위 `HasFormula` 보호**(Coil Volume·HGRH
+  Super Heat D·Vapor Temp C 자동보존)+CalculateFull + 한쪽만/물코일=시트+warning(무발명). 신규 `ambient/
+  excel_map.py`(순수)+`ambient/excel_writer.py`(COM)+`POST /api/ambient/excel`+Compare 모드 버튼. **1058 green**
+  (신규 14). plan-review 2R APPROVED(MAJOR-1: 라벨 추측→openpyxl로 실템플릿 introspect→실채움 skipped 0으로 실증;
+  MAJOR-2: 한쪽만 있는 코일 합집합 처리). invariant-guard BLOCKER 0(WARN 수정). **실 COM 스모크가 headless EXCEL
+  좀비 누수(status_board_excel_lock) 발견→참조해제+gc+PID 센티넬 teardown(자기 인스턴스만)으로 확정 수정** —
+  체크리스트 writer보다 강한 정리. 계획서 `~/.claude/plans/ambient-excel-writeback.md`. 🆕 이번 세션
 
 - [x] **[3058 검토 트랙] Coil Checklist 공식 정렬 — DX/HGRH CD·S·SL (89727e8, 2026-07-16)** — David가 3058
   packet에서 CDXC-2 CD=7.5(→8이어야)+stale S1/S3/S5, RHHGRC-2 CD/S1/SL1 지적. 근본원인: CoilForge가

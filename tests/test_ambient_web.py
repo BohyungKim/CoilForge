@@ -18,17 +18,32 @@ from fastapi.testclient import TestClient
 
 import coilforge.web_app as web
 from coilforge.ambient.pdf_intake import AmbientIntakeResult, _parse_report_page
+from coilforge.submittal.candidate import load_submittal_candidate_fixture
 from tests.test_ambient_pdf_intake import _DX_TEXT
+
+_SUBMITTAL_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "examples"
+    / "sanitized"
+    / "submittal_candidate_dx_header1_default.json"
+)
 
 
 @pytest.fixture
 def client():
     web.clear_ambient_cache()
+    web.clear_ambient_package_cache()
     return TestClient(web.app)
 
 
 def _dx():
     return _parse_report_page(_DX_TEXT, page_number=1, source_id="B")
+
+
+def _submittal_candidate():
+    # A SUBMITTAL-parsed candidate (real keys: rows_deep / finned_height / total_capacity_mbh),
+    # never the Ambient `_parse_report_page` fixture — the package path transcribes THESE.
+    return load_submittal_candidate_fixture(_SUBMITTAL_FIXTURE)
 
 
 @pytest.fixture
@@ -90,3 +105,75 @@ def test_rfq_returns_targets(client, patched):
     assert data["export_allowed"] is False
     assert data["coils"][0]["tag"] == "CDXC-1"
     assert "targets" in data["coils"][0]
+
+
+# --- /api/ambient/package (submittal -> Ambient performance page + drawing) --------------
+
+def _patch_package(monkeypatch, drawings):
+    cand = _submittal_candidate()
+    tag = cand.tag.value
+    monkeypatch.setattr(
+        web,
+        "_baseline_workflow_and_candidates",
+        lambda *a, **k: ([cand], {tag: drawings}),
+    )
+    return tag
+
+
+def test_package_kill_switch_503(client, monkeypatch):
+    monkeypatch.setenv("COILFORGE_AMBIENT", "0")
+    r = client.post("/api/ambient/package", files={"submittal": ("s.pdf", b"x")})
+    assert r.status_code == 503
+
+
+def test_package_missing_submittal_is_400(client):
+    r = client.post("/api/ambient/package", files={"other": ("x.pdf", b"x")})
+    assert r.status_code == 400
+
+
+def test_package_happy_path_transcribes_with_track_b_drawing(client, monkeypatch):
+    _patch_package(monkeypatch, ("track_b_generated", "<svg>coil</svg>", None))
+    r = client.post("/api/ambient/package", files={"submittal": ("s.pdf", b"%PDF-1")})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["export_allowed"] is False
+    assert data["production_drawing_approval_claimed"] is False
+    assert data["raw_private_data_returned"] is False
+    coil = data["coils"][0]
+    assert coil["performance_lines"]  # transcription filled
+    assert coil["drawing"]["source"] == "track_b_generated"
+    assert coil["drawing"]["svg"] == "<svg>coil</svg>"
+
+
+def test_package_cache_reuse_is_identical(client, monkeypatch):
+    _patch_package(monkeypatch, ("track_b_generated", "<svg/>", None))
+    files = {"submittal": ("s.pdf", b"%PDF-1")}
+    a = client.post("/api/ambient/package", files=files).json()
+    b = client.post("/api/ambient/package", files=files).json()
+    assert a == b
+
+
+def test_package_garbage_pdf_never_500_crashes(client):
+    r = client.post("/api/ambient/package", files={"submittal": ("s.pdf", b"not a pdf")})
+    assert r.status_code in (400, 500)
+    assert "detail" in r.json()
+
+
+def test_package_gate_withheld_drawing_surfaces_reason(client, monkeypatch):
+    _patch_package(monkeypatch, (None, None, "no seeded reference for this hand/header"))
+    r = client.post("/api/ambient/package", files={"submittal": ("s.pdf", b"%PDF-1")})
+    assert r.status_code == 200
+    drawing = r.json()["coils"][0]["drawing"]
+    assert drawing["source"] is None
+    assert drawing["omitted_reason"] == "no seeded reference for this hand/header"
+
+
+def test_package_ez_drawing_supplied_marks_ez_coil(client, monkeypatch):
+    _patch_package(monkeypatch, ("track_b_generated", "<svg/>", None))
+    r = client.post(
+        "/api/ambient/package",
+        files={"submittal": ("s.pdf", b"%PDF-1"), "ez_drawing": ("ez.pdf", b"%PDF-EZ")},
+    )
+    assert r.status_code == 200
+    # single coil -> the supplied EZ drawing is honestly attributed to it
+    assert r.json()["coils"][0]["drawing"]["source"] == "ez_coil"

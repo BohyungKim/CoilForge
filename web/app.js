@@ -5,6 +5,9 @@ const state = {
   supplier: "direct_coil",
   ambientBaselineFile: null,
   ambientReturnFile: null,
+  ambientMode: "compare",
+  ambientSubmittalFile: null,
+  ambientEzFile: null,
   manualDrawingMode: false,
   compatibilityFilter: "all",
   pdfIntakeSummary: null,
@@ -4635,11 +4638,43 @@ function renderAmbientCoil(coil) {
   );
 }
 
+// Excel write-back (Compare mode): fill the comparison workbook's C (ours) + D (Ambient)
+// columns from the two loaded PDFs and export a filled copy to Downloads. Enabled only when
+// both PDFs are present. Review aid only; the template/OneDrive file is never touched.
+function updateAmbientExcelBtn() {
+  const btn = document.querySelector("#ambient-excel-fill");
+  if (btn) btn.disabled = !(state.ambientBaselineFile && state.ambientReturnFile);
+}
+
+async function fillAmbientExcel() {
+  const status = document.querySelector("#ambient-excel-status");
+  if (!state.ambientBaselineFile || !state.ambientReturnFile) return;
+  status.textContent = "Filling the comparison Excel…";
+  try {
+    const form = new FormData();
+    form.append("baseline", state.ambientBaselineFile);
+    form.append("ambient", state.ambientReturnFile);
+    const report = await requestJson("/api/ambient/excel", { method: "POST", body: form, headers: {} });
+    const sheets = (report.sheets || []).map((s) => s.tag).join(", ");
+    const skipped = (report.skipped_labels || []).length;
+    status.innerHTML =
+      `✓ Saved to Downloads: <strong>${escapeHtml(report.saved_path || "")}</strong>` +
+      ` · ${(report.sheets || []).length} sheet(s): ${escapeHtml(sheets)}` +
+      (skipped ? ` · ${skipped} label(s) unmatched` : "") +
+      ` · review aid, original template untouched`;
+  } catch (error) {
+    status.textContent = `Excel fill failed: ${error.message || error}`;
+  }
+}
+
+document.querySelector("#ambient-excel-fill")?.addEventListener("click", fillAmbientExcel);
+
 document.querySelector("#ambient-baseline-file")?.addEventListener("change", (event) => {
   const file = event.target.files?.[0] || null;
   state.ambientBaselineFile = file;
   const nameEl = document.querySelector("#ambient-baseline-name");
   if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  updateAmbientExcelBtn();
   runAmbientCompare();
 });
 
@@ -4648,7 +4683,173 @@ document.querySelector("#ambient-return-file")?.addEventListener("change", (even
   state.ambientReturnFile = file;
   const nameEl = document.querySelector("#ambient-return-name");
   if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  updateAmbientExcelBtn();
   runAmbientCompare();
+});
+
+// ---------------------------------------------------------------------------
+// Ambient mode toggle (within the Ambient panel): "compare" (two files, today's flow)
+// vs "package" (drop a submittal -> generate an Ambient performance page + drawing to
+// hand to Ambient). Persisted; the data-ambient-mode flag is stamped before first paint
+// (mirrors initSupplierSwitch) so the default compare flow never flashes/hides.
+// ---------------------------------------------------------------------------
+const AMBIENT_MODE_KEY = "coilforge.ambientMode";
+
+function applyAmbientMode(mode) {
+  state.ambientMode = mode === "package" ? "package" : "compare";
+  document.body.dataset.ambientMode = state.ambientMode;
+  document.querySelectorAll(".ambient-mode-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.ambientMode === state.ambientMode);
+  });
+}
+
+(function initAmbientMode() {
+  const stored = localStorage.getItem(AMBIENT_MODE_KEY);
+  applyAmbientMode(stored === "package" ? "package" : "compare");
+  document.querySelectorAll(".ambient-mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applyAmbientMode(btn.dataset.ambientMode);
+      localStorage.setItem(AMBIENT_MODE_KEY, state.ambientMode);
+    });
+  });
+})();
+
+// Submittal -> Ambient package. POSTs multipart 'submittal' (+ optional 'ez_drawing') to
+// /api/ambient/package (headers:{} so the browser sets the boundary). Review aid only.
+async function runAmbientPackage() {
+  const summary = document.querySelector("#ambient-package-summary");
+  const results = document.querySelector("#ambient-package-results");
+  if (!state.ambientSubmittalFile) return;
+  summary.textContent = "Building the Ambient package from the submittal…";
+  results.innerHTML = "";
+  try {
+    const form = new FormData();
+    form.append("submittal", state.ambientSubmittalFile);
+    if (state.ambientEzFile) form.append("ez_drawing", state.ambientEzFile);
+    const report = await requestJson("/api/ambient/package", {
+      method: "POST",
+      body: form,
+      headers: {},
+    });
+    renderAmbientPackage(report);
+  } catch (error) {
+    summary.textContent = `Ambient package failed: ${error.message || error}`;
+  }
+}
+
+function renderAmbientPackage(report) {
+  const summary = document.querySelector("#ambient-package-summary");
+  const results = document.querySelector("#ambient-package-results");
+  const coils = (report && report.coils) || [];
+  if (!coils.length) {
+    summary.textContent = "No coils found in the submittal.";
+    results.innerHTML = "";
+    return;
+  }
+  const warnings = report.warnings || [];
+  let head =
+    `${coils.length} coil(s) · performance page + drawing to hand to Ambient` +
+    ` · review aid, not exported`;
+  if (warnings.length) {
+    head += `<div class="ambient-warns">${warnings.map((w) => `⚠ ${escapeHtml(w)}`).join("<br>")}</div>`;
+  }
+  summary.innerHTML = head;
+  results.innerHTML =
+    `<p class="ambient-package-hand">Hand this to Ambient — every value is review-required; ` +
+    `nothing here is calculated, approved, or exported.</p>` +
+    coils.map(renderAmbientPackageCoil).join("");
+}
+
+function renderAmbientPackageCoil(coil) {
+  const fmt = (v) => (v === null || v === undefined ? "—" : v);
+  const lines = (coil.performance_lines || [])
+    .map(
+      (l) =>
+        `<tr><td>${escapeHtml(l.label)}</td>` +
+        `<td>${escapeHtml(String(fmt(l.value)))}</td>` +
+        `<td>${escapeHtml(String(l.unit || ""))}</td>` +
+        `<td>review</td></tr>`
+    )
+    .join("");
+  const band = coil.acceptance_band
+    ? `<p class="ambient-band">Acceptance band · ${escapeHtml(coil.acceptance_band.ekexva_kit || "")} ` +
+      `(${escapeHtml(String(coil.acceptance_band.nominal_tons || ""))} tons) · capacity ` +
+      `${escapeHtml(String((coil.acceptance_band.capacity_band_mbh || []).join(" – ")))} MBH` +
+      (coil.acceptance_band.circuits_assumed ? ` · ⚠ circuits assumed = 1 (not stated)` : "") +
+      `</p>`
+    : "";
+  const missing = (coil.missing_fields || []).length
+    ? `<p class="ambient-missing">Missing (not guessed): ${escapeHtml(coil.missing_fields.join(", "))}</p>`
+    : "";
+  const drawing = coil.drawing || {};
+  let drawingHtml;
+  if (drawing.svg) {
+    const tag = drawing.source === "ez_coil" ? "EZ Coil drawing" : "CoilForge drawing";
+    drawingHtml =
+      `<div class="ambient-drawing-preview" role="button" tabindex="0" ` +
+      `aria-label="${escapeHtml(tag)} — click to enlarge">${drawing.svg}</div>` +
+      `<p class="ambient-drawing-hint">🔍 Click the drawing to enlarge</p>`;
+  } else if (drawing.source === "ez_coil") {
+    drawingHtml = `<p class="ambient-drawing-omitted">EZ Coil drawing supplied — attached separately.</p>`;
+  } else {
+    drawingHtml = `<p class="ambient-drawing-omitted">Drawing omitted: ${escapeHtml(drawing.omitted_reason || "not generated")}</p>`;
+  }
+  return (
+    `<div class="ccsi-audit-coil ambient-coil"><h4>${escapeHtml(coil.tag || "Coil")} ` +
+    `<span class="subtle-label">${escapeHtml(coil.category || "")}</span></h4>` +
+    band +
+    `<table class="ccsi-audit-table ambient-table"><thead><tr>` +
+    `<th>Field</th><th>Value</th><th>Unit</th><th></th>` +
+    `</tr></thead><tbody>${lines}</tbody></table>` +
+    missing +
+    drawingHtml +
+    `</div>`
+  );
+}
+
+document.querySelector("#ambient-submittal-file")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0] || null;
+  state.ambientSubmittalFile = file;
+  const nameEl = document.querySelector("#ambient-submittal-name");
+  if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  runAmbientPackage();
+});
+
+document.querySelector("#ambient-ez-file")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0] || null;
+  state.ambientEzFile = file;
+  const nameEl = document.querySelector("#ambient-ez-name");
+  if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  if (state.ambientSubmittalFile) runAmbientPackage();
+});
+
+// Click-to-enlarge for the package drawings: clone the clicked SVG into a full-screen
+// overlay (white paper, up to 92vw); click anywhere or press Esc to close. The overlay is
+// created lazily and reused. Delegated so it works for every re-rendered coil card.
+function openAmbientDrawingModal(svgEl) {
+  let modal = document.querySelector("#ambient-drawing-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "ambient-drawing-modal";
+    modal.className = "ambient-drawing-modal";
+    modal.innerHTML = `<div class="ambient-drawing-modal-inner"></div>`;
+    modal.addEventListener("click", () => modal.classList.remove("open"));
+    document.body.appendChild(modal);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") modal.classList.remove("open");
+    });
+  }
+  const inner = modal.querySelector(".ambient-drawing-modal-inner");
+  inner.innerHTML = "";
+  inner.appendChild(svgEl.cloneNode(true));
+  modal.classList.add("open");
+}
+
+document.querySelector("#ambient-package-results")?.addEventListener("click", (event) => {
+  const preview = event.target.closest(".ambient-drawing-preview");
+  if (!preview) return;
+  const svg = preview.querySelector("svg");
+  if (svg) openAmbientDrawingModal(svg);
 });
 
 // Bootstrap: always seed state.ui with the demo first (workflowToUiState spreads

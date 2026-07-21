@@ -347,14 +347,18 @@
             <h3>Ambient Dynamics &mdash; Quote Comparison &mdash; Review Aid Only</h3>
             <span class="subtle-label">Quick-ship supplier</span>
           </div>
-          <p class="review-warning">
+          <div class="ambient-mode-switch" role="group" aria-label="Ambient mode">
+            <button type="button" class="ambient-mode-btn active" data-ambient-mode="compare">Compare two files</button>
+            <button type="button" class="ambient-mode-btn" data-ambient-mode="package">Generate package from submittal</button>
+          </div>
+          <p class="review-warning ambient-compare-only">
             Quick-ship path. Drop the <strong>baseline submittal PDF</strong> and Ambient's returned
             <strong>Performance PDF</strong>. CoilForge parses both, compares each coil's construction
             and performance, and checks Ambient's capacity / coil-volume against the Coil Utilities
             acceptance band (EKEXVA kit &rarr; tonnage). Green (match) / red (differ) / grey (cannot
             evaluate). Review aid; nothing is exported.
           </p>
-          <div class="ambient-drops">
+          <div class="ambient-drops ambient-compare-only">
             <label id="ambient-baseline-drop" class="pdf-drop-zone" for="ambient-baseline-file">
               <input id="ambient-baseline-file" type="file" accept="application/pdf,.pdf" />
               <span class="pdf-drop-title">1 &middot; Baseline submittal PDF</span>
@@ -368,10 +372,40 @@
               <span class="pdf-browse-action">Browse PDF</span>
             </label>
           </div>
-          <div class="quote-package">
+          <div class="quote-package ambient-compare-only">
             <span id="ambient-summary" class="quote-package-summary"></span>
           </div>
-          <div id="ambient-results" class="ambient-results"></div>
+          <div class="ambient-excel-action ambient-compare-only">
+            <button id="ambient-excel-fill" type="button" disabled>Fill comparison Excel (C = ours, D = Ambient) &rarr; Downloads</button>
+            <span id="ambient-excel-status" class="ambient-note"></span>
+          </div>
+          <div id="ambient-results" class="ambient-results ambient-compare-only"></div>
+
+          <p id="ambient-package-warning" class="review-warning ambient-package-only">
+            Drop a <strong>submittal PDF</strong> — CoilForge builds the Ambient-version
+            <strong>performance page</strong> (transcribed from the submittal) plus a
+            <strong>drawing</strong> to hand to Ambient. No EZ Coil selection needed. Optionally
+            attach an EZ Coil drawing to use in place of the generated one. Review aid; every value
+            is review-required; nothing is exported.
+          </p>
+          <div class="ambient-drops ambient-package-drops ambient-package-only">
+            <label id="ambient-submittal-drop" class="pdf-drop-zone" for="ambient-submittal-file">
+              <input id="ambient-submittal-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">1 &middot; Submittal PDF (required)</span>
+              <span id="ambient-submittal-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+            <label id="ambient-ez-drop" class="pdf-drop-zone" for="ambient-ez-file">
+              <input id="ambient-ez-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">2 &middot; EZ Coil drawing (optional)</span>
+              <span id="ambient-ez-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+          </div>
+          <div class="quote-package ambient-package-summary ambient-package-only">
+            <span id="ambient-package-summary" class="quote-package-summary"></span>
+          </div>
+          <div id="ambient-package-results" class="ambient-results ambient-package-only"></div>
         </section>
 
         <section id="compatibility-section" class="inspector-card compatibility-card" data-view="compatibility">
