@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      2.0.0
-// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. Review aid only — you confirm every value; blocked/read-only fields are skipped; nothing auto-applies.
+// @version      2.1.0
+// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
 // @match        http://localhost:8011/*
 // @match        http://127.0.0.1:8011/*
 // @match        https://coil.ccsi.ie/*
@@ -132,6 +132,9 @@
       export_allowed: false,
       form: map.form || "CCSI Online Direct Coil — DX",
       field_map_version: map.version || "unknown",
+      // HGBP rides along so the CCSI side can set Apply Venting/Draining Constraints. On this
+      // DOM-scraped bridge path CoilForge stamps it onto #drawing-parameters at render time.
+      hot_gas_bypass: document.querySelector("#drawing-parameters")?.dataset.specialFeature === "HGBP",
       fields,
     };
   }
@@ -252,6 +255,7 @@
 
     const fillAll = btn("Fill all reviewed", () => {
       payload.fields.forEach((f) => { if (isFillable(f)) fillOne(f); });
+      applyFormLevelToggles(payload);
       summarize(payload);
     });
     fillAll.disabled = true;
@@ -271,7 +275,7 @@
       mid.append(chip(field, resolved));
       const action = el("div", {});
       if (isFillable(field)) {
-        const b = btn("Fill", () => { fillOne(field); summarize(payload); });
+        const b = btn("Fill", () => { fillOne(field); applyFormLevelToggles(payload); summarize(payload); });
         b.disabled = !resolved || resolved.readOnly;
         action.append(b);
       }
@@ -340,9 +344,41 @@
     const target = resolve(field.selectors);
     if (!target) return;
     if (target.readOnly) { markRow(field, "readonly"); return; }
+    // CCSI gates each editable dimension behind a per-field "enable" checkmark
+    // (id = <inputId>_isActive) that must be ON for the form to accept the value —
+    // otherwise the engineer has to tick every one by hand. Enable it BEFORE writing
+    // the value (in case the handler resets the field), then fill + read-back verify.
+    enableFieldForUpdate(target);
     setNativeValue(target, field.value);
     ["input", "change", "blur"].forEach((type) => target.dispatchEvent(new Event(type, { bubbles: true })));
     markRow(field, verify(target, field) ? "ok" : "mismatch");
+  }
+
+  // Turn on the field's own CCSI "<id>_isActive" enable checkbox. Its enable logic is an
+  // inline onclick (onClickDimisActive('<id>')), so a bare .checked=true would NOT run it —
+  // dispatch a real .click(), and only when it is currently off so an already-enabled field
+  // is never toggled back off. Fields with no such checkbox (BF/HD/TF/SL/ZD/HD2..) are always
+  // editable, and the read-only trio (RF/HF/CH) never reaches here (fillOne returns first),
+  // so their checkmarks correctly stay OFF.
+  function enableFieldForUpdate(target) {
+    const active = target.id ? document.getElementById(`${target.id}_isActive`) : null;
+    if (active && !active.disabled && !active.checked) {
+      active.click();
+    }
+  }
+
+  // Form-level toggle applied once per fill run: "Apply Venting and Draining I/O
+  // Constraints" (#ApplyVDConstraints) must be ON only for a hot-gas-bypass coil and OFF
+  // for every other one. It is a plain checkbox (no CCSI handler), so a direct set + change
+  // is enough; idempotent and null-guarded (absent on the localhost self-test mirror).
+  function applyFormLevelToggles(payload) {
+    const vd = document.getElementById("ApplyVDConstraints");
+    if (!vd) return;
+    const want = payload.hot_gas_bypass === true;
+    if (vd.checked !== want) {
+      vd.checked = want;
+      vd.dispatchEvent(new Event("change", { bubbles: true }));
+    }
   }
 
   function setNativeValue(target, value) {

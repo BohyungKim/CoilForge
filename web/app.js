@@ -1704,6 +1704,10 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
     export_allowed: false,
     form: fieldMap.form || "CCSI Online Direct Coil — DX",
     field_map_version: fieldMap.version || "unknown",
+    // Carried so the CCSI filler can set Apply Venting/Draining I/O Constraints ON for a
+    // hot-gas-bypass coil only (OFF for every other). Same special_feature that drives
+    // template selection — reused so the flag and the chosen drawing agree.
+    hot_gas_bypass: uiState.template_drawing?.extracted?.special_feature === "HGBP",
     fields,
   };
 }
@@ -2813,6 +2817,10 @@ function manualOverrideBanner(templateDrawing) {
 
 function renderDrawingParameters(uiState) {
   const parameters = uiState.drawing_parameters?.parameters || {};
+  // Stamp the coil's special feature onto the container so the CCSI userscript's
+  // DOM-scraped "Send to CCSI" path can read HGBP (the clipboard path reads state directly).
+  elements.drawingParameters.dataset.specialFeature =
+    uiState.template_drawing?.extracted?.special_feature || "";
   const casing = DRAWING_PARAM_COLUMNS[0];
   const header1 = DRAWING_PARAM_COLUMNS[1];
   // Mirror the CCSI Direct Coil form: a casing column, then one column per header

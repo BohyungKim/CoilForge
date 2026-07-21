@@ -98,9 +98,20 @@ Each `selectors` list tries the real CCSI id first, then falls back to CoilForge
 own mirror (`[data-ccsi-key='<KEY>']`) — so the **same map** works both on the live
 CCSI form and the same-origin self-test.
 
-**4 fields are CCSI-computed / `readOnly`** (CD, RF, HF, CH). The userscript detects
-`readOnly` and **skips** them (CCSI derives them itself), so only the 9 editable
-fields are ever written.
+**3 fields are CCSI-computed / `readOnly`** (RF, HF, CH). The userscript detects
+`readOnly` and **skips** them (CCSI derives them itself), so their per-field enable
+checkmarks correctly stay OFF. CD was reconfirmed editable (2026-07-21) and is now
+filled. (The map's `ccsi_readonly` flag is documentary only — the skip is driven by the
+live DOM `readOnly` attribute, not the flag.)
+
+**Per-field enable checkmark (auto, 2026-07-21).** On the real CCSI form each editable
+dimension `#<id>` has a sibling checkbox `#<id>_isActive` that must be ON for the form to
+accept an edit. The filler flips it ON automatically (via a real `.click()`, since the
+enable is an inline `onClickDimisActive('<id>')` handler) right before writing the value —
+so you no longer tick each one by hand. Fields with no such checkbox (BF/HD/TF/SL/ZD/…)
+are always editable. The form-level **Apply Venting and Draining I/O Constraints**
+(`#ApplyVDConstraints`) is set ON only for a hot-gas-bypass coil (payload `hot_gas_bypass`)
+and OFF for all others. Saving to CCSI is still a manual John-only step.
 
 To re-capture after a CCSI redesign: open the live form, and for each key collect the
 on-screen label + an **ordered** selector list (`#id` → `[name=…]` →
