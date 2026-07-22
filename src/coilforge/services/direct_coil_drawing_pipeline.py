@@ -140,31 +140,6 @@ def build_header_request(
     )
 
 
-def header_request_from_ez_geometry(
-    geometry: dict[str, Any],
-    *,
-    product_type: str,
-    unit_size: str,
-    coil_type: str = "DX",
-) -> HeaderPrepopulateRequest:
-    """Build a request from an EZ Coil 'Geometry' object (rich schema)."""
-
-    def num(key: str) -> float | None:
-        value = geometry.get(key)
-        return None if value in (None, -1, -1.0) else float(value)
-
-    return build_header_request(
-        coil_type=coil_type,
-        product_type=product_type,
-        unit_size=unit_size,
-        rows=int(geometry["Nrows"]) if geometry.get("Nrows", -1) not in (None, -1) else None,
-        feeds=int(geometry["Nfeeds"]) if geometry.get("Nfeeds", -1) not in (None, -1) else None,
-        circuits=int(geometry["NumCircuits"]) if geometry.get("NumCircuits") else None,
-        suction_conn_size=num("ReturnConnectionsSize"),
-        handing="LH" if geometry.get("CoilHand") == 1 else "RH",
-    )
-
-
 # --------------------------------------------------------------------------- #
 # Step 3 — engine output -> template slots
 # --------------------------------------------------------------------------- #

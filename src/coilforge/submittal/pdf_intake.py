@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import io
 import base64
+import hashlib
 import os
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -820,7 +822,58 @@ def _clean_project_context_value(value: str | None) -> str | None:
     return cleaned[:120] or None
 
 
+# --- P0-A: memoize the two identity-free heavy sub-operations ----------------
+# analyze and the checklist auto-fill push the SAME pdf_bytes through intake twice
+# (different source_id -> _WORKFLOW_CACHE miss), re-paying the dominant cost: the
+# pdfplumber page extraction and the per-page gpt-4o OCR. Both are PURE functions of
+# the bytes (and page/model), so we memoize them HERE -- below candidate assembly.
+# Control flow is untouched: project-context, cover detection and per-source_id
+# stamping still run identically, so output stays byte-identical and source_filename
+# never enters a cache key. Caches are small, bounded LRUs (single-user local tool).
+_INTAKE_CACHE_MAXSIZE = 16
+_PAGES_CACHE: "OrderedDict[str, tuple[list[_TextPage], str]]" = OrderedDict()
+_OCR_PAGE_CACHE: "OrderedDict[tuple[str, int, str], _OcrPageResult]" = OrderedDict()
+
+
+def _pdf_bytes_sha1(pdf_bytes: bytes) -> str:
+    return hashlib.sha1(pdf_bytes).hexdigest()
+
+
+def _bound_intake_cache(cache: "OrderedDict[Any, Any]") -> None:
+    while len(cache) > _INTAKE_CACHE_MAXSIZE:
+        cache.popitem(last=False)
+
+
+def clear_pdf_intake_caches() -> None:
+    """Drop the page-extraction and per-page OCR memo caches (test hygiene / manual
+    invalidation). The intake control flow is unchanged by these caches."""
+    _PAGES_CACHE.clear()
+    _OCR_PAGE_CACHE.clear()
+
+
 def extract_text_pages_from_pdf_bytes(pdf_bytes: bytes) -> tuple[list[_TextPage], str]:
+    """Extract per-page text (pdfplumber, PyPDF2 fallback), memoized on the PDF bytes.
+
+    ``_TextPage`` is frozen, so a cache hit returns a FRESH list wrapping the shared
+    immutable pages -- a caller that rebuilds its page list never mutates the cached one.
+    Only successful extraction is cached (the uncached impl raises on total failure).
+    """
+    key = _pdf_bytes_sha1(pdf_bytes)
+    cached = _PAGES_CACHE.get(key)
+    if cached is not None:
+        _PAGES_CACHE.move_to_end(key)
+        pages, engine = cached
+        return list(pages), engine
+    pages, engine = _extract_text_pages_from_pdf_bytes_uncached(pdf_bytes)
+    _PAGES_CACHE[key] = (list(pages), engine)
+    _PAGES_CACHE.move_to_end(key)
+    _bound_intake_cache(_PAGES_CACHE)
+    return pages, engine
+
+
+def _extract_text_pages_from_pdf_bytes_uncached(
+    pdf_bytes: bytes,
+) -> tuple[list[_TextPage], str]:
     try:
         import pdfplumber  # type: ignore
 
@@ -901,6 +954,30 @@ def _classify_openai_ocr_error(exc: Exception) -> tuple[str, str]:
 
 
 def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrPageResult:
+    """gpt-4o page OCR, memoized on (bytes, page, model).
+
+    Only a SUCCESSFUL result (non-empty text) is cached -- a transient failure (rate
+    limit, network, missing key, empty render) has empty text and is NOT cached, so a
+    later re-analyze can still recover the page. ``_OcrPageResult`` is frozen, so the
+    cached instance is safe to hand back directly.
+    """
+    model = os.environ.get("COILFORGE_OCR_MODEL", "gpt-4o")
+    key = (_pdf_bytes_sha1(pdf_bytes), page_number, model)
+    cached = _OCR_PAGE_CACHE.get(key)
+    if cached is not None:
+        _OCR_PAGE_CACHE.move_to_end(key)
+        return cached
+    result = _extract_page_text_with_llm_ocr_uncached(pdf_bytes, page_number)
+    if result.text:  # cache only the expensive success path
+        _OCR_PAGE_CACHE[key] = result
+        _OCR_PAGE_CACHE.move_to_end(key)
+        _bound_intake_cache(_OCR_PAGE_CACHE)
+    return result
+
+
+def _extract_page_text_with_llm_ocr_uncached(
+    pdf_bytes: bytes, page_number: int
+) -> _OcrPageResult:
     _load_dotenv_if_available()
     model = os.environ.get("COILFORGE_OCR_MODEL", "gpt-4o")
     api_key = os.environ.get("OPENAI_API_KEY", "")

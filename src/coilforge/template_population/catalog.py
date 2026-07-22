@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Literal
 
 
@@ -198,6 +199,10 @@ class TemplateSelectionResult:
     entry: DrawingTemplateEntry | None = None
 
 
+# P2-A: the 33-entry catalog is a static asset independent of coil inputs, yet it was
+# rebuilt 2-4x per coil (select_drawing_template + every populate_template_slots).
+# Cache it once per process; every caller iterates the immutable `.entries` tuple.
+@lru_cache(maxsize=1)
 def load_drawing_template_catalog() -> DrawingTemplateCatalog:
     entries = tuple(_build_catalog_entries())
     if len(entries) != TEMPLATE_BUCKET_COUNT:

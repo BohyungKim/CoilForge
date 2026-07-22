@@ -123,6 +123,10 @@ def _fill_sheet(ws, sheet: SheetFill) -> list[str]:
     return missing
 
 
+# Late-bound COM has no constants module; xlCalculationManual is -4135.
+_XL_CALCULATION_MANUAL = -4135
+
+
 def write_checklist(
     fill: ChecklistFill,
     *,
@@ -168,6 +172,15 @@ def write_checklist(
     removed: list[str] = []
     result_sheets: list[dict[str, str]] = []
     try:
+        # P1-C: during the many per-cell writes, suppress intermediate recalcs and
+        # screen/event churn. The single app.CalculateFull() below still does a FULL
+        # formula recompute, so every computed dim read back is byte-identical to before
+        # — this only removes redundant recalcs, not the accuracy-critical final one.
+        # The isolated instance is Quit in the finally, so no restore is required.
+        app.Calculation = _XL_CALCULATION_MANUAL
+        app.ScreenUpdating = False
+        app.EnableEvents = False
+
         taken = {ws.Name for ws in wb.Worksheets}
 
         # Group coils by source sheet so multiple same-category coils each get a

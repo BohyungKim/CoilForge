@@ -11,7 +11,9 @@ Operates on extracted PDF *text* (CI-safe; no PDF binary needed here).
 
 from __future__ import annotations
 
+import copy
 import re
+from functools import lru_cache
 from typing import Any
 
 from coilforge.services.header_prepopulate_engine import load_rule_table
@@ -100,8 +102,26 @@ def extract_feeds_circuits(text: str, rb: float | None = None) -> dict[str, Any]
     return out
 
 
+# P1-A: a multi-coil submittal re-scans the SAME whole-document text once per coil
+# (extract_coilmaster_drawing + detect_product_and_size are called per candidate on
+# identical text -- pdf_to_template_drawing.py:366/386). Both are pure functions of the
+# text, so we memoize them here. detect_product_and_size returns an immutable tuple and
+# is cached directly; extract_coilmaster_drawing returns a fresh MUTABLE nested dict, so
+# the public function deep-copies the cached value -- no caller can ever poison the cache.
 def extract_coilmaster_drawing(text: str) -> dict[str, Any]:
-    """Full mechanical extraction from a CoilMaster drawing PDF's text."""
+    """Full mechanical extraction from a CoilMaster drawing PDF's text (memoized).
+
+    Returns a fresh deep copy each call so callers may mutate their result freely.
+    """
+    return copy.deepcopy(_extract_coilmaster_drawing_cached(text))
+
+
+@lru_cache(maxsize=16)
+def _extract_coilmaster_drawing_cached(text: str) -> dict[str, Any]:
+    return _extract_coilmaster_drawing_uncached(text)
+
+
+def _extract_coilmaster_drawing_uncached(text: str) -> dict[str, Any]:
     out: dict[str, Any] = {"dimensions": extract_drawing_dimensions(text)}
     out.update(parse_model_number(text))
     if (m := _MODEL_RE.search(text)):
@@ -214,6 +234,7 @@ def _non_terra_size_tokens() -> list[str]:
     return sorted(set(tokens), key=len, reverse=True)
 
 
+@lru_cache(maxsize=32)
 def detect_product_and_size(text: str | None) -> tuple[str | None, str | None]:
     """Deterministically detect (picker product-line label, R-076 unit size) from a
     submittal's model code — without needing the brand word.

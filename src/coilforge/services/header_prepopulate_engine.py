@@ -87,6 +87,10 @@ def load_rule_table() -> list[dict[str, Any]]:
     return list(doc["rules"])
 
 
+# P2-A: rebuilt 4-6x per prepopulate() from the already-cached rule table. The rule
+# table is process-cached and every caller only reads index[...], so cache the derived
+# index once too.
+@lru_cache(maxsize=1)
 def _rule_index() -> dict[str, dict[str, Any]]:
     return {rule["rule_id"]: rule for rule in load_rule_table()}
 

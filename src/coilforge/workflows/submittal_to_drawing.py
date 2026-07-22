@@ -1401,11 +1401,32 @@ def _candidate_attr_value(candidate, attr: str) -> Any:
     return None if field is None else field.value
 
 
+# P1-B (safe subset): the workflow run and the checklist fill each decode the SAME bytes
+# with PyPDF2 via _safe_pdf_text (submittal_to_drawing.py + web_app.py). Memoize on the
+# bytes so that PyPDF2 decode happens once. NOTE: we deliberately do NOT merge this with
+# intake's pdfplumber text -- the drawing extraction (extract_coilmaster_drawing) is tuned
+# to PyPDF2's text, so sharing across extractors could change a parsed value. str is
+# immutable, so the cached value is returned directly.
+_SAFE_PDF_TEXT_CACHE_MAXSIZE = 16
+_SAFE_PDF_TEXT_CACHE: "OrderedDict[str, str]" = OrderedDict()
+
+
 def _safe_pdf_text(pdf_bytes: bytes) -> str:
+    key = hashlib.sha1(pdf_bytes).hexdigest()
+    cached = _SAFE_PDF_TEXT_CACHE.get(key)
+    if cached is not None:
+        _SAFE_PDF_TEXT_CACHE.move_to_end(key)
+        return cached
+
     from PyPDF2 import PdfReader
 
     reader = PdfReader(io.BytesIO(pdf_bytes))
-    return "".join((page.extract_text() or "") for page in reader.pages)
+    text = "".join((page.extract_text() or "") for page in reader.pages)
+    _SAFE_PDF_TEXT_CACHE[key] = text
+    _SAFE_PDF_TEXT_CACHE.move_to_end(key)
+    while len(_SAFE_PDF_TEXT_CACHE) > _SAFE_PDF_TEXT_CACHE_MAXSIZE:
+        _SAFE_PDF_TEXT_CACHE.popitem(last=False)
+    return text
 
 
 # Logical drawing-dimension keys with a paste-ready "DRAWING / DIMENSION" review

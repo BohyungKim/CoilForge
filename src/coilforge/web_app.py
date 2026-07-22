@@ -494,7 +494,12 @@ async def workflow_pdf_to_direct_draft(request: Request):
 async def workflow_pdf_to_drawing(request: Request):
     pdf_bytes = await request.body()
     try:
-        result = run_pdf_to_drawing_workflow(
+        # P0-B: the 30-60s intake/OCR/per-coil workflow is CPU-bound; run it off the
+        # event loop (like case_to_drawing) so it never blocks other requests. Single-
+        # user local tool, so the module-level workflow caches stay lock-free (worst
+        # case under concurrency is a duplicate recompute, never corruption).
+        result = await asyncio.to_thread(
+            run_pdf_to_drawing_workflow,
             pdf_bytes,
             source_id=request.headers.get("x-coilforge-source-id", "PDF-UPLOAD-INTAKE-001"),
             source_filename=request.headers.get("x-coilforge-filename"),
@@ -1438,7 +1443,10 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
     spec = request or {}
     clean, errors = _sanitize_derive_spec(spec)
     try:
-        result = derive_coil_template_drawing(clean)
+        # P0-B: a multi-coil re-analyze fires one /derive per coil concurrently from the
+        # browser; offloading this CPU-bound derive lets those actually run in parallel
+        # instead of serializing on the event loop.
+        result = await asyncio.to_thread(derive_coil_template_drawing, clean)
     except (UnknownCoilInputError, ValidationError) as exc:
         # Never 500 on a fill: return a minimal payload naming what to fix.
         return jsonable_encoder(
