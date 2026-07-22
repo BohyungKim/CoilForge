@@ -486,7 +486,40 @@ def _strip_intruding_chrome(svg: str) -> str:
     )
 
 
-def _clean_template_svg(svg: str, coil_category: str | None = None) -> str:
+def _coil_tag_for_drawing(drawing: dict[str, Any]) -> str | None:
+    """The coil tag to stamp on the review-aid drawing, from the already-gated slot
+    value (falling back to the as-built extract). Returns None when no real tag exists
+    so nothing is drawn (never a blank 'Tag:' or 'REVIEW REQUIRED')."""
+    slot_tag = (drawing.get("slot_values") or {}).get("slot.TAG")
+    if isinstance(slot_tag, str) and slot_tag.strip():
+        return slot_tag.strip()
+    extract_tag = (drawing.get("extracted") or {}).get("tag")
+    if isinstance(extract_tag, str) and extract_tag.strip():
+        return extract_tag.strip()
+    return None
+
+
+def _inject_coil_tag_label(svg: str, tag: str | None) -> str:
+    """Re-draw the coil tag INSIDE the cropped drawing region.
+
+    The template's own ``Tag: {{slot.TAG}}`` lives in the bottom title block, which the
+    viewBox crop above removes, so the tag would otherwise never render. We stamp it
+    top-left inside the retained crop as a top-level ``<text>`` (root user space, no
+    transform → absolute coords). Review-aid only; no geometry/frozen files touched."""
+    tag = (tag or "").strip()
+    if not tag or "</svg>" not in svg:
+        return svg
+    safe = tag.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    label = (
+        f'<text x="{_CROP_X + 6}" y="{_CROP_Y + 15}" font-family="Arial, sans-serif" '
+        f'font-size="12" font-weight="bold" fill="#222">Tag: {safe}</text>'
+    )
+    return svg.replace("</svg>", label + "</svg>", 1)
+
+
+def _clean_template_svg(
+    svg: str, coil_category: str | None = None, tag: str | None = None
+) -> str:
     """Clean a populated CoilMaster template SVG to the direct-coil ordering view John
     wants (image #7):
 
@@ -513,6 +546,7 @@ def _clean_template_svg(svg: str, coil_category: str | None = None) -> str:
     svg = _strip_intruding_chrome(svg)
     svg = _VIEWBOX_RE.sub(f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"', svg)
     svg = _SIZE_RE.sub(rf'\1width="{_CROP_W}" height="{_CROP_H}"', svg)
+    svg = _inject_coil_tag_label(svg, tag)
     return svg
 
 
@@ -1185,7 +1219,9 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
 
     if result.get("svg"):
         result["svg"] = _clean_template_svg(
-            result["svg"], (result.get("extracted") or {}).get("coil_category")
+            result["svg"],
+            (result.get("extracted") or {}).get("coil_category"),
+            _coil_tag_for_drawing(result),
         )
     _attach_parametric_schematic(result)
     return result
@@ -1611,6 +1647,7 @@ def _run_candidate_to_drawing_payload(
         template_drawing["svg"] = _clean_template_svg(
             template_drawing["svg"],
             (template_drawing.get("extracted") or {}).get("coil_category"),
+            _coil_tag_for_drawing(template_drawing),
         )
     if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):
         _attach_parametric_schematic(template_drawing)

@@ -9,7 +9,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from coilforge.workflows.submittal_to_drawing import _clean_template_svg
+from coilforge.workflows.submittal_to_drawing import (
+    _clean_template_svg,
+    _coil_tag_for_drawing,
+)
 
 
 _SVG = (
@@ -133,3 +136,32 @@ def test_clean_keeps_hgrh_supply_sl1_but_normalizes_cwc_sl1() -> None:
     # CWC keeps the residue->return normalization; default (no category) too.
     assert ">8.00 SL2</tspan>" in _clean_template_svg(_sl_svg("8.00 SL1"), "CWC")
     assert ">8.00 SL2</tspan>" in _clean_template_svg(_sl_svg("8.00 SL1"))
+
+
+def test_clean_stamps_coil_tag_inside_crop() -> None:
+    """The coil tag is cropped out of the bottom title block, so it is re-drawn top-left
+    INSIDE the retained viewBox (110 19 542 473)."""
+    out = _clean_template_svg(_SVG, tag="CDXC-1")
+    assert ">Tag: CDXC-1</text>" in out
+    # placed inside the crop's top-left corner
+    assert 'x="116" y="34"' in out
+
+
+def test_clean_no_tag_stamps_nothing() -> None:
+    # default (no tag) and explicit None/blank -> no injected label, existing output intact.
+    assert "Tag:" not in _clean_template_svg(_SVG)
+    assert "Tag:" not in _clean_template_svg(_SVG, tag=None)
+    assert "Tag:" not in _clean_template_svg(_SVG, tag="   ")
+
+
+def test_clean_escapes_tag() -> None:
+    out = _clean_template_svg(_SVG, tag="A&B<1")
+    assert "Tag: A&amp;B&lt;1" in out
+
+
+def test_coil_tag_for_drawing_prefers_slot_then_extract() -> None:
+    assert _coil_tag_for_drawing({"slot_values": {"slot.TAG": "CDXC-1"}}) == "CDXC-1"
+    # falls back to the as-built extract when the slot is absent
+    assert _coil_tag_for_drawing({"extracted": {"tag": "RHHGRH-2"}}) == "RHHGRH-2"
+    # nothing real -> None (so no blank 'Tag:' is drawn)
+    assert _coil_tag_for_drawing({"slot_values": {}, "extracted": {}}) is None
