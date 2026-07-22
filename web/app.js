@@ -1594,16 +1594,24 @@ function pasteReadyNotes(field) {
 
 async function copyText(value) {
   const text = value === null || value === undefined ? "" : String(value);
+  let ok = false;
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
+      ok = true;
     } else {
-      fallbackCopyText(text);
+      ok = fallbackCopyText(text);
     }
   } catch {
-    fallbackCopyText(text);
+    // writeText rejects when the tab lost focus / transient activation expired — fall
+    // back to execCommand, and REPORT failure honestly so a silently-empty clipboard is
+    // never mistaken for a successful copy (that is the "Could not parse JSON" on the CCSI side).
+    ok = fallbackCopyText(text);
   }
-  elements.savedStatus.textContent = "Copied review-aid field value";
+  elements.savedStatus.textContent = ok
+    ? "Copied review-aid field value"
+    : "Copy failed — clipboard blocked. Keep this tab focused and try again.";
+  return ok;
 }
 
 function fallbackCopyText(text) {
@@ -1614,8 +1622,14 @@ function fallbackCopyText(text) {
   textarea.style.left = "-9999px";
   document.body.append(textarea);
   textarea.select();
-  document.execCommand("copy");
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
   textarea.remove();
+  return ok;
 }
 
 // --- CCSI Online Direct Coil autofill -------------------------------------
@@ -3865,9 +3879,19 @@ elements.copyCcsiPayload?.addEventListener("click", async () => {
     return;
   }
   try {
-    const fieldMap = await loadCcsiFieldMap();
+    // Use the already-warmed map SYNCHRONOUSLY when present: a cold `await fetch` here would
+    // run between the click and the clipboard write, expiring the write's transient user
+    // activation so writeText silently rejects and leaves stale clipboard content (the
+    // intermittent "Could not parse JSON" on the CCSI side). Cold path only on the very
+    // first copy before the warm-up below resolves.
+    const fieldMap = state.ccsiFieldMap || (await loadCcsiFieldMap());
     const payload = buildCcsiAutofillPayload(state.ui, fieldMap);
-    await copyText(JSON.stringify(payload, null, 2));
+    const copied = await copyText(JSON.stringify(payload, null, 2));
+    if (!copied) {
+      elements.ccsiAutofillStatus.textContent =
+        "Copy to clipboard was blocked — keep this CoilForge tab focused and click again, or use ▶ Send to CCSI (no clipboard).";
+      return;
+    }
     const fillable = payload.fields.filter((field) => field.value !== null).length;
     elements.ccsiAutofillStatus.textContent =
       `Copied CCSI payload — ${fillable}/${payload.fields.length} fields have a value to review (map v${payload.field_map_version}). Switch to the CCSI form and run the userscript.`;
@@ -3877,6 +3901,9 @@ elements.copyCcsiPayload?.addEventListener("click", async () => {
 });
 
 setupCcsiBookmarklet();
+// Warm the CCSI field-map cache up front so "Copy CCSI autofill payload" can write the
+// clipboard synchronously inside the click gesture (see the handler above).
+loadCcsiFieldMap().catch(() => {});
 
 document.querySelector("#analyze")?.addEventListener("click", () => {
   runWorkflowFromCurrentState().catch((error) => {
