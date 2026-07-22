@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from coilforge.workflows.submittal_to_drawing import (
     _clean_template_svg,
     _coil_tag_for_drawing,
+    _stamp_missing_drawing_tag,
 )
 
 
@@ -165,3 +166,38 @@ def test_coil_tag_for_drawing_prefers_slot_then_extract() -> None:
     assert _coil_tag_for_drawing({"extracted": {"tag": "RHHGRH-2"}}) == "RHHGRH-2"
     # nothing real -> None (so no blank 'Tag:' is drawn)
     assert _coil_tag_for_drawing({"slot_values": {}, "extracted": {}}) is None
+
+
+# A minimal cropped drawing (has </svg>; no coil tag of its own).
+_UNTAGGED_DRAWING_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="542" height="473" '
+    'viewBox="110 19 542 473"><text><tspan>5.5 CD</tspan></text></svg>'
+)
+
+
+def test_stamp_missing_drawing_tag_uses_page_tag_when_drawing_untagged() -> None:
+    # page.tag resolved from the cover row ("CDXC-2") while the candidate carried none, so the
+    # drawing has no tag -> stamp the page tag as a visible top-left label (John's blank-tag bug).
+    wf = {"template_drawing": {"svg": _UNTAGGED_DRAWING_SVG, "slot_values": {}, "extracted": {}}}
+    _stamp_missing_drawing_tag(wf, "CDXC-2")
+    assert ">Tag: CDXC-2</text>" in wf["template_drawing"]["svg"]
+
+
+def test_stamp_missing_drawing_tag_noop_when_already_tagged() -> None:
+    # the drawing already carries its tag (candidate/as-built) -> never double-stamp / override.
+    wf = {
+        "template_drawing": {
+            "svg": _UNTAGGED_DRAWING_SVG,
+            "slot_values": {"slot.TAG": "CDXC-1"},
+            "extracted": {},
+        }
+    }
+    _stamp_missing_drawing_tag(wf, "CDXC-2")
+    assert "CDXC-2" not in wf["template_drawing"]["svg"]
+
+
+def test_stamp_missing_drawing_tag_skips_positional_placeholder() -> None:
+    # "Coil N" is the positional placeholder when no real tag exists anywhere -> never stamp it.
+    wf = {"template_drawing": {"svg": _UNTAGGED_DRAWING_SVG, "slot_values": {}, "extracted": {}}}
+    _stamp_missing_drawing_tag(wf, "Coil 3")
+    assert "Tag:" not in wf["template_drawing"]["svg"]

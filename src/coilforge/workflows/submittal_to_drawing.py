@@ -1804,6 +1804,25 @@ def _pdf_summary_for_candidate(summary: dict[str, Any], candidate) -> dict[str, 
     }
 
 
+def _stamp_missing_drawing_tag(workflow: dict[str, Any], tag: str) -> None:
+    """Ensure this coil's review-aid drawing carries its tag.
+
+    ``page.tag`` resolves from the candidate OR the cover row, but the per-candidate
+    drawing is stamped only from the candidate — so a coil whose tag lives only on the
+    cover row leaves the drawing untagged (John then hand-writes it on the quote). Stamp
+    the resolved ``page.tag`` here. No-op when the drawing already shows a tag (so we never
+    double-stamp), when there is no drawing svg, or when ``tag`` is only the positional
+    ``Coil N`` placeholder (never stamp a fake tag)."""
+    template_drawing = workflow.get("template_drawing")
+    if not isinstance(template_drawing, dict) or not template_drawing.get("svg"):
+        return
+    if _coil_tag_for_drawing(template_drawing):
+        return
+    if not tag or re.fullmatch(r"Coil \d+", tag):
+        return
+    template_drawing["svg"] = _inject_coil_tag_label(template_drawing["svg"], tag)
+
+
 def _pdf_coil_pages(
     workflows: list[dict[str, Any]],
     cover_rows: list[Any],
@@ -1818,6 +1837,7 @@ def _pdf_coil_pages(
             else (cover_row or {})
         )
         tag = summary.get("tag") or cover_payload.get("tag") or f"Coil {index + 1}"
+        _stamp_missing_drawing_tag(workflow, tag)
         quantity = summary.get("quantity") or cover_payload.get("quantity")
         pages.append(
             {
