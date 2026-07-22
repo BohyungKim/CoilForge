@@ -400,6 +400,7 @@ _FIELD_PATTERNS: tuple[_FieldPattern, ...] = (
     _FieldPattern("ENTERING_WET_BULB_F", ("Entering Wet Bulb(°F)", "Entering Wet Bulb", "EWB"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
     _FieldPattern("ENTERING_RELATIVE_HUMIDITY", ("Entering Relative Humidity(%)", "Relative Humidity", "RH"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*%)?"),
     _FieldPattern("LEAVING_DRY_BULB_F", ("Leaving Dry Bulb(°F)", "Leaving Dry Bulb", "LDB"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
+    _FieldPattern("LEAVING_WET_BULB_F", ("Leaving Wet Bulb(°F)", "Leaving Wet Bulb", "LWB"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
     _FieldPattern("TOTAL_CAPACITY_MBH", ("Total Capacity(MBH)(Per Coil)", "Total Capacity", "Capacity"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*mbh)?"),
     _FieldPattern("REFRIGERANT", ("Refrigerant",), r"(?P<value>R[-\s]?\d+[A-Z]?|R\d+[A-Z]?|CO2|Ammonia)"),
     _FieldPattern("EVAPORATING_TEMPERATURE_F", ("Evaporating Temperature(°F)", "Evaporating Temperature", "SST"), r"(?P<value>-?\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
@@ -465,6 +466,7 @@ PDF_INTAKE_FIELD_RULES: dict[str, SubmittalFieldRule] = {
     "ENTERING_WET_BULB_F": SubmittalFieldRule("ENTERING_WET_BULB_F", "airside_conditions", "entering_wet_bulb_f", "degF"),
     "ENTERING_RELATIVE_HUMIDITY": SubmittalFieldRule("ENTERING_RELATIVE_HUMIDITY", "airside_conditions", "relative_humidity_pct", "pct"),
     "LEAVING_DRY_BULB_F": SubmittalFieldRule("LEAVING_DRY_BULB_F", "airside_conditions", "leaving_dry_bulb_f", "degF"),
+    "LEAVING_WET_BULB_F": SubmittalFieldRule("LEAVING_WET_BULB_F", "airside_conditions", "leaving_wet_bulb_f", "degF"),
     "FACE_VELOCITY_FPM": SubmittalFieldRule("FACE_VELOCITY_FPM", "airside_conditions", "face_velocity_fpm", "fpm"),
     "FLUID_TYPE": SubmittalFieldRule("FLUID_TYPE", "airside_conditions", "fluid_type"),
     "FLUID_PERCENT": SubmittalFieldRule("FLUID_PERCENT", "airside_conditions", "fluid_percent", "pct"),
@@ -2313,8 +2315,11 @@ _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
     "max_performance": (
         ("Capacity Sensible (MBH)", "SENSIBLE_CAPACITY_MBH"),
         ("Capacity (MBH)", "TOTAL_CAPACITY_MBH"),
-        ("DB (F)", "MAX_DRY_BULB_F"),
-        ("WB (F)", "MAX_WET_BULB_F"),
+        # "Max Coil Performance" DB/WB is the coil's LEAVING air (John 2026-07-22): the coil
+        # output at max load. Mapped to airside leaving_* so it surfaces as Leaving Dry/Wet
+        # Bulb, not the vestigial performance.max_*_bulb_f (which nothing consumed downstream).
+        ("DB (F)", "LEAVING_DRY_BULB_F"),
+        ("WB (F)", "LEAVING_WET_BULB_F"),
         ("Air Vel (FPM)", "FACE_VELOCITY_FPM"),
         ("Air PD (IWG)", "AIR_PRESSURE_DROP_IWG"),
         ("Air PD (inWG)", "AIR_PRESSURE_DROP_IWG"),

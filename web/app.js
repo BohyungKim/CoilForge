@@ -196,7 +196,7 @@ const DC_SECTIONS = {
     ["Entering Dry Bulb", "Entering Dry Bulb(°F)"],
     ["Entering Wet Bulb", "Entering Wet Bulb(°F)"],
     ["Leaving Dry Bulb", "Leaving Dry Bulb(°F)"],
-    ["Leaving Wet Bulb", null],
+    ["Leaving Wet Bulb", "Leaving Wet Bulb(°F)"],
     ["Air Pressure Drop", null],
     ["Total Capacity(All Coils)", "Total Capacity(MBH)(Per Coil)"],
     ["Sensible Capacity(All Coils)", null],
@@ -886,6 +886,17 @@ function addDxAirFallbackFields(fieldsByLabel, candidate) {
   const relativeHumidityField = directCoilRelativeHumidityField(candidate);
   if (relativeHumidityField) {
     setDcFieldAlias(fieldsByLabel, "Entering Relative Humidity(%)", relativeHumidityField);
+  }
+  // Leaving air = the coil's "Max Coil Performance" DB/WB (John 2026-07-22). Leaving Dry Bulb
+  // rides the paste surface already; the mirror's Leaving Wet Bulb has no paste field, so feed
+  // it straight from the extracted candidate value (avoids churning the curated paste form).
+  const leavingWetBulbField = candidate.airside_conditions?.leaving_wet_bulb_f;
+  if (leavingWetBulbField) {
+    setDcFieldAlias(
+      fieldsByLabel,
+      "Leaving Wet Bulb(°F)",
+      candidateFallbackField(leavingWetBulbField, "leaving_wet_bulb_f", "pdf_max_coil_performance_wb_to_leaving_wet_bulb"),
+    );
   }
   setDcFieldAlias(
     fieldsByLabel,

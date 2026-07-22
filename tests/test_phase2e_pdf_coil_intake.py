@@ -443,8 +443,11 @@ def test_combined_detail_header_extracts_entering_values_without_max_db_overwrit
     assert candidate["refrigerant_conditions"]["evaporating_temp_f"]["value"] == 43
     assert candidate["refrigerant_conditions"]["liquid_temp_f"]["value"] == 77
     assert candidate["refrigerant_conditions"]["superheat_f"]["value"] == 9
-    assert candidate["performance"]["max_dry_bulb_f"]["value"] == 49.73
-    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["performance"]["max_dry_bulb_f"]["value"]
+    # "Max Coil Performance" DB/WB is the coil's LEAVING air (John 2026-07-22): it maps to
+    # airside leaving_dry/wet_bulb_f, not the vestigial performance.max_*_bulb_f.
+    assert candidate["airside_conditions"]["leaving_dry_bulb_f"]["value"] == 49.73
+    assert candidate["airside_conditions"]["leaving_wet_bulb_f"]["value"] == 49.52
+    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["airside_conditions"]["leaving_dry_bulb_f"]["value"]
 
 
 def test_attached_oxygen8_pdf_text_spacing_extracts_entering_and_refrigerant_values() -> None:
@@ -457,8 +460,10 @@ def test_attached_oxygen8_pdf_text_spacing_extracts_entering_and_refrigerant_val
     assert candidate["refrigerant_conditions"]["evaporating_temp_f"]["value"] == 43
     assert candidate["refrigerant_conditions"]["liquid_temp_f"]["value"] == 77
     assert candidate["refrigerant_conditions"]["superheat_f"]["value"] == 9
-    assert candidate["performance"]["max_dry_bulb_f"]["value"] == 49.77
-    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["performance"]["max_dry_bulb_f"]["value"]
+    # "Max Coil Performance" DB/WB is the coil's LEAVING air (John 2026-07-22).
+    assert candidate["airside_conditions"]["leaving_dry_bulb_f"]["value"] == 49.77
+    assert candidate["airside_conditions"]["leaving_wet_bulb_f"]["value"] == 49.67
+    assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["airside_conditions"]["leaving_dry_bulb_f"]["value"]
 
 
 def test_cwc_and_hwc_cover_rows_match_cooling_cwc_and_heating_hwc_sections() -> None:
