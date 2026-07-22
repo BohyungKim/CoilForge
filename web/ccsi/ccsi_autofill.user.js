@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      2.2.0
+// @version      2.2.1
 // @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
 // @match        http://localhost:8011/*
 // @match        http://127.0.0.1:8011/*
 // @match        https://coil.ccsi.ie/*
+// @noframes
 // @updateURL    http://localhost:8011/static/ccsi/ccsi_autofill.user.js
 // @downloadURL  http://localhost:8011/static/ccsi/ccsi_autofill.user.js
 // @grant        GM_setValue
@@ -36,7 +37,7 @@
   // Shown in the panel header so you can SEE which filler version is actually running —
   // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
   // with @version above.
-  const SCRIPT_VERSION = "2.2.0";
+  const SCRIPT_VERSION = "2.2.1";
   const BRIDGE_KEY = "coilforge_ccsi_payload";
   const PANEL_ID = "coilforge-ccsi-autofill-panel";
   const STALE_MS = 10 * 60 * 1000;
@@ -45,6 +46,14 @@
     !!document.querySelector("#drawing-parameters") ||
     (location.hostname === "localhost" || location.hostname === "127.0.0.1");
   const onCcsi = location.hostname.endsWith("ccsi.ie");
+
+  // Top-level page only. Tampermonkey injects into every matching frame, and CCSI's
+  // "Coil Drawing" viewer is an embedded same-origin iframe — without this the bridge
+  // listener wakes in that frame too and opens a duplicate, empty panel over the drawing.
+  // @noframes (header) covers the userscript-manager path; this guards every other one.
+  if (window.self !== window.top) {
+    return;
+  }
 
   // Bookmarklet/menu entry point (CCSI side).
   window.coilforgeCcsiAutofill = openPanel;
