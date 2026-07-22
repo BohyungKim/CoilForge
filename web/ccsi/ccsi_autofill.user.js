@@ -6,6 +6,8 @@
 // @match        http://localhost:8011/*
 // @match        http://127.0.0.1:8011/*
 // @match        https://coil.ccsi.ie/*
+// @updateURL    http://localhost:8011/static/ccsi/ccsi_autofill.user.js
+// @downloadURL  http://localhost:8011/static/ccsi/ccsi_autofill.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addValueChangeListener
@@ -31,6 +33,10 @@
   "use strict";
 
   const SCHEMA = "coilforge.ccsi.autofill/1";
+  // Shown in the panel header so you can SEE which filler version is actually running —
+  // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
+  // with @version above.
+  const SCRIPT_VERSION = "2.1.0";
   const BRIDGE_KEY = "coilforge_ccsi_payload";
   const PANEL_ID = "coilforge-ccsi-autofill-panel";
   const STALE_MS = 10 * 60 * 1000;
@@ -175,7 +181,7 @@
   function header() {
     const bar = el("div", {}, { display: "flex", justifyContent: "space-between", alignItems: "center" });
     bar.append(
-      el("strong", { textContent: "CoilForge → CCSI autofill" }),
+      el("strong", { textContent: `CoilForge → CCSI autofill v${SCRIPT_VERSION}` }),
       btn("✕", () => document.getElementById(PANEL_ID)?.remove(), { border: "none", background: "transparent", fontSize: "16px" }),
     );
     return bar;
