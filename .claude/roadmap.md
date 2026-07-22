@@ -1,6 +1,11 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-21 (**Ambient 서플라이어 확장 2건 구축(미커밋, John eyeball 대기)**: (1) submittal
+> 마지막 갱신: 2026-07-22 (**[CCSI 트랙] 자동 per-field 체크마크 v2.2.1 + [quote 트랙] coil tag 스탬핑**: ①CCSI 필러가
+> 값 채울 때 `#<id>_isActive` 체크마크를 자동 ON(라이브 시연이 v2.1 실버그 2건 포착→enable-먼저·맵 ccsi_readonly 스킵·
+> @noframes iframe 가드로 v2.2.1 수정, 실 폼 8307776 검증, 커밋 e1b5c20·c5df0cf·d9bd11a·f507687). ②quote 도면에 coil
+> tag 미표시(candidate 태그 없고 커버행에만 있는 코일)를 `_pdf_coil_pages` 최종 page.tag로 스탬프(cdf6fc3, "Tag: CDXC-2"
+> 좌상단 인쇄 스크린샷). 1069 green · hunk 격리(case-retrieval/동시세션 제외). 미결=John TM v2.2.1 갱신+실 quote 확인. 이전:
+> **Ambient 서플라이어 확장 2건 구축(미커밋, John eyeball 대기)**: (1) submittal
 > 하나로 **Ambient용 성능페이지+도면 패키지** 생성(전사 only·selection 엔진 무접촉)+다크 도면 흰종이/클릭확대,
 > (2) **비교 Excel write-back** — submittal→C열·Ambient PDF→D열 자동채움 후 Downloads 복사본(원본 무접촉).
 > plan-review 각 2R APPROVED · **1058 green** · invariant-guard BLOCKER 0 · 실 COM 스모크(headless EXCEL
@@ -118,7 +123,7 @@
   (HIGH 2+MEDIUM 3+LOW 1 전건 반영) + **실 2975 데이터 브라우저 눈 확인**(FPI 10 vs 9 mismatch, Capacity/Volume
   Range in-band green). 963 green(+34). 계획서 `~/.claude/plans/ambient-cozy-barto.md`. 🆕 이번 세션
 
-- [x] **[별개 트랙] Ambient submittal→패키지 경로 + 도면 UX (2026-07-21, 미커밋)** — 기존 Ambient는 비교하려면
+- [x] **[별개 트랙] Ambient submittal→패키지 경로 + 도면 UX (c3a0ac7, 2026-07-21)** — 기존 Ambient는 비교하려면
   EZ Coil selection을 손으로 뽑아야 했음. 신규 optional 경로: **submittal만 드롭하면**(Direct Coil처럼) Ambient
   페이지에서 **Ambient용 성능페이지+도면 패키지**가 나와 Ambient에 전달 → EZ Coil selection 불필요. 성능페이지=
   submittal에 이미 추출된 값 **전사(transcription) only**(신규 계산·selection 엔진 무접촉=AGENTS.md 준수),
@@ -130,8 +135,10 @@
   도면을 흰 "종이"(`--drawing-paper`)+non-scaling-stroke로 legible + **클릭 확대 모달**. plan-review 2R APPROVED
   (BLOCKER-1: `build_ambient_rfq`가 실은 키 불일치로 깨져 있어 재사용 금지→submittal 실키로 파생·이중 용량키;
   MAJOR-1: 도면 소스 키 정정) + invariant-guard(WARN 1=circuits 무언 기본값→`circuits_assumed` 정직 플래그).
-  계획서 `~/.claude/plans/i-d-like-to-discuss-calm-wolf.md`. 🆕 이번 세션
-- [x] **[별개 트랙] Ambient 비교 Excel write-back (Phase 6, 2026-07-21, 미커밋)** — 로드맵 "John 제공 대기"였던
+  계획서 `~/.claude/plans/i-d-like-to-discuss-calm-wolf.md`. **hunk 격리 커밋·푸시(c3a0ac7 — 아래 Excel
+  write-back과 동일 커밋, 무관 CCSI/Case Retrieval 2.1 제외).** ⚠️ **미결: John 실 submittal+Ambient PDF
+  브라우저 눈검증**(고객데이터 gitignore). 🆕 이번 세션
+- [x] **[별개 트랙] Ambient 비교 Excel write-back (Phase 6, c3a0ac7, 2026-07-21)** — 로드맵 "John 제공 대기"였던
   `XXXX - Coilmaster-Ambiant Dynamics Coil Comparison.xlsx` 템플릿 확보(코일당 시트 CDXC-1/RHHGRC-1 마스터,
   B열 라벨·**C열=우리(submittal)·D열=Ambient**). submittal+Ambient PDF → 코일별 시트에 C/D 자동채움 → Downloads
   복사본. **체크리스트 writer 미러**(격리 DispatchEx·템플릿 read-only+SaveCopyAs·**원본/OneDrive 무접촉**) +
@@ -141,7 +148,9 @@
   (신규 14). plan-review 2R APPROVED(MAJOR-1: 라벨 추측→openpyxl로 실템플릿 introspect→실채움 skipped 0으로 실증;
   MAJOR-2: 한쪽만 있는 코일 합집합 처리). invariant-guard BLOCKER 0(WARN 수정). **실 COM 스모크가 headless EXCEL
   좀비 누수(status_board_excel_lock) 발견→참조해제+gc+PID 센티넬 teardown(자기 인스턴스만)으로 확정 수정** —
-  체크리스트 writer보다 강한 정리. 계획서 `~/.claude/plans/ambient-excel-writeback.md`. 🆕 이번 세션
+  체크리스트 writer보다 강한 정리. 계획서 `~/.claude/plans/ambient-excel-writeback.md`. **c3a0ac7 커밋·푸시
+  (hunk 격리, 위 패키지 경로와 동일 커밋, +1879/11파일).** ⚠️ **미결: John이 실 submittal+Ambient PDF로
+  Compare→"Fill comparison Excel"→Downloads 복사본 눈검증**(원본 템플릿 무접촉 확인). 🆕 이번 세션
 
 - [x] **[3058 검토 트랙] Coil Checklist 공식 정렬 — DX/HGRH CD·S·SL (89727e8, 2026-07-16)** — David가 3058
   packet에서 CDXC-2 CD=7.5(→8이어야)+stale S1/S3/S5, RHHGRC-2 CD/S1/SL1 지적. 근본원인: CoilForge가
@@ -233,6 +242,34 @@
   `Case/` 83개는 템플릿 시드 레퍼런스라 미투입(오염 방지, John 동의). 계획서 `~/.claude/plans/playful-shimmying-donut.md`,
   memory `case_retrieval_stage2.md`. 🆕 이번 세션
 
+- [x] **[CCSI 트랙] 자동 per-field 체크마크 + ApplyVDConstraints (e1b5c20, John 요청 2026-07-21)** — CCSI Direct
+  Coil 폼은 편집 가능한 각 치수를 형제 체크박스 `#<id>_isActive`(ON이어야 폼이 편집을 수용, 인라인
+  `onClickDimisActive` onclick)로 게이트 → John이 필드마다 손으로 체크하던 걸 제거. 필러 `fillOne`이 값 채우기
+  **직전** 그 체크마크를 자동 ON(`enableFieldForUpdate`: `.checked=true`론 onclick 미발화라 실 `.click()`, 꺼져
+  있을 때만=이미 켠 건 무건드림). RF/HF/CH는 readOnly 가드가 먼저 return→체크마크 OFF 유지(John의 "자동 3개").
+  BF/HD/TF/SL/ZD/HD2·3/ZD2·3은 체크박스 없음=항상 편집가능. **CD 편집 확정**(라이브 readOnly:false)→`ccsi_readonly`
+  제거(문서용일 뿐, 실 스킵은 라이브 DOM 구동)→CoilForge가 채움+enable. 폼레벨 `#ApplyVDConstraints`=HGBP 코일만
+  ON·그 외 OFF(신규 payload `hot_gas_bypass`, `special_feature`서 유도; clipboard·Send-to-CCSI 브릿지 **양 경로**
+  탑재, 브릿지는 `#drawing-parameters` `dataset.specialFeature` 스탬프서 읽음). **라이브 DOM 캡처**(John 로그인,
+  coil 8307776)로 `_isActive` 규칙·인라인 onclick·readOnly·VD 무핸들러 확정. **plan-review 2R**(round-1 REVISE:
+  HGBP 경로 오진 2건 사전 포착→round-2 APPROVED). 맵 v2026-07-21, 문서 3파일 정정. hunk 격리 커밋(app.js 2헌크만,
+  case-retrieval/동시세션 제외). review-aid·never auto-saves·export_allowed False 불변. [[plan-independent-review-gate]] 준수.
+  **라이브 시연이 v2.1.0 실버그 2건을 잡아 v2.2.1까지 수정:** ①`_isActive`가 값 input의 `readOnly`를 제어 → `fillOne`의
+  `readOnly` 가드가 enable보다 먼저라 체크 꺼진 필드를 전부 스킵(=John 증상: 값은 뜨는데 체크 안 됨→Apply 무시). 스킵 기준을
+  라이브 readOnly→**맵 `ccsi_readonly`**(RF/HF/CH)로, 순서를 **enable 먼저→값**으로 수정(d9bd11a). ②드로잉 뷰어 iframe에도
+  TM이 주입해 중복 빈 패널 → **`@noframes`+top-frame 가드**(f507687). +패널 헤더 버전 배지·`@updateURL`(c5df0cf, "옛 사본이
+  조용히 도는" 문제 가시화). **실 CCSI 폼(8307776) 라이브 검증**: CD/I/S/O/R enable+fill·RF/HF/CH OFF·before/after 스크린샷.
+  userscript **v2.2.1**, 1069 green. 🆕 이번 세션
+- [x] **[quote 트랙] 리뷰용 도면 coil tag 스탬핑 (cdf6fc3 = 동시세션 2bb3524 위에, John 리포트 2026-07-22)** — quote
+  `_Revised.pdf`의 CoilForge 도면에 coil tag가 안 찍혀 John이 손으로 씀. **근본원인(재현 확정):** `page.tag`는 candidate
+  **또는 커버 스케줄 행**에서 오는데(`_pdf_coil_pages`) 도면은 candidate 태그로만 찍힘 → candidate 태그가 비고 태그가 커버
+  행에만 있는 코일(=Salmon Creek CDXC-2)은 `page.tag`는 보여도 도면엔 태그 없음. (2bb3524는 slot.TAG 있을 때만 찍는 기반
+  메커니즘 — 이 갭을 못 잡음.) **수정:** `_pdf_coil_pages`가 최종 `page.tag`(candidate→커버행→"Coil N")를 정한 뒤 도면에
+  태그 없으면 스탬프(`_stamp_missing_drawing_tag`, 이미 있으면 no-op·"Coil N" 플레이스홀더 제외). frozen 무접촉·review-aid
+  전용. **첫 진단(candidate 폴백)은 재현으로 틀림을 확인**하고 커버-태그 소스까지 추적해 고침(추측 커밋 회피). 신규 3테스트,
+  1069 green, hunk 격리(case-neighbors 제외). **라이브 시연:** 커버-only 태그 코일 도면에 "Tag: CDXC-2" 좌상단 인쇄 스크린샷.
+  실제 Salmon Creek quote end-to-end는 그 PDF가 세션 미공유라 미실행(대표 코일 도면 레벨까지 검증). 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -246,6 +283,13 @@
   확인 + 코일 아래 **"Three-way review"** 테이블에서 submittal/CoilForge/engineer 3열 green/red 확인(특히 override한
   drawing param의 CoilForge 열이 기계 원제안을 보이는지). 자동검증 완료(978 green·invariant clean·실 HTTP); 남은 건
   사람 눈 확인.
+- [ ] **[TR-3] CCSI 자동 체크마크 실 폼 fill self-test (John)** — 메커니즘은 실 폼(8307776)에서 라이브 검증 완료(enable+fill·
+  RF/HF/CH OFF); 남은 건 John이 TM 스크립트를 **v2.2.1**로 갱신 후 자기 워크플로로 end-to-end 확인. ⚠️ TM Utilities→Install
+  from URL `http://localhost:8011/static/ccsi/ccsi_autofill.user.js`로 갱신(패널 헤더 "v2.2.1" 확인) 또는 북마클릿 재드래그.
+  절차: 코일 분석 → "Copy CCSI autofill payload" → CCSI Direct Coil 폼(로그인)에서 필러 열기 → Load → "Fill all
+  reviewed". 확인: ① 각 편집 필드의 `_isActive`가 자동 ON + 값이 채워지고 저장/네비게이션 미발생 ② RF/HF/CH 체크마크
+  OFF 유지 ③ HGBP 코일에서만 ApplyVDConstraints ON. **실 폼을 수정**(unsaved)하므로 John이 직접 실행(Claude가 자동
+  실행 안 함); CCSI Save("Apply Changes")도 John 몫. 자동검증 완료(1058 green·plan 2R·라이브 DOM 캡처).
 
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
