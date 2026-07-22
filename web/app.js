@@ -1690,6 +1690,10 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
       unit: parameter.unit || mapEntry.unit || "in",
       status,
       type: mapEntry.type || "number",
+      // RF/HF/CH carry ccsi_readonly:true in the map — the filler skips them (CCSI computes
+      // them) instead of keying off live DOM readOnly, which is true for every field whose
+      // enable checkmark is off.
+      ccsi_readonly: mapEntry.ccsi_readonly === true,
       selectors: Array.isArray(mapEntry.selectors) ? mapEntry.selectors : [],
       blocked_reason: hasValue
         ? null

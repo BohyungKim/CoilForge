@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      2.1.0
+// @version      2.2.0
 // @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
 // @match        http://localhost:8011/*
 // @match        http://127.0.0.1:8011/*
@@ -36,7 +36,7 @@
   // Shown in the panel header so you can SEE which filler version is actually running —
   // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
   // with @version above.
-  const SCRIPT_VERSION = "2.1.0";
+  const SCRIPT_VERSION = "2.2.0";
   const BRIDGE_KEY = "coilforge_ccsi_payload";
   const PANEL_ID = "coilforge-ccsi-autofill-panel";
   const STALE_MS = 10 * 60 * 1000;
@@ -126,6 +126,7 @@
         unit: entry.unit || "in",
         status: has ? "review_required" : "blocked",
         type: entry.type || "number",
+        ccsi_readonly: entry.ccsi_readonly === true,
         selectors: Array.isArray(entry.selectors) ? entry.selectors : [],
         blocked_reason: has ? null : "No value derived from the source or rule engine; review required.",
       };
@@ -282,7 +283,7 @@
       const action = el("div", {});
       if (isFillable(field)) {
         const b = btn("Fill", () => { fillOne(field); applyFormLevelToggles(payload); summarize(payload); });
-        b.disabled = !resolved || resolved.readOnly;
+        b.disabled = !resolved || field.ccsi_readonly;
         action.append(b);
       }
       row.append(label, mid, action);
@@ -295,8 +296,8 @@
     let text, color;
     if (!resolved && isFillable(field)) {
       text = "selector not found"; color = "#b3261e";
-    } else if (resolved && resolved.readOnly && isFillable(field)) {
-      text = `CCSI read-only (computed) — skipped, was ${resolved.value}`; color = "#6b7280";
+    } else if (field.ccsi_readonly && isFillable(field)) {
+      text = `CCSI read-only (computed) — skipped, was ${resolved ? resolved.value : ""}`; color = "#6b7280";
     } else if (field.status === "blocked" || field.value === null || field.value === undefined) {
       text = `skipped — ${field.blocked_reason || "no value"}`; color = "#6b7280";
     } else if (field.status === "review_required") {
@@ -349,23 +350,26 @@
   function fillOne(field) {
     const target = resolve(field.selectors);
     if (!target) return;
-    if (target.readOnly) { markRow(field, "readonly"); return; }
-    // CCSI gates each editable dimension behind a per-field "enable" checkmark
-    // (id = <inputId>_isActive) that must be ON for the form to accept the value —
-    // otherwise the engineer has to tick every one by hand. Enable it BEFORE writing
-    // the value (in case the handler resets the field), then fill + read-back verify.
+    // RF/HF/CH are CCSI-computed: leave their enable checkmark OFF and never write them.
+    // The skip is keyed on the MAP flag (field.ccsi_readonly), NOT the live DOM readOnly —
+    // on the real CCSI form EVERY editable dimension's input is readOnly until its own
+    // <id>_isActive checkmark is ticked, so a live-readOnly test here would wrongly skip the
+    // very fields we must fill.
+    if (field.ccsi_readonly) { markRow(field, "readonly"); return; }
+    // Enable the field's own <id>_isActive checkmark FIRST — ticking it is what clears the
+    // input's readOnly and makes CCSI accept the value — then write + read-back verify.
     enableFieldForUpdate(target);
+    if (target.readOnly) { markRow(field, "readonly"); return; }
     setNativeValue(target, field.value);
     ["input", "change", "blur"].forEach((type) => target.dispatchEvent(new Event(type, { bubbles: true })));
     markRow(field, verify(target, field) ? "ok" : "mismatch");
   }
 
-  // Turn on the field's own CCSI "<id>_isActive" enable checkbox. Its enable logic is an
-  // inline onclick (onClickDimisActive('<id>')), so a bare .checked=true would NOT run it —
-  // dispatch a real .click(), and only when it is currently off so an already-enabled field
-  // is never toggled back off. Fields with no such checkbox (BF/HD/TF/SL/ZD/HD2..) are always
-  // editable, and the read-only trio (RF/HF/CH) never reaches here (fillOne returns first),
-  // so their checkmarks correctly stay OFF.
+  // Turn on the field's own CCSI "<id>_isActive" enable checkbox. Ticking it fires the inline
+  // onclick (onClickDimisActive('<id>')) which ALSO clears the input's readOnly, so a bare
+  // .checked=true would not work — dispatch a real .click(), and only when it is currently off
+  // so an already-enabled field is never toggled back off. Fields with no such checkbox
+  // (BF/HD/TF/SL/ZD/HD2..) are always editable; RF/HF/CH are skipped upstream by ccsi_readonly.
   function enableFieldForUpdate(target) {
     const active = target.id ? document.getElementById(`${target.id}_isActive`) : null;
     if (active && !active.disabled && !active.checked) {
@@ -426,9 +430,9 @@
     const out = document.getElementById("ccsi-af-summary");
     if (!out) return;
     const rows = payload.fields.map((f) => ({ f, t: resolve(f.selectors) }));
-    const writable = rows.filter(({ f, t }) => isFillable(f) && t && !t.readOnly);
+    const writable = rows.filter(({ f, t }) => isFillable(f) && t && !f.ccsi_readonly);
     const filled = writable.filter(({ f, t }) => verify(t, f) && String(t.value).trim() !== "").length;
-    const readOnly = rows.filter(({ f, t }) => isFillable(f) && t && t.readOnly).length;
+    const readOnly = rows.filter(({ f, t }) => isFillable(f) && t && f.ccsi_readonly).length;
     const notFound = rows.filter(({ f, t }) => isFillable(f) && !t).length;
     const skipped = payload.fields.filter((f) => !isFillable(f)).length + readOnly;
     out.textContent =
