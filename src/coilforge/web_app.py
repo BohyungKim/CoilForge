@@ -254,6 +254,23 @@ async def capture_health():
     return jsonable_encoder(health())
 
 
+@app.get("/api/capture/override-rate")
+async def capture_override_rate():
+    """Read-only Stage 3.0 measurement: per-field override rate over the ledger — of the coil
+    identities flagged for a field, the fraction John actually corrected. Returns
+    ``insufficient`` until corrections accrue (never a fabricated weight). Aggregate counts
+    only; redacts the free-text correction reason on this unauthenticated surface; never
+    creates the DB on a machine that has never captured."""
+    from coilforge.capture.triage import measure_override_rate
+
+    report = measure_override_rate(redact=True)
+    # The core dict carries only raw_private_data_returned (matching health()); the route
+    # augments the two review-aid flags (as build_project_gate does).
+    report["export_allowed"] = False
+    report["production_drawing_approval_claimed"] = False
+    return jsonable_encoder(report)
+
+
 @app.get("/api/capture/similar")
 async def capture_similar(coil_uid: str, k: int = 5, same_category: bool = True):
     """Read-only case retrieval (Stage 2): the nearest past coils to ``coil_uid`` plus John's
