@@ -24,6 +24,12 @@ from coilforge.submittal.pdf_intake import coil_tag_aliases
 # Same wording as phase2a/renderer.py + template_population/slot_population.py.
 REVIEW_WATERMARK = "REVIEW AID - NOT FOR MANUFACTURING"
 
+# Top band on an inserted CoilForge drawing page. Tall enough to fully cover the drawing
+# SVG's own top-left "Tag: X" label (bottom edge y=18.7 -- see _stamp_watermark_banner),
+# so the label is covered rather than half-clipped and the band can re-print the tag.
+_BANNER_HEIGHT = 20.0
+_BANNER_TEXT_BASELINE = 13.0
+
 # Drawing pages carry these geometry callouts; report/quote pages do not.
 _DRAWING_MARKER_RE = re.compile(r"\bF\.L\.|\bF\.H\.|\bFIN\b|\bO\.D\.", re.IGNORECASE)
 
@@ -203,15 +209,42 @@ def _quote_page_index(doc) -> int | None:
     return indices[0] if indices else None
 
 
-def _stamp_watermark_banner(page) -> None:
-    """Thin opaque watermark band at the top of an inserted CoilForge drawing page."""
+def _stamp_watermark_banner(page, tag: str | None = None) -> None:
+    """Thin opaque watermark band at the top of an inserted CoilForge drawing page.
+
+    The drawing SVG stamps its own ``Tag: X`` label at the crop's top-left, which lands
+    at page y 2.2-18.7 — i.e. underneath this band. The band is opaque, so it BURIES the
+    label and leaves only a clipped descender fragment poking out (what John saw on the
+    quote package). Two things follow, and both are load-bearing:
+
+    * ``_BANNER_HEIGHT`` must fully cover that label — a shorter band clips it instead of
+      covering it;
+    * the tag is re-printed HERE, on top of the band, where nothing can hide it.
+
+    Placing the tag anywhere lower in the SVG is not an option: every page-relative row
+    from y~20 down carries real drawing geometry on at least one seeded template.
+    """
     import fitz
 
     width = page.rect.width
     page.draw_rect(
-        fitz.Rect(0, 0, width, 16), color=(0.70, 0.70, 0.70), fill=(1.0, 1.0, 1.0), width=0.5
+        fitz.Rect(0, 0, width, _BANNER_HEIGHT),
+        color=(0.70, 0.70, 0.70),
+        fill=(1.0, 1.0, 1.0),
+        width=0.5,
     )
-    page.insert_text((10, 11), REVIEW_WATERMARK, fontsize=8, color=(0.80, 0.0, 0.0))
+    page.insert_text((10, _BANNER_TEXT_BASELINE), REVIEW_WATERMARK, fontsize=8, color=(0.80, 0, 0))
+    tag = (tag or "").strip()
+    if not tag:  # never stamp a blank "Tag:" — an unknown tag stays unstated
+        return
+    label = f"Tag: {tag}"
+    length = fitz.get_text_length(label, fontname="helv", fontsize=9)
+    page.insert_text(
+        (max(10.0, width - length - 10.0), _BANNER_TEXT_BASELINE),
+        label,
+        fontsize=9,
+        color=(0.0, 0.0, 0.0),
+    )
 
 
 def _stamp_superseded_watermark(page) -> None:
@@ -434,7 +467,7 @@ def assemble_multi_coil_package(
                 our_doc = fitz.open(stream=svg_to_pdf_bytes(coil["our_svg"]), filetype="pdf")
                 try:
                     for page in our_doc:
-                        _stamp_watermark_banner(page)
+                        _stamp_watermark_banner(page, tag=coil.get("tag"))
                     out.insert_pdf(our_doc)
                     inserted += 1
                 finally:

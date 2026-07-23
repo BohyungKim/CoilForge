@@ -24,7 +24,9 @@ from coilforge.package import (  # noqa: E402
 )
 from coilforge.package.assembler import (  # noqa: E402
     MultiCoilPackageResult,
+    _BANNER_HEIGHT,
     _stamp_quote_price_notes,
+    _stamp_watermark_banner,
     assemble_multi_coil_package,
 )
 
@@ -374,3 +376,58 @@ def test_multi_coil_safety_flags_never_relaxed() -> None:
 def test_multi_coil_rejects_empty_source() -> None:
     with pytest.raises(ValueError):
         assemble_multi_coil_package(source_pdf=b"", coils=[])
+
+
+# --------------------------------------------------------------------------- #
+# Coil tag on the inserted drawing page. The drawing SVG stamps its own tag at the
+# crop's top-left, which lands UNDER this layer's opaque banner -- so the tag has to
+# be re-printed on the banner, and the banner has to cover (not clip) the buried one.
+# --------------------------------------------------------------------------- #
+def test_inserted_drawing_page_shows_the_coil_tag_on_the_banner() -> None:
+    source = _make_text_pdf(
+        ["COIL QUOTE\nTagged: CDXC-1\nCost Each: CAD$100.00", "CDXC-1\n47 F.L.\n4.33 FIN"]
+    )
+    result = assemble_multi_coil_package(
+        source_pdf=source, coils=[{"tag": "CDXC-1", "coil_type": "DX", "our_svg": _SVG}]
+    )
+    doc = fitz.open(stream=base64.b64decode(result.pdf_base64), filetype="pdf")
+    page = doc[2]  # 2 source pages + our drawing inserted after the drawing page
+    tag_words = [w for w in page.get_text("words") if w[4].startswith("CDXC-1")]
+    assert tag_words, "inserted drawing page carries no coil tag"
+    # It must sit ON the banner (nothing is drawn over the banner afterwards), not
+    # underneath it where the opaque fill would bury it.
+    assert max(w[3] for w in tag_words) <= _BANNER_HEIGHT
+    doc.close()
+
+
+def test_banner_is_tall_enough_to_cover_the_drawings_own_tag_label() -> None:
+    # Cross-layer invariant: the drawing SVG's top-left "Tag: X" label is buried by this
+    # banner. If the banner is SHORTER than that label, the label is clipped instead of
+    # covered and a descender fragment pokes out (the artifact John saw on the quote
+    # package). Measured against the real injector, not a hardcoded number.
+    from coilforge.workflows.submittal_to_drawing import (
+        _CROP_H,
+        _CROP_W,
+        _CROP_X,
+        _CROP_Y,
+        _inject_coil_tag_label,
+    )
+
+    svg = _inject_coil_tag_label(
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{_CROP_W}" height="{_CROP_H}" '
+        f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"></svg>',
+        "RHHGRH-1",
+    )
+    doc = fitz.open(stream=svg_to_pdf_bytes(svg), filetype="pdf")
+    words = doc[0].get_text("words")
+    assert words, "the drawing SVG's tag label did not render"
+    assert max(w[3] for w in words) <= _BANNER_HEIGHT
+    doc.close()
+
+
+def test_banner_never_stamps_a_blank_tag() -> None:
+    # An unknown tag stays unstated -- never a bare "Tag:" (never-invent).
+    doc = fitz.open(stream=svg_to_pdf_bytes(_SVG), filetype="pdf")
+    _stamp_watermark_banner(doc[0], tag="   ")
+    assert "Tag:" not in doc[0].get_text()
+    doc.close()
