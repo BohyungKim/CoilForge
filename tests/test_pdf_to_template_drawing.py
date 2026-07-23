@@ -220,9 +220,10 @@ def test_multi_header_positions_are_logic_derived() -> None:
     assert sv["slot.I3"] == sv["slot.I1"] and sv["slot.HDx3"] == sv["slot.HDx1"]
     assert sv["slot.O4"] == sv["slot.O2"] and sv["slot.HD4"] == sv["slot.HD2"]
     assert sv["slot.SL4"] == sv["slot.SL2"]
-    # S = k*CD/(circuits+1); CD=5.5 -> S1=1.8333, S3=3.6667.
-    assert abs(float(sv["slot.S1"]) - 5.5 / 3) < 0.01
-    assert abs(float(sv["slot.S3"]) - 2 * 5.5 / 3) < 0.01
+    # S = ROUND(k*CD/(circuits+1)*8,0)/8 (CHK DX!C46:C49); CD=5.5 -> 1.8333/3.6667
+    # snap to S1=1.875, S3=3.625 -- the exact values John read off the checklist.
+    assert float(sv["slot.S1"]) == 1.875
+    assert float(sv["slot.S3"]) == 3.625
     # R = return_spacing R-022 list: D=1.125 -> R2=1.125, R4=2D+1.5=3.75.
     assert abs(float(sv["slot.R2"]) - 1.125) < 0.01
     assert abs(float(sv["slot.R4"]) - 3.75) < 0.01

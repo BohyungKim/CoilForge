@@ -33,7 +33,7 @@ from coilforge.drawing.parameters import (
     PreviewDefaultValue,
 )
 from coilforge.services.direct_coil_drawing_pipeline import build_header_request
-from coilforge.services.header_prepopulate_engine import prepopulate
+from coilforge.services.header_prepopulate_engine import prepopulate, round_eighth
 from coilforge.submittal.coilmaster_drawing_extract import product_size_options
 
 # Drawing param key -> scalar engine field (HIGH values).
@@ -91,7 +91,7 @@ PARAM_TO_SLOT: dict[str, str] = {
 # count; headers 2+ come from build_drawing_slots. EZ JSON is an exact OVERRIDE, not the only
 # source. This entry names the missing input when S can't be computed.
 UNCONNECTED_PARAMS: dict[str, str] = {
-    "S": "Distributor S (R-034 even-spacing = round(k*CD/(circuits+1))): needs the circuit "
+    "S": "Distributor S (R-034 even-spacing = ROUND(k*CD/(circuits+1)*8,0)/8): needs the circuit "
          "count + casing depth; header 1 is generated when both are known, headers 2+ come "
          "from the slot layer.",
 }
@@ -293,8 +293,9 @@ def engine_preview_values(
             continue
         if key == "S" and circuits and "casing_depth" in response.values:
             cd = response.values["casing_depth"].value
-            emit("S", round(cd / (circuits + 1), 4), "rule_engine/generated",
-                 "S = CD/(circuits+1) (R-034 even-spacing, header-1 distributor center)")
+            emit("S", round_eighth(cd / (circuits + 1)), "rule_engine/generated",
+                 "S = ROUND(CD/(circuits+1)*8,0)/8 (R-034 even-spacing snapped to the "
+                 "nearest 1/8 per CHK DX!C46, header-1 distributor center)")
             continue
         if key == "ZD":
             emit("ZD", ZD_CONSTANT, "rule_engine/generated", ZD_REASON)

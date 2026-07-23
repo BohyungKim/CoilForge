@@ -348,10 +348,19 @@ def test_t07_dx_nova_cd_multi_circuit_and_spacing() -> None:
 
 
 def test_distributor_s_checklist_even_spacing() -> None:
-    # R-034 resolved to checklist even-spacing: ROUND(k*CD/(circuits+1)).
-    # rows=12 -> CD=12.5 (base); circuits=3 -> [3, 6, 9].
+    # R-034 = CHK DX!C46:C49, which snaps to the nearest 1/8 -- ROUND(k*CD/(n+1)*8,0)/8,
+    # NOT to a whole inch. rows=12 -> CD=12.5 (base); circuits=3 -> k*12.5/4.
     r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20", rows=12, circuits=3))
-    assert r.values["dist_s"].value == [3, 6, 9]
+    assert r.values["dist_s"].value == [3.125, 6.25, 9.375]
+
+
+def test_distributor_s_rounds_to_the_nearest_eighth() -> None:
+    # The case John reported: CD=5.5, circuits=2 -> 1.8333/3.6667 must read 1.875/3.625
+    # (checklist). The eighths are NOT proportional -- 2 * 1.875 = 3.75 != 3.625 -- so
+    # each k must be rounded on its own, never scaled from S1.
+    r = prepopulate(_req(CoilType.DX, ProductFamily.NOVA, "B20", rows=4, circuits=2))
+    assert r.values["casing_depth"].value == 5.5
+    assert r.values["dist_s"].value == [1.875, 3.625]
 
 
 def test_t08_hgrh_nova_c20() -> None:

@@ -101,6 +101,8 @@ def test_multi_circuit_s_is_generated_from_r034_not_left_unconnected() -> None:
     from coilforge.direct_coil.draft import DirectCoilInputDraft
     from coilforge.services.drawing_param_resolver import engine_preview_values
 
+    from coilforge.services.header_prepopulate_engine import round_eighth
+
     draft = DirectCoilInputDraft.model_validate(_run_demo()["direct_coil_input_draft"])
     values, report = engine_preview_values(
         draft, coil_type="DX", product_type="NOVA", unit_size="B20", circuits=2,
@@ -109,8 +111,10 @@ def test_multi_circuit_s_is_generated_from_r034_not_left_unconnected() -> None:
     assert "S" in report["connected"]
     assert "S" not in report["not_connected"]
     assert by_key["S"].source == "rule_engine/generated"
-    # header-1 R-034 even-spacing = round(CD / (circuits + 1))
-    assert by_key["S"].value == round(by_key["CD"].value / 3, 4)
+    # header-1 R-034 even-spacing, snapped to the nearest 1/8 like CHK DX!C46:
+    # ROUND(CD/(circuits+1)*8,0)/8. CD=5.5, circuits=2 -> 1.8333 -> 1.875.
+    assert by_key["S"].value == 1.875
+    assert by_key["S"].value == round_eighth(by_key["CD"].value / 3)
 
 
 def test_unconnected_params_fall_back_so_preview_still_allowed() -> None:

@@ -26,7 +26,7 @@ from coilforge.schemas.header_prepopulate import (
     ProductFamily,
     TerraVariant,
 )
-from coilforge.services.header_prepopulate_engine import prepopulate
+from coilforge.services.header_prepopulate_engine import prepopulate, round_eighth
 from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 from coilforge.services.json_drawing_link import engine_slot_bridge
 from coilforge.template_population.catalog import (
@@ -340,6 +340,7 @@ def build_drawing_slots(
     field_map = _PER_HEADER_ENGINE_FIELDS.get(
         str(coil_type or "").strip().upper(), _PER_HEADER_ENGINE_FIELDS["DX"]
     )
+    is_dx = str(coil_type or "").strip().upper() == "DX"
     is_hgrh = str(coil_type or "").strip().upper() == "HGRH"
     is_cwc_hwc = str(coil_type or "").strip().upper() in ("CWC", "HWC")
     is_terra_v = request.terra_variant == TerraVariant.TERRA_V
@@ -378,7 +379,15 @@ def build_drawing_slots(
                     # HGRH supply S is family-branched (checklist HGRH!C46), NOT the DX
                     # even-spacing: TERRA H / VENTUM+ -> conn, NOVA / VENTUM H -> CD-formula.
                     slots[f"slot.S{supply_id}"] = _hgrh_supply_s(request, cd, conn_size)
+                elif is_dx:
+                    # CHK DX!C46:C49 = ROUND(k*CD/(n+1)*8,0)/8 -- the sheet snaps the
+                    # distributor centre to the nearest 1/8 (CD=5.5, n=2 -> 1.875 /
+                    # 3.625, NOT 1.8333 / 3.6667). Rounding per-k, not once: the eighths
+                    # are not proportional (2 x 1.875 != 3.625). John 2026-07-23.
+                    slots[f"slot.S{supply_id}"] = round_eighth(k * cd / (circuits + 1))
                 else:
+                    # CWC/HWC: the checklist sheets carry no S row at all, so there is
+                    # no equation to mirror -- left on the raw even-spacing value.
                     slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
                 # HGRH supply-side (odd) SL = stub POSITION (checklist HGRH!C58):
                 # Terra V -> 5 (SOP); single feed/circuit -> 3; else 6 + return_conn/2 - S

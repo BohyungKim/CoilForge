@@ -115,6 +115,15 @@ def roundup_eighth(value: float) -> float:
     return eighths / 8
 
 
+def round_eighth(value: float) -> float:
+    """Round ``value`` to the NEAREST eighth, Excel-style (half away from zero).
+
+    The checklist writes this as ``ROUND(x*8,0)/8`` (e.g. DX!C46:C49). Python's
+    built-in ``round`` is banker's rounding, so it would send an exact half the
+    other way on even eighths -- use ``_excel_round`` to match the sheet."""
+    return _excel_round(round(value * 8, 6)) / 8
+
+
 def cd_dx_hgrh(rows: int) -> float:
     """DX/HGRH casing depth: ROUNDUP(rows * 0.866 to 1/8) + 2 (SOP-OLE1..4)."""
     return roundup_eighth(rows * 0.866) + 2
@@ -497,7 +506,9 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                 place(
                     "dist_s",
                     FieldResult(
-                        value=[_excel_round(k * cd / (c + 1)) for k in range(1, c + 1)],
+                        # CHK DX!C46:C49 rounds to the nearest 1/8, not to a whole
+                        # inch -- CD=5.5, c=2 gives 1.875 / 3.625, not 2 / 4.
+                        value=[round_eighth(k * cd / (c + 1)) for k in range(1, c + 1)],
                         confidence=Confidence.HIGH,
                         evidence_refs=index["R-034"]["evidence_refs"],
                         rule_id="R-034",

@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from coilforge.services.direct_coil_drawing_pipeline import build_drawing_slots  # noqa: E402
+from coilforge.services.header_prepopulate_engine import round_eighth  # noqa: E402
 from coilforge.services.drawing_param_resolver import (  # noqa: E402
     ZD_CONSTANT,
     _header_slot,
@@ -155,8 +156,10 @@ def test_build_drawing_slots_parity_for_2_3_4_circuits() -> None:
             assert f"slot.I{supply_id}" in slots
             assert f"slot.O{return_id}" in slots
             assert f"slot.HD{return_id}" in slots
-            # R-034 distributor S: k*CD/(circuits+1)
-            assert slots[f"slot.S{supply_id}"] == round(k * cd / (circuits + 1), 4)
+            # R-034 distributor S = CHK DX!C46:C49 -> ROUND(k*CD/(circuits+1)*8,0)/8
+            s = slots[f"slot.S{supply_id}"]
+            assert s == round_eighth(k * cd / (circuits + 1))
+            assert s * 8 == int(s * 8), f"S{supply_id}={s} is not a whole 1/8"
 
 
 def test_hgrh_multi_header_slots_present() -> None:

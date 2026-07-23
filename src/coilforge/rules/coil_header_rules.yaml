@@ -415,7 +415,7 @@ rules:
     applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: dist_s
     value: null
-    formula: "ROUND(k * CD / (circuits+1)) for k in 1..circuits  [checklist even-spacing]"
+    formula: "ROUND(k * CD / (circuits+1) * 8, 0) / 8 for k in 1..circuits  [checklist even-spacing, nearest 1/8]"
     kind: formula_dist_s
     requires_inputs: [rows, circuits]
     confidence: HIGH
