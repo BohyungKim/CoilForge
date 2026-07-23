@@ -1,6 +1,28 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-22 (**[CCSI 트랙] 자동 per-field 체크마크 v2.2.1 + [quote 트랙] coil tag 스탬핑**: ①CCSI 필러가
+> 마지막 갱신: 2026-07-23 (**[quote 트랙] quote-package 도면에 coil tag 표시 (15bcd55) + [체크리스트 정렬 트랙]
+> DX 분배기 S를 체크리스트처럼 1/8" 반올림 (1dbbf74)**: ①cdf6fc3가 SVG에 넣은 `Tag: X`가 삽입 도면 페이지엔
+> 안 보이던 문제 — 크롭 viewBox가 라벨을 페이지 y 2.2~18.7에 매핑하는데 어셈블러가 y 0~16을 **불투명 배너**로
+> 덮어 디센더 조각만 남김(=John이 본 좌상단 잔상). 배너를 소유한 레이어에서 수정: `_stamp_watermark_banner`가
+> coil tag를 받아 배너 위 우측에 재인쇄 + `_BANNER_HEIGHT` 16→20(묻힌 라벨 완전 덮음). SVG 라벨을 아래로 내리는
+> 안은 33개 시드 템플릿 좌상단 래스터 스캔으로 기각(y≈20부터 지오메트리 시작=안전지대 없음). 신규 3테스트(크로스
+> 레이어 불변식 포함), 라이브 서버 `/api/package/quote` 실증(양 페이지 자기 태그·export_allowed False). ②DX
+> S1/S3/S5/S7이 체크리스트 `ROUND(k·CD/(n+1)·8,0)/8`(1/8 스냅)과 달리 raw 몫으로 그려짐(CD=5.5,n=2 → 1.8333/3.6667
+> vs 체크리스트 1.875/3.625). 같은 방정식이 **세 곳에 각기 다르게 틀림**(dual-path gotcha): 엔진 R-034=정수인치,
+> 슬롯레이어·패널=반올림 없음 → `round_eighth`(기존 `_excel_round` 재사용=Excel half-away-from-zero) 헬퍼로 통일.
+> DX 한정(CWC/HWC 시트엔 S행 없음=무발명, Terra V CD−Rn 분기 불변). 1/8은 비례 안 함(2·1.875≠3.625)=k마다 개별
+> 반올림. 기존 단언 4건 갱신+신규 1건, **1082 green**. 두 건 모두 hunk 격리(Stage 2.1/3.0 미커밋 제외). 이전:
+> **[AI 3단계] Review Triage Phase 3.0 = override율 측정 도구 구축·커밋 (af3b4fc)**: 원장에서
+> 필드별 "flag된 (tag,project) 신원 중 John이 실제 교정한 비율"을 읽는 순수 읽기전용 `capture/triage.py::measure_override_rate`
+> + CLI + `GET /api/capture/override-rate`(redact). 랭킹 UI는 Phase 3.1 보류(교정 축적+아래 설계결정 후). **plan-review MAJOR-1**:
+> `compare_observation`은 coil_uid 컬럼 없음 → mechanical_fit은 `run+coil_tag` 2번째 identity 경로로 조인(ccsi는 coil_tag NULL이라
+> 제외). 신규 9테스트(identity-grain+compare-join 회귀), **1078 green**(exceptions_K 불변), plan-review 1R + invariant-guard
+> BLOCKER 0. **최대 실데이터 발견**: 메모리는 corrections=0이라 했으나 실원장은 이미 **7건/신원 4개**로 이동 → 도구가 실데이터
+> 작동. 그런데 flag된 필드(S/CD/O) override율이 flagged-기준 **전부 0**: `S`는 ERV 코일에서 flag됐는데 교정은 **RHHGRC-1/2/3
+> (project 2843, David 3058 케이스)**에서 발생·**겹침 0** → John은 엔진이 *자신있게 틀린 값을 준(flag 안 함)* 코일에서 override.
+> **flag된 코일만 랭킹하면 진짜 override 코일을 놓침 = 로드맵 "스킵 금지=false negative"가 실데이터로 확증** → Phase 3.1은
+> `corrected_total−corrected`(unflagged 교정) 노출 여부 John 판정 필요. 커밋은 hunk 격리(Phase 2.1/동시세션 제외). 이전:
+> **[CCSI 트랙] 자동 per-field 체크마크 v2.2.1 + [quote 트랙] coil tag 스탬핑**: ①CCSI 필러가
 > 값 채울 때 `#<id>_isActive` 체크마크를 자동 ON(라이브 시연이 v2.1 실버그 2건 포착→enable-먼저·맵 ccsi_readonly 스킵·
 > @noframes iframe 가드로 v2.2.1 수정, 실 폼 8307776 검증, 커밋 e1b5c20·c5df0cf·d9bd11a·f507687). ②quote 도면에 coil
 > tag 미표시(candidate 태그 없고 커버행에만 있는 코일)를 `_pdf_coil_pages` 최종 page.tag로 스탬프(cdf6fc3, "Tag: CDXC-2"
@@ -270,6 +292,44 @@
   1069 green, hunk 격리(case-neighbors 제외). **라이브 시연:** 커버-only 태그 코일 도면에 "Tag: CDXC-2" 좌상단 인쇄 스크린샷.
   실제 Salmon Creek quote end-to-end는 그 PDF가 세션 미공유라 미실행(대표 코일 도면 레벨까지 검증). 🆕 이번 세션
 
+- [x] **[AI 3단계] Review Triage Phase 3.0 — override율 측정 도구 (af3b4fc, 2026-07-22)** — 랭킹의 핵심 신호(어느
+  필드를 John이 실제로 고치나)를 원장에서 측정. John 범위확정: **측정+CLI만 지금**(랭킹 UI는 교정 축적 후), 신호는
+  확장 exception 정의(fit FAIL + confidence LOW·MEDIUM + n_blocked), 통합 목표는 기존 `/api/review/project` gate(Phase
+  3.1). 신규 `capture/triage.py::measure_override_rate`((tag,project) identity 그레인, `retrieve`/`observe` 규율 미러) +
+  `scripts/override_rate.py` + `GET /api/capture/override-rate`(redact+안전플래그). **plan-review MAJOR-1**: `compare_observation`
+  coil_uid 컬럼 부재 → 2-path 조인(coil_uid 테이블 vs mechanical_fit=run+coil_tag; ccsi=NULL tag 제외). 신규 9테스트,
+  **1078 green**(exceptions_K 불변·기존 무이동), invariant-guard BLOCKER/HIGH/MEDIUM 0. **실데이터 작동 실증**: 실원장이
+  0→7교정/신원 4로 이동, 도구가 실측 산출 + health 대조(coils_with_corrections 4==4). **최대 발견**: flag된 필드 override율이
+  flagged-기준 전부 0인데 그 필드는 flag 안 된 다른 코일에서 override됨(S: ERV flag ↔ RHHGRC/2843 교정, 겹침 0) =
+  false-negative 실증 → Phase 3.1 설계 입력. 커밋 hunk 격리(Phase 2.1/동시세션 제외). memory `review_triage_stage3.md`. 🆕 이번 세션
+
+- [x] **[quote 트랙] quote-package 삽입 도면에 coil tag 표시 (15bcd55, John 리포트 2026-07-23)** — cdf6fc3가
+  `Tag: X`를 리뷰용 SVG에 주입한 건 **정상 작동**(라벨이 실제로 SVG 안에 있음)이나, quote-package로 조립하면
+  눈에 안 보였음. **근본원인(재현·좌표산술 확정):** 크롭 viewBox(110,19,…)가 라벨을 페이지 y 2.2~18.7로 매핑
+  → 어셈블러(`package/assembler.py`)가 삽입 CoilForge 페이지마다 y 0~16을 **불투명 흰 배너**로 칠함 → 라벨 몸통을
+  묻고 디센더 조각만 삐져나옴(=John이 본 좌상단 잔상). **수정(배너를 소유한 레이어):** `_stamp_watermark_banner`가
+  coil tag를 인자로 받아 배너 위 우측에 재인쇄(그 위엔 아무것도 안 그려짐=가려질 수 없음) + `_BANNER_HEIGHT`
+  16→20(묻힌 SVG 라벨 완전 덮음, 클립 대신). 빈 태그=무인쇄(never-invent). **SVG 라벨을 아래로 내리는 대안은
+  경험적 기각** — 33개 시드 템플릿 좌상단 래스터 스캔이 page-relative y≈20부터 실 도면 지오메트리 검출(Ventum+
+  DX/HGRH/HWC/CWC 등)=안전한 하단 배치 없음. **범위 밖:** 단일코일 `assemble_drawing_package`는 태그 미표시(22~38pt
+  배너가 라벨 완전 덮어 잔상 없음, 계약에 tag 키 없음). 신규 3테스트(실 주입 라벨 측정→배너 높이 충분 단언하는
+  크로스레이어 불변식 포함), **1081 green**. **라이브 서버 `/api/package/quote`(브라우저 버튼과 동일 엔드포인트·
+  페이로드) 실증:** 삽입 양 페이지가 자기 태그(HHWC-1/-2)를 bbox (475.5,3.3)~(532,15.7)에 인쇄·잔상 소거·
+  export_allowed False. hunk 격리(Stage 2.1/3.0 제외). 🆕 이번 세션
+
+- [x] **[체크리스트 정렬 트랙] DX 분배기 S를 체크리스트처럼 1/8" 반올림 (1dbbf74, John 리포트 2026-07-23)** —
+  체크리스트가 S1/S3/S5/S7을 `ROUND(k·CD/(n+1)·8,0)/8`(분배기 중심을 가장 가까운 1/8"로 스냅)으로 계산하는데
+  CoilForge는 안 함: 슬롯/도면 레이어는 raw 몫 유지(CD=5.5,n=2 → 1.8333/3.6667), 엔진 R-034는 **정수 인치**로
+  반올림(`_excel_round` → 3/6/9). John이 체크리스트에서 1.875/3.625로 읽는 코일이 도면엔 1.8333/3.6667로 그려짐.
+  **같은 방정식이 세 곳에 각기 다르게 틀림(dual-path gotcha)** → 헬퍼 하나로 통일: 엔진 R-034 dist_s / `build_drawing_slots`
+  (도면에 실제로 찍히는 값) / `drawing_param_resolver`(파라미터 패널). 신규 `round_eighth()`는 기존 `_excel_round`를
+  재사용해 Excel의 half-away-from-zero ROUND 일치(`round_eighth(0.0625)=0.125`, Python banker's 0.0 아님).
+  **범위=DX 한정:** CWC/HWC 체크리스트 시트엔 S행 자체가 없음=따를 방정식 없음(무발명), Terra V의 S=CD−Rn 분기는
+  시트도 1/8 안 하므로 불변. 1/8은 비례 안 함(2·1.875=3.75≠3.625)=k마다 개별 반올림(S1에서 곱하기 금지).
+  **실측:** DX NOVA B20 rows=4 → CD=5.5, circuits=2가 S1=1.875·S3=3.625(체크리스트 스크린샷 일치). 구현 고정하던
+  단언 4건을 no-round/정수인치 → 체크리스트 값으로 갱신 + 신규 1건(John 케이스·비비례 1/8 함정 잠금). **1082 green**,
+  golden 무접촉. 부수효과: 체크리스트 자동채움 비교표의 S 행이 mismatch→match로 뒤집힘(독립 검증 지점). hunk 격리. 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -290,6 +350,11 @@
   reviewed". 확인: ① 각 편집 필드의 `_isActive`가 자동 ON + 값이 채워지고 저장/네비게이션 미발생 ② RF/HF/CH 체크마크
   OFF 유지 ③ HGBP 코일에서만 ApplyVDConstraints ON. **실 폼을 수정**(unsaved)하므로 John이 직접 실행(Claude가 자동
   실행 안 함); CCSI Save("Apply Changes")도 John 몫. 자동검증 완료(1058 green·plan 2R·라이브 DOM 캡처).
+- [ ] **[TR-4] quote-package 도면 coil tag + DX S 1/8 반올림 브라우저 눈확인 (John)** — ⚠️ 서버 재시작 완료(둘 다
+  반영). 절차: DX 코일 포함 quote PDF 드래그→분석(⚠️ `pdfCoilPages` 클라 캐시라 **재분석 필수**) → "Build quote
+  package". 확인: ① 삽입된 CoilForge 도면 페이지 **상단 배너 우측에 `Tag: <코일태그>`** 표시 + 좌상단 잔상 소거
+  ② DX 도면의 **S1/S3(다회로면 S5/S7)이 1/8 단위**(예 1.875/3.625)로 그려짐 ③ "Coil Checklist Auto-Fill" 비교표에서
+  **S 행이 match(green)**. 자동검증 완료(1082 green·라이브 `/api/package/quote` 실증); 남은 건 John 실 파일 눈 확인.
 
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
@@ -300,8 +365,13 @@
   눈검증 + 브라우저 "이전 교정" 패널)은 **교정이 실제로 쌓인 뒤** 착수(지금 하면 헛작업).
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
-- [ ] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
+- [~] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
   틀린 값 자동승인). 실제 override율은 1단계가 처음 알려줌 → **그 숫자를 보고 착수, 미리 약속 안 함**
+  - [x] **Phase 3.0 측정 도구 (af3b4fc)** — `measure_override_rate`가 그 override율을 원장에서 산출(위 ✅ 참조).
+    실데이터가 flag≠교정 신원 disjoint를 드러냄(false-negative 실증).
+  - [ ] **Phase 3.1 랭킹 (보류)** — 착수 트리거: 교정 더 축적 + **설계결정** — flag된 코일만 랭킹하면 위 disjoint로
+    진짜 override 코일을 놓치므로, `corrected_total−corrected`(unflagged 교정) 신호 노출 여부 John 판정 후. 그다음
+    `/api/review/project` gate에 deterministic severity 랭킹 + inert weight seam(측정값 배선은 1줄, Stage 2.0 패턴).
 - [ ] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
   위험** — John은 flag된 코일만 보므로 안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다. 1d 감사샘플이
   유일한 통계적 수단; 모든 수치는 "리뷰 조건부" 라벨
