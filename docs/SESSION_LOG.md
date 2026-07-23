@@ -5,6 +5,39 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-07-23 (Toronto) · base e30c36f..c6c702c · claude/ambient-supplier
+> 참고: 이 base 범위엔 중간에 다른 세션 커밋(af3b4fc Stage 3.0 등)이 섞여 있으나 그건 로드맵 완료 섹션에
+> 이미 기록됨. 아래는 **이번 대화 세션(2026-07-23)**에서 실제로 한 작업만.
+### ✅ 구현/결정된 것
+- **quote-package 삽입 도면에 coil tag 표시** (커밋 `15bcd55`) — cdf6fc3의 SVG 태그 주입은 정상이었고,
+  어셈블러의 불투명 배너(페이지 y0~16)가 라벨(페이지 y2.2~18.7)을 덮어 디센더 조각만 남던 게 근본원인.
+  `_stamp_watermark_banner`가 tag를 받아 배너 위 우측에 재인쇄 + `_BANNER_HEIGHT` 16→20(묻힌 라벨 완전 덮음).
+  SVG 라벨 하향 이전 안은 33개 시드 템플릿 좌상단 래스터 스캔으로 기각(y≈20부터 지오메트리=안전지대 없음).
+  라이브 `/api/package/quote` 실증(양 페이지 자기 태그·export_allowed False). (근거: `15bcd55`,
+  package/assembler.py, tests/test_package_assembler.py, 신규 3테스트, 1081 green)
+- **DX 분배기 S를 체크리스트처럼 1/8" 반올림** (커밋 `1dbbf74`) — 체크리스트 `ROUND(k·CD/(n+1)·8,0)/8`(1/8 스냅)과
+  달리 세 곳에 각기 다르게 틀림(엔진 R-034=정수인치, 슬롯레이어·패널=반올림 없음). 신규 `round_eighth()`(기존
+  `_excel_round` 재사용=Excel half-away-from-zero)로 통일. DX 한정(CWC/HWC 시트엔 S행 없음=무발명, Terra V CD−Rn
+  분기 불변). CD=5.5,n=2 → S1=1.875/S3=3.625(John 체크리스트 스크린샷 일치). 1/8은 비례 안 함=k마다 개별 반올림.
+  (근거: `1dbbf74`, header_prepopulate_engine.py·direct_coil_drawing_pipeline.py·drawing_param_resolver.py·
+  coil_header_rules.yaml, 기존 단언 4건 갱신+신규 1건, 1082 green)
+- **로드맵 갱신** (커밋 `c6c702c`) — 헤더 최신-갱신 블록 + 완료 2항목 + TR-4 추가.
+- **결정:** 두 수정 모두 DX 범위 한정 확정. CWC/HWC S는 근거 수식 부재로 미변경(무발명 원칙).
+
+### ⏭️ 다음 스텝
+- [ ] **[TR-4] John 브라우저 눈확인** — DX quote PDF 재분석(pdfCoilPages 캐시라 필수)→Build quote package→
+  ①배너 우측 Tag ②DX S 1/8 단위 ③체크리스트 비교표 S 행 green. (왜 남음: 실 렌더 사람 눈 확인은 John 몫)
+- [ ] **세 커밋 push 여부 결정** (왜 남음: 트리에 Stage 2.1/3.0 미커밋 공존 → push 범위 John 판단)
+- [ ] **CWC/HWC S 반올림 보류** (왜 남음: 체크리스트 시트에 S행 없음 — 필요 시 John이 공식 제공)
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `c6c702c` · 미커밋: Stage 2.1/3.0 트랙(capture/retrieve.py,
+  workflows/submittal_to_drawing.py, web/app.js·style.css, capture/tuning.py, scripts/tune_case_weights.py,
+  tests/test_case_tuning.py, tests/test_capture_retrieve.py — **이번 세션 아님**, John eyeball 대기)
+- 핵심 경로: src/coilforge/package/assembler.py · src/coilforge/services/{header_prepopulate_engine,
+  direct_coil_drawing_pipeline,drawing_param_resolver}.py · 체크리스트 원본 수식 = CHK DX!C46:C49
+- 관련: 로드맵 TR-4 · 체크리스트 DX 시트 S1/S3/S5/S7 수식
+
 ## 2026-07-16 (Toronto) · base 5573f05..e30c36f · claude/ambient-supplier
 ### ✅ 구현/결정된 것
 - **Ambient Dynamics quick-ship 서플라이어 확장** — Direct Coil(기본) vs Ambient 선택 축. Ambient는 성능 검증 워크플로: Ambient 회신 Performance PDF를 파싱해 baseline submittal과 coil별 비교, capacity/coil-volume을 Coil Utilities acceptance 밴드로 판정. Direct Coil 경로 byte-identical. (커밋 `e30c36f`, 25 files +2251, 963 tests pass — 929→963 +34)
