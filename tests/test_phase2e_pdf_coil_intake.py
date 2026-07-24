@@ -486,6 +486,26 @@ def test_hgrh_reheat_coil_extracts_leaving_dry_bulb_from_max_performance() -> No
     assert air.get("leaving_wet_bulb_f") is None
 
 
+def test_chilled_water_extracts_leaving_wet_bulb_but_hot_water_has_none() -> None:
+    """Leaving WB is physics-gated by coil type (John 2026-07-24): chilled water
+    dehumidifies so its "Max Coil Performance" reports both DB and WB, but hot water
+    is sensible-only (DB only). The extraction is coil-agnostic; the water mirror
+    surfaces the leaving WB row for chilled water only, matching this asymmetry."""
+    workflow = run_pdf_to_drawing_workflow(_cwc_and_hwc_sections_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+
+    cwc = pages[0]["workflow"]["candidates"][0]["airside_conditions"]
+    assert pages[0]["tag"] == "CCWC-1"
+    assert cwc["leaving_dry_bulb_f"]["value"] == 64.1
+    assert cwc["leaving_wet_bulb_f"]["value"] == 62.9
+
+    hwc = pages[1]["workflow"]["candidates"][0]["airside_conditions"]
+    assert pages[1]["tag"] == "HHWC-1"
+    assert hwc["leaving_dry_bulb_f"]["value"] == 85.8
+    # Hot water is sensible-only -> no leaving WB in the source, not invented.
+    assert hwc.get("leaving_wet_bulb_f") is None
+
+
 def test_cwc_and_hwc_cover_rows_match_cooling_cwc_and_heating_hwc_sections() -> None:
     workflow = run_pdf_to_drawing_workflow(_cwc_and_hwc_sections_pdf_bytes())
     pages = workflow["pdf_coil_pages"]
@@ -977,6 +997,8 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert "candidate.airside_conditions, \"leaving_dry_bulb_f\", [\"Leaving Dry Bulb(°F)\", \"Leaving Dry Bulb\"]" in app_js
     assert "candidate.airside_conditions, \"leaving_wet_bulb_f\", [\"Leaving Wet Bulb(°F)\", \"Leaving Wet Bulb\"]" in app_js
     assert app_js.count("[\"Leaving Wet Bulb(°F)\", \"input\"]") >= 1
+    # Water mirror gates the leaving WB row to chilled water (hot water is sensible-only).
+    assert "isHotWater ? [] : [[\"Leaving Wet Bulb(°F)\", \"input\"]]" in app_js
     assert "workflowToUiState(state.ui, workflow, null)" in app_js
     assert "state.pdfCoilPages = workflow.pdf_coil_pages || []" in app_js
     assert "selectPdfCoilPage" in app_js

@@ -1237,6 +1237,9 @@ function renderWaterCoilScreenMirror(coilFormat, fieldsByLabel) {
         ["Entering Dry Bulb(°F)", "input"],
         ...(isHotWater ? [] : [["Entering Wet Bulb(°F)", "input"], ["Entering Relative Humidity(%)", "input"]]),
         ["Leaving Dry Bulb(°F)", "input"],
+        // Chilled water dehumidifies -> leaving WB is meaningful; hot water is sensible-only
+        // (no leaving WB in source), so gate it exactly like the entering WB row above.
+        ...(isHotWater ? [] : [["Leaving Wet Bulb(°F)", "input"]]),
         ["Total Capacity(MBH)(Per Coil)", "input"],
       ], fieldsByLabel),
     )}
