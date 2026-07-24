@@ -1,6 +1,13 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-23 (**[quote 트랙] quote-package 도면에 coil tag 표시 (15bcd55) + [체크리스트 정렬 트랙]
+> 마지막 갱신: 2026-07-23 (**[RHHGRC 트랙] HGRH/RHHGRC 미러에 Leaving Dry/Wet Bulb 표시 (43215a0)**: 84d04f6의
+> "Max Coil Performance" DB/WB→Leaving 매핑이 **DX 미러에만 배선**돼, RHHGRC(HGRH 재열)는 leaving_dry_bulb_f
+> =71.29를 추출하고도 응축 미러에 미표시(John이 submittal에서 손으로 읽음). 실행으로 결함이 **표시 레이어 국한**임을
+> 증명(추출은 코일 무관·정상, PAGE1 RHHGRC-1=71.29) → web/app.js만 수정: leaving DB/WB를 **코일 무관 fallbackMap**
+> (DX 전용 헬퍼가 아닌)에 배선(DX byte-identical=헬퍼 먼저 실행·setDcFieldAlias 우선) + 응축 미러 AIR DATA에 Leaving
+> Wet Bulb 행 추가(재열=현열-only라 WB 없음=정직한 공란·무발명). 신규 HGRH 추출 회귀테스트 + app.js 문자열 배선
+> 테스트, **1083 green**, frozen/paste 52필드/goldens 무접촉. hunk 격리(Stage 2.1/3.0 제외). 미결=John 브라우저
+> 눈확인(서버 재시작+RHHGRC 재분석). 이전: **[quote 트랙] quote-package 도면에 coil tag 표시 (15bcd55) + [체크리스트 정렬 트랙]
 > DX 분배기 S를 체크리스트처럼 1/8" 반올림 (1dbbf74)**: ①cdf6fc3가 SVG에 넣은 `Tag: X`가 삽입 도면 페이지엔
 > 안 보이던 문제 — 크롭 viewBox가 라벨을 페이지 y 2.2~18.7에 매핑하는데 어셈블러가 y 0~16을 **불투명 배너**로
 > 덮어 디센더 조각만 남김(=John이 본 좌상단 잔상). 배너를 소유한 레이어에서 수정: `_stamp_watermark_banner`가
@@ -330,6 +337,19 @@
   단언 4건을 no-round/정수인치 → 체크리스트 값으로 갱신 + 신규 1건(John 케이스·비비례 1/8 함정 잠금). **1082 green**,
   golden 무접촉. 부수효과: 체크리스트 자동채움 비교표의 S 행이 mismatch→match로 뒤집힘(독립 검증 지점). hunk 격리. 🆕 이번 세션
 
+- [x] **[RHHGRC 트랙] HGRH/RHHGRC 미러에 Leaving Dry/Wet Bulb 표시 (43215a0, John 리포트 2026-07-23)** — John:
+  "RHHGRC HG 코일 데이터 매핑 완벽한가? DB/WB의 RHHGRC도 안 나타났는데 반영됐나?" **조사 결과 = DX만 반영이었음.**
+  84d04f6("Max Coil Performance" DB/WB→Leaving air)이 **DX 화면 미러에만** 배선 → 카테고리별 3미러(DX/응축=HGRH/
+  water) 중 응축 미러가 leaving을 못 받음. **실행으로 결함 위치 확정(도메인 스킬 '대표 케이스 추적'):** DX+HGRH 픽스처
+  분석 시 PAGE1 RHHGRC-1이 `leaving_dry_bulb_f=71.29`를 **이미 추출**(추출은 `max_performance` context 매핑=코일
+  무관·정상), `leaving_wet_bulb_f=None`(재열=현열-only라 소스에 WB 없음). 즉 **결함은 순수 표시 레이어**. 수정(web/app.js
+  만): ①leaving DB/WB를 **코일 무관 fallbackMap**(entering DB/WB와 동일 패턴)에 배선 — DX 전용 `addDxAirFallbackFields`
+  에만 있던 걸 승격, **DX byte-identical**(헬퍼가 먼저 실행·`setDcFieldAlias` 우선→범용 `addDcFieldAlias`가 값 덮지 않음)
+  ②응축 미러 AIR DATA에 "Leaving Wet Bulb" 행 추가(DX 화면과 패리티, 재열은 공란 유지=무발명). 신규 회귀 2건(HGRH 추출
+  71.29/WB None 잠금 + app.js 배선 문자열 assert), **1083 green**(1082+1), frozen `pdf_to_template_drawing`/paste 52필드
+  표면/goldens 무접촉·review-aid only. hunk 격리(app.js 4hunk 중 내 2개만 `git apply --cached`로 스테이지, Stage 2.1
+  renderCaseNeighbors 2hunk 제외). ⚠️ **미결: John 브라우저 눈확인(TR-5)** — UI 렌더는 자동테스트 불가. 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -355,6 +375,11 @@
   package". 확인: ① 삽입된 CoilForge 도면 페이지 **상단 배너 우측에 `Tag: <코일태그>`** 표시 + 좌상단 잔상 소거
   ② DX 도면의 **S1/S3(다회로면 S5/S7)이 1/8 단위**(예 1.875/3.625)로 그려짐 ③ "Coil Checklist Auto-Fill" 비교표에서
   **S 행이 match(green)**. 자동검증 완료(1082 green·라이브 `/api/package/quote` 실증); 남은 건 John 실 파일 눈 확인.
+- [ ] **[TR-5] RHHGRC 미러 Leaving DB/WB 표시 브라우저 눈확인 (John)** — ⚠️ 서버 재시작 필요(app.js 반영) +
+  `pdfCoilPages` 클라 캐시라 **재분석 필수**. 절차: RHHGRC(HGRH) 포함 submittal 드래그→분석 → HGRH 코일 리뷰 페이지
+  선택 → 미러 **AIR DATA** 섹션 확인: **① "Leaving Dry Bulb(°F)"에 값 표시**(예 71.29, 종전 공란) **② "Leaving Wet
+  Bulb(°F)" 행 존재**(재열 코일이면 소스에 WB 없어 공란=정상). 자동검증 완료(1083 green·추출 71.29 실행 확인·DX 무회귀);
+  남은 건 실 렌더 사람 눈 확인. (냉수 코일 water 미러의 Leaving WB는 범위 밖 — 필요 시 후속.)
 
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
