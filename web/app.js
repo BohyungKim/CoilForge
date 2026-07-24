@@ -725,6 +725,12 @@ function addCandidateFallbackFields(fieldsByLabel, candidate) {
     [candidate.airside_conditions, "altitude_ft", ["Altitude(FT)"]],
     [candidate.airside_conditions, "entering_dry_bulb_f", ["Entering Dry Bulb(°F)", "Entering Dry Bulb"]],
     [candidate.airside_conditions, "entering_wet_bulb_f", ["Entering Wet Bulb(°F)", "Entering Wet Bulb"]],
+    // Leaving air = the coil's "Max Coil Performance" DB/WB (John 2026-07-22). Wired here in
+    // the coil-agnostic fallback (not just the DX helper) so the condensing (HGRH/RHHGRC) and
+    // water mirrors also surface it whenever extracted; a reheat coil reports DB only (no WB),
+    // which stays honestly blank rather than invented.
+    [candidate.airside_conditions, "leaving_dry_bulb_f", ["Leaving Dry Bulb(°F)", "Leaving Dry Bulb"]],
+    [candidate.airside_conditions, "leaving_wet_bulb_f", ["Leaving Wet Bulb(°F)", "Leaving Wet Bulb"]],
     [candidate.airside_conditions, "fluid_type", ["Fluid Type"]],
     [candidate.airside_conditions, "fluid_percent", ["Fluid Ratio(%)"]],
     [candidate.airside_conditions, "fluid_entering_temp_f", ["Entering Fluid Temp(°F)"]],
@@ -1135,6 +1141,7 @@ function renderCondensingCoilScreenMirror(uiState, fieldsByLabel) {
         ["Altitude(FT)", "input"],
         ["Entering Dry Bulb(°F)", "input"],
         ["Leaving Dry Bulb(°F)", "input"],
+        ["Leaving Wet Bulb(°F)", "input"],
         ["Total Capacity(MBH)(Per Coil)", "input"],
       ], fieldsByLabel),
     )}

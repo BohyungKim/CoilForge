@@ -466,6 +466,26 @@ def test_attached_oxygen8_pdf_text_spacing_extracts_entering_and_refrigerant_val
     assert candidate["airside_conditions"]["entering_dry_bulb_f"]["value"] != candidate["airside_conditions"]["leaving_dry_bulb_f"]["value"]
 
 
+def test_hgrh_reheat_coil_extracts_leaving_dry_bulb_from_max_performance() -> None:
+    """The RHHGRC (HGRH reheat) coil's "Max Coil Performance" DB is its LEAVING dry
+    bulb — coil-agnostic, same rule as the DX path (John 2026-07-23). A reheat coil
+    is sensible-only, so its Max Coil Performance block reports DB with NO WB; the
+    leaving wet bulb stays honestly absent (None), never invented."""
+    workflow = run_pdf_to_drawing_workflow(_oxygen8_cooling_dx_and_hgrh_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+
+    hgrh = pages[1]["workflow"]["candidates"][0]
+    assert pages[1]["tag"] == "RHHGRC-1"
+    air = hgrh["airside_conditions"]
+    # Max Coil Performance "DB (F): 71.29" surfaces as leaving air, distinct from the
+    # entering DB (55), proving it is not mistaken for the entering condition.
+    assert air["leaving_dry_bulb_f"]["value"] == 71.29
+    assert air["entering_dry_bulb_f"]["value"] == 55
+    assert air["leaving_dry_bulb_f"]["value"] != air["entering_dry_bulb_f"]["value"]
+    # Reheat coil has no leaving WB in the source -> absent, not guessed.
+    assert air.get("leaving_wet_bulb_f") is None
+
+
 def test_cwc_and_hwc_cover_rows_match_cooling_cwc_and_heating_hwc_sections() -> None:
     workflow = run_pdf_to_drawing_workflow(_cwc_and_hwc_sections_pdf_bytes())
     pages = workflow["pdf_coil_pages"]
@@ -952,6 +972,11 @@ def test_web_shell_wires_pdf_upload_to_pdf_workflow_endpoint() -> None:
     assert "candidate.geometry, \"fins_per_inch\"" in app_js
     assert "candidate.refrigerant_conditions, \"condensing_temp_f\"" in app_js
     assert "candidate.airside_conditions, \"fluid_type\"" in app_js
+    # Leaving DB/WB are wired in the coil-agnostic fallback (not just the DX helper) so the
+    # condensing (HGRH/RHHGRC) mirror surfaces them; the mirror carries a Leaving Wet Bulb row.
+    assert "candidate.airside_conditions, \"leaving_dry_bulb_f\", [\"Leaving Dry Bulb(°F)\", \"Leaving Dry Bulb\"]" in app_js
+    assert "candidate.airside_conditions, \"leaving_wet_bulb_f\", [\"Leaving Wet Bulb(°F)\", \"Leaving Wet Bulb\"]" in app_js
+    assert app_js.count("[\"Leaving Wet Bulb(°F)\", \"input\"]") >= 1
     assert "workflowToUiState(state.ui, workflow, null)" in app_js
     assert "state.pdfCoilPages = workflow.pdf_coil_pages || []" in app_js
     assert "selectPdfCoilPage" in app_js
