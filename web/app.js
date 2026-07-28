@@ -2194,6 +2194,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
       ${manualOverrideBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
       ${renderThreeWayView(templateDrawing)}
+      ${renderCaseNeighbors(templateDrawing)}
     </div>
   `;
   attachCoilDrawingPicker(templateDrawing);
@@ -2786,6 +2787,65 @@ function renderThreeWayView(templateDrawing) {
         </table>
       </div>
       ${tw.note ? `<p class="subtle-label">${escapeHtml(tw.note)}</p>` : ""}
+    </details>`;
+}
+
+// Phase 2.1 — "past corrections" panel. Shows the nearest past coils to this one (masked-Gower
+// over the capture ledger) and the corrections John made on them, as EVIDENCE. Read-only: it
+// never applies a value or offers an action. Degrades silently when the corpus is empty /
+// capture is off (case_neighbors.enabled === false or neighbors === []).
+function caseNeighborVal(v) {
+  return v === null || v === undefined || v === "" ? "—" : String(v);
+}
+
+function renderCaseNeighbors(templateDrawing) {
+  const cn = templateDrawing.case_neighbors;
+  if (!cn || cn.enabled === false) return "";
+  const neighbors = Array.isArray(cn.neighbors) ? cn.neighbors : [];
+  if (!neighbors.length) return "";
+  const withCorr = neighbors.reduce(
+    (n, x) => n + ((Array.isArray(x.corrections) && x.corrections.length) ? 1 : 0),
+    0,
+  );
+  const badge = cn.insufficient_corpus
+    ? ` <span class="subtle-label">· 코퍼스 ${cn.corpus_size}/${cn.corpus_min ?? "?"} — 참고용</span>`
+    : "";
+  const rows = neighbors
+    .map((nb) => {
+      const f = nb.features || {};
+      const chips = ["coil_category", "product_line", "unit_size", "hand", "header_type"]
+        .map((k) => f[k])
+        .filter(Boolean)
+        .map((v) => `<span class="cn-chip">${escapeHtml(String(v))}</span>`)
+        .join("");
+      const corr = Array.isArray(nb.corrections) ? nb.corrections : [];
+      const corrHtml = corr.length
+        ? corr
+            .map(
+              (c) =>
+                `<li><span class="cn-field">${escapeHtml(String(c.field_key))}</span>: ` +
+                `${escapeHtml(caseNeighborVal(c.before))} <span class="cn-arrow">→</span> ` +
+                `<span class="cn-after">${escapeHtml(caseNeighborVal(c.after))}</span></li>`,
+            )
+            .join("")
+        : `<li class="subtle-label">교정 이력 없음</li>`;
+      const dimmed = corr.length ? "" : " cn-neighbor-empty";
+      return `
+        <div class="cn-neighbor${dimmed}">
+          <div class="cn-neighbor-head">
+            <span class="cn-tag">${escapeHtml(String(nb.tag ?? "—"))}</span>
+            ${chips}
+            <span class="subtle-label">d=${Number(nb.distance).toFixed(3)} · 공유축 ${escapeHtml(String(nb.shared_axes))}</span>
+          </div>
+          <ul class="cn-corrections">${corrHtml}</ul>
+        </div>`;
+    })
+    .join("");
+  return `
+    <details class="case-neighbors-panel">
+      <summary>이전 교정 · ${neighbors.length}개 유사 코일 (${withCorr}개 교정 이력)${badge}</summary>
+      <div class="cn-body">${rows}</div>
+      <p class="subtle-label">비슷한 과거 코일에서 John이 고친 값 — 참고용, 자동 적용 안 함.</p>
     </details>`;
 }
 

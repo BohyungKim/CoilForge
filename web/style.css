@@ -2617,6 +2617,84 @@ h4 {
   color: var(--danger-text);
 }
 
+/* Phase 2.1 — past-corrections (case neighbors) panel. Same tokens as three-way. */
+.case-neighbors-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 6px 0 4px;
+  padding: 4px 10px 8px;
+}
+
+.case-neighbors-panel > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.cn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cn-neighbor {
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+
+.cn-neighbor-empty {
+  opacity: 0.55;
+}
+
+.cn-neighbor-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.cn-tag {
+  font-weight: 600;
+}
+
+.cn-chip {
+  background: var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  padding: 1px 6px;
+}
+
+.cn-corrections {
+  font-size: 0.8rem;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.cn-corrections li {
+  padding: 1px 0;
+}
+
+.cn-corrections .cn-field {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.cn-corrections .cn-arrow {
+  color: var(--text-secondary);
+}
+
+.cn-corrections .cn-after {
+  background: var(--ok-bg);
+  border-radius: 3px;
+  color: var(--ok-text);
+  padding: 0 4px;
+}
+
 .coil-drawing-picker.is-derived {
   background: var(--ok-bg);
   border-color: var(--ok-border);
