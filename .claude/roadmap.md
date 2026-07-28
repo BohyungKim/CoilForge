@@ -1,6 +1,16 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-24 (**[RHHGRC 트랙] HGRH/RHHGRC + 냉수 미러에 Leaving Dry/Wet Bulb 표시 (43215a0·a1c0a5b)**: 84d04f6의
+> 마지막 갱신: 2026-07-28 (**[UI/UX 트랙] John 5건 일괄 — 커밋 3개 9ad1f25·0b9a60c·9db5f10**: ①Ambient 견적요청
+> PDF 신설(패키지 모드에 내보내기가 아예 없어 Ambient에 줄 게 없던 문제; fitz 작도 + PDF 재-POST로 메모 재사용,
+> 클라 SVG 주입 차단) ②Project Review·Audit CCSI 패널 제거(백엔드·테스트 유지) ③Drawing Notes를 CCSI 페이로드
+> 최상위 키로 전송 + userscript `entriesOf()` 어댑터로 **실제 자동입력까지 연결**(CCSI 로그인 불가로 labelText 추론
+> 셀렉터, `selector_verified:false`로 경고 표시 → TR-6) ④Leaving DB/WB 강조(값 있을 때만) ⑤RHHGRC 미매핑 해소 —
+> mapping_lab 4개 실코일 전사본이 8개 구성규칙 전부 일치하는 **증거 기반**으로 condensing 확장, drain pan·System
+> Type은 반증 있어 제외(무발명), HGRH 기본값 7개는 fallbackMap **뒤에서** addDcFieldAlias → 추출값 우선(실증
+> 0.625가 "Calculate" 이김). 부수 버그 3건(Condensing Temp가 액체온도 표시 / 선언 기본값 전부 死 / Saturated Suction
+> 별칭 누락 — 마지막 건은 **눈 검증만이 잡을 수 있던 종류**). 2라운드 적대적 계획검토 후 착수, +44테스트 **1129
+> green**, 변조테스트로 가드 유효성 증명, 실 4코일 submittal 브라우저 눈검증 완료(runbook §18). 이전: **[RHHGRC 트랙]
+> HGRH/RHHGRC + 냉수 미러에 Leaving Dry/Wet Bulb 표시 (43215a0·a1c0a5b)**: 84d04f6의
 > "Max Coil Performance" DB/WB→Leaving 매핑이 **DX 미러에만 배선**돼, RHHGRC(HGRH 재열)는 leaving_dry_bulb_f
 > =71.29를 추출하고도 응축 미러에 미표시(John이 submittal에서 손으로 읽음). 실행으로 결함이 **표시 레이어 국한**임을
 > 증명(추출은 코일 무관·정상, PAGE1 RHHGRC-1=71.29) → web/app.js만 수정: leaving DB/WB를 **코일 무관 fallbackMap**
@@ -354,7 +364,29 @@
   냉수(CWC)는 제습이라 leaving WB 의미 있음(CCWC-1=64.1/62.9 실행 확인), 온수(HWC)는 현열-only(HHWC-1=85.8/None)라
   entering WB와 동일한 `isHotWater` 게이트로 행 오프(무발명). 값은 이미 코일 무관 fallbackMap이 흘려줌 → water 미러엔
   행만 추가. 신규 CWC/HWC 비대칭 테스트 + app.js 게이트 문자열 assert, **1084 green**, 재차 hunk 격리. ⚠️ **미결:
-  John 브라우저 눈확인(TR-5)** — UI 렌더는 자동테스트 불가. 🆕 이번 세션
+  John 브라우저 눈확인(TR-5)** — UI 렌더는 자동테스트 불가.
+
+- [x] **[UI/UX 트랙] John 5건 일괄 (9ad1f25·0b9a60c·9db5f10, 2026-07-28)** — RHHGRC/Ambient 실사용에서 나온 5건.
+  **①Ambient 견적요청 PDF**(신규 `ambient/quote_request_pdf.py` + `POST /api/ambient/quote-request-pdf`): 패키지
+  모드는 코일별 성능페이지+도면을 만들면서 **내보내기가 아예 없어** 정작 Ambient에 줄 게 없었음. 페이지는 fitz
+  프리미티브로 작도(≈40행 테이블=열폭 측정+페이지네이션 필요; 도면 페이지만 `svg_to_pdf_bytes`), 라우트는 렌더된
+  JSON 대신 **PDF 재-POST + 패키지 메모 재사용**(클라가 SVG 주입·안전플래그 조작 불가), `export_allowed` 하드와이어
+  False. **②Project Review·Audit CCSI 패널 제거**(John: 버튼 최소화) — 백엔드·테스트는 전부 유지(capture/record.py가
+  게이트를 독립 재유도). **③Drawing Notes를 CCSI 페이로드 최상위 키로** 전송 — 필드맵 계약테스트가 치수키만 허용하고
+  텍스트 노트엔 unit이 없어 14번째 field로 넣지 않음. **④Leaving DB/WB 강조**(값 있을 때만 — 재열코일의 빈 WB가
+  강조된 빈칸이 되면 안 됨). **⑤RHHGRC 미매핑 해소**: 회사규칙 fallback이 DX 전용 게이트에 막혀 있던 것을
+  `examples/mapping_lab` case_004/005/006 **4개 실코일 전사본이 8개 구성규칙 전부 일치**하는 증거로 condensing까지
+  확장. drain pan·DX 분배기는 DX 전용 유지(HGRH 시드 양쪽에 부재), System Type은 case_006 RHHGRC-1이
+  "Dual-Circuit Face Split"이라 연결수 유도식으로 만들 수 없어 **unmapped 유지(무발명)**. 승인된 HGRH 기본값 7개는
+  **fallbackMap 뒤에서 `addDcFieldAlias`** 로 적용 → 추출값이 항상 기본값을 이김(실증: Return Conn Size 0.625가
+  "Calculate" 기본값을 이김). 부수 발견 버그 3건 수정: **Condensing Temp가 sourceLabel 때문에 액체온도를 표시**(벤더용
+  화면의 오값), **선언된 행 기본값이 전부 죽어 있음**(+실코일에서 틀린 System Type 기본값 제거), **Saturated Suction이
+  sourceLabel 별칭 누락으로 기본값 미도달**(눈 검증이 잡음 — substring 테스트가 구조적으로 못 보는 종류). **⑥CCSI
+  Drawing Notes 실제 자동입력 배선**(9db5f10): `selectors: []`로 값만 도착하던 걸 userscript `entriesOf()` 어댑터로
+  실제 채움까지 연결. CCSI 로그인은 John만 가능해 **Phase-0 캡처 없이 labelText 전략 추론** → `selector_verified:false`로
+  패널이 **실제 resolve된 엘리먼트를 표시하고 경고**, John 확인 후 기록. 착수 전 **2라운드 적대적 계획검토**(BLOCKER 2·
+  MAJOR 2 전건 해소, 라운드2 APPROVED), 신규 44테스트 **1129 green**, 변조테스트로 가드 유효성 증명(규칙값 변조·기본값
+  순서 hoist 둘 다 실패 확인), **실 4코일 Oxygen8 submittal로 브라우저 눈검증 완료**(절차는 runbook §18). 🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
@@ -386,6 +418,15 @@
   각 코일 리뷰 페이지 선택 → 미러 **AIR DATA** 확인: **① HGRH "Leaving Dry Bulb"에 값 표시**(예 71.29, 종전 공란)
   **② CWC "Leaving Wet Bulb" 행에 값 표시**(예 62.9) **③ HWC는 Leaving WB 행 없음**(현열-only, 게이트 오프=정상).
   자동검증 완료(1084 green·추출 71.29/62.9 실행 확인·DX 무회귀); 남은 건 실 렌더 사람 눈 확인.
+  **부분 해소(2026-07-28)**: RHHGRC 미러에 Leaving DB/WB **행이 존재함**은 실 submittal(2862 Avon)로 확인. 다만 그
+  코일은 leaving 값을 명시하지 않아 `unmapped` 표시 → **값이 실제로 찍히는 화면은 미확인**. 71.29/62.9가 나오는
+  submittal로 한 번 더 확인 필요.
+
+- [ ] **[TR-6] CCSI Drawing Notes 셀렉터 라이브 캡처 (John)** — 배선은 완료(9db5f10)이나 CCSI 로그인이 John 전용이라
+  Phase-0 캡처를 못 했고, 현재 labelText **추론** 셀렉터로 동작(`selector_verified:false`). 절차: coil.ccsi.ie 로그인 →
+  Direct Coil 코일 열기 → 북마클릿/유저스크립트로 CoilForge 페이로드 붙여넣기 → 패널의 **"⚠ UNVERIFIED target
+  <textarea#...>"** 행에서 resolve된 엘리먼트가 진짜 Drawing Notes 칸인지 확인 → 맞으면 그 `#id`를
+  `web/app.js::ccsiDrawingNotes`의 `selectors` **맨 앞**에 넣고 `selector_verified` 제거. 틀리면 채우지 말고 보고.
 
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
@@ -394,6 +435,7 @@
   앞으로 코일 조정을 **브라우저 edit(Update drawing / Spec data)**로 해야 `correction`이 쌓임. `submittals/` 12개
   소진(재분석 dedup); `Case/` 레퍼런스는 미투입(오염 방지). Phase 2.1(가중치·min_shared_axes 튜닝 + 이웃 품질
   눈검증 + 브라우저 "이전 교정" 패널)은 **교정이 실제로 쌓인 뒤** 착수(지금 하면 헛작업).
+## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [~] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
