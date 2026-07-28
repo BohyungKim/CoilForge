@@ -270,7 +270,7 @@
     gate.append(gateCheck, el("span", { textContent: "I have reviewed these review-aid values" }));
 
     const fillAll = btn("Fill all reviewed", () => {
-      payload.fields.forEach((f) => { if (isFillable(f)) fillOne(f); });
+      entriesOf(payload).forEach((f) => { if (isFillable(f)) fillOne(f); });
       applyFormLevelToggles(payload);
       summarize(payload);
     });
@@ -279,7 +279,7 @@
 
     body.append(gate, fillAll, el("div", { id: "ccsi-af-summary" }, { margin: "6px 0", fontSize: "12px" }));
 
-    payload.fields.forEach((field) => {
+    entriesOf(payload).forEach((field) => {
       const resolved = resolve(field.selectors);
       const row = el("div", { id: rowId(field.key) },
         { display: "grid", gridTemplateColumns: "44px 1fr auto", gap: "6px", alignItems: "center",
@@ -305,6 +305,11 @@
     let text, color;
     if (!resolved && isFillable(field)) {
       text = "selector not found"; color = "#b3261e";
+    } else if (field.selector_verified === false && isFillable(field)) {
+      // No Phase-0 capture for this field — it resolved by label text, which is an inference.
+      // Say so loudly and show what it landed on, so John confirms the target before writing.
+      text = `⚠ UNVERIFIED target <${resolved.tagName.toLowerCase()}${resolved.id ? "#" + resolved.id : ""}> — confirm, then: ${field.value}`;
+      color = "#b3261e";
     } else if (field.ccsi_readonly && isFillable(field)) {
       text = `CCSI read-only (computed) — skipped, was ${resolved ? resolved.value : ""}`; color = "#6b7280";
     } else if (field.status === "blocked" || field.value === null || field.value === undefined) {
@@ -315,6 +320,20 @@
       text = `${field.value}`; color = "#1a7f37";
     }
     return el("span", { textContent: text }, { color, fontSize: "12px", display: "inline-block", maxWidth: "230px" });
+  }
+
+  // Everything the panel offers to fill: the 13 (+multi-header) dimensions, plus the
+  // engine-assembled Drawing Notes if CoilForge sent any. Notes ride the payload as a
+  // SEPARATE top-level key, never inside `fields` — that array is contract-tested to hold
+  // only dimension keys (they carry a unit and a captured CCSI #id; a text note has neither).
+  // Adapting it here keeps the contract intact while the UI treats every row the same way.
+  function entriesOf(payload) {
+    const entries = [...payload.fields];
+    const notes = payload.drawing_notes;
+    if (notes && notes.value !== null && notes.value !== undefined && notes.value !== "") {
+      entries.push({ ...notes, key: "NOTES", ccsi_readonly: false, unit: null });
+    }
+    return entries;
   }
 
   function isFillable(field) {
@@ -438,15 +457,18 @@
   function summarize(payload) {
     const out = document.getElementById("ccsi-af-summary");
     if (!out) return;
-    const rows = payload.fields.map((f) => ({ f, t: resolve(f.selectors) }));
+    const entries = entriesOf(payload);
+    const rows = entries.map((f) => ({ f, t: resolve(f.selectors) }));
     const writable = rows.filter(({ f, t }) => isFillable(f) && t && !f.ccsi_readonly);
     const filled = writable.filter(({ f, t }) => verify(t, f) && String(t.value).trim() !== "").length;
     const readOnly = rows.filter(({ f, t }) => isFillable(f) && t && f.ccsi_readonly).length;
     const notFound = rows.filter(({ f, t }) => isFillable(f) && !t).length;
-    const skipped = payload.fields.filter((f) => !isFillable(f)).length + readOnly;
+    const unverified = rows.filter(({ f, t }) => isFillable(f) && t && f.selector_verified === false).length;
+    const skipped = entries.filter((f) => !isFillable(f)).length + readOnly;
     out.textContent =
       `${filled}/${writable.length} filled · ${skipped} skipped (blocked/no value/read-only)` +
-      (notFound ? ` · ${notFound} selector(s) not found` : "");
+      (notFound ? ` · ${notFound} selector(s) not found` : "") +
+      (unverified ? ` · ⚠ ${unverified} unverified target(s) — confirm before filling` : "");
   }
 
   // ===================== shared DOM helpers =====================

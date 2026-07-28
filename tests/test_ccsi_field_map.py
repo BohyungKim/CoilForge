@@ -70,3 +70,45 @@ def test_map_declares_form_and_version() -> None:
     data = _load_map()
     assert data.get("form")
     assert data.get("version")
+
+
+# --- Drawing Notes ride the payload WITHOUT entering the field map (2026-07-28) ------------
+#
+# The engine-assembled drawing notes travel to CCSI so John stops re-typing them, but they are
+# a separate top-level payload key, never a 14th entry in `fields`. These guards pin that
+# separation from both sides — the map above must stay dimension-only, and the userscript must
+# read the notes through its adapter rather than by mutating `fields`.
+
+_APP_JS = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(encoding="utf-8")
+_USERSCRIPT = (
+    Path(__file__).resolve().parents[1] / "web" / "ccsi" / "ccsi_autofill.user.js"
+).read_text(encoding="utf-8")
+
+
+def test_drawing_notes_never_enter_the_field_map() -> None:
+    fields = _load_map()["fields"]
+    for key in fields:
+        assert "NOTE" not in key.upper(), f"{key} looks like a notes key; the map is dimension-only"
+
+
+def test_payload_emits_drawing_notes_as_a_top_level_key() -> None:
+    assert "drawing_notes: ccsiDrawingNotes(uiState)" in _APP_JS
+    # The paste-surface key is direct_coil_label, not label — `label` is undefined forever and
+    # would emit null, which reads as "this coil has no notes" rather than as a bug.
+    assert 'entry.direct_coil_label === "Drawing Notes"' in _APP_JS
+
+
+def test_notes_selector_is_marked_unverified_until_captured_live() -> None:
+    # No Phase-0 capture exists for CCSI's Drawing Notes input, so the resolver falls back to
+    # label text. That inference must stay flagged so the filler warns before writing.
+    assert "selector_verified: false" in _APP_JS
+    assert 'strategy: "labelText"' in _APP_JS
+    assert "selector_verified === false" in _USERSCRIPT
+
+
+def test_userscript_fills_through_the_entries_adapter_not_raw_fields() -> None:
+    assert "function entriesOf(payload)" in _USERSCRIPT
+    # Fill-all and the row builder must both go through the adapter, or the notes never fill.
+    assert "entriesOf(payload).forEach((f) => { if (isFillable(f)) fillOne(f); });" in _USERSCRIPT
+    assert "entriesOf(payload).forEach((field) => {" in _USERSCRIPT
+    assert "payload.fields.forEach(" not in _USERSCRIPT

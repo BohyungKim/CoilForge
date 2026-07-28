@@ -1945,7 +1945,14 @@ function ccsiDrawingNotes(uiState) {
     value,
     status: value ? field.status || "review_required" : "blocked",
     type: "text",
-    selectors: [],
+    // No CCSI #id has been captured off the live form for this field, so the resolver falls
+    // back to its label-text strategy. That is an INFERENCE, not a Phase-0 capture: it may
+    // resolve to nothing (the filler then does nothing) or, in principle, to a different
+    // input whose label contains the same words. Hence selector_verified:false — the panel
+    // shows what it resolved to and John confirms before any write. Replace this with the
+    // real "#id" (first position) once the live form is captured, same as the 13 dimensions.
+    selectors: [{ strategy: "labelText", text: "Drawing Notes" }],
+    selector_verified: false,
     blocked_reason: value ? null : "No drawing notes assembled for this coil.",
   };
 }
