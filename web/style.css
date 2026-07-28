@@ -822,6 +822,19 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
+/* Leaving DB/WB = the "Max Coil Performance" duty point John checks the application
+   engineer's selection against. Accent + weight so the eye lands on it without hunting
+   (John 2026-07-28). Placed after the status rules so it overrides their calm left edge;
+   deliberately NOT red/green — it must not read as blocked, empty, or a CCSI compare
+   verdict. renderDcInputRow only applies this when the row has a value, so a reheat coil's
+   absent leaving WB stays plain unmapped. */
+.dc-control.dc-control--duty {
+  border-left-color: var(--accent);
+  border-left-width: 4px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
 /* Empty drawing parameter = warning. Red on all edges (not just the status edge,
    and never the calm amber) so a blank that couldn't be derived is impossible to
    miss; the reason is shown inline + on hover (John 2026-06-27). Placed after the
@@ -884,15 +897,10 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
-/* Offline CCSI-export audit — per-coil green/red table. Reuses the ok/danger theme
-   tokens (defined for light + dark) so it tracks the theme like the live compare. */
-.ccsi-audit-results {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 10px;
-}
-
+/* Per-coil green/red table. Seeded by the offline CCSI-export audit (removed from the UI
+   2026-07-28) and now used SOLELY by the Ambient panel, which reuses .ccsi-audit-coil /
+   -badge / -note / -table for its compare and package cards — do not delete these as
+   dead CCSI styling. Reuses the ok/danger theme tokens (defined for light + dark). */
 .ccsi-audit-coil {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -960,12 +968,6 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
-.ccsi-audit-empty {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  margin: 0;
-}
-
 /* ------------------------------------------------------------------ */
 /* Supplier selector + Ambient Dynamics quote comparison (review aid). */
 /* Direct Coil is the default; the Ambient panel is gated on the body  */
@@ -1003,8 +1005,7 @@ body.is-init-stage .primary-intake-panel {
 body[data-supplier="ambient"] .ambient-section {
   display: block;
 }
-body[data-supplier="ambient"] #checklist-fill-section,
-body[data-supplier="ambient"] #ccsi-audit-section {
+body[data-supplier="ambient"] #checklist-fill-section {
   display: none;
 }
 
@@ -1048,6 +1049,15 @@ body[data-supplier="ambient"] .ambient-mode-switch {
    specificity so the default hide wins; the package-mode rule below (higher still) shows. */
 .ambient-drops.ambient-package-only {
   display: none;
+}
+/* Same tie, same fix, for the quote-request export button: it carries .ambient-excel-action
+   (display:flex, defined later at equal specificity), which would otherwise show it in
+   COMPARE mode where there is no package to export. */
+.ambient-excel-action.ambient-package-only {
+  display: none;
+}
+body[data-ambient-mode="package"] #ambient-quote-request-action {
+  display: flex;
 }
 body[data-ambient-mode="package"] .ambient-package-drops {
   display: flex;
@@ -1200,85 +1210,6 @@ body[data-supplier="ambient"][data-ambient-mode="package"] #checklist-section {
 #ambient-excel-status {
   font-size: 0.76rem;
   color: var(--text-secondary);
-}
-
-/* Project Review — exceptions first. Passing coils never render; only exceptions
-   (red) and documented overrides (amber-ish) show. Reuses ok/danger theme tokens. */
-.project-review-opt {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.project-review-results {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.pr-badge {
-  font-size: 0.8rem;
-  border-radius: 6px;
-  padding: 2px 8px;
-  border: 1px solid var(--ok-border);
-  background: var(--ok-bg);
-  color: var(--ok-text);
-}
-
-.pr-badge.has-mismatch {
-  border-color: var(--danger-border);
-  background: var(--danger-bg);
-  color: var(--danger-text);
-}
-
-.pr-badge--override {
-  border-color: var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-}
-
-.pr-coil {
-  border: 1px solid var(--border);
-  border-left-width: 3px;
-  border-radius: 8px;
-  padding: 8px 12px;
-}
-
-.pr-coil--exception {
-  border-left-color: var(--danger-border);
-}
-
-.pr-coil--override {
-  border-left-color: var(--ok-border);
-}
-
-.pr-coil h4 {
-  margin: 0 0 6px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-heading);
-}
-
-.pr-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 0.85rem;
-  color: var(--text-primary);
-}
-
-.pr-list--exception strong {
-  color: var(--danger-text);
-}
-
-.pr-empty {
-  font-size: 0.85rem;
-  color: var(--ok-text);
-  margin: 6px 0 0;
 }
 
 .dc-inline-controls {

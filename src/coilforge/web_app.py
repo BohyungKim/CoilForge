@@ -4,6 +4,7 @@ import hashlib
 import os
 
 from collections import OrderedDict
+from datetime import date
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -41,6 +42,7 @@ from coilforge.ambient.rfq import build_ambient_rfq
 from coilforge.ambient.package import build_ambient_package
 from coilforge.ambient.excel_map import build_ambient_excel_fill
 from coilforge.ambient.excel_writer import write_ambient_excel
+from coilforge.ambient.quote_request_pdf import build_ambient_quote_request_pdf
 from coilforge.submittal.po_logic_bridge import build_po_logic_intake_summary
 from coilforge.workflows import (
     build_default_demo_workflow_input,
@@ -1073,6 +1075,68 @@ async def ambient_package(request: Request):
     if outcome.payload is None:
         raise HTTPException(status_code=outcome.http_status or 400, detail=outcome.reason)
     return jsonable_encoder(outcome.payload)
+
+
+@app.post("/api/ambient/quote-request-pdf")
+async def ambient_quote_request_pdf(request: Request):
+    """Export the Ambient package as the quote-request PDF John hands the supplier.
+
+    Same multipart form as ``/api/ambient/package`` (``submittal`` required, ``ez_drawing``
+    optional) plus optional ``project_name`` / ``project_number`` text fields. Returns
+    ``pdf_base64`` — a cover page, then per coil its transcribed performance page(s) followed
+    by its drawing page, watermarked on every page.
+
+    It re-POSTs the PDFs rather than accepting the browser's already-rendered package JSON:
+    that payload embeds each coil's drawing SVG, and taking it from the client would feed an
+    arbitrary client string to the SVG parser and let the client dictate the safety flags.
+    ``_run_or_reuse_ambient_package`` is memoized on the uploaded bytes, so the normal path
+    (export right after generating) is a cache hit rather than a second parse. Review aid only
+    (``export_allowed: False``); a value the submittal did not state stays blank, never guessed.
+    """
+    if not _ambient_enabled():
+        raise HTTPException(status_code=503, detail="Ambient disabled (COILFORGE_AMBIENT=0).")
+    form = await request.form()
+    submittal_file = form.get("submittal")
+    if submittal_file is None:
+        raise HTTPException(
+            status_code=400, detail="multipart form must include a 'submittal' PDF file."
+        )
+    ez_file = form.get("ez_drawing")
+    submittal_bytes = (
+        await submittal_file.read() if hasattr(submittal_file, "read") else bytes(submittal_file)
+    )
+    ez_bytes = b""
+    if ez_file is not None:
+        ez_bytes = await ez_file.read() if hasattr(ez_file, "read") else bytes(ez_file)
+    outcome = await _run_or_reuse_ambient_package(
+        submittal_bytes, ez_bytes,
+        filename=getattr(submittal_file, "filename", None),
+        cover_page_hint=_cover_page_hint_from_request(request),
+    )
+    if outcome.payload is None:
+        raise HTTPException(status_code=outcome.http_status or 400, detail=outcome.reason)
+
+    def _text_field(name: str) -> str | None:
+        value = form.get(name)
+        if value is None or hasattr(value, "read"):  # ignore a file posted under a text name
+            return None
+        return str(value).strip() or None
+
+    try:
+        result = await asyncio.to_thread(
+            build_ambient_quote_request_pdf,
+            outcome.payload,
+            project_name=_text_field("project_name"),
+            project_number=_text_field("project_number"),
+            generated_on=date.today(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — route contract: never surface a raw traceback
+        raise HTTPException(
+            status_code=500, detail=f"Ambient quote-request PDF failed: {exc}"
+        ) from exc
+    return jsonable_encoder(result)
 
 
 @app.post("/api/ambient/excel")

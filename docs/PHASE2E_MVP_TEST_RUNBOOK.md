@@ -249,3 +249,70 @@ John / Engineering Review Required:
 - POs-supported field adoption
 - future unit conversion approval
 - BOM/linestring policy
+
+## 18. Browser Eyeball Gate — 2026-07-28 UI/UX pass
+
+Five workstreams landed together; four of them are JS, and this repo has no JS test runner.
+The Python guards (`tests/test_condensing_mirror_fields.py`,
+`tests/test_direct_coil_company_rules_vs_seeds.py`) pin the SOURCE shape and the rule table
+against John's hand-filled seeds — they do NOT prove the rendered mirror is correct. These
+manual checks are the real gate.
+
+Run `run_server.bat` (port 8011). It has **no `--reload`**: restart it after any `src/` edit,
+and re-analyze the PDF in the browser since `pdfCoilPages` is cached client-side.
+
+### 18.1 Condensing (RHHGRC/HGRH) mirror
+
+Analyze a submittal containing an RHHGRC coil, then confirm on the condensing mirror:
+
+- [ ] Header Material / Header Wall Schedule / Connection Material / Connection Type /
+      Casing Material / Casing Style / Connection Ends / Coil Coating populate with the
+      amber review-required edge — no longer "unmapped".
+- [ ] Face Velocity(FPM) shows a computed value.
+- [ ] **Condensing Temperature shows the CONDENSING value, not the liquid temperature.**
+      (This was the wrong-value bug — check it against the submittal by hand once.)
+- [ ] The 7 HGRH review defaults appear: Saturated Suction 45, Suction Temp at Compressor 68,
+      Vapor 140, Condensing 115, Subcooling 18, Supply/Return Connection Size "Calculate".
+- [ ] **Masking check (highest risk):** on a submittal that DOES state a condensing
+      temperature, the extracted value wins over the 115 default. If 115 appears where the
+      submittal said something else, the defaults were hoisted above the fallbackMap.
+- [ ] System Type and Separate Subcooling Tubes High / Circuits read `unmapped` — these are
+      not derivable and must never be guessed.
+- [ ] No drain-pan value and no DX distributor value appears anywhere on this mirror.
+
+### 18.2 Leaving DB/WB highlight
+
+- [ ] On DX, condensing and water mirrors, Leaving Dry Bulb and Leaving Wet Bulb carry the
+      accent bar + bold, and the eye lands on them without hunting.
+- [ ] Check in BOTH light and dark theme.
+- [ ] The DX mirror shows Leaving Wet Bulb exactly ONCE (it moved out of the calculated panel).
+- [ ] On a reheat coil with no leaving WB, the row reads plain `unmapped` with NO accent — a
+      highlighted empty box would be a failure.
+
+### 18.3 Removed sections
+
+- [ ] "Project Review — Exceptions First" and "Audit CCSI Export" are gone from the review flow.
+- [ ] Browser console is clean (no missing-element errors from removed listeners).
+- [ ] The Ambient panel's coil cards are still styled correctly — it reuses the
+      `.ccsi-audit-coil/-badge/-table/-note` classes the removed section seeded.
+- [ ] In Ambient supplier mode, the Coil Checklist Auto-Fill section is still HIDDEN.
+
+### 18.4 Drawing Notes in the CCSI payload
+
+- [ ] Copy the CCSI payload; the JSON has a top-level `drawing_notes` with the assembled text.
+- [ ] `fields[]` still contains exactly the 13 base params (+ any multi-header keys) —
+      the notes must NOT have become a 14th dimension field.
+
+### 18.5 Ambient quote-request PDF
+
+In Ambient supplier mode, "Generate package from submittal":
+
+- [ ] The "Export quote request PDF" button is disabled until a package renders.
+- [ ] Switch to "Compare two files" — the button must NOT be visible there.
+- [ ] Export, then open the PDF: cover page, then per coil its performance page(s) followed by
+      its drawing page.
+- [ ] Every page carries the REVIEW AID band, including drawing pages.
+- [ ] A value the submittal did not state renders as `-`, never as 0 or N/A. A stated 0 still
+      shows 0.
+- [ ] Degree and superscript-two render in the unit labels; no stray middle dots (that is the
+      base-14 font substituting for an em dash).

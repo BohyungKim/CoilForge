@@ -8,6 +8,9 @@ const state = {
   ambientMode: "compare",
   ambientSubmittalFile: null,
   ambientEzFile: null,
+  // Gates the quote-request export: true only while a rendered package is on screen, so the
+  // button can never post a submittal that produced no coils.
+  ambientPackageReady: false,
   manualDrawingMode: false,
   compatibilityFilter: "all",
   pdfIntakeSummary: null,
@@ -189,6 +192,11 @@ const DC_SECTIONS = {
     ["Entering Wet Bulb(°F)", "input"],
     ["Entering Relative Humidity(%)", "input"],
     ["Leaving Dry Bulb(°F)", "input"],
+    // Leaving Wet Bulb was calculated-panel-only until 2026-07-28. It is a duty point John
+    // checks against the application engineer's selection, and the calculated panel carries no
+    // status class (so it can't be highlighted) — moved here for parity with the condensing
+    // mirror. It is a MOVE, not a copy: the airCalculated entry below was removed.
+    ["Leaving Wet Bulb(°F)", "input"],
     ["Total Capacity(MBH)(Per Coil)", "input"],
   ],
   airCalculated: [
@@ -196,7 +204,6 @@ const DC_SECTIONS = {
     ["Entering Dry Bulb", "Entering Dry Bulb(°F)"],
     ["Entering Wet Bulb", "Entering Wet Bulb(°F)"],
     ["Leaving Dry Bulb", "Leaving Dry Bulb(°F)"],
-    ["Leaving Wet Bulb", "Leaving Wet Bulb(°F)"],
     ["Air Pressure Drop", null],
     ["Total Capacity(All Coils)", "Total Capacity(MBH)(Per Coil)"],
     ["Sensible Capacity(All Coils)", null],
@@ -602,7 +609,10 @@ function buildDirectCoilFieldLookup(uiState, surface) {
       addDcFieldAlias(fieldsByLabel, label, field);
     });
   });
-  addCandidateFallbackFields(fieldsByLabel, activePdfCandidate());
+  // uiState is threaded so the fallback layer and the mirror layer agree on coil format
+  // (both consult directCoilMirrorFormat) — a tag-only-known RHHGRC-1 classifies the same way
+  // in both, instead of the fallbacks silently disagreeing with the form being rendered.
+  addCandidateFallbackFields(fieldsByLabel, activePdfCandidate(), uiState);
   return fieldsByLabel;
 }
 
@@ -678,11 +688,22 @@ function activePdfCandidate() {
   return page?.workflow?.candidates?.[0] || null;
 }
 
-function addCandidateFallbackFields(fieldsByLabel, candidate) {
+// The company-rule fallbacks below were DX-only until 2026-07-28, which left a condensing
+// (RHHGRC/HGRH) coil showing a wall of "unmapped". John's own hand-filled transcriptions —
+// examples/mapping_lab/case_004 (DX), case_005 (HGRH) and case_006 (one of each) — carry
+// IDENTICAL values for the construction rules on both coil types, so the shared set is
+// evidence-backed rather than assumed. Deliberately NOT widened to CWC/HWC/PHWC: the water
+// seeds are mock data with no construction fields, so there is no evidence either way.
+function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
   if (!candidate) {
     return;
   }
   const dxCandidate = isDxPdfCandidate(candidate);
+  // isDxPdfCandidate is KEPT as the DX gate rather than replaced by a format check:
+  // directCoilMirrorFormat falls through to "dx" as a catch-all, so a format-only gate would
+  // hand drain-pan and DX-distributor values to any coil it failed to classify. Widening by
+  // OR-ing in exactly the one evidenced format leaves the DX path byte-identical.
+  const condensingCandidate = !dxCandidate && directCoilMirrorFormat(uiState) === "condensing";
   setDcFieldAlias(
     fieldsByLabel,
     "Tube Diameter (standard at top)",
@@ -702,6 +723,13 @@ function addCandidateFallbackFields(fieldsByLabel, candidate) {
     addDxOptionsFallbackFields(fieldsByLabel, candidate);
     addDxAirFallbackFields(fieldsByLabel, candidate);
     addDxRefrigerantAndFoulingFallbackFields(fieldsByLabel);
+  } else if (condensingCandidate) {
+    // Shared subset only — no drain pan (absent from both HGRH seeds), no DX distributor,
+    // no derived System Type (case_006's RHHGRC-1 is "Dual-Circuit Face Split", which the
+    // connections-per-header derivation cannot produce).
+    addSharedConstructionFallbackFields(fieldsByLabel, candidate);
+    addSharedAirFallbackFields(fieldsByLabel, candidate);
+    addSharedFoulingFallbackFields(fieldsByLabel);
   }
   const fallbackMap = [
     [candidate.geometry, "finned_height", ["Finned Height(In)", "Tubes High"]],
@@ -758,6 +786,13 @@ function addCandidateFallbackFields(fieldsByLabel, candidate) {
       addDcFieldAlias(fieldsByLabel, label, candidateFallbackField(field, key));
     });
   });
+  // ORDER IS LOAD-BEARING: these run AFTER the fallbackMap above, using addDcFieldAlias (which
+  // only writes when the existing entry has no mapped value). Run BEFORE it, the default would
+  // claim the slot first and addDcFieldAlias would then REJECT the genuinely extracted value —
+  // silently masking submittal data with a company default. Do not hoist this call.
+  if (condensingCandidate) {
+    addCondensingDefaultFallbackFields(fieldsByLabel);
+  }
 }
 
 function isDxPdfCandidate(candidate) {
@@ -779,21 +814,38 @@ function isDxPdfCandidate(candidate) {
   ) && !typeText.includes("HGRC") && !typeText.includes("HGRH");
 }
 
+// DX entry point. KEPT under this exact name — tests/test_phase2e_pdf_coil_intake.py asserts
+// it as a substring, and those guards are the only automated coverage this path has.
 function addDxOptionsFallbackFields(fieldsByLabel, candidate) {
+  addSharedConstructionFallbackFields(fieldsByLabel, candidate);
+  addDxOnlyOptionsFallbackFields(fieldsByLabel, candidate);
+}
+
+// Construction rules confirmed IDENTICAL on DX and HGRH/condensing coils by John's own
+// transcriptions: examples/mapping_lab/case_004 (CDXC-1), case_005 (RHHGRC-1) and case_006
+// (one of each). Every value below matches on all four coils.
+//
+// OVERWRITE SEMANTICS: these use setDcFieldAlias (unconditional Map.set) and run BEFORE the
+// fallbackMap in addCandidateFallbackFields, so a company rule here WINS over an extracted
+// submittal value. That is deliberate for "Casing Style" (both HGRH seeds say Standard), and
+// it is the same behaviour DX has always had — but it is now applied to a second coil type,
+// so it is stated rather than inherited silently.
+function addSharedConstructionFallbackFields(fieldsByLabel, candidate) {
   const tubeMaterialField = directCoilTubeMaterialField(candidate);
   if (tubeMaterialField) {
     setDcFieldAlias(fieldsByLabel, "Tube Material", tubeMaterialField);
   }
+  const sharedNote = "Direct Coil company rule (confirmed on DX and HGRH seeds); review before use.";
   const optionRules = [
-    ["Header Material", "Copper", "Direct Coil company rule for DX PDF review."],
-    ["Header Wall Schedule", "(L)", "Direct Coil company rule for DX PDF review."],
-    ["Connection Material", "Copper", "Direct Coil company rule for DX PDF review."],
-    ["Connection Type", "Sweat", "Direct Coil company rule for DX PDF review."],
-    ["Casing Style", "Standard", "Direct Coil company rule for DX PDF review."],
-    ["Casing Material", "Galvanized Steel 16 gauge", "Direct Coil company rule for DX PDF review."],
-    ["Connection Ends", "Same End Only", "Direct Coil company rule for DX PDF review."],
-    ["Drain Pan Type", "None", "Direct Coil company rule for DX PDF review."],
-    ["Drain Pan Material", "SST", "Direct Coil company rule for DX PDF review."],
+    ["Header Material", "Copper", sharedNote],
+    ["Header Wall Schedule", "(L)", sharedNote],
+    ["Connection Material", "Copper", sharedNote],
+    ["Connection Type", "Sweat", sharedNote],
+    ["Casing Style", "Standard", sharedNote],
+    // The seeds transcribe this as "Galvanized Steel"; John confirmed 2026-07-28 that the real
+    // CCSI dropdown option carries the gauge. Do not "fix" this to match the seeds.
+    ["Casing Material", "Galvanized Steel 16 gauge", sharedNote],
+    ["Connection Ends", "Same End Only", sharedNote],
   ];
   optionRules.forEach(([label, value, notes]) => {
     setDcFieldAlias(fieldsByLabel, label, directCoilCompanyRuleField(normalizeDcLabel(label), value, notes));
@@ -814,6 +866,19 @@ function addDxOptionsFallbackFields(fieldsByLabel, candidate) {
       ),
     );
   }
+}
+
+// DX-only. Drain pan is absent from BOTH HGRH seeds and the condensing mirror has no drain-pan
+// rows at all. System Type is derived from connections-per-header, which case_006's RHHGRC-1
+// ("Dual-Circuit Face Split") disproves for condensing — so it stays here, not in the shared set.
+function addDxOnlyOptionsFallbackFields(fieldsByLabel, candidate) {
+  const dxOnlyRules = [
+    ["Drain Pan Type", "None", "Direct Coil company rule for DX PDF review."],
+    ["Drain Pan Material", "SST", "Direct Coil company rule for DX PDF review."],
+  ];
+  dxOnlyRules.forEach(([label, value, notes]) => {
+    setDcFieldAlias(fieldsByLabel, label, directCoilCompanyRuleField(normalizeDcLabel(label), value, notes));
+  });
   const systemTypeField = directCoilSystemTypeField(candidate);
   if (systemTypeField) {
     setDcFieldAlias(fieldsByLabel, "System Type", systemTypeField);
@@ -877,7 +942,22 @@ function directCoilSystemTypeField(candidate) {
   };
 }
 
+// DX entry point. KEPT under this exact name — pinned by tests/test_phase2e_pdf_coil_intake.py.
 function addDxAirFallbackFields(fieldsByLabel, candidate) {
+  addSharedAirFallbackFields(fieldsByLabel, candidate);
+}
+
+// Coil-agnostic: airflow dual-write, face velocity, RH and leaving WB are all pure
+// arithmetic or straight passthrough of an extracted value. Face velocity is confirmed exact
+// on both condensing seeds (case_005 2000/((26x25)/144)=443.08, case_006 5825/((26x72)/144)=448.08).
+//
+// OVERWRITE SEMANTICS: "Total Capacity(MBH)(Per Coil)" -> 0 below is an unconditional
+// setDcFieldAlias running before the fallbackMap, so it MASKS the extracted
+// performance.total_capacity_mbh (hasMappedDcValue treats 0 as a mapped value, so the later
+// addDcFieldAlias refuses to replace it). That is why the DX mirror reads "0" today. It is
+// intentional — John fills 0 by hand on all four seeds because Direct Coil's software owns
+// final capacity — and it now applies to condensing too. Stated, not inherited by accident.
+function addSharedAirFallbackFields(fieldsByLabel, candidate) {
   const airflowField = candidate.airside_conditions?.total_air_flow_cfm;
   if (airflowField) {
     const mappedAirflow = candidateFallbackField(airflowField, "total_air_flow_cfm", "pdf_entering_airflow_to_direct_coil_airflow");
@@ -916,7 +996,56 @@ function addDxAirFallbackFields(fieldsByLabel, candidate) {
   );
 }
 
+// HGRH/condensing review defaults approved by John 2026-07-28. Both hand-filled HGRH seeds
+// (case_005 and case_006 coil 2) carry these BYTE-IDENTICAL values, while the DX coil in the
+// same case_006 file carries entirely different, submittal-derived ones — so these are typed
+// company defaults, not extracted data.
+//
+// MUST be called AFTER the fallbackMap loop and MUST use addDcFieldAlias (add-if-absent), so a
+// submittal that DOES state a condensing temperature wins over the 115 default. Using
+// setDcFieldAlias here, or calling this earlier, would silently mask real extracted data.
+function addCondensingDefaultFallbackFields(fieldsByLabel) {
+  const seedNote =
+    "HGRH review default (both hand-filled HGRH seeds agree); confirm before use — " +
+    "an extracted submittal value always wins over this.";
+  // Each entry lists EVERY label the mirror might look the value up under. The Saturated
+  // Suction row declares a sourceLabel of "Evaporating Temperature(°F)" (renderDcInputRows
+  // resolves sourceLabel, not the display label), so registering the default under the
+  // display label alone left the row unmapped — caught in the browser, invisible to the
+  // source-level tests. Same alias pair the coil-agnostic fallbackMap already uses.
+  const defaults = [
+    [
+      ["Evaporating Temperature(°F)", "Saturated Suction Temperature(°F)"],
+      "saturated_suction_temperature_f",
+      45,
+    ],
+    [["Suction Temperature at Compressor(°F)"], "suction_temperature_at_compressor_f", 68],
+    [["Vapor Temperature(°F)"], "vapor_temperature_f", 140],
+    [["Condensing Temperature(°F)"], "condensing_temperature_f", 115],
+    [["Subcooling(°F)"], "subcooling_f", 18],
+    // "Calculate" is a literal CCSI dropdown option meaning "let Direct Coil size it".
+    [["Supply Connection Size"], "supply_connection_size", "Calculate"],
+    [["Return Connection Size"], "return_connection_size", "Calculate"],
+  ];
+  defaults.forEach(([labels, key, value]) => {
+    labels.forEach((label) => {
+      addDcFieldAlias(
+        fieldsByLabel,
+        label,
+        directCoilCompanyRuleField(key, value, seedNote, "direct_coil_hgrh_review_default"),
+      );
+    });
+  });
+}
+
+// DX entry point. KEPT under this exact name — pinned by tests/test_phase2e_pdf_coil_intake.py.
 function addDxRefrigerantAndFoulingFallbackFields(fieldsByLabel) {
+  addDxOnlyRefrigerantFallbackFields(fieldsByLabel);
+  addSharedFoulingFallbackFields(fieldsByLabel);
+}
+
+// DX-only: a condensing coil has no distributor, and the condensing mirror has no such row.
+function addDxOnlyRefrigerantFallbackFields(fieldsByLabel) {
   setDcFieldAlias(
     fieldsByLabel,
     "DXDistCapillarySize",
@@ -927,6 +1056,10 @@ function addDxRefrigerantAndFoulingFallbackFields(fieldsByLabel) {
       "direct_coil_dx_dist_capillary_company_rule",
     ),
   );
+}
+
+// Air side fouling factor is 0 on all four seeds, DX and HGRH alike.
+function addSharedFoulingFallbackFields(fieldsByLabel) {
   setDcFieldAlias(
     fieldsByLabel,
     "Air Side Fouling Factor(ft² °F h/Btu)",
@@ -1127,7 +1260,12 @@ function renderCondensingCoilScreenMirror(uiState, fieldsByLabel) {
           ["Connection Ends", "select"],
           ["Coil Coating", "select"],
           ["Coil Hand", "select"],
-          ["System Type", "select", null, "Single-Circuit"],
+          // No default: case_006's RHHGRC-1 is "Dual-Circuit Face Split", so "Single-Circuit"
+          // was wrong on a real coil, and the connections-per-header derivation cannot produce
+          // "Face Split" either. Stays honestly unmapped until a rule is confirmed (John
+          // 2026-07-28). Removed together with the renderDcInputRow fallback fix above, which
+          // would otherwise have made this dead default suddenly live.
+          ["System Type", "select"],
           ["Drawing Notes", "input"],
         ], fieldsByLabel),
       ),
@@ -1153,7 +1291,12 @@ function renderCondensingCoilScreenMirror(uiState, fieldsByLabel) {
         ["Saturated Suction Temperature(°F)", "input", "Evaporating Temperature(°F)"],
         ["Suction Temperature at Compressor(°F)", "input"],
         ["Vapor Temperature(°F)", "input"],
-        ["Condensing Temperature(°F)", "input", "Liquid Temperature(°F)"],
+        // The 3rd tuple element is a sourceLabel, and this row used to carry
+        // "Liquid Temperature(°F)" — so it looked up the LIQUID temp and displayed it under a
+        // "Condensing" label, with no Liquid row on this mirror to contradict it (John
+        // 2026-07-28). condensing_temp_f is registered under its own label in the coil-agnostic
+        // fallbackMap, so the correct fix is to drop the alias, not to re-point it.
+        ["Condensing Temperature(°F)", "input"],
         ["Subcooling(°F)", "input"],
         ["Separate Subcooling Tubes High", "input"],
         ["Separate Subcooling Circuits", "input"],
@@ -1351,19 +1494,48 @@ function renderDcInputRows(rows, fieldsByLabel) {
     .join("");
 }
 
+// The two duty-point rows highlighted across every mirror (DX / condensing / water). Stored
+// normalized so the degree-sign and punctuation variants all match. Deliberately Leaving only:
+// the submittal's "Max Coil Performance" DB/WB IS the leaving air, which is the number John
+// checks the selection against.
+const DC_DUTY_HIGHLIGHT_LABELS = new Set(
+  ["Leaving Dry Bulb(°F)", "Leaving Wet Bulb(°F)"].map(normalizeDcLabel),
+);
+
 function renderDcInputRow(label, controlType, field, fallbackValue = null) {
   const fixedValue = fixedDcDrawingValue(label);
+  // A declared fallbackValue applies whenever the row has no USABLE value — not only when the
+  // field is absent. The 52-field paste surface always emits a field (often status="unmapped"),
+  // so keying off `field` alone made every declared default dead and rendered the literal
+  // string "unmapped" instead (John 2026-07-28). A fallback is never "ready": it is a review
+  // default, so it enters as review_required.
+  const fieldValue = field ? dcControlValue(field) : null;
+  const fieldIsUsable = fieldValue !== null && fieldValue !== "unmapped";
+  const useFallback = !fieldIsUsable && fallbackValue !== null;
   const value =
     fixedValue !== null
       ? fixedValue
-      : field
-        ? dcControlValue(field)
-        : (fallbackValue ?? "unmapped");
+      : fieldIsUsable
+        ? fieldValue
+        : useFallback
+          ? fallbackValue
+          : (fieldValue ?? "unmapped");
   const status =
     fixedValue !== null
       ? "review_required"
-      : field?.status || (fallbackValue === null ? "unmapped" : "review_required");
-  const className = `dc-control ${statusClass(status)}`;
+      : useFallback
+        ? "review_required"
+        : field?.status || "unmapped";
+  // Leaving DB/WB is the "Max Coil Performance" duty point John compares against the
+  // application engineer's selection, so it gets an accent the eye lands on instead of having
+  // to hunt for it (John 2026-07-28). Gated on the row actually HAVING a value: a reheat coil
+  // is sensible-only and reports no leaving WB, and an absent duty point must keep reading as
+  // unmapped rather than becoming a highlighted empty box.
+  const dutyClass =
+    DC_DUTY_HIGHLIGHT_LABELS.has(normalizeDcLabel(label)) && status !== "unmapped"
+      ? " dc-control--duty"
+      : "";
+  const className = `dc-control ${statusClass(status)}${dutyClass}`;
   if (controlType === "airflow") {
     return `
       <label class="dc-form-row">
@@ -1747,7 +1919,34 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
     // hot-gas-bypass coil only (OFF for every other). Same special_feature that drives
     // template selection — reused so the flag and the chosen drawing agree.
     hot_gas_bypass: uiState.template_drawing?.extracted?.special_feature === "HGBP",
+    // The engine-assembled drawing notes (R-007/008/035/080/081), carried so John stops
+    // re-typing them into CCSI's own Drawing Notes box (John 2026-07-28). Deliberately a
+    // SEPARATE top-level key, not a 14th entry in `fields`: those are numeric dimensions with
+    // a unit and a field-map selector, and the map's contract test rejects anything that isn't
+    // a base or multi-header dimension key. `selectors` stays empty until CCSI's Drawing Notes
+    // selector is captured live off the real form — the value travels now, the fill lands later.
+    drawing_notes: ccsiDrawingNotes(uiState),
     fields,
+  };
+}
+
+function ccsiDrawingNotes(uiState) {
+  // Notes are not in drawing_parameters.parameters (dimension-only) — they live on the
+  // paste-ready surface as field #26. The key is `direct_coil_label`, NOT `label`.
+  const field = (uiState.direct_coil_paste_ready?.fields || []).find(
+    (entry) => entry.direct_coil_label === "Drawing Notes",
+  );
+  const value =
+    field && field.value !== null && field.value !== undefined && field.value !== ""
+      ? String(field.value)
+      : null;
+  return {
+    ccsi_label: "Drawing Notes",
+    value,
+    status: value ? field.status || "review_required" : "blocked",
+    type: "text",
+    selectors: [],
+    blocked_reason: value ? null : "No drawing notes assembled for this coil.",
   };
 }
 
@@ -4147,7 +4346,10 @@ async function buildQuotePackage() {
     coilCount: result.coil_count ?? (result.coils || []).length,
     insertedCount: pkg.inserted_coil_count ?? null,
     tags: (result.coils || []).map((c) => c.tag).filter(Boolean),
-    exceptionsK: state.lastProjectReview?.summary?.exceptions_K ?? null,
+    // Was state.lastProjectReview?.summary?.exceptions_K until the Project Review panel was
+    // removed 2026-07-28. null is the same value the no-review-run path always produced, so
+    // the email context is unchanged; pinned literal so this doesn't read as a live feature.
+    exceptionsK: null,
     // Keep the revised PDF so "Finalize deliverable" can file + attach it without rebuilding.
     revisedBase64: pkg.pdf_base64 || null,
   };
@@ -4405,226 +4607,13 @@ function maybeAutoFillChecklist() {
   });
 })();
 
-// Offline CCSI-export audit — drop the exported CCSI report PDF; CoilForge compares the
-// dimensions CCSI printed against its own engine values (green/red), per coil, with NO
-// live CCSI site and NO browser session. POSTs to /api/ccsi/audit-export, which reuses the
-// SAME 0.01" comparator as the live /ccsi-compare path. Review aid only — never saves to CCSI.
-async function auditCcsiExport(file) {
-  const summary = document.querySelector("#ccsi-audit-summary");
-  const results = document.querySelector("#ccsi-audit-results");
-  if (!file) {
-    return;
-  }
-  summary.textContent = "Auditing the CCSI export…";
-  results.innerHTML = "";
-  try {
-    const pdfBytes = await file.arrayBuffer();
-    const report = await requestJson("/api/ccsi/audit-export", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/pdf",
-        "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
-      },
-      body: pdfBytes,
-    });
-    renderCcsiAudit(report);
-  } catch (error) {
-    summary.textContent = `CCSI export audit failed: ${error.message || error}`;
-  }
-}
-
-function renderCcsiAudit(report) {
-  const summary = document.querySelector("#ccsi-audit-summary");
-  const results = document.querySelector("#ccsi-audit-results");
-  const coils = (report && report.coils) || [];
-  if (!coils.length) {
-    summary.textContent = "No coils found in that PDF to audit.";
-    results.innerHTML = "";
-    return;
-  }
-  const totalMismatch = coils.reduce((n, c) => n + (c.mismatch_count || 0), 0);
-  summary.innerHTML =
-    `${coils.length} coil(s) audited · ` +
-    `<strong>${totalMismatch}</strong> field(s) differ from CCSI · review aid, not exported`;
-  results.innerHTML = coils.map(renderCcsiAuditCoil).join("");
-}
-
-function renderCcsiAuditCoil(coil) {
-  const mismatch = coil.mismatch_count || 0;
-  const allFields = coil.fields || [];
-  // Only match/mismatch rows are actionable; a dimension CCSI's drawing didn't print is
-  // "missing_one" — surfaced as a count (never silently dropped), not a red row.
-  const rows = allFields
-    .filter((f) => f.verdict === "match" || f.verdict === "mismatch")
-    .map((f) => {
-      const cls = f.verdict === "mismatch" ? "dc-control--mismatch" : "dc-control--match";
-      const cf = f.coilforge === null || f.coilforge === undefined ? "—" : f.coilforge;
-      const cc = f.ccsi === null || f.ccsi === undefined ? "—" : f.ccsi;
-      const mark = f.verdict === "mismatch" ? "⚠ differ" : "✓ match";
-      return (
-        `<tr class="${cls}"><td>${escapeHtml(f.key)}</td>` +
-        `<td>${escapeHtml(String(cf))}</td><td>${escapeHtml(String(cc))}</td>` +
-        `<td>${mark}</td></tr>`
-      );
-    })
-    .join("");
-  const missing = allFields.filter((f) => f.verdict === "missing_one").length;
-  const badge =
-    mismatch > 0
-      ? `<span class="ccsi-audit-badge has-mismatch">⚠ ${mismatch} differ</span>`
-      : `<span class="ccsi-audit-badge">✓ all match</span>`;
-  const missingNote = missing
-    ? `<span class="ccsi-audit-note">${missing} not printed on the drawing</span>`
-    : "";
-  const body = rows
-    ? `<table class="ccsi-audit-table"><thead><tr><th>Field</th><th>CoilForge</th><th>CCSI</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-    : `<p class="ccsi-audit-empty">No printed dimensions to compare on this coil.</p>`;
-  return (
-    `<div class="ccsi-audit-coil"><h4>${escapeHtml(coil.tag || "Coil")} ` +
-    `<span class="subtle-label">${escapeHtml(coil.coil_category || "")}</span> ${badge} ${missingNote}</h4>` +
-    `${body}</div>`
-  );
-}
-
-// Project Review — exceptions first. Analyze EVERY coil at once and show only the coils
-// whose independent computations disagree (engine vs checklist = must-agree exception;
-// engine vs CCSI = documented override). K (coils needing eyes) tracks problems, not coil
-// count — so a clean 50-coil project reviews as fast as one coil. POSTs to
-// /api/review/project (engine always; X-CoilForge-Checklist adds the Excel cross-check).
-async function runProjectReview() {
-  const file = state.selectedPdfFile || elements.pdfIntakeFile.files?.[0];
-  const summary = document.querySelector("#project-review-summary");
-  const results = document.querySelector("#project-review-results");
-  if (!file) {
-    summary.textContent = "Analyze a submittal PDF above first.";
-    return;
-  }
-  const withChecklist = document.querySelector("#project-review-checklist")?.checked;
-  summary.textContent = withChecklist ? "Reviewing all coils… (opens Excel briefly)" : "Reviewing all coils…";
-  results.innerHTML = "";
-  try {
-    const pdfBytes = await file.arrayBuffer();
-    const headers = {
-      "Content-Type": "application/pdf",
-      "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
-      ...coverPageHeader(),
-    };
-    if (withChecklist) {
-      headers["X-CoilForge-Checklist"] = "1";
-    }
-    const gate = await requestJson("/api/review/project", { method: "POST", headers, body: pdfBytes });
-    state.lastProjectReview = gate;   // retained so the auto-email + accept-passing can read it
-    renderProjectGate(gate);
-  } catch (error) {
-    summary.textContent = `Project review failed: ${error.message || error}`;
-  }
-}
-
-// A2 — "Accept passing coils": mark every coil the gate cleared (verdict "pass") as reviewed,
-// so the Build gate needs only the K exceptions handled. Exceptions/overrides are left for John.
-function acceptPassingCoils() {
-  const gate = state.lastProjectReview;
-  if (!gate || !Array.isArray(gate.coils)) {
-    return;
-  }
-  const passTags = new Set(gate.coils.filter((c) => c.verdict === "pass").map((c) => c.tag));
-  let marked = 0;
-  (state.pdfCoilPages || []).forEach((page, index) => {
-    if (passTags.has(page.tag) && !state.reviewedCoils.has(index)) {
-      state.reviewedCoils.add(index);
-      marked += 1;
-    }
-  });
-  renderCoilReviewNav();
-  renderProjectTree(state.ui);
-  updateQuoteGate();
-  const btn = document.querySelector("#accept-passing-coils");
-  if (btn) {
-    btn.textContent = `Accepted ${marked} passing coil(s) ✓`;
-    btn.disabled = true;
-  }
-}
-
-document.querySelector("#accept-passing-coils")?.addEventListener("click", acceptPassingCoils);
-
-function renderProjectGate(gate) {
-  const summary = document.querySelector("#project-review-summary");
-  const results = document.querySelector("#project-review-results");
-  const s = gate.summary || {};
-  const coils = gate.coils || [];
-  const K = s.exceptions_K || 0;
-  const banner = K > 0
-    ? `<span class="pr-badge has-mismatch">⚠ ${K} of ${s.coils} coil(s) need review</span>`
-    : `<span class="pr-badge">✓ all ${s.coils} coil(s) clear</span>`;
-  const src = `engine${s.sources?.checklist ? " + checklist" : ""}${s.sources?.ccsi ? " + CCSI" : ""}`;
-  const bits = [`sources: ${src}`];
-  if (s.override_coils) {
-    bits.push(`${s.override_coils} coil(s) with documented CCSI overrides`);
-  }
-  if ((s.common_exception_keys || []).length) {
-    bits.push(`common gap: ${escapeHtml(s.common_exception_keys.join(", "))}`);
-  }
-  if (s.checklist_note) {
-    bits.push(escapeHtml(s.checklist_note));
-  }
-  summary.innerHTML = `${banner} <span class="subtle-label">${bits.join(" · ")}</span>`;
-
-  // Reveal the "Accept passing coils" action: one click marks every cleared coil reviewed
-  // so the Build gate needs only the K exceptions handled (clicks N -> K).
-  const passCount = coils.filter((c) => c.verdict === "pass").length;
-  const acceptBtn = document.querySelector("#accept-passing-coils");
-  if (acceptBtn) {
-    acceptBtn.hidden = passCount === 0;
-    if (passCount > 0) {
-      acceptBtn.textContent = `Accept ${passCount} passing coil(s) as reviewed`;
-      acceptBtn.disabled = false;
-    }
-  }
-
-  // Only flagged coils are shown; passing coils collapse into the count above.
-  const flagged = coils.filter((c) => c.verdict !== "pass");
-  if (!flagged.length) {
-    results.innerHTML = `<p class="pr-empty">Every coil's independent computations agree — nothing to review. Review aid, not exported.</p>`;
-    return;
-  }
-  results.innerHTML = flagged.map(renderGateCoil).join("");
-}
-
-function renderGateCoil(coil) {
-  const isException = coil.verdict === "exception";
-  const badge = isException
-    ? `<span class="pr-badge has-mismatch">⚠ needs review</span>`
-    : `<span class="pr-badge pr-badge--override">override</span>`;
-  const exRows = (coil.exceptions || []).map((e) => {
-    const detail = e.reason === "engine_vs_checklist"
-      ? `engine ${escapeHtml(String(e.engine))} &ne; checklist ${escapeHtml(String(e.checklist))}`
-      : escapeHtml(e.detail || "review required");
-    return `<li><strong>${escapeHtml(e.key)}</strong> — ${detail}</li>`;
-  }).join("");
-  const ovRows = (coil.overrides || []).map((o) =>
-    `<li><strong>${escapeHtml(o.key)}</strong> — CoilForge ${escapeHtml(String(o.engine))} vs CCSI ${escapeHtml(String(o.ccsi))}${o.acknowledged ? " (accepted)" : ""}</li>`
-  ).join("");
-  return `<div class="pr-coil ${isException ? "pr-coil--exception" : "pr-coil--override"}">
-    <h4>${escapeHtml(coil.tag || "Coil")} ${badge}</h4>
-    ${exRows ? `<ul class="pr-list pr-list--exception">${exRows}</ul>` : ""}
-    ${ovRows ? `<ul class="pr-list pr-list--override">${ovRows}</ul>` : ""}
-  </div>`;
-}
-
-document.querySelector("#run-project-review")?.addEventListener("click", () => {
-  runProjectReview();
-});
-
-document.querySelector("#ccsi-audit-file")?.addEventListener("change", (event) => {
-  const file = event.target.files?.[0];
-  const nameEl = document.querySelector("#ccsi-audit-file-name");
-  if (nameEl) {
-    nameEl.textContent = file ? file.name : "No file selected";
-  }
-  if (file) {
-    auditCcsiExport(file);
-  }
-});
+// The offline CCSI-export audit (auditCcsiExport/renderCcsiAudit/renderCcsiAuditCoil) and
+// the Project Review — exceptions-first gate (runProjectReview/acceptPassingCoils/
+// renderProjectGate/renderGateCoil) lived here until 2026-07-28, when John removed both
+// panels to keep the review flow to a minimum set of buttons. Their backends are KEPT and
+// still tested: POST /api/ccsi/audit-export (ccsi/export_audit.py) and POST
+// /api/review/project (review/project_gate.py, also re-derived by capture/record.py).
+// The LIVE /api/ccsi-compare path is a different feature and is untouched.
 
 // ---------------------------------------------------------------------------
 // Supplier selector (Direct Coil default vs Ambient quick-ship). Persisted so the
@@ -4854,8 +4843,57 @@ async function runAmbientPackage() {
     renderAmbientPackage(report);
   } catch (error) {
     summary.textContent = `Ambient package failed: ${error.message || error}`;
+    state.ambientPackageReady = false;
+    updateAmbientQuoteRequestBtn();
   }
 }
+
+// Quote-request export (Package mode): the paper artifact John hands Ambient. Re-POSTs the
+// SAME PDFs the package was built from — the server memoizes on those bytes, so this is a
+// cache hit rather than a second parse, and the drawing SVGs never round-trip through the
+// browser. Review aid only; every page is watermarked and export_allowed stays false.
+function updateAmbientQuoteRequestBtn() {
+  const btn = document.querySelector("#ambient-quote-request-pdf");
+  if (btn) btn.disabled = !(state.ambientSubmittalFile && state.ambientPackageReady);
+}
+
+function ambientQuoteRequestExportName() {
+  const source = state.ambientSubmittalFile?.name || "";
+  const stem = source.replace(/\.pdf$/i, "").trim();
+  return stem ? `${stem}_Ambient_Quote_Request.pdf` : "coilforge-ambient-quote-request.pdf";
+}
+
+async function exportAmbientQuoteRequestPdf() {
+  const status = document.querySelector("#ambient-quote-request-status");
+  if (!state.ambientSubmittalFile || !state.ambientPackageReady) return;
+  status.textContent = "Building the quote request PDF…";
+  const form = new FormData();
+  form.append("submittal", state.ambientSubmittalFile);
+  if (state.ambientEzFile) form.append("ez_drawing", state.ambientEzFile);
+  const project = state.ui?.project || {};
+  if (project.project_name) form.append("project_name", project.project_name);
+  if (project.project_number) form.append("project_number", project.project_number);
+  // headers:{} so the browser sets the multipart boundary (see runAmbientPackage above).
+  const result = await requestJson("/api/ambient/quote-request-pdf", {
+    method: "POST",
+    body: form,
+    headers: {},
+  });
+  downloadBase64Pdf(result.pdf_base64, ambientQuoteRequestExportName());
+  const warnings = result.warnings || [];
+  status.innerHTML =
+    `✓ ${result.page_count} page(s) · ${result.coil_count} coil(s) · watermarked review aid, not an export` +
+    (warnings.length
+      ? `<div class="ambient-warns">${warnings.map((w) => `⚠ ${escapeHtml(w)}`).join("<br>")}</div>`
+      : "");
+}
+
+document.querySelector("#ambient-quote-request-pdf")?.addEventListener("click", () => {
+  exportAmbientQuoteRequestPdf().catch((error) => {
+    const status = document.querySelector("#ambient-quote-request-status");
+    if (status) status.textContent = `Export failed: ${error.message || error}`;
+  });
+});
 
 function renderAmbientPackage(report) {
   const summary = document.querySelector("#ambient-package-summary");
@@ -4864,8 +4902,12 @@ function renderAmbientPackage(report) {
   if (!coils.length) {
     summary.textContent = "No coils found in the submittal.";
     results.innerHTML = "";
+    state.ambientPackageReady = false;
+    updateAmbientQuoteRequestBtn();
     return;
   }
+  state.ambientPackageReady = true;
+  updateAmbientQuoteRequestBtn();
   const warnings = report.warnings || [];
   let head =
     `${coils.length} coil(s) · performance page + drawing to hand to Ambient` +
@@ -4932,6 +4974,9 @@ document.querySelector("#ambient-submittal-file")?.addEventListener("change", (e
   state.ambientSubmittalFile = file;
   const nameEl = document.querySelector("#ambient-submittal-name");
   if (nameEl) nameEl.textContent = file ? file.name : "No file selected";
+  // A new submittal invalidates the previous package until this run re-renders.
+  state.ambientPackageReady = false;
+  updateAmbientQuoteRequestBtn();
   runAmbientPackage();
 });
 

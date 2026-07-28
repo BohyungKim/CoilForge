@@ -256,26 +256,10 @@
         <!-- Final step: after every coil is reviewed, drop the quote PDF here and build
              the whole package once. Dedicated quote-PDF input (separate from the top
              submittal drop). Gated until all coils reviewed AND a quote PDF is chosen. -->
-        <section id="project-review-section" class="quote-package-section review-flow" data-view="checklist" aria-label="Project review — exceptions first">
-          <div class="section-heading">
-            <h3>Project Review &mdash; Exceptions First</h3>
-            <span class="subtle-label">All coils at once</span>
-          </div>
-          <p class="review-warning">
-            Checks every coil for a <strong>shippable CoilForge drawing</strong>, any undrawn
-            value, and (optionally) engine-vs-checklist agreement — surfacing <strong>only the
-            coils that need you</strong>, so a 50-coil project reviews as fast as a clean one.
-            Tick the box to add the Excel checklist cross-check. Review aid; nothing exported.
-          </p>
-          <div class="quote-package">
-            <button id="run-project-review" type="button">Run project review</button>
-            <label class="project-review-opt"><input type="checkbox" id="project-review-checklist" /> checklist cross-check (Excel)</label>
-            <button id="accept-passing-coils" class="secondary-action" type="button" hidden title="Marks every coil the review cleared as reviewed, so you only handle the flagged ones before building.">Accept passing coils</button>
-            <span id="project-review-summary" class="quote-package-summary"></span>
-          </div>
-          <div id="project-review-results" class="project-review-results"></div>
-        </section>
-
+        <!-- The "Project Review — Exceptions First" section lived here until 2026-07-28, when
+             John removed it to keep the review flow to a minimum set of buttons. The backend
+             (POST /api/review/project) and review/project_gate.py are intentionally KEPT —
+             capture/record.py re-derives the gate independently. -->
         <section id="quote-package-section" class="quote-package-section review-flow" data-view="checklist" aria-label="Build quote package">
           <div class="section-heading">
             <h3>Build Quote Package &mdash; Review Aid Only</h3>
@@ -319,29 +303,10 @@
           <div id="checklist-fill-results" class="checklist-fill-results"></div>
         </section>
 
-        <section id="ccsi-audit-section" class="quote-package-section review-flow" data-view="checklist" aria-label="Audit CCSI export">
-          <div class="section-heading">
-            <h3>Audit CCSI Export &mdash; Review Aid Only</h3>
-            <span class="subtle-label">Offline compare</span>
-          </div>
-          <p class="review-warning">
-            Drop the exported CCSI report PDF. CoilForge reads the dimensions CCSI printed
-            and compares them to its own engine values &mdash; green (match) / red (differ),
-            every coil, with <strong>no CCSI site and no browser session</strong>. Review aid;
-            nothing is saved to CCSI.
-          </p>
-          <label id="ccsi-audit-drop-zone" class="pdf-drop-zone" for="ccsi-audit-file">
-            <input id="ccsi-audit-file" type="file" accept="application/pdf,.pdf" />
-            <span class="pdf-drop-title">Drop CCSI export PDF</span>
-            <span id="ccsi-audit-file-name" class="pdf-file-name">No file selected</span>
-            <span class="pdf-browse-action">Browse PDF</span>
-          </label>
-          <div class="quote-package">
-            <span id="ccsi-audit-summary" class="quote-package-summary"></span>
-          </div>
-          <div id="ccsi-audit-results" class="ccsi-audit-results"></div>
-        </section>
-
+        <!-- The "Audit CCSI Export" section lived here until 2026-07-28 (same minimum-buttons
+             pass as Project Review above). POST /api/ccsi/audit-export and ccsi/export_audit.py
+             are intentionally KEPT — project_gate.py still accepts audit_reports=. This is
+             distinct from the LIVE /api/ccsi-compare, which is untouched. -->
         <section id="ambient-section" class="quote-package-section review-flow ambient-section" data-view="checklist" aria-label="Ambient Dynamics quote comparison">
           <div class="section-heading">
             <h3>Ambient Dynamics &mdash; Quote Comparison &mdash; Review Aid Only</h3>
@@ -404,6 +369,10 @@
           </div>
           <div class="quote-package ambient-package-summary ambient-package-only">
             <span id="ambient-package-summary" class="quote-package-summary"></span>
+          </div>
+          <div id="ambient-quote-request-action" class="ambient-excel-action ambient-package-only">
+            <button id="ambient-quote-request-pdf" type="button" disabled>Export quote request PDF &rarr; Downloads</button>
+            <span id="ambient-quote-request-status" class="ambient-note"></span>
           </div>
           <div id="ambient-package-results" class="ambient-results ambient-package-only"></div>
         </section>
