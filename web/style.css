@@ -1243,6 +1243,24 @@ body[data-supplier="ambient"][data-ambient-mode="package"] #checklist-section {
   font-weight: 500;
 }
 
+/* Leaving DB/WB duty point on the CALCULATED side. Deliberately the SAME language as the
+   input rows' .dc-control--duty -- accent left rule + bold, no background -- so the two halves
+   of the mirror read as one highlight and both stay theme-driven (a literal tint here would
+   need an --accent-soft token that does not exist, and a hardcoded rgba is the light/dark bug
+   CLAUDE.md warns about). Placed after the base rules so it overrides their weight/colour.
+   Applied only when a real value exists: an "unmapped" duty point must never look filled. */
+.dc-calculated-row--duty {
+  border-left: 4px solid var(--accent);
+  margin-left: -8px;
+  padding-left: 8px;
+}
+
+.dc-calculated-row--duty span,
+.dc-calculated-row--duty strong {
+  color: var(--text-heading);
+  font-weight: 700;
+}
+
 .dc-ahri-note {
   border-bottom: 1px solid var(--ahri-rule);
   border-top: 1px solid var(--ahri-rule);
