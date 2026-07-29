@@ -1,6 +1,23 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-28 (**[UI/UX 트랙] John 5건 일괄 — 커밋 3개 9ad1f25·0b9a60c·9db5f10**: ①Ambient 견적요청
+> 마지막 갱신: 2026-07-29 (**[UI/UX 트랙] 계산 패널 Leaving DB/WB 강조 — c747ab4**: 전날 duty 강조가 입력 행에만
+>걸리고 계산 패널엔 안 걸린 이유가 **라벨 정규화** — `normalizeDcLabel`이 단위 글자를 남겨 `"...(°F)"`와 바로
+> `"..."`가 다른 키가 됨. 두 철자 등록 + `isDcDutyLabel`로 통일, 계산 패널은 status 클래스가 없어 sentinel 문자열로
+> "값 있음" 판정. 배경 틴트는 `--accent-soft` **미정의 토큰** 때문에 폴백 rgba가 양 테마에 박히는 걸 발견하고 철회.
+> JS는 동시 세션 `fb894da`에 합류, 여기 커밋은 CSS만(격리 중 구 HEAD blob을 커밋 직전에 잡아냄). 1144 green.
+> 동시에 **[물코일 트랙] Terra V 물코일 도면 해금 + 빠져 있던 데이터 매핑 일괄 — 커밋
+> fb894da**: 2949 Ferguson Theatre의 HWC 3개가 도면도 안 나오고 패널도 텅 비어 있던 문제. **원인이 5개, 전부
+> 다른 레이어** — ①게이트(Terra V water 보류) ②추출(한 열에 세로로 쌓인 섹션 → "Max Coil Performance" 블록
+> **통째 유실**) ③슬롯층(물코일 `return_spacing` 룰 부재 + Terra V 제외로 R 영구 blank) ④프런트(물코일이 DX·
+> condensing 어느 fallback 분기에도 안 들어감) ⑤frozen 경로의 `or "LH"`가 hand를 조용히 가정. **적대적
+> plan-review가 자책골 2건 사전 차단**: W4를 원안대로 했으면 `addSharedAirFallbackFields`가 방금 뚫은 Total
+> Capacity 142.31을 리터럴 0으로, 실측 Air Vel 424를 계산값 424.24로 덮어써 **플랜 자신의 수용 기준을 파괴**
+> (`setDcFieldAlias`가 추출값 루프보다 먼저 도는 순서 계약); 그리고 `condensingCandidate` 확장은 물코일에
+> 냉매온도를 발명할 뻔. 리뷰가 시드 근거 오류도 정정 — 시드 7개가 확립하는 건 **대칭 `R2==S1`**이지 절대값이
+> 아님(엔진 `S=CD/2`는 어느 시드도 재현 못 함; `I1=2.31` 상수인데 HWC 시드 CD 4.63이라 `CD/2=2.315`로 **우연히**
+> 맞았을 뿐). **DX 회귀 아닌 실수정 발견·John 승인**: `total_capacity_mbh` 365.85→123.88 — 옛 값은 텍스트
+> 파서가 `Nominal Cooling Capacity`를 잡던 것(그 값은 별도 보관 유지). 도면 슬롯은 DX 전부 무변경. 1141 green,
+> frozen 무접촉. 이전: **[UI/UX 트랙] John 5건 일괄 — 커밋 3개 9ad1f25·0b9a60c·9db5f10**: ①Ambient 견적요청
 > PDF 신설(패키지 모드에 내보내기가 아예 없어 Ambient에 줄 게 없던 문제; fitz 작도 + PDF 재-POST로 메모 재사용,
 > 클라 SVG 주입 차단) ②Project Review·Audit CCSI 패널 제거(백엔드·테스트 유지) ③Drawing Notes를 CCSI 페이로드
 > 최상위 키로 전송 + userscript `entriesOf()` 어댑터로 **실제 자동입력까지 연결**(CCSI 로그인 불가로 labelText 추론
@@ -386,7 +403,60 @@
   실제 채움까지 연결. CCSI 로그인은 John만 가능해 **Phase-0 캡처 없이 labelText 전략 추론** → `selector_verified:false`로
   패널이 **실제 resolve된 엘리먼트를 표시하고 경고**, John 확인 후 기록. 착수 전 **2라운드 적대적 계획검토**(BLOCKER 2·
   MAJOR 2 전건 해소, 라운드2 APPROVED), 신규 44테스트 **1129 green**, 변조테스트로 가드 유효성 증명(규칙값 변조·기본값
-  순서 hoist 둘 다 실패 확인), **실 4코일 Oxygen8 submittal로 브라우저 눈검증 완료**(절차는 runbook §18). 🆕 이번 세션
+  순서 hoist 둘 다 실패 확인), **실 4코일 Oxygen8 submittal로 브라우저 눈검증 완료**(절차는 runbook §18).
+
+- [x] **[UI/UX 트랙] 계산 패널 Leaving DB/WB 강조 (JS는 fb894da에 합류 · CSS c747ab4, John 요청 2026-07-29)** —
+  전날 넣은 duty 강조가 **입력 행에만** 걸리고 바로 옆 계산 패널(오른쪽 열)엔 안 걸려서, John이 실제로 보는
+  "Leaving Dry Bulb 53.43"은 여전히 눈으로 찾아야 했음(스크린샷에 직접 동그라미). **원인은 라벨 정규화**:
+  `normalizeDcLabel`이 구두점은 지우되 **단위 글자는 남겨서** 입력 행 `"Leaving Dry Bulb(°F)"`→`leavingdrybulbf`,
+  계산 패널 `"Leaving Dry Bulb"`→`leavingdrybulb` = **서로 다른 키**. `(°F)` 철자만 집합에 있어 계산 패널은 애초에
+  매칭 불가였음 → 두 철자 모두 등록 + `isDcDutyLabel` 헬퍼로 양쪽 통일. 계산 패널엔 status 클래스가 없어
+  `dcCalculatedValue`의 sentinel(`unmapped`/`calculated`/`review required`)로 "값 있음"을 판정(`DC_NON_VALUES`) —
+  값 없는 duty 행은 강조 안 함(입력 행의 `status !== "unmapped"`와 동일 규칙). **테마 함정 하나 회피**: 배경 틴트를
+  `var(--accent-soft, rgba(...))`로 넣었다가 `--accent-soft`가 **미정의 토큰**이라 폴백 rgba가 라이트/다크 양쪽에
+  박히는 걸 발견 → 입력 행과 동일하게 배경 없이 accent 좌측바+볼드로 통일(CLAUDE.md의 Mechanical-Fit 흰카드 버그와
+  같은 부류). 가드 3건(두 철자 등록 / 값 있을 때만 / accent 토큰 사용), **1144 green**, 실 submittal 브라우저 확인
+  (Leaving Dry Bulb만 4px accent, Entering DB/WB·Air Pressure Drop·용량은 무변화). ⚠️ **커밋 격리 주의**: 동시
+  세션이 같은 파일을 작업 중이라 JS 변경분은 그쪽 `fb894da`에 함께 실려 갔고, 여기 커밋은 **CSS만**. 격리 과정에서
+  구 HEAD 기준으로 만든 blob을 커밋 직전 diff 검토로 잡아냄(그대로 갔으면 물코일 작업을 되돌릴 뻔) — 동시 세션이
+  있을 땐 `git diff --cached`를 반드시 눈으로 확인할 것. 🆕 이번 세션
+
+- [x] **[물코일 트랙] Terra V 물코일 도면 해금 + 데이터 매핑 복구 (fb894da, John 리포트·승인 2026-07-28~29)** —
+  2949 Ferguson Theatre HWC 3개가 도면 미생성 + 패널 대량 공란. **5개 원인이 각기 다른 레이어**라 한 곳만 고치면
+  나머지가 남는 구조. **①게이트 해제(John 승인)**: Terra V CWC/HWC를 보류하던 `_gate_unregistered_product_line`
+  분기 제거 — Ventum+를 un-block했던 것과 같은 근거(CoilMaster water 도면 *형상*은 AHU 무관, 제품별로 다른 건
+  찍히는 값뿐). 파라미터는 **이미** Terra V로 정확했고(`O2=CH−2.75` 실측 34.5) 게이트만 SVG를 지우고 있었음 =
+  3층 분리가 실제로 지켜졌다는 방증. 같은 템플릿에서 Terra V≠Terra H `slot.O2` 회귀로 고정. **②추출 —
+  적층 섹션**: Oxygen8 상세 그리드가 한 열에 `Coil Operating Setpoint` 위에 `Max Coil Performance`를 쌓는데
+  `_detail_table_section_columns`가 **열당 컨텍스트 1개**만 등록 → 아래 블록 전체가 위 블록 라벨맵과 대조돼
+  전멸. per-column `(row_index, context)` **switch**로 일반화(`_context_at_row`), 같은 `DB (F)`가 setpoint와
+  **leaving** DB로 갈리는 게 핵심. **라벨맵은 이미 다 있었음** — 막힌 경로를 연 것(무발명). HWC 7필드 해금
+  (Capacity 142.31·Air Vel 424·Air PD 0.07·Fluid Flow 9.69·Fluid PD 8.79·Fluid Vel 5.34·Leaving DB 95).
+  **DX가 멀쩡했던 건 우연** — max-perf 행이 빈 줄에 놓여 텍스트 파서가 건졌을 뿐, 물코일은 Coil 열이 촘촘해
+  한 줄에 라벨 2개가 겹치며 우연이 깨짐. **③슬롯층 `R = S`(John 확정)**: 시드 **7/7**이 `R{even}==S{odd}`
+  (`O==I`도 동일). 물코일용 `return_spacing` 룰이 없고(R-022/023=DX, R-052=HGRH) 일반 안전망은 Terra V 제외 +
+  DX 이름 `suction_conn_size` 의존이라 **모든 제품군에서 R이 blank**였음. water 분기가 R을 **소유**(일반망으로
+  fall-through 금지 — S가 빈 R은 근거가 없음) + `slot.S` 존재 가드(un-gated 코일에서 KeyError→`{"error"}`로
+  무너지는 "template not registered" 실패모드 차단). YAML 룰은 **의도적 미추가** — 이 분기가 먼저라 영구
+  shadow될 죽은 규칙이 됨(Terra V `O=CH−2.75` 선례대로 슬롯층 주석). blocked 문구도 카테고리별 교정(conn size가
+  **있는데** "extract에 없음"이라 오진하던 것). **④프런트 — 별도 `waterCandidate`**: `condensingCandidate`를
+  넓히면 같은 함수 끝의 `addCondensingDefaultFallbackFields`가 물코일에 **냉매온도를 발명**하므로 술어 분리.
+  air fallback을 `addExtractedAirFallbackFields`(재라벨만)와 `addDxReviewDefaultAirFields`(capacity 0·계산
+  face velocity)로 쪼개 물코일엔 전자만 — 후자는 `setDcFieldAlias`가 추출 루프보다 먼저 돌아 **142.31→0,
+  424→424.24로 덮어쓸** 뻔했음(plan-review BLOCKER-2, 직접 재확인). **⑤가정된 coil hand**: frozen
+  `ctx.coil_hand or extract.hand or "LH"` + Oxygen8 커버행이 물코일 handing을 비워둠 → hand(=LH/RH 템플릿 =
+  도면 전체 미러)가 조용히 가정되고 화면엔 읽은 것처럼 표시. `_flag_defaulted_coil_hand(result, **ctx**)` —
+  ctx 필수(그 시점엔 기본값이 접혀 `extracted["hand"]`가 양쪽 다 "LH") + `template_input` fill 아이템 +
+  `deriveSpecFromTemplate`가 `pick("coil_hand", ex.hand)`(하드코딩이라 패널이 선택을 주고도 값이 **버려지던**
+  것) → RH 선택이 실제로 미러 템플릿 재선택하는 것까지 테스트. **⑥Number Of Feeds**는 백엔드가 이미 유도한
+  `template_header_context.feeds`를 읽음(JS 재유도=구현 이원화 회피). **plan-review 1R REVISE**(BLOCKER 4·
+  MAJOR 4·MINOR 2) **전건 반영** — 위 자책골 2건 + "DX byte-identical" 오판 + 시드 절대값 근거 오류 + `cd is
+  None` KeyError + 죽은 YAML 룰 + coil_hand 4-touchpoint까지. **John 승인 필요 변경 보고·승인**: DX
+  `total_capacity_mbh` 365.85→123.88(CDXC-1/2)·574.91→168.73(CDXC-3) — 옛 값은 텍스트 파서가 `Nominal Cooling
+  Capacity`를 Total Capacity로 잡던 것(그 값은 `nominal_cooling_capacity_mbh`로 유지). **도면 슬롯은 DX 전부
+  무변경.** 신규 13테스트 **1141 green**, frozen 3파일 무접촉, 전 값 review_required·`export_allowed` False.
+  ⚠️ **미결(범위 밖·보고만)**: 물코일 `S` 공식이 시드 7개 중 **하나도 재현 못 함** — `R=S`가 그 불확실성을
+  그대로 물려받음. 계획서 `~/.claude/plans/r-value-purrfect-crescent.md`. 🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
@@ -428,6 +498,17 @@
   <textarea#...>"** 행에서 resolve된 엘리먼트가 진짜 Drawing Notes 칸인지 확인 → 맞으면 그 `#id`를
   `web/app.js::ccsiDrawingNotes`의 `selectors` **맨 앞**에 넣고 `selector_verified` 제거. 틀리면 채우지 말고 보고.
 
+- [ ] **[TR-7] 물코일 도면 + 데이터 매핑 브라우저 눈확인 (John)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
+  **서버 재시작** + `pdfCoilPages` 클라 캐시라 **재분석 필수**. 절차: 2949 Ferguson Theatre submittal 드래그→분석
+  → HHWC-1 선택. 확인: **①도면이 나옴**(`coilmaster_hwc_lh`, 종전 공란) **②`R`이 빨간 blocked가 아니라 `S`와
+  같은 **1.6875** **③AIR DATA: Face Velocity **424**(계산값 424.24 아님)·Leaving Dry Bulb 95·Total Capacity
+  **142.31**(0 아님) **④FLUID DATA: Fluid Flow 9.69·Fluid PD 8.79 **⑤OPTIONS**: Header/Connection/Casing 계열이
+  회사 기본값으로 채워짐(종전 전부 unmapped) **⑥Coil Hand "LH ⚠ 가정값" 배너 + LH/RH 수동 선택 → RH 고르면
+  도면이 미러됨** **⑦냉매 필드 없음**(물코일에 발명 금지) **⑧Air Flow Direction은 "Horizontal"이 review-required
+  스타일 = 정상**(제출물이 명시 안 하는 값의 정직한 상태, 버그 아님). **대조군 CDXC-1**: Total Capacity가
+  123.88로 바뀐 것 외 값 불변 + 도면 무변경. 자동검증 완료(1141 green·실 PDF 12개 수용기준 전부 OK); 남은 건
+  실 렌더 사람 눈 확인.
+
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
   **실사용으로 코퍼스 + 교정 축적**. 현황 **46/50 · 교정 0**. 착수조건 n≥50까지 4개 부족하나, **개수보다
@@ -435,6 +516,9 @@
   앞으로 코일 조정을 **브라우저 edit(Update drawing / Spec data)**로 해야 `correction`이 쌓임. `submittals/` 12개
   소진(재분석 dedup); `Case/` 레퍼런스는 미투입(오염 방지). Phase 2.1(가중치·min_shared_axes 튜닝 + 이웃 품질
   눈검증 + 브라우저 "이전 교정" 패널)은 **교정이 실제로 쌓인 뒤** 착수(지금 하면 헛작업).
+  **2026-07-29 보강:** 물코일 트랙(fb894da)이 이 항목을 직접 돕는다 — HWC/CWC가 이제 도면·패널까지 정상
+  작동하므로 물코일도 브라우저 edit 대상이 됐고(종전엔 도면조차 없어 교정이 원천 불가), Coil Hand 수동
+  레버가 새 correction 축을 하나 더 연다.
 ## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
