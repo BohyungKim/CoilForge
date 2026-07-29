@@ -498,7 +498,7 @@
   <textarea#...>"** 행에서 resolve된 엘리먼트가 진짜 Drawing Notes 칸인지 확인 → 맞으면 그 `#id`를
   `web/app.js::ccsiDrawingNotes`의 `selectors` **맨 앞**에 넣고 `selector_verified` 제거. 틀리면 채우지 말고 보고.
 
-- [ ] **[TR-7] 물코일 도면 + 데이터 매핑 브라우저 눈확인 (John)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
+- [x] **[TR-7] 물코일 도면 + 데이터 매핑 브라우저 눈확인 — ✅ John 통과 (2026-07-29)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
   **서버 재시작** + `pdfCoilPages` 클라 캐시라 **재분석 필수**. 절차: 2949 Ferguson Theatre submittal 드래그→분석
   → HHWC-1 선택. 확인: **①도면이 나옴**(`coilmaster_hwc_lh`, 종전 공란) **②`R`이 빨간 blocked가 아니라 `S`와
   같은 **1.6875** **③AIR DATA: Face Velocity **424**(계산값 424.24 아님)·Leaving Dry Bulb 95·Total Capacity
