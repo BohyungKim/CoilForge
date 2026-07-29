@@ -1938,3 +1938,37 @@ def test_cover_row_without_package_hgbp_gets_no_note() -> None:
     )
     assert not any("HGBP" in note for note in candidate.notes)
     assert "special_feature" not in _template_header_context_from_candidate(candidate)
+
+
+def test_drawing_notes_never_diverge_from_the_drawings_own_notes() -> None:
+    """The paste "Drawing Notes" field and the drawing's slot.NOTES are assembled from
+    the same engine call and must never disagree — that is the promise in
+    `_engine_drawing_notes`'s docstring, and it was broken (John 2026-07-29).
+
+    The notes were gated on the CANDIDATE's product line + unit size, but a candidate can
+    lack both while the drawing still resolves them from the full-PDF model-code scan.
+    On 2949 Ferguson Theatre every HWC coil hit exactly that: the drawing carried the
+    vent/drain note while the panel read "unmapped". This asserts the invariant rather
+    than the one shape of the bug, so any future gate that resolves for one surface and
+    not the other trips it."""
+    workflow = run_pdf_to_drawing_workflow(_cwc_and_hwc_sections_pdf_bytes())
+
+    checked = 0
+    for page in workflow["pdf_coil_pages"]:
+        wf = page["workflow"]
+        slot_notes = (wf["template_drawing"].get("slot_values") or {}).get("slot.NOTES")
+        if not slot_notes:
+            continue
+        paste = [
+            f for f in wf["direct_coil_paste_ready"]["fields"]
+            if f["normalized_key"] == "drawing_notes"
+        ]
+        assert paste, page["tag"]
+        value = paste[0]["value"]
+        assert value, f"{page['tag']}: drawing carries notes but the panel is empty"
+        # Same sentences, whatever the joiner (drawing joins with " ", paste with "\n").
+        for sentence in str(value).split("\n"):
+            assert sentence.strip() and sentence.strip() in str(slot_notes), page["tag"]
+        checked += 1
+
+    assert checked, "fixture produced no drawing notes — the guard would be vacuous"

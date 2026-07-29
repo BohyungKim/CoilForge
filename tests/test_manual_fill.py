@@ -353,22 +353,36 @@ def test_stated_hand_is_not_flagged():
         assert result["template_id"] == template_id, hand
 
 
-def test_assumed_hand_surfaces_a_fill_item_that_reselects_the_template():
-    """The fill item is the whole point: picking RH must re-select the mirrored
-    template, not merely record a note."""
+def test_hand_fill_item_reselects_the_template_and_stays_reversible():
+    """The fill item is the whole point: picking RH must re-select the mirrored template,
+    not merely record a note — AND it must survive being used. Gating the lever on
+    `coil_hand_defaulted` made it vanish the moment a hand was supplied, so a mis-click
+    (RH -> LH) could not be undone: the fill that set it removed the only control for
+    changing it (John 2026-07-29)."""
     assumed = derive_coil_template_drawing(_water_spec())
     items = {i["key"]: i for i in assumed["manual_fill_plan"]["items"]}
     assert "coil_hand" in items
     assert items["coil_hand"]["kind"] == "template_input"
     assert items["coil_hand"]["allowed"] == ["Left", "Right"]
 
-    # Filling it (the /derive spec carries coil_hand) redraws the other hand.
+    # Filling it (the /derive spec carries coil_hand) redraws the other hand...
     filled = derive_coil_template_drawing(_water_spec(coil_hand="Right"))
     assert filled["template_id"] == "coilmaster_hwc_rh"
     assert filled["svg"] and filled["svg"] != assumed["svg"]
 
+    # ...and the lever is STILL there, showing the hand now in force, so it can be undone.
+    refilled = {i["key"]: i for i in filled["manual_fill_plan"]["items"]}
+    assert "coil_hand" in refilled, "the lever must not disappear once it has been used"
+    assert refilled["coil_hand"]["current_value"] == "Right"  # picker vocabulary
+    back = derive_coil_template_drawing(_water_spec(coil_hand="Left"))
+    assert back["template_id"] == "coilmaster_hwc_lh"
 
-def test_hand_fill_item_absent_when_the_hand_was_stated():
+
+def test_hand_fill_item_offered_even_when_the_hand_was_read():
+    """A MISREAD hand is as damaging as a missing one — it mirrors the whole drawing — so
+    the picker is a standing correction lever, not a blocked-state prompt."""
     result = derive_coil_template_drawing(_water_spec(coil_hand="Left"))
-    keys = {i["key"] for i in result["manual_fill_plan"]["items"]}
-    assert "coil_hand" not in keys
+    items = {i["key"]: i for i in result["manual_fill_plan"]["items"]}
+    assert "coil_hand" in items
+    assert items["coil_hand"]["current_value"] == "Left"
+    assert result.get("coil_hand_defaulted") is None   # not flagged as assumed

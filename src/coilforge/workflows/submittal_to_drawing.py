@@ -618,8 +618,8 @@ def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
     reasoning that un-blocked Ventum Plus: a CoilMaster water-coil drawing has the same
     shape regardless of which Oxygen8 AHU it ships in — the unit only sets the dimension
     VALUES, and those are already computed per product/variant by the engine (the slot
-    layer applies the Terra V water special O = CH - 2.75, and R-067 supplies the Terra V
-    vent/drain values). So the shared Nova/Ventum-H water template is the correct
+    layer applies the Terra V water specials and R-067 supplies the Terra V vent/drain
+    values). So the shared Nova/Ventum-H water template is the correct
     carrier and only the numbers printed into it are Terra-V-specific. Every drawing
     stays a review aid (export_allowed False)."""
     if not isinstance(result, dict):
@@ -1741,6 +1741,24 @@ def _run_candidate_to_drawing_payload(
     # Surface the same assembled notes on the paste "Drawing Notes" field via a
     # DEDICATED manufacturing_options key (never distributor_notes, which drives the
     # drawing's distributor callout). One newline-joined string; review-required.
+    # Retry the notes with the product line + unit size the DRAWING actually resolved.
+    # `notes_ctx` comes from the candidate, and a candidate can lack product/size while the
+    # drawing still resolves them from the full-PDF model-code scan — which is exactly the
+    # water-coil case (2949 Ferguson HHWC-1: ctx has no product_type/unit_size, the drawing
+    # resolves TERRA V / 040). `_engine_drawing_notes` returns [] without them, so the coil
+    # drew its vent/drain note on slot.NOTES while the paste "Drawing Notes" field read
+    # unmapped — the exact divergence that function's docstring promises cannot happen.
+    # Only fills a gap: a candidate that already resolved its own product is untouched.
+    if not engine_notes_list and isinstance(template_drawing, dict):
+        resolved_ctx = dict(notes_ctx)
+        for key in ("product_type", "unit_size"):
+            if not resolved_ctx.get(key) and template_drawing.get(key):
+                resolved_ctx[key] = template_drawing[key]
+        if not resolved_ctx.get("coil_category"):
+            resolved_ctx["coil_category"] = (
+                template_drawing.get("extracted") or {}
+            ).get("coil_category")
+        engine_notes_list = _engine_drawing_notes(resolved_ctx)
     engine_notes = "\n".join(engine_notes_list) if engine_notes_list else None
     if engine_dims or engine_notes:
         augmented = _run_candidate_to_direct_draft_workflow(

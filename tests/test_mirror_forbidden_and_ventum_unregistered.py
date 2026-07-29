@@ -137,17 +137,17 @@ def test_terra_v_water_draws_on_the_shared_template() -> None:
 
 def test_terra_v_water_carries_terra_v_drawing_parameters() -> None:
     # Borrowing the shared ARTWORK must not borrow Terra H's NUMBERS: the slot layer's
-    # Terra V water special (return I/O = CH - 2.75) and the R-067 Terra V vent/drain
-    # values still apply, so Terra V and Terra H resolve DIFFERENT return positions on
-    # the same template.
+    # Terra V water specials (R-061v I/O = 2.75, R-067 vent/drain) still apply, so Terra V
+    # and Terra H resolve DIFFERENT stubout positions on the same template.
     spec = dict(coil_category="CWC", coil_hand="Left", circuits=1, unit_size="024",
                 rows=4, finned_height=12, finned_length=15, suction_conn_size=0.625)
     v = derive_coil_template_drawing(dict(spec, product_type="TERRA V"))
     h = derive_coil_template_drawing(dict(spec, product_type="TERRA H"))
     v_slots, h_slots = v["slot_values"], h["slot_values"]
     assert v["template_id"] == h["template_id"] == "coilmaster_cwc_lh"
-    assert v_slots["slot.O2"] == round(float(v_slots["slot.CH"]) - 2.75, 4)
-    assert v_slots["slot.O2"] != h_slots.get("slot.O2")
+    assert v_slots["slot.O2"] == 2.75                    # R-061v Terra V
+    assert v_slots["slot.O2"] != h_slots.get("slot.O2")  # Terra H = 3.25 (R-061)
+    assert v_slots["slot.O2"] == v_slots["slot.I1"]      # supply/return stubouts level
 
 
 def test_terra_v_dx_and_hgrh_still_generate() -> None:

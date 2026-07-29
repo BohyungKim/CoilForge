@@ -364,7 +364,28 @@ def build_drawing_slots(
                 slots[f"slot.I{supply_id}"] = hdr_i
             if hdr_hdx is not None:
                 slots[f"slot.HDx{supply_id}"] = hdr_hdx
-            if cd is not None:
+            if is_cwc_hwc:
+                # CWC/HWC supply spacing S = the connection size (John 2026-07-29), and R
+                # mirrors it below. This is the SAME shape the rest of the rule family
+                # already takes for a SINGLE-connection header -- DX R-022 gives R1 = D and
+                # HGRH R-052 gives R = D at n = 1 -- and a water coil is always 1HD with one
+                # supply and one return, so it is that case, not a new convention.
+                #
+                # It replaces an even-spacing fallback (`k*CD/(circuits+1)`) whose own
+                # comment admitted there was "no equation to mirror": the checklist sheets
+                # carry no S row for water. That fallback matched NONE of the seven seeded
+                # water references and printed CD/2 (1.6875 on 2949 Ferguson HHWC-1, where
+                # the connection is 1"). It also reconciles SOP R-068 ("leave all S/R as
+                # EZ Coil default values") -- the EZ default for a single connection IS the
+                # connection size, so honouring the rule and computing this agree.
+                #
+                # NOTE this is deliberately OUTSIDE the `cd is not None` block below: S no
+                # longer needs the casing depth, so a coil whose CD has not resolved still
+                # gets S (and therefore R).
+                water_conn = conn_size if conn_size is not None else suction_conn_size
+                if water_conn is not None:
+                    slots[f"slot.S{supply_id}"] = round(water_conn, 4)
+            elif cd is not None:
                 if (
                     is_terra_v
                     and isinstance(return_spacing, list)
@@ -386,8 +407,8 @@ def build_drawing_slots(
                     # are not proportional (2 x 1.875 != 3.625). John 2026-07-23.
                     slots[f"slot.S{supply_id}"] = round_eighth(k * cd / (circuits + 1))
                 else:
-                    # CWC/HWC: the checklist sheets carry no S row at all, so there is
-                    # no equation to mirror -- left on the raw even-spacing value.
+                    # Safety net for a category outside DX/HGRH/CWC/HWC (none today —
+                    # water takes the connection-size branch above).
                     slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
                 # HGRH supply-side (odd) SL = stub POSITION (checklist HGRH!C58):
                 # Terra V -> 5 (SOP); single feed/circuit -> 3; else 6 + return_conn/2 - S
@@ -407,16 +428,24 @@ def build_drawing_slots(
                             6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
                         )
             if hdr_o is not None:
-                if (
-                    is_terra_v
-                    and is_cwc_hwc
-                    and slots.get("slot.CH") is not None
-                ):
-                    # Terra V CWC/HWC: Return I/O = CH - 2.75 (SOP) — levels the return
-                    # stubout with the supply stubout. Supply I/O stays 2.75 (engine io).
-                    slots[f"slot.O{return_id}"] = round(slots["slot.CH"] - 2.75, 4)
-                else:
-                    slots[f"slot.O{return_id}"] = hdr_o
+                # Return I/O = the engine's io value, for EVERY product line including
+                # Terra V (John 2026-07-29).
+                #
+                # Terra V water used to write `CH - 2.75` here, from the SOP's "return
+                # CH-2.75". That was a DATUM MISMATCH, and the old comment said as much
+                # without noticing: it read "levels the return stubout with the supply
+                # stubout" -- and if the two are level, the drawing must print the SAME
+                # number on both, because `slot.O{even}` is the stubout I/O callout and
+                # carries a 2-3" dimension. `CH - 2.75` is that same physical position
+                # expressed from the OPPOSITE datum, so feeding it into this callout
+                # printed 34.5 where ~2.75 belongs (2949 Ferguson HHWC-1, John).
+                #
+                # Evidence: all SEVEN seeded water references read `O{even} == I{odd}`
+                # (2.31 = the R-060 stubout I/O), and `O == CH - 2.75` on ZERO of them --
+                # across CH 17.00 to 38.75, so it is not a coincidence of one geometry.
+                # Terra V was also the ONLY line whose O diverged from its own I.
+                # Invisible until 2026-07-28 because the Terra V water drawing was gated.
+                slots[f"slot.O{return_id}"] = hdr_o
             if hdr_hd is not None:
                 slots[f"slot.HD{return_id}"] = hdr_hd
             if hdr_sl is not None:
@@ -433,14 +462,11 @@ def build_drawing_slots(
                 # `return_spacing` rule for water (R-022/R-023 are DX, R-052 is HGRH), and
                 # the generic R-022 safety net below both excludes Terra V and keys off the
                 # DX-named suction_conn_size, so water R was left blank on every product
-                # line. Guarded on slot.S existing: S is only written when `cd` resolved,
-                # and an un-gated coil (no product line chosen yet) must leave R blank
-                # rather than raise. Documented here rather than as a YAML rule because the
-                # water S it mirrors is itself a slot-layer value the engine never emits --
-                # same placement as the Terra V `O = CH - 2.75` special above.
-                # CAVEAT (carried into the review evidence, John 2026-07-28): the water S
-                # formula is UNCONFIRMED -- `k*CD/(circuits+1)` reproduces no seed S1 -- so
-                # R inherits that uncertainty. Both stay review_required.
+                # line. Guarded on slot.S existing: S needs the connection size, and a coil
+                # without one must leave R blank rather than raise. Documented here rather
+                # than as a YAML rule because the water S it mirrors is itself a slot-layer
+                # value the engine never emits -- same placement as the Terra V
+                # `S = CD - Rn` special above.
                 # This branch OWNS water R: it deliberately does not fall through to the
                 # generic R-022 net below, which would otherwise hand a water coil an
                 # R with no S beside it (a value whose supply twin is blank has no basis).

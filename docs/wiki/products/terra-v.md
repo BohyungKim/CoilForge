@@ -43,7 +43,18 @@ Terra V는 대체로 SOP 단일 출처지만, DX/HGRH/water 스페셜은 `SOP 20
 | DX | `R-021v` | 모든 I/O → `2.75` | `[CONFIRMED]` | `SOP 2024018 §DX-TNVH SPECIAL CASE`, `John 2026-06-28 (SOP-confirmed)` |
 | DX | `R-023` | return spacing `Rn = (n−0.5)·D + (n−1)·1.5 + 0.75` | `[CONFIRMED]` | `SOP 2024018 §DX-TNVH SPECIAL CASE Terra V`, `John 2026-06-28` |
 | HGRH | `R-046` | `supply_io=2.75`, `supply_sl=5`, `return_sl=12` | `[CONFIRMED]` | `SOP 2024018 §HGRH-TNVH SPECIAL CASE`, `John 2026-06-28` |
+| CWC/HWC | `R-061v` | I/O = `2.75` — **공급·리턴 동일** | `[CONFIRMED]` | `SOP 2024018 §CWC/HWC SPECIAL CASE FOR TERRA V`, `John 2026-06-28`, 데이텀 정정 `John 2026-07-29` |
 | CWC/HWC | `R-067` | `vent_drain = HDR ENDS` (Supply 1 & Return 1) | `[CONFIRMED]` | `SOP 2024018 §CWC/HWC SPECIAL CASE`, `John 2026-06-28` |
+
+> **데이텀 정정 (2026-07-29).** 슬롯 레이어는 Terra V water 리턴에 SOP 문구 "return CH−2.75"를
+> 그대로 써서 `slot.O2`에 **34.5**를 찍고 있었다(2949 Ferguson HHWC-1, CH 37.25). `slot.O{even}`은
+> **스터브아웃 I/O 콜아웃**이라 2~3인치대 치수를 담는 칸이고, `CH−2.75`는 **같은 물리적 위치를
+> 반대쪽 데이텀에서 표현한 값**이다 — 값이 다른 게 아니라 기준면이 다른 것. 옛 주석이 스스로
+> "levels the return stubout with the supply stubout"이라 적어둔 것이 단서였다(수평이면 도면엔
+> 같은 수가 찍혀야 한다). 시드 물코일 레퍼런스 **7/7이 `O == I`**이고 `O == CH−2.75`는 **0/7**
+> (CH 17.00~38.75 전 범위). Terra V만 자기 `I`와 어긋나던 유일한 라인이었다. → 특례 제거,
+> 리턴도 `R-061v`의 2.75를 그대로 쓴다. 2026-07-28 게이트 해제 전까지는 Terra V water 도면이
+> 그려지지 않아 **화면에 드러난 적이 없었다.**
 
 > **드리프트 참고 (낡은 문서):** `CLAUDE.md`는 여전히 Terra V가 "LOW/blocked로 라우팅(`R-023` DX
 > spacing, `R-046` HGRH, `R-067` CWC/HWC vent-drain)"이라 한다. 2026-06-28 SOP 사인오프 이후로 **셋 다
@@ -57,7 +68,7 @@ Terra V CWC/HWC 도면은 제출물 게이트
 John이 2026-07-28 해제했다 — Ventum+를 un-block했던 것과 같은 근거로, CoilMaster water-coil
 도면의 *형상*은 어느 Oxygen8 AHU에 실리든 동일하고 **제품별로 다른 것은 찍히는 값뿐**이다.
 따라서 공유 Nova/Ventum-H water 템플릿(`coilmaster_{cwc,hwc}_lh`)이 올바른 캐리어이고,
-값은 이미 Terra V로 계산되고 있었다(슬롯 레이어의 Terra V water 특례 `O = CH − 2.75`,
+값은 이미 Terra V로 계산되고 있었다(`R-061v` I/O = 2.75,
 `R-067` vent/drain). 같은 템플릿 위에서 Terra V와 Terra H가 **서로 다른 `slot.O2`** 로
 해결되는 것이 회귀 테스트로 고정되어 있다
 (`tests/test_mirror_forbidden_and_ventum_unregistered.py::test_terra_v_water_carries_terra_v_drawing_parameters`).

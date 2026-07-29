@@ -753,6 +753,7 @@ function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
     addSharedFoulingFallbackFields(fieldsByLabel);
     addWaterFeedsFallbackField(fieldsByLabel);
   }
+  addUndefinedCoilHandField(fieldsByLabel);
   const fallbackMap = [
     [candidate.geometry, "finned_height", ["Finned Height(In)", "Tubes High"]],
     [candidate.geometry, "finned_length", ["Finned Length(In)"]],
@@ -815,6 +816,38 @@ function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
   if (condensingCandidate) {
     addCondensingDefaultFallbackFields(fieldsByLabel);
   }
+}
+
+// When the submittal states no handing the backend flags the drawing `coil_hand_defaulted`
+// and the frozen drawing path falls back to LH artwork so a review aid still renders.
+//
+// This row must NOT repeat that fallback as if it were data (John 2026-07-29). Printing
+// "LH" here asserts a hand nobody read — and a wrong hand mirrors the entire coil, so it
+// is the one field where a plausible-looking default is worse than an obvious blank. The
+// row reads "not defined"; the banner above the drawing says which artwork was used and
+// offers the LH/RH lever.
+//
+// Also replaces the bare "review required" this row showed before: that came from the
+// blocked draft field and told the engineer nothing about WHY it was empty.
+//
+// addDcFieldAlias (add-only) so a coil whose handing WAS read keeps its real value.
+const DC_COIL_HAND_UNDEFINED = "not defined";
+
+function addUndefinedCoilHandField(fieldsByLabel) {
+  const td = activePdfCoilPage()?.workflow?.template_drawing;
+  if (!td || !td.coil_hand_defaulted) {
+    return;
+  }
+  addDcFieldAlias(
+    fieldsByLabel,
+    "Coil Hand",
+    directCoilReviewField(
+      "coil_hand",
+      DC_COIL_HAND_UNDEFINED,
+      td.coil_hand_review || "Coil hand was not stated in the submittal — set it before use.",
+      "coil_hand_not_stated",
+    ),
+  );
 }
 
 // An Oxygen8 water-coil detail box states "Circuits:" but has no "Total Feeds:" row, so
@@ -1577,7 +1610,9 @@ const DC_DUTY_HIGHLIGHT_LABELS = new Set(
 // dcCalculatedValue / dcControlValue return these sentinel strings instead of a number when
 // nothing was derived. A duty point that does not exist must NOT be highlighted — same rule
 // the input rows follow via `status !== "unmapped"`.
-const DC_NON_VALUES = new Set(["unmapped", "review required", "calculated", ""]);
+const DC_NON_VALUES = new Set([
+  "unmapped", "review required", "calculated", DC_COIL_HAND_UNDEFINED, "",
+]);
 
 function isDcDutyLabel(label) {
   return DC_DUTY_HIGHLIGHT_LABELS.has(normalizeDcLabel(label));
@@ -1591,7 +1626,15 @@ function renderDcInputRow(label, controlType, field, fallbackValue = null) {
   // string "unmapped" instead (John 2026-07-28). A fallback is never "ready": it is a review
   // default, so it enters as review_required.
   const fieldValue = field ? dcControlValue(field) : null;
-  const fieldIsUsable = fieldValue !== null && fieldValue !== "unmapped";
+  // A BLOCKED field renders the literal string "review required" (dcControlValue), which
+  // is not a value — so on a row that declares a default it must lose to that default,
+  // exactly like "unmapped" does. Without this, "Air Flow Direction" showed
+  // "review required" on every coil: the draft's `airflow_direction` field is blocked for
+  // all of them and its label ("Airflow direction") normalises onto this row, so the
+  // declared "Horizontal" was permanently dead (John 2026-07-29). Rows with no declared
+  // default are unaffected — a blocked field there still reads "review required".
+  const fieldIsUsable =
+    fieldValue !== null && fieldValue !== "unmapped" && fieldValue !== "review required";
   const useFallback = !fieldIsUsable && fallbackValue !== null;
   const value =
     fixedValue !== null

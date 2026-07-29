@@ -775,7 +775,9 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
     feeds absent -> io/hd MEDIUM suggestions (missing feeds); sl HIGH default
     TERRA        -> io=3.25 HIGH (R-061), sl=10 HIGH (R-065) [checklist, John 2026-06-11]
     TERRA V      -> io=2.75 HIGH (R-061v), sl=12 HIGH (R-065v) [SOP, John 2026-06-28]
-                    (return I/O = CH-2.75 is applied at the slot layer, needs casing height)
+                    (supply AND return alike — the SOP's "return CH-2.75" is the same
+                     position from the opposite datum, not the callout value; the slot
+                     layer's CH-2.75 special was removed 2026-07-29)
     """
     index = _rule_index()
     product = request.product_type

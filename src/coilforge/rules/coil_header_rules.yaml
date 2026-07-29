@@ -693,8 +693,12 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK CWC/HWC TERRA=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
-  # Terra V CWC/HWC Supply I/O = 2.75 (SOP). Return I/O = CH-2.75 is applied at the slot
-  # layer (needs casing height). Emitted by _emit_cwc_io_hd_sl's Terra V branch.
+  # Terra V CWC/HWC I/O = 2.75 (SOP), supply AND return alike — the drawing's stubout
+  # callout takes the same dimension on both headers (7/7 seeded water references read
+  # O == I). The SOP's "return CH-2.75" is that same position measured from the opposite
+  # datum; the slot layer used to write it into the callout and printed 34.5 where 2.75
+  # belongs, so that special was removed (John 2026-07-29).
+  # Emitted by _emit_cwc_io_hd_sl's Terra V branch.
   - rule_id: R-061v
     applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: io
@@ -703,7 +707,7 @@ rules:
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["SOP 2024018 §CWC/HWC SPECIAL CASE FOR TERRA V: All Supply I/O=2.75 (Return I/O=CH-2.75 applied at slot layer)", "John 2026-06-28 (SOP-confirmed)"]
+    evidence_refs: ["SOP 2024018 §CWC/HWC SPECIAL CASE FOR TERRA V: All Supply I/O=2.75", "John 2026-06-28 (SOP-confirmed)", "John 2026-07-29 (return I/O prints 2.75 too — the SOP's CH-2.75 is the opposite-datum form, not the callout value; 7/7 seeds read O==I)"]
 
   - rule_id: R-062
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }

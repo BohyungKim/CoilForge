@@ -211,3 +211,35 @@ def test_air_flow_direction_keeps_its_declared_default() -> None:
     for fn in ("addSharedConstructionFallbackFields", "addExtractedAirFallbackFields",
                "addWaterFeedsFallbackField", "addCandidateFallbackFields"):
         assert "Air Flow Direction" not in _function_body(fn), fn
+
+
+def test_blocked_field_loses_to_a_declared_row_default() -> None:
+    """A blocked field renders the literal "review required" (dcControlValue) — not a
+    value — so on a row that declares a default it must lose to that default, exactly as
+    "unmapped" does. Without this the mirror's "Air Flow Direction" read "review required"
+    on EVERY coil: the draft's `airflow_direction` field is blocked for all of them and
+    its label normalises onto that row, leaving the declared "Horizontal" permanently
+    dead (John 2026-07-29)."""
+    body = _function_body("renderDcInputRow")
+    assert '!== "review required"' in body
+    assert '!== "unmapped"' in body
+    # Rows with no declared default must be unaffected — the fallback still gates on it.
+    assert "fallbackValue !== null" in body
+
+
+def test_unrecognised_coil_hand_reads_not_defined_not_a_hand() -> None:
+    """When the submittal states no handing the frozen drawing path falls back to LH
+    artwork so a review aid still renders — but the Coil Hand ROW must not repeat that
+    fallback as if it were data (John 2026-07-29). A wrong hand mirrors the entire coil,
+    so this is the one field where a plausible-looking default is worse than an obvious
+    blank. Add-only, so a coil whose handing WAS read keeps its real value."""
+    body = _function_body("addUndefinedCoilHandField")
+    assert "coil_hand_defaulted" in body
+    assert "DC_COIL_HAND_UNDEFINED" in body
+    assert "addDcFieldAlias(" in body
+    assert "setDcFieldAlias(" not in body, "would overwrite a genuinely read handing"
+    assert 'const DC_COIL_HAND_UNDEFINED = "not defined";' in _APP_JS
+    # It must never read as a real value downstream (duty highlight and friends).
+    assert "DC_COIL_HAND_UNDEFINED," in _APP_JS[_APP_JS.index("const DC_NON_VALUES"):][:200]
+    caller = _function_body("addCandidateFallbackFields")
+    assert "addUndefinedCoilHandField(fieldsByLabel)" in caller

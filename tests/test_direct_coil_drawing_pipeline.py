@@ -302,37 +302,81 @@ def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
     assert s["slot.HDx1"] == 4        # supply header depth = hd
 
 
-def test_water_return_spacing_mirrors_supply_spacing() -> None:
-    """CWC/HWC R = S (John 2026-07-28). A water coil's supply and return headers are
-    symmetric: all seven seeded water references read R{even} == S{odd}. Before this,
-    water R was blank on every product line — there is no `return_spacing` rule for
-    water (R-022/R-023 are DX, R-052 is HGRH), and the generic safety net both excludes
-    Terra V and keys off the DX-named suction_conn_size."""
+def test_water_supply_and_return_spacing_are_the_connection_size() -> None:
+    """CWC/HWC S = R = the connection size (John 2026-07-29).
+
+    Same shape the rest of the family already takes for a single-connection header —
+    DX R-022 gives R1 = D, HGRH R-052 gives R = D at n = 1 — and a water coil is always
+    1HD with one supply and one return. Replaces an even-spacing fallback (CD/2) that
+    matched none of the seven seeded water references. Product-line-independent."""
     common = dict(rows=4, circuits=1, feeds=1,
                   conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
     for coil_type in ("CWC", "HWC"):
-        # Each product line gets a size from its OWN R-076 set, else the engine cannot
-        # resolve the casing depth and S/R both stay (correctly) blank.
         for product, unit_size in (("TERRA V", "012"), ("TERRA H", "012"),
                                    ("NOVA", "C24"), ("VENTUM_H", "H15")):
             slots, _ = build_drawing_slots(
                 coil_type=coil_type, product_type=product, unit_size=unit_size, **common
             )
-            assert slots.get("slot.S1") is not None, (coil_type, product)
+            assert slots["slot.S1"] == 0.625, (coil_type, product)
             assert slots["slot.R2"] == slots["slot.S1"], (coil_type, product)
 
 
-def test_water_return_spacing_stays_blank_when_casing_depth_unresolved() -> None:
-    """S is only written once the casing depth CD resolves, so a coil whose CD the engine
-    could not derive must leave R blank rather than raise — and must NOT fall through to
-    the generic R-022 net, which would print an R with no S beside it. A KeyError here
-    would blank the whole template_drawing into an error payload, which the UI reports as
-    the misleading 'template not registered'."""
+def test_water_spacing_resolves_from_the_suction_named_connection_too() -> None:
+    """The frozen PDF path passes the read connection ONLY as `suction_conn_size` (the
+    DX-flavoured name), never `conn_size` — the same trap that once blanked HGRH R. Water
+    S/R must resolve from either."""
+    slots, _ = build_drawing_slots(
+        coil_type="HWC", product_type="TERRA V", unit_size="040",
+        rows=1, circuits=1, feeds=2, suction_conn_size=1.0,
+        finned_height=36.0, finned_length=33.0,
+    )
+    assert slots["slot.S1"] == 1.0            # 2949 Ferguson HHWC-1: 1" connection
+    assert slots["slot.R2"] == 1.0
+
+
+def test_water_spacing_does_not_need_the_casing_depth() -> None:
+    """S is the connection size, so it no longer depends on CD — a coil whose casing
+    depth the engine could not derive still gets S and R."""
     slots, _ = build_drawing_slots(
         coil_type="HWC", product_type="NOVA", unit_size="012",  # not a Nova size -> no CD
-        rows=4, circuits=1, feeds=1, suction_conn_size=0.625, finned_height=20.0,
+        rows=4, circuits=1, feeds=1, suction_conn_size=0.75, finned_height=20.0,
     )
     assert slots.get("slot.CD") is None
+    assert slots["slot.S1"] == 0.75
+    assert slots["slot.R2"] == 0.75
+
+
+def test_water_return_io_mirrors_supply_io_on_every_product_line() -> None:
+    """Regression (2949 Ferguson HHWC-1, John 2026-07-29): Terra V water printed
+    O = CH - 2.75 = 34.5 into the stubout I/O callout, which carries a 2-3" dimension.
+    That is the same physical position measured from the OPPOSITE datum — a datum
+    mismatch, not a different value. Every one of the seven seeded water references
+    reads O{even} == I{odd}; none reads CH - 2.75. Terra V was the only line whose O
+    diverged from its own I, which is the tell."""
+    common = dict(rows=1, circuits=1, feeds=2, conn_size=1.0, suction_conn_size=1.0,
+                  finned_height=36.0, finned_length=33.0)
+    for coil_type in ("CWC", "HWC"):
+        for product, unit_size in (("TERRA V", "040"), ("TERRA H", "012"),
+                                   ("NOVA", "C24"), ("VENTUM_H", "H15")):
+            slots, _ = build_drawing_slots(
+                coil_type=coil_type, product_type=product, unit_size=unit_size, **common
+            )
+            i1, o2, ch = slots.get("slot.I1"), slots.get("slot.O2"), slots.get("slot.CH")
+            assert o2 == i1, (coil_type, product, i1, o2)
+            # The stubout callout is a small dimension — never a casing-height-scale one.
+            assert ch is None or o2 < ch / 2, (coil_type, product, o2, ch)
+
+
+def test_water_spacing_stays_blank_without_a_connection_size() -> None:
+    """With no connection size there is nothing to derive S from, so S and R must both
+    stay blank rather than raise — and R must NOT fall through to the generic R-022 net,
+    which would print an R with no S beside it. A KeyError here would blank the whole
+    template_drawing into an error payload, which the UI reports as the misleading
+    'template not registered'."""
+    slots, _ = build_drawing_slots(
+        coil_type="HWC", product_type="NOVA", unit_size="C24",
+        rows=4, circuits=1, feeds=1, finned_height=20.0,   # no conn size at all
+    )
     assert "slot.S1" not in slots
     assert "slot.R2" not in slots
 
@@ -355,7 +399,7 @@ def test_dx_and_hgrh_return_spacing_unaffected_by_the_water_rule() -> None:
 def test_terra_v_drawing_slots_use_sop_specials() -> None:
     """Terra V drawing slots use the SOP specials, NOT Terra H values (John 2026-06-28):
     DX S = CD - Rn (own R-023 formula, never the generic R-022 net); DX I/O=2.75, SL=12;
-    HGRH supply SL = 5; CWC return O = CH - 2.75 with supply I = 2.75."""
+    HGRH supply SL = 5; CWC supply AND return I/O = 2.75."""
     common = dict(unit_size="012", rows=4, circuits=2, feeds=2,
                   conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
 
@@ -388,7 +432,13 @@ def test_terra_v_drawing_slots_use_sop_specials() -> None:
 
     cwc, _ = build_drawing_slots(coil_type="CWC", product_type="TERRA V", **common)
     assert cwc["slot.I1"] == 2.75                           # supply I/O = 2.75
-    assert cwc["slot.O2"] == round(cwc["slot.CH"] - 2.75, 4)  # return I/O = CH - 2.75
+    # Return I/O prints the SAME stubout dimension as the supply (John 2026-07-29). The
+    # old expectation here was `CH - 2.75`, which is that same position measured from the
+    # opposite datum — writing it into the stubout callout printed 34.5 where ~2.75
+    # belongs. All seven seeded water references read O{even} == I{odd}, and none reads
+    # CH - 2.75 (checked across CH 17.00-38.75).
+    assert cwc["slot.O2"] == 2.75
+    assert cwc["slot.O2"] == cwc["slot.I1"]
     assert cwc["slot.SL2"] == 12
 
 

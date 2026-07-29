@@ -106,7 +106,7 @@ H) so it never borrows Terra H's `TERRA|...` casing; all 13 Terra V sizes now re
 
 **Dual-path gotcha:** some per-header drawing dims are computed in `build_drawing_slots`
 (the slot layer), NOT the engine — DX distributor `S`, return spacing `R`, and Terra V's
-CD/CH-relative formulas (`S = CD − Rn`, CWC return `O = CH − 2.75`). Changing such a value
+CD-relative formula `S = CD − Rn`. Changing such a value
 means editing BOTH the engine rule/helper AND the slot layer, and threading `terra_variant`
 into `build_drawing_slots` where a variant-specific drawing formula is needed (the generic-R
 safety net is guarded `and not is_terra_v` so Terra V never borrows Terra H's spacing).
@@ -118,7 +118,7 @@ the generic net both excludes Terra V and keys off the DX-named `suction_conn_si
 was blank on every product line. The slot layer's water branch **owns** R — it deliberately
 does not fall through to the generic net, because an R whose S is blank has no basis. Written
 only when `slot.S` exists (S needs `cd`), so an un-gated coil leaves R blank instead of raising.
-Kept in the slot layer, not YAML, for the same reason as the Terra V `O = CH − 2.75` special:
+Kept in the slot layer, not YAML, for the same reason as the Terra V `S = CD − Rn` special:
 the water `S` it mirrors is itself a slot-layer value the engine never emits — a YAML rule
 placed before this branch would be permanently shadowed, i.e. a rule that documents a value it
 never produces. **Open:** the water `S` formula `k*CD/(circuits+1)` reproduces NO seed `S1`
@@ -357,7 +357,7 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   un-blocked Ventum+ — a CoilMaster water-coil drawing has the same shape whichever AHU
   it ships in, so the **shared Nova/Ventum-H water template is the correct carrier and
   only the printed values are Terra-V-specific**. Those values were already correct
-  before the release (the slot layer's Terra V water special `O = CH − 2.75` and R-067's
+  before the release (the Terra V water rules R-061v I/O = 2.75 and R-067's
   vent/drain), so removing the gate changed the drawing and nothing else: Terra V and
   Terra H water resolve DIFFERENT `slot.O2` on the SAME `coilmaster_{cwc,hwc}_lh`
   template — pinned by `test_terra_v_water_carries_terra_v_drawing_parameters`. Caveat

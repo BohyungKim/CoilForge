@@ -111,8 +111,8 @@ _BLANK_REASON_AFTER_PRODUCT: dict[str, str] = {
 # a value that is already present is worse than saying nothing.
 _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
     (category, "R"): (
-        "Water-coil R mirrors the supply spacing S (supply/return headers are symmetric); "
-        "S has not resolved yet — it needs the casing depth CD."
+        "Water-coil R mirrors the supply spacing S, and S is the connection size — "
+        "no connection size was read from the submittal."
     )
     for category in ("CWC", "HWC")
 }
@@ -582,17 +582,31 @@ def build_manual_fill_plan(
     items: list[ManualFillItem] = []
     seen: set[str] = set()
 
-    # Coil hand assumed rather than read (the frozen path's `or "LH"` fallback, flagged by
-    # workflows.submittal_to_drawing._flag_defaulted_coil_hand). Offered unconditionally
-    # for such a coil — nothing is "blocked", the drawing renders fine; it is simply drawn
-    # from the LH template on an assumption, and the hand mirrors the whole drawing.
-    if td.get("coil_hand_defaulted"):
+    # Coil hand picker — offered whenever a drawing exists, NOT only when the hand was
+    # assumed. Gating it on `coil_hand_defaulted` made the lever vanish the moment the
+    # engineer supplied a hand, so a mis-click (RH -> LH) could not be undone: the fill
+    # that set it also removed the only control for changing it (John 2026-07-29).
+    # It is a legitimate standing correction either way — a MISREAD hand is as damaging
+    # as a missing one, because the hand selects the LH vs RH template and therefore
+    # mirrors the entire drawing.
+    if td.get("svg"):
         items.append(
             ManualFillItem(
                 key="coil_hand", kind="template_input", label="Coil hand",
-                reason=str(td.get("coil_hand_review") or "Coil hand was not stated — confirm."),
+                reason=str(
+                    td.get("coil_hand_review")
+                    or "Coil hand selects the LH vs RH template — it mirrors the whole "
+                       "drawing. Change it if the hand read from the submittal is wrong."
+                ),
                 allowed=["Left", "Right"],
-                current_value=(td.get("extracted") or {}).get("hand"),
+                # Normalised into the picker's own vocabulary: the resolved hand is "LH"/
+                # "RH" when it came from the drawing path but "Left"/"Right" when it came
+                # from a manual fill, and a current_value outside `allowed` leaves the
+                # picker with nothing selected.
+                current_value={"LH": "Left", "RH": "Right"}.get(
+                    str((td.get("extracted") or {}).get("hand") or "").upper(),
+                    (td.get("extracted") or {}).get("hand"),
+                ),
                 unit="",
             )
         )
