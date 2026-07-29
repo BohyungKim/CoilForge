@@ -683,17 +683,22 @@ function directCoilLabelsForDraftKey(fieldKey) {
   return aliases[fieldKey] || [];
 }
 
+function activePdfCoilPage() {
+  return state.pdfCoilPages[state.activePdfCoilPageIndex] || null;
+}
+
 function activePdfCandidate() {
-  const page = state.pdfCoilPages[state.activePdfCoilPageIndex];
-  return page?.workflow?.candidates?.[0] || null;
+  return activePdfCoilPage()?.workflow?.candidates?.[0] || null;
 }
 
 // The company-rule fallbacks below were DX-only until 2026-07-28, which left a condensing
 // (RHHGRC/HGRH) coil showing a wall of "unmapped". John's own hand-filled transcriptions —
 // examples/mapping_lab/case_004 (DX), case_005 (HGRH) and case_006 (one of each) — carry
 // IDENTICAL values for the construction rules on both coil types, so the shared set is
-// evidence-backed rather than assumed. Deliberately NOT widened to CWC/HWC/PHWC: the water
-// seeds are mock data with no construction fields, so there is no evidence either way.
+// evidence-backed rather than assumed. Widened to CWC/HWC/PHWC on 2026-07-28 by John's
+// decision: the water seeds carry no construction fields (so they neither confirm nor
+// contradict), and leaving a real water coil as a wall of "unmapped" was the worse of the
+// two errors — every value here renders review_required and an extracted value still wins.
 function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
   if (!candidate) {
     return;
@@ -703,7 +708,16 @@ function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
   // directCoilMirrorFormat falls through to "dx" as a catch-all, so a format-only gate would
   // hand drain-pan and DX-distributor values to any coil it failed to classify. Widening by
   // OR-ing in exactly the one evidenced format leaves the DX path byte-identical.
-  const condensingCandidate = !dxCandidate && directCoilMirrorFormat(uiState) === "condensing";
+  const mirrorFormat = directCoilMirrorFormat(uiState);
+  const condensingCandidate = !dxCandidate && mirrorFormat === "condensing";
+  // Water coils (John 2026-07-28, 2949 Ferguson Theatre HWC): a SEPARATE predicate, not a
+  // widening of condensingCandidate — that one also drives addCondensingDefaultFallbackFields
+  // at the end of this function, which injects refrigerant conditions. Stamping evaporating
+  // / condensing / subcooling temperatures onto a water coil would be inventing engineering
+  // values, so the two predicates must stay distinct.
+  const waterCandidate =
+    !dxCandidate
+    && ["chilled_water", "hot_water", "pre_hot_water", "post_hot_water"].includes(mirrorFormat);
   setDcFieldAlias(
     fieldsByLabel,
     "Tube Diameter (standard at top)",
@@ -730,6 +744,14 @@ function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
     addSharedConstructionFallbackFields(fieldsByLabel, candidate);
     addSharedAirFallbackFields(fieldsByLabel, candidate);
     addSharedFoulingFallbackFields(fieldsByLabel);
+  } else if (waterCandidate) {
+    // Construction rules only + the EXTRACTED air subset. Deliberately NOT
+    // addSharedAirFallbackFields: its two review defaults would overwrite the water coil's
+    // real Max Coil Performance readings (capacity -> 0, Air Vel -> the computed value).
+    addSharedConstructionFallbackFields(fieldsByLabel, candidate);
+    addExtractedAirFallbackFields(fieldsByLabel, candidate);
+    addSharedFoulingFallbackFields(fieldsByLabel);
+    addWaterFeedsFallbackField(fieldsByLabel);
   }
   const fallbackMap = [
     [candidate.geometry, "finned_height", ["Finned Height(In)", "Tubes High"]],
@@ -793,6 +815,28 @@ function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
   if (condensingCandidate) {
     addCondensingDefaultFallbackFields(fieldsByLabel);
   }
+}
+
+// An Oxygen8 water-coil detail box states "Circuits:" but has no "Total Feeds:" row, so
+// Number Of Feeds read unmapped. The BACKEND already derives it (
+// submittal_to_drawing._template_header_context_from_candidate falls back feeds = circuits
+// for CWC/HWC) and exposes it as template_header_context.feeds — read THAT rather than
+// re-deriving from geometry.circuits here, so there is one implementation to keep correct.
+// Uses addDcFieldAlias (add-only): a submittal that DOES state Total Feeds still wins.
+function addWaterFeedsFallbackField(fieldsByLabel) {
+  const feeds = activePdfCoilPage()?.workflow?.template_header_context?.feeds;
+  if (feeds === undefined || feeds === null || feeds === "") {
+    return;
+  }
+  const field = directCoilReviewField(
+    "number_of_feeds_total",
+    feeds,
+    "Derived from the submittal's Circuits (a water-coil box states no Total Feeds); confirm before use.",
+    "water_coil_circuits_to_number_of_feeds",
+  );
+  ["Number Of Feeds(Total)", "Number Of Feeds"].forEach((label) => {
+    addDcFieldAlias(fieldsByLabel, label, field);
+  });
 }
 
 function isDxPdfCandidate(candidate) {
@@ -958,16 +1002,20 @@ function addDxAirFallbackFields(fieldsByLabel, candidate) {
 // intentional — John fills 0 by hand on all four seeds because Direct Coil's software owns
 // final capacity — and it now applies to condensing too. Stated, not inherited by accident.
 function addSharedAirFallbackFields(fieldsByLabel, candidate) {
+  addExtractedAirFallbackFields(fieldsByLabel, candidate);
+  addDxReviewDefaultAirFields(fieldsByLabel, candidate);
+}
+
+// The subset that only RE-LABELS extracted submittal values (entering airflow -> the two
+// Direct Coil airflow rows, leaving WB, entering RH). Safe for any coil type because it
+// invents nothing and masks nothing that was not already the same reading. Water coils get
+// THIS and not the two review defaults below (John 2026-07-28).
+function addExtractedAirFallbackFields(fieldsByLabel, candidate) {
   const airflowField = candidate.airside_conditions?.total_air_flow_cfm;
   if (airflowField) {
     const mappedAirflow = candidateFallbackField(airflowField, "total_air_flow_cfm", "pdf_entering_airflow_to_direct_coil_airflow");
     setDcFieldAlias(fieldsByLabel, "Total Air Flow(CFM)", mappedAirflow);
     setDcFieldAlias(fieldsByLabel, "Air Flow Per Coil(CFM)", mappedAirflow);
-  }
-  const faceVelocityField = directCoilFaceVelocityField(candidate);
-  if (faceVelocityField) {
-    setDcFieldAlias(fieldsByLabel, "Face Velocity(FPM)", faceVelocityField);
-    setDcFieldAlias(fieldsByLabel, "Standard Face Velocity", faceVelocityField);
   }
   const relativeHumidityField = directCoilRelativeHumidityField(candidate);
   if (relativeHumidityField) {
@@ -983,6 +1031,21 @@ function addSharedAirFallbackFields(fieldsByLabel, candidate) {
       "Leaving Wet Bulb(°F)",
       candidateFallbackField(leavingWetBulbField, "leaving_wet_bulb_f", "pdf_max_coil_performance_wb_to_leaving_wet_bulb"),
     );
+  }
+}
+
+// The two DX/condensing REVIEW DEFAULTS, kept out of the water path deliberately: both
+// overwrite (setDcFieldAlias, before the fallbackMap), and on a water coil both would mask
+// a genuinely extracted value now that the Max Coil Performance block is read — capacity
+// 142.31 would render as 0, and the real Air Vel 424 would be replaced by the arithmetic
+// 424.24. On DX/condensing they stay as-is: the computed face velocity matches the seeds
+// exactly, and John types capacity 0 by hand on all four seeds because Direct Coil's
+// software owns final capacity.
+function addDxReviewDefaultAirFields(fieldsByLabel, candidate) {
+  const faceVelocityField = directCoilFaceVelocityField(candidate);
+  if (faceVelocityField) {
+    setDcFieldAlias(fieldsByLabel, "Face Velocity(FPM)", faceVelocityField);
+    setDcFieldAlias(fieldsByLabel, "Standard Face Velocity", faceVelocityField);
   }
   setDcFieldAlias(
     fieldsByLabel,
@@ -1494,13 +1557,31 @@ function renderDcInputRows(rows, fieldsByLabel) {
     .join("");
 }
 
-// The two duty-point rows highlighted across every mirror (DX / condensing / water). Stored
-// normalized so the degree-sign and punctuation variants all match. Deliberately Leaving only:
-// the submittal's "Max Coil Performance" DB/WB IS the leaving air, which is the number John
-// checks the selection against.
+// The two duty-point rows highlighted across every mirror (DX / condensing / water).
+// Deliberately Leaving only: the submittal's "Max Coil Performance" DB/WB IS the leaving air,
+// which is the number John checks the application engineer's selection against.
+//
+// BOTH spellings are listed on purpose. normalizeDcLabel strips punctuation but keeps the unit
+// letter, so "Leaving Dry Bulb(°F)" -> "leavingdrybulbf" while the calculated panel's bare
+// "Leaving Dry Bulb" -> "leavingdrybulb" — different keys. Listing only the (°F) form is what
+// left the calculated panel unhighlighted (John 2026-07-29).
 const DC_DUTY_HIGHLIGHT_LABELS = new Set(
-  ["Leaving Dry Bulb(°F)", "Leaving Wet Bulb(°F)"].map(normalizeDcLabel),
+  [
+    "Leaving Dry Bulb(°F)",
+    "Leaving Wet Bulb(°F)",
+    "Leaving Dry Bulb",
+    "Leaving Wet Bulb",
+  ].map(normalizeDcLabel),
 );
+
+// dcCalculatedValue / dcControlValue return these sentinel strings instead of a number when
+// nothing was derived. A duty point that does not exist must NOT be highlighted — same rule
+// the input rows follow via `status !== "unmapped"`.
+const DC_NON_VALUES = new Set(["unmapped", "review required", "calculated", ""]);
+
+function isDcDutyLabel(label) {
+  return DC_DUTY_HIGHLIGHT_LABELS.has(normalizeDcLabel(label));
+}
 
 function renderDcInputRow(label, controlType, field, fallbackValue = null) {
   const fixedValue = fixedDcDrawingValue(label);
@@ -1531,10 +1612,7 @@ function renderDcInputRow(label, controlType, field, fallbackValue = null) {
   // to hunt for it (John 2026-07-28). Gated on the row actually HAVING a value: a reheat coil
   // is sensible-only and reports no leaving WB, and an absent duty point must keep reading as
   // unmapped rather than becoming a highlighted empty box.
-  const dutyClass =
-    DC_DUTY_HIGHLIGHT_LABELS.has(normalizeDcLabel(label)) && status !== "unmapped"
-      ? " dc-control--duty"
-      : "";
+  const dutyClass = isDcDutyLabel(label) && status !== "unmapped" ? " dc-control--duty" : "";
   const className = `dc-control ${statusClass(status)}${dutyClass}`;
   if (controlType === "airflow") {
     return `
@@ -1621,8 +1699,15 @@ function renderDcCalculatedPanel(rows, fieldsByLabel, uiState) {
       ${rows
         .map(([label, source]) => {
           const value = dcCalculatedValue(source, fieldsByLabel, uiState);
+          // Leaving DB/WB gets the same duty accent here as on the input side (John 2026-07-29
+          // circled this panel's Leaving Dry Bulb). This panel has no status class of its own,
+          // so the "has a value" test is against the sentinel strings dcCalculatedValue emits.
+          const duty =
+            isDcDutyLabel(label) && !DC_NON_VALUES.has(String(value).trim().toLowerCase())
+              ? " dc-calculated-row--duty"
+              : "";
           return `
-            <div class="dc-calculated-row">
+            <div class="dc-calculated-row${duty}">
               <span>${escapeHtml(label)}</span>
               <strong>${escapeHtml(value)}</strong>
             </div>
@@ -2396,6 +2481,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
       ${templateDrawingPicker(templateDrawing)}
       ${renderManualFillPanel(templateDrawing)}
       ${distributorOrientationBanner(templateDrawing)}
+      ${coilHandAssumedBanner(templateDrawing)}
       ${hgbpProductLineBanner(templateDrawing)}
       ${manualOverrideBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
@@ -2545,7 +2631,11 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     engineInputs[key] !== undefined && engineInputs[key] !== "" ? engineInputs[key] : fallback;
   return {
     coil_category: ex.coil_category,
-    coil_hand: ex.hand,
+    // A manually picked hand must beat the extracted one: when the submittal states no
+    // handing the frozen path silently defaults to LH, and the hand selects the LH vs RH
+    // template — i.e. it mirrors the whole drawing. Hardcoding ex.hand here meant the
+    // fill panel could offer the choice but the value never reached the backend.
+    coil_hand: pick("coil_hand", ex.hand),
     circuits: pick("circuits", ex.circuits),
     special_feature: ex.special_feature,
     tag: ex.tag,
@@ -3096,6 +3186,20 @@ function distributorOrientationBanner(templateDrawing) {
   return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
 }
 
+// Loud review-required banner when the drawn hand was ASSUMED rather than read. The
+// frozen drawing path falls back to LH when neither the cover row nor the as-built parse
+// states a handing (Oxygen8 cover rows carry it for DX but leave it blank for water
+// coils), and the hand selects the LH vs RH template — it mirrors the whole drawing. The
+// value still renders; this says it is an assumption. See
+// submittal_to_drawing._flag_defaulted_coil_hand.
+function coilHandAssumedBanner(templateDrawing) {
+  const warning = templateDrawing && templateDrawing.coil_hand_review;
+  if (!warning || !templateDrawing.coil_hand_defaulted) {
+    return "";
+  }
+  return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
+}
+
 // Loud review-required banner when an HGBP drawing was produced without a resolved
 // product line — hot gas bypass is a Nova / Ventum H option, so an unknown line leaves
 // that premise unverified. Empty string when not flagged. See
@@ -3258,6 +3362,7 @@ function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
           <strong>${rendered ? "Reproduced from PDF — review aid" : "Links — artwork not seeded"}</strong>
         </div>
         ${distributorOrientationBanner(templateDrawing)}
+        ${coilHandAssumedBanner(templateDrawing)}
         ${hgbpProductLineBanner(templateDrawing)}
         <div class="dc-coil-drawing-canvas">
           ${templateDrawingBody(templateDrawing, rendered)}

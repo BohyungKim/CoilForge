@@ -50,12 +50,23 @@ Terra V는 대체로 SOP 단일 출처지만, DX/HGRH/water 스페셜은 `SOP 20
 > `HIGH`** — 그 라우팅 주장은 낡았다. 이 위키는 현재의 진실을 기술한다; 드리프트는 `CLAUDE.md`를
 > 고치도록 `[[open-questions]]`에 파일링됨.
 
-## Terra V water는 도면 withheld
+## Terra V water는 공유 템플릿으로 도면화 (2026-07-28 해제)
 
-제출물 게이트(`workflows/submittal_to_drawing.py::_gate_unregistered_product_line`)는 **Terra V
-CWC/HWC 도면을 생략**한다 — 시드된 Terra V water 레퍼런스 PDF가 없어, 공유 water 템플릿은
-withheld(빌리지 않음). Terra V DX/HGRH와 Terra H water는 여전히 도면화됨. 엔진 water 규칙(`R-067` 등)은
-온전히 유지 — *도면*만 withheld. `[CONFIRMED]` 근거: `CLAUDE.md` 제품-패밀리 규칙; no-surrogate/mirror
-불변식.
+Terra V CWC/HWC 도면은 제출물 게이트
+(`workflows/submittal_to_drawing.py::_gate_unregistered_product_line`)에서 **생략되었으나**,
+John이 2026-07-28 해제했다 — Ventum+를 un-block했던 것과 같은 근거로, CoilMaster water-coil
+도면의 *형상*은 어느 Oxygen8 AHU에 실리든 동일하고 **제품별로 다른 것은 찍히는 값뿐**이다.
+따라서 공유 Nova/Ventum-H water 템플릿(`coilmaster_{cwc,hwc}_lh`)이 올바른 캐리어이고,
+값은 이미 Terra V로 계산되고 있었다(슬롯 레이어의 Terra V water 특례 `O = CH − 2.75`,
+`R-067` vent/drain). 같은 템플릿 위에서 Terra V와 Terra H가 **서로 다른 `slot.O2`** 로
+해결되는 것이 회귀 테스트로 고정되어 있다
+(`tests/test_mirror_forbidden_and_ventum_unregistered.py::test_terra_v_water_carries_terra_v_drawing_parameters`).
+`[CONFIRMED]` 근거: `John 2026-07-28 (2949 Ferguson Theatre HWC 도면 미생성 보고)`;
+`CLAUDE.md` 제품-패밀리 규칙.
+
+`[REVIEW-REQUIRED]` 잔여 caveat: 공유 water 템플릿에는 아직 슬롯화되지 않은 as-built 치수
+숫자가 남아 있다(메모리 `[[template-hardcoded-dims-deferred]]`, John 2026-06-22 보류). 이는
+그 템플릿을 쓰는 **모든** 라인에 이미 존재하던 상태이며 Terra V도 동일하게 상속한다 —
+검토 보조물로만 사용.
 
 관련: `[[hgrh]]`, `[[confidence-gate]]`, `[[terra-h]]`(스텁), 메모리 `[[terra-v-sop-finalized]]`.

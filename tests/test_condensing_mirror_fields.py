@@ -59,11 +59,38 @@ def test_condensing_system_type_has_no_invented_default() -> None:
     assert '"System Type", "select", null, "Single-Circuit"' not in _APP_JS
 
 
-def test_shared_fallbacks_reach_condensing_but_never_water() -> None:
+def test_shared_fallbacks_reach_condensing_and_water_on_separate_predicates() -> None:
+    """Water coils were deliberately excluded until John released them 2026-07-28 (a real
+    HWC rendered as a wall of "unmapped"). The two predicates must stay SEPARATE: the
+    condensing one also drives addCondensingDefaultFallbackFields, so widening it — rather
+    than adding waterCandidate — would stamp refrigerant temperatures onto a water coil.
+    """
     body = _function_body("addCandidateFallbackFields")
-    assert 'directCoilMirrorFormat(uiState) === "condensing"' in body
-    for water in ("chilled_water", "hot_water", "pre_hot_water"):
-        assert water not in body, f"{water} must stay unmapped — no seed evidence exists"
+    assert 'mirrorFormat === "condensing"' in body
+    assert "waterCandidate" in body
+    for water in ("chilled_water", "hot_water", "pre_hot_water", "post_hot_water"):
+        assert water in body, f"{water} must reach the shared construction rules"
+    # The refrigerant defaults stay keyed on condensingCandidate ALONE.
+    assert "if (condensingCandidate) {\n    addCondensingDefaultFallbackFields" in body
+
+
+def test_water_does_not_get_the_dx_capacity_and_face_velocity_defaults() -> None:
+    """Both are unconditional setDcFieldAlias writes that run BEFORE the extracted
+    fallbackMap, so on a water coil they would mask real Max Coil Performance readings:
+    Total Capacity 142.31 would render as 0 and the printed Air Vel 424 would be replaced
+    by the arithmetic 424.24. The water branch takes the extracted-only air subset."""
+    body = _function_body("addCandidateFallbackFields")
+    water_branch = body[body.index("} else if (waterCandidate) {"):]
+    assert "addExtractedAirFallbackFields(fieldsByLabel" in water_branch
+    assert "addSharedAirFallbackFields(fieldsByLabel" not in water_branch
+    # The defaults still exist for DX/condensing, just isolated.
+    defaults = _function_body("addDxReviewDefaultAirFields")
+    assert "Total Capacity(MBH)(Per Coil)" in defaults
+    assert "directCoilFaceVelocityField" in defaults
+    # ...and the extracted-only subset must carry neither.
+    extracted = _function_body("addExtractedAirFallbackFields")
+    assert "Total Capacity(MBH)(Per Coil)" not in extracted
+    assert "directCoilFaceVelocityField" not in extracted
 
 
 def test_dx_gate_is_kept_not_replaced_by_a_format_check() -> None:
@@ -116,7 +143,7 @@ def test_leaving_duty_rows_are_highlighted_only_when_they_have_a_value() -> None
     # A reheat coil is sensible-only and reports no leaving WB; an absent duty point must read
     # as plain unmapped, not as a highlighted empty box.
     body = _function_body("renderDcInputRow")
-    assert "DC_DUTY_HIGHLIGHT_LABELS" in body
+    assert "isDcDutyLabel(label)" in body
     assert 'status !== "unmapped"' in body
     assert "dc-control--duty" in body
 
@@ -128,6 +155,42 @@ def test_duty_highlight_covers_exactly_the_two_leaving_rows() -> None:
     assert "Entering" not in declaration, "John asked for Leaving only"
 
 
+def test_duty_labels_cover_both_the_unit_and_bare_spellings() -> None:
+    """normalizeDcLabel keeps the unit letter, so "Leaving Dry Bulb(°F)" normalizes to
+    "leavingdrybulbf" while the calculated panel's bare "Leaving Dry Bulb" normalizes to
+    "leavingdrybulb" — DIFFERENT keys. Listing only the (°F) form is what left the calculated
+    panel unhighlighted (John 2026-07-29). Both spellings must stay listed.
+    """
+    marker = "const DC_DUTY_HIGHLIGHT_LABELS = new Set("
+    declaration = _APP_JS[_APP_JS.index(marker) : _APP_JS.index(");", _APP_JS.index(marker))]
+    for spelling in (
+        '"Leaving Dry Bulb(°F)"',
+        '"Leaving Wet Bulb(°F)"',
+        '"Leaving Dry Bulb"',
+        '"Leaving Wet Bulb"',
+    ):
+        assert spelling in declaration, f"{spelling} missing from the duty label set"
+
+
+def test_calculated_panel_highlights_duty_rows_only_when_they_have_a_value() -> None:
+    body = _function_body("renderDcCalculatedPanel")
+    assert "isDcDutyLabel(label)" in body
+    assert "dc-calculated-row--duty" in body
+    # The panel carries no status class, so "has a value" is tested against the sentinel
+    # strings dcCalculatedValue emits ("unmapped" / "calculated" / "review required").
+    assert "DC_NON_VALUES.has(" in body
+
+
+def test_calculated_duty_style_stays_theme_driven() -> None:
+    css = (Path(__file__).resolve().parents[1] / "web" / "style.css").read_text(encoding="utf-8")
+    rule_start = css.index(".dc-calculated-row--duty {")
+    rule = css[rule_start : css.index("}", rule_start)]
+    assert "var(--accent)" in rule
+    # A hardcoded colour here is the light/dark bug CLAUDE.md calls out; and --accent-soft
+    # does not exist, so a var() fallback would silently pin one theme's colour.
+    assert "rgba(" not in rule and "#" not in rule
+
+
 def test_drawing_notes_ride_the_ccsi_payload_without_entering_the_field_map() -> None:
     body = _function_body("buildCcsiAutofillPayload")
     assert "drawing_notes: ccsiDrawingNotes(uiState)" in body
@@ -135,3 +198,16 @@ def test_drawing_notes_ride_the_ccsi_payload_without_entering_the_field_map() ->
     # The paste-surface key is direct_coil_label, not label — `label` would be undefined
     # forever and emit null, which reads as "no notes" rather than as a bug.
     assert "direct_coil_label" in notes
+
+
+def test_air_flow_direction_keeps_its_declared_default() -> None:
+    """The water mirror's Air Flow Direction row has NO backend field behind it, so it
+    renders its declared "Horizontal" default at status review_required. It looked like a
+    bug ("review required" on screen) but that is the honest state for a value the
+    submittal never states. The guard that matters: no layer may register a BLOCKED field
+    under this label — renderDcInputRow treats a blocked field's "review required" string
+    as a usable value, which would kill the declared default (see dcControlValue)."""
+    assert '["Air Flow Direction", "select", null, "Horizontal"]' in _APP_JS
+    for fn in ("addSharedConstructionFallbackFields", "addExtractedAirFallbackFields",
+               "addWaterFeedsFallbackField", "addCandidateFallbackFields"):
+        assert "Air Flow Direction" not in _function_body(fn), fn

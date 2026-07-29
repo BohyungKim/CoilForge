@@ -590,8 +590,9 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
 # which the engine already computes per product+size). So — like Nova, Terra, and
 # Ventum H — Ventum Plus now draws through the existing product-agnostic templates
 # with its own engine-computed dimensions. The set is kept as the extension point
-# for any genuinely unseeded future line. (Terra V CWC/HWC stays withheld by its
-# own branch below — no seeded Terra V water reference.)
+# for any genuinely unseeded future line. (Terra V CWC/HWC was withheld by its own
+# branch here until 2026-07-28; John released it on the same reasoning — see
+# _gate_unregistered_product_line.)
 _UNREGISTERED_PRODUCT_LINES: set[str] = set()
 
 
@@ -609,19 +610,24 @@ def _omit_drawing(result: dict[str, Any], reason: str) -> dict[str, Any]:
 
 
 def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
-    """Force the template result to the omitted state for combos that must not draw:
-    (1) any product line still listed in _UNREGISTERED_PRODUCT_LINES (currently empty —
-        Ventum Plus was removed 2026-07-03 and now draws via the shared templates), and
-    (2) Terra V CWC/HWC (no seeded Terra V water reference — Terra V DX/HGRH still draw).
-    No drawing is borrowed from another line/variant. No-op otherwise."""
+    """Force the template result to the omitted state for any product line still listed
+    in _UNREGISTERED_PRODUCT_LINES (currently empty — Ventum Plus was removed 2026-07-03
+    and now draws via the shared templates). No-op otherwise.
+
+    Terra V CWC/HWC was gated here until 2026-07-28. John released it on the same
+    reasoning that un-blocked Ventum Plus: a CoilMaster water-coil drawing has the same
+    shape regardless of which Oxygen8 AHU it ships in — the unit only sets the dimension
+    VALUES, and those are already computed per product/variant by the engine (the slot
+    layer applies the Terra V water special O = CH - 2.75, and R-067 supplies the Terra V
+    vent/drain values). So the shared Nova/Ventum-H water template is the correct
+    carrier and only the numbers printed into it are Terra-V-specific. Every drawing
+    stays a review aid (export_allowed False)."""
     if not isinstance(result, dict):
         return result
     from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 
-    family, variant = resolve_product_line(result.get("product_type"))
-    category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
+    family, _variant = resolve_product_line(result.get("product_type"))
 
-    # Ventum+ : no seeded template for ANY category.
     if family in _UNREGISTERED_PRODUCT_LINES:
         label = str(family).replace("_", " ").title()
         _omit_drawing(
@@ -631,15 +637,6 @@ def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
         )
         result["unregistered_product_line"] = family
         return result
-
-    # Terra V CWC/HWC : deliberately omitted (no seeded Terra V water reference). Terra V
-    # DX/HGRH and Terra H water are NOT gated — only the (TERRA_V, water) combo.
-    if variant == "TERRA_V" and category in {"CWC", "HWC"}:
-        return _omit_drawing(
-            result,
-            "Terra V CWC/HWC drawings are omitted — no seeded Terra V water-coil "
-            "reference; review required before a drawing can be linked.",
-        )
     return result
 
 
@@ -678,6 +675,47 @@ def _flag_distributor_orientation_review(result: dict[str, Any]) -> dict[str, An
     category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
     if family == "VENTUM_PLUS" and category == "DX":
         result["distributor_orientation_warning"] = _DIST_ORIENTATION_REVIEW
+    return result
+
+
+# The frozen drawing path resolves the hand as
+# `ctx.get("coil_hand") or extract.get("hand") or "LH"` (pdf_to_template_drawing.py), so a
+# submittal that states no handing silently draws LEFT — and the UI then shows "HAND LH"
+# as if it were read from the source. Oxygen8 cover rows carry handing for DX but leave it
+# blank for water coils (2949 Ferguson Theatre: CDXC-* = 'Left'/'Right', HHWC-* = ''), so
+# this is the normal case for HWC/CWC, not an edge case. The hand picks the LH vs RH
+# template, i.e. it mirrors the whole drawing — the one assumption most worth stating.
+_DEFAULTED_HAND_REVIEW = (
+    "Coil hand was NOT stated in the submittal — the drawing defaults to LH. The hand "
+    "mirrors the entire drawing (LH vs RH template), so confirm it before use; set it "
+    "in the manual fill panel to redraw the other hand."
+)
+
+
+def _flag_defaulted_coil_hand(
+    result: dict[str, Any], ctx: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Mark a drawing whose hand came from the frozen path's ``or "LH"`` fallback.
+
+    ``ctx`` is REQUIRED and cannot be recovered from ``result``: by the time the frozen
+    path returns, the default has already been folded in, so ``extracted["hand"]`` reads
+    "LH" for a stated-LH coil and an assumed-LH coil alike. Never blanks the drawing — the
+    value stays, labelled as the assumption it is.
+
+    Gated on the resolved hand still being "LH": when the context carries no hand but the
+    as-built CoilMaster parse read "RH", that RH cannot have come from the default, so it
+    is genuine and must not be labelled an assumption. The residual ambiguity is the other
+    way round — an as-built-LH coil is flagged too — and that direction is the safe one
+    (it asks the engineer to confirm a hand that is in fact correct, rather than letting a
+    silent guess through)."""
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    if (ctx or {}).get("coil_hand"):
+        return result
+    if str((result.get("extracted") or {}).get("hand") or "").upper() != "LH":
+        return result
+    result["coil_hand_defaulted"] = True
+    result["coil_hand_review"] = _DEFAULTED_HAND_REVIEW
     return result
 
 
@@ -1195,6 +1233,7 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     _gate_unseeded_ventum_plus_dx(result)
     _flag_hgbp_product_line_unverified(result)
     _flag_distributor_orientation_review(result)
+    _flag_defaulted_coil_hand(result, ctx)
 
     # Auto-surface fill plan — built AFTER the gates so a gate-omitted coil surfaces a
     # "drawing withheld" note instead of fill inputs (filling cannot un-gate it).
@@ -1214,6 +1253,21 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # corrected field still shows what the engine originally proposed.
     from coilforge.services.three_way_view import build_three_way_view
     result["three_way"] = build_three_way_view(result)
+    # Phase 2.1: attach the nearest past coils + John's prior corrections as EVIDENCE (review
+    # aid, never auto-applied). Same derive seam as three_way; features_from_result mirrors the
+    # ledger WRITE axes so a coil matches its own past. redact drops reason/project_number on
+    # this browser surface. Fail-closed: similar_by_features never raises and degrades to an
+    # empty/flagged dict (kill switch / no DB / n<50) — see capture.retrieve.
+    from coilforge.capture.retrieve import features_from_result, similar_by_features
+    try:
+        result["case_neighbors"] = similar_by_features(
+            features_from_result(result), k=5, same_category=True, redact=True
+        )
+    except Exception:  # noqa: BLE001 — the panel is a review aid; never let it 500 a derive.
+        # similar_by_features already never raises; this also closes features_from_result,
+        # so the whole attach is fail-closed (matches the /derive "never a 500" contract).
+        result["case_neighbors"] = {"enabled": False, "raw_private_data_returned": False,
+                                    "neighbors": []}
     # Safety: a manual fill must never flip export_allowed.
     result["export_allowed"] = False
 
@@ -1639,6 +1693,7 @@ def _run_candidate_to_drawing_payload(
         _gate_unseeded_ventum_plus_dx(template_drawing)
         _flag_hgbp_product_line_unverified(template_drawing)
         _flag_distributor_orientation_review(template_drawing)
+        _flag_defaulted_coil_hand(template_drawing, ctx)
         # DX-with-reheat casing-depth correction (R-072 with-HGRH branch). Runs on the
         # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
         # every downstream artifact shows the corrected CD. No-op unless DX + partner.

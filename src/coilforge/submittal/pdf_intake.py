@@ -2154,20 +2154,60 @@ def _table_coil_format(table: tuple[tuple[str, ...], ...]) -> str | None:
 
 def _detail_table_section_columns(
     table: tuple[tuple[str, ...], ...],
-) -> tuple[tuple[int, str], ...]:
-    """Find the section-header row and return (column_index, context) per section
-    (e.g. col0->'coil', col4->'entering', col7->'operating_setpoint'). Falls back
-    to a single label column at col0 with the 'coil' context for plain
+) -> tuple[tuple[int, tuple[tuple[int, str], ...]], ...]:
+    """Per section column, the ordered ``(row_index, context)`` switches in it.
+
+    The COLUMN LAYOUT still comes from the first row carrying any section token
+    (e.g. col0/col4/col7), because those columns are also the value-range
+    boundaries. What changed (John 2026-07-28) is that a column may hold SEVERAL
+    sections stacked vertically -- the Oxygen8 detail grid puts "Coil Operating
+    Setpoint" and "Max Coil Performance" one above the other in the same column
+    (p8 col7 r2/r7 on DX, p9 col7 r2/r5 on HWC). Returning one context per column
+    matched every later row against the FIRST section's label map, so the whole
+    "Max Coil Performance" block (Capacity / Air Vel / Fluid Flow Rate / Fluid PD
+    / leaving DB) was silently dropped. On DX the text-line parser happened to
+    rescue those rows because they sat on otherwise-empty lines; on a water coil
+    the denser "Coil" column collides with them, so nothing rescued them.
+
+    Falls back to a single label column at col0 with the 'coil' context for plain
     label/value tables with no section header."""
+    layout: list[int] = []
     for row in table:
-        sections: list[tuple[int, str]] = []
-        for col, cell in enumerate(row):
-            contexts = _detail_subsection_contexts(_clean_cell(cell))
+        layout = [
+            col
+            for col, cell in enumerate(row)
+            if _detail_subsection_contexts(_clean_cell(cell))
+        ]
+        if layout:
+            break
+    if not layout:
+        return ((0, ((0, "coil"),)),)
+
+    sections: list[tuple[int, tuple[tuple[int, str], ...]]] = []
+    for col in layout:
+        switches: list[tuple[int, str]] = []
+        for row_index, row in enumerate(table):
+            if col >= len(row):
+                continue
+            contexts = _detail_subsection_contexts(_clean_cell(row[col]))
             if contexts:
-                sections.append((col, contexts[0]))
-        if sections:
-            return tuple(sections)
-    return ((0, "coil"),)
+                switches.append((row_index, contexts[0]))
+        if switches:
+            sections.append((col, tuple(switches)))
+    return tuple(sections)
+
+
+def _context_at_row(switches: tuple[tuple[int, str], ...], row_index: int) -> str:
+    """The section context in force at ``row_index`` -- the last switch at or above
+    it. Rows ABOVE the column's first section header keep that first context, which
+    is exactly what the old one-context-per-column code did for them, so only the
+    stacked-section rows change behaviour."""
+    context = switches[0][1]
+    for switch_row, switch_context in switches:
+        if switch_row > row_index:
+            break
+        context = switch_context
+    return context
 
 
 def _match_detail_label(label_cell: str, context: str) -> str | None:
@@ -2194,18 +2234,23 @@ def _detail_table_field_pairs(
     """Extract (source_key, value, row_index, col_index) from a structured detail
     table: per section column, the label cell maps to the first non-empty cell to
     its right (up to the next section column), so spacer columns and 2-column
-    label/value tables are handled uniformly."""
+    label/value tables are handled uniformly. The label map used for a cell is the
+    section in force at THAT ROW of THAT COLUMN, so a column stacking several
+    sections (Coil Operating Setpoint above Max Coil Performance) reads each block
+    against its own labels."""
     sections = _detail_table_section_columns(table)
     cols = [col for col, _ in sections]
     pairs: list[tuple[str, str, int, int]] = []
     for row_index, row in enumerate(table):
-        for section_index, (col, context) in enumerate(sections):
+        for section_index, (col, switches) in enumerate(sections):
             if col >= len(row):
                 continue
             label_cell = _clean_cell(row[col])
             if not label_cell:
                 continue
-            source_key = _match_detail_label(label_cell, context)
+            source_key = _match_detail_label(
+                label_cell, _context_at_row(switches, row_index)
+            )
             if source_key is None:
                 continue
             next_col = cols[section_index + 1] if section_index + 1 < len(cols) else len(row)

@@ -117,25 +117,41 @@ def test_non_ventum_line_is_not_gated() -> None:
     assert out["svg"]
 
 
-def test_terra_v_water_coils_are_omitted() -> None:
-    # Terra V CWC/HWC drawings are deliberately omitted — no seeded Terra V water
-    # reference, so the shared (Terra-H-shaped) water template is not borrowed.
-    for category in ("CWC", "HWC"):
+def test_terra_v_water_draws_on_the_shared_template() -> None:
+    # John 2026-07-28: Terra V CWC/HWC was gated (no seeded Terra V water reference);
+    # it now draws through the SHARED Nova/Ventum-H water template, because the coil
+    # drawing's shape is line-agnostic and only the printed VALUES are product-specific.
+    for category, template_id in (("CWC", "coilmaster_cwc_lh"), ("HWC", "coilmaster_hwc_lh")):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
                  product_type="TERRA V", unit_size="024", rows=4,
                  finned_height=12, finned_length=15, suction_conn_size=0.625)
         )
-        assert out["template_found"] is False, category
-        assert out["generation_allowed"] is False, category
-        assert not out["svg"], category
-        assert "Terra V" in out["not_registered_reason"], category
-        # Terra V is a registered line; only its water coils are withheld.
+        assert out["template_found"] is True, category
+        assert out["generation_allowed"] is True, category
+        assert out["svg"], category
+        assert out["template_id"] == template_id, category
+        assert out.get("not_registered_reason") is None, category
         assert out.get("unregistered_product_line") is None, category
 
 
+def test_terra_v_water_carries_terra_v_drawing_parameters() -> None:
+    # Borrowing the shared ARTWORK must not borrow Terra H's NUMBERS: the slot layer's
+    # Terra V water special (return I/O = CH - 2.75) and the R-067 Terra V vent/drain
+    # values still apply, so Terra V and Terra H resolve DIFFERENT return positions on
+    # the same template.
+    spec = dict(coil_category="CWC", coil_hand="Left", circuits=1, unit_size="024",
+                rows=4, finned_height=12, finned_length=15, suction_conn_size=0.625)
+    v = derive_coil_template_drawing(dict(spec, product_type="TERRA V"))
+    h = derive_coil_template_drawing(dict(spec, product_type="TERRA H"))
+    v_slots, h_slots = v["slot_values"], h["slot_values"]
+    assert v["template_id"] == h["template_id"] == "coilmaster_cwc_lh"
+    assert v_slots["slot.O2"] == round(float(v_slots["slot.CH"]) - 2.75, 4)
+    assert v_slots["slot.O2"] != h_slots.get("slot.O2")
+
+
 def test_terra_v_dx_and_hgrh_still_generate() -> None:
-    # Only Terra V WATER is omitted — Terra V DX/HGRH draw normally.
+    # Terra V DX/HGRH draw normally (they were never gated).
     for category in ("DX", "HGRH"):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
@@ -147,7 +163,7 @@ def test_terra_v_dx_and_hgrh_still_generate() -> None:
 
 
 def test_terra_h_water_still_generates() -> None:
-    # The omission is variant-specific: Terra H (resolved H C) water still draws.
+    # Terra H (resolved H C) water draws unchanged.
     out = derive_coil_template_drawing(
         dict(coil_category="CWC", coil_hand="Left", circuits=1,
              product_type="TERRA H", unit_size="024", rows=4,

@@ -425,7 +425,29 @@ def build_drawing_slots(
                 # HGRH header1 template, so the old force-SL2=5 workaround (John 2026-07-02)
                 # is removed — the return callout shows the true return_sl again (2026-07-03).
                 slots[f"slot.SL{return_id}"] = hdr_sl
-            if isinstance(return_spacing, list) and k <= len(return_spacing):
+            if is_cwc_hwc:
+                # CWC/HWC return spacing R = supply spacing S (John 2026-07-28). A water
+                # coil's supply and return headers are symmetric: ALL SEVEN seeded water
+                # references read R{even} == S{odd} (and O == I with them) --
+                # coilmaster_{hwc,cwc}_{lh,rh} + the three vplus water buckets. There is no
+                # `return_spacing` rule for water (R-022/R-023 are DX, R-052 is HGRH), and
+                # the generic R-022 safety net below both excludes Terra V and keys off the
+                # DX-named suction_conn_size, so water R was left blank on every product
+                # line. Guarded on slot.S existing: S is only written when `cd` resolved,
+                # and an un-gated coil (no product line chosen yet) must leave R blank
+                # rather than raise. Documented here rather than as a YAML rule because the
+                # water S it mirrors is itself a slot-layer value the engine never emits --
+                # same placement as the Terra V `O = CH - 2.75` special above.
+                # CAVEAT (carried into the review evidence, John 2026-07-28): the water S
+                # formula is UNCONFIRMED -- `k*CD/(circuits+1)` reproduces no seed S1 -- so
+                # R inherits that uncertainty. Both stay review_required.
+                # This branch OWNS water R: it deliberately does not fall through to the
+                # generic R-022 net below, which would otherwise hand a water coil an
+                # R with no S beside it (a value whose supply twin is blank has no basis).
+                supply_s = slots.get(f"slot.S{supply_id}")
+                if supply_s is not None:
+                    slots[f"slot.R{return_id}"] = supply_s
+            elif isinstance(return_spacing, list) and k <= len(return_spacing):
                 slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)
             elif suction_conn_size is not None and not is_terra_v:
                 # Safety net when the engine list is absent: the documented R-022

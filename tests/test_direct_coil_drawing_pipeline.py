@@ -302,6 +302,56 @@ def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
     assert s["slot.HDx1"] == 4        # supply header depth = hd
 
 
+def test_water_return_spacing_mirrors_supply_spacing() -> None:
+    """CWC/HWC R = S (John 2026-07-28). A water coil's supply and return headers are
+    symmetric: all seven seeded water references read R{even} == S{odd}. Before this,
+    water R was blank on every product line — there is no `return_spacing` rule for
+    water (R-022/R-023 are DX, R-052 is HGRH), and the generic safety net both excludes
+    Terra V and keys off the DX-named suction_conn_size."""
+    common = dict(rows=4, circuits=1, feeds=1,
+                  conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
+    for coil_type in ("CWC", "HWC"):
+        # Each product line gets a size from its OWN R-076 set, else the engine cannot
+        # resolve the casing depth and S/R both stay (correctly) blank.
+        for product, unit_size in (("TERRA V", "012"), ("TERRA H", "012"),
+                                   ("NOVA", "C24"), ("VENTUM_H", "H15")):
+            slots, _ = build_drawing_slots(
+                coil_type=coil_type, product_type=product, unit_size=unit_size, **common
+            )
+            assert slots.get("slot.S1") is not None, (coil_type, product)
+            assert slots["slot.R2"] == slots["slot.S1"], (coil_type, product)
+
+
+def test_water_return_spacing_stays_blank_when_casing_depth_unresolved() -> None:
+    """S is only written once the casing depth CD resolves, so a coil whose CD the engine
+    could not derive must leave R blank rather than raise — and must NOT fall through to
+    the generic R-022 net, which would print an R with no S beside it. A KeyError here
+    would blank the whole template_drawing into an error payload, which the UI reports as
+    the misleading 'template not registered'."""
+    slots, _ = build_drawing_slots(
+        coil_type="HWC", product_type="NOVA", unit_size="012",  # not a Nova size -> no CD
+        rows=4, circuits=1, feeds=1, suction_conn_size=0.625, finned_height=20.0,
+    )
+    assert slots.get("slot.CD") is None
+    assert "slot.S1" not in slots
+    assert "slot.R2" not in slots
+
+
+def test_dx_and_hgrh_return_spacing_unaffected_by_the_water_rule() -> None:
+    """Scope guard: R = S is water-only. DX keeps its R-023 (Terra V) / R-022 spacing and
+    HGRH its R-052, pinned to their documented values."""
+    common = dict(unit_size="012", rows=4, circuits=2, feeds=2,
+                  conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
+
+    dx_v, _ = build_drawing_slots(coil_type="DX", product_type="TERRA V", **common)
+    # R-023 Terra V: R1 = 0.5*0.625+0.75, R2 = 1.5*0.625+2.25 — unchanged by the water rule.
+    assert (dx_v["slot.R2"], dx_v["slot.R4"]) == (1.0625, 3.1875)
+    dx_h, _ = build_drawing_slots(coil_type="DX", product_type="TERRA H", **common)
+    assert dx_h["slot.R2"] == 0.625                       # generic R-022 net, k=1
+    hgrh_v, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA V", **common)
+    assert hgrh_v["slot.R2"] == 0.625                     # R-052, single connection
+
+
 def test_terra_v_drawing_slots_use_sop_specials() -> None:
     """Terra V drawing slots use the SOP specials, NOT Terra H values (John 2026-06-28):
     DX S = CD - Rn (own R-023 formula, never the generic R-022 net); DX I/O=2.75, SL=12;

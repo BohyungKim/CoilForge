@@ -74,6 +74,19 @@ positional fallback), NOT the text-line parser — the text parser never capture
 column, so a continuation coil would otherwise lose its product/model code (e.g. Terra V
 `TV_B_024` → blank product line → fit can't evaluate).
 
+**Stacked detail sections (2026-07-28):** the Oxygen8 detail grid puts several sections in ONE
+column, one above the other — col7 holds `Coil Operating Setpoint` and then `Max Coil
+Performance`. `_detail_table_section_columns` returns per-column `(row_index, context)`
+**switches** and `_detail_table_field_pairs` picks the context in force at that row
+(`_context_at_row`); the column LAYOUT still comes from the first section row because those
+columns are also the value-range boundaries. One context per column silently dropped the whole
+lower block — `DB (F)` under the setpoint is the setpoint, under Max Coil Performance it is the
+**leaving** dry bulb, so a column-wide context resolves the second one to nothing. DX never
+showed the bug (its max-perf rows sit on otherwise-empty lines, so the text-line parser rescued
+them); a water coil's denser `Coil` column collides with them and nothing did. Fixing it also
+corrected DX `total_capacity_mbh` (it had been capturing `Nominal Cooling Capacity` — 365.85 vs
+the real 123.88; the nominal value is still carried separately).
+
 **The header rule engine** (`services/header_prepopulate_engine.py` +
 `rules/coil_header_rules.yaml`) is the heart of the system. It is a pure, deterministic
 function with one I/O (loading the cached YAML rule table). Rules are identified by IDs
@@ -97,6 +110,21 @@ CD/CH-relative formulas (`S = CD − Rn`, CWC return `O = CH − 2.75`). Changin
 means editing BOTH the engine rule/helper AND the slot layer, and threading `terra_variant`
 into `build_drawing_slots` where a variant-specific drawing formula is needed (the generic-R
 safety net is guarded `and not is_terra_v` so Terra V never borrows Terra H's spacing).
+
+**CWC/HWC return spacing `R = S` (John 2026-07-28)** — a water coil's supply and return headers
+are symmetric: **all seven** seeded water references read `R{even} == S{odd}` (and `O == I`
+with them). There is no `return_spacing` rule for water (R-022/R-023 are DX, R-052 is HGRH) and
+the generic net both excludes Terra V and keys off the DX-named `suction_conn_size`, so water R
+was blank on every product line. The slot layer's water branch **owns** R — it deliberately
+does not fall through to the generic net, because an R whose S is blank has no basis. Written
+only when `slot.S` exists (S needs `cd`), so an un-gated coil leaves R blank instead of raising.
+Kept in the slot layer, not YAML, for the same reason as the Terra V `O = CH − 2.75` special:
+the water `S` it mirrors is itself a slot-layer value the engine never emits — a YAML rule
+placed before this branch would be permanently shadowed, i.e. a rule that documents a value it
+never produces. **Open:** the water `S` formula `k*CD/(circuits+1)` reproduces NO seed `S1`
+(seed CD 4.63 → 2.315 vs actual 1.63) and `I1 = 2.31` is constant across CD 3.38–7.25, so `I` is
+not CD-derived either — the HWC seed matching `CD/2` is a coincidence. R inherits that
+uncertainty; both stay review-required until a real water S source is confirmed.
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):
@@ -216,7 +244,26 @@ responses deliberately assert safety flags (`raw_private_data_returned: False`,
 Empty drawing-parameter fields render RED with their `blocked_reason` as inline English
 evidence + a hover tooltip (`web/app.js::renderParameterRow`); the frontend colors by
 emptiness, not backend `status`, so a missing value never reads as a silent blank — don't
-revert empties to plain blanks.
+revert empties to plain blanks. A `blocked_reason` may be **category-scoped**
+(`_BLANK_REASON_BY_CATEGORY`): the generic R message names the connection size, which is right
+for DX/HGRH but was a misdiagnosis on water coils whose conn size IS extracted — sending the
+engineer to hunt for a value already present is worse than saying nothing.
+**Direct Coil mirror fallbacks** (`web/app.js::addCandidateFallbackFields`) run on THREE
+separate predicates — `dxCandidate` / `condensingCandidate` / `waterCandidate` (water added
+2026-07-28). Keep them separate: `condensingCandidate` also drives
+`addCondensingDefaultFallbackFields` (refrigerant temps), so widening it to water would invent
+refrigerant conditions on a water coil. Water takes `addSharedConstructionFallbackFields` +
+`addExtractedAirFallbackFields` — **not** `addSharedAirFallbackFields`, whose two DX review
+defaults (`Total Capacity → 0`, computed face velocity) are unconditional `setDcFieldAlias`
+writes that run BEFORE the extracted `fallbackMap` and would mask the water coil's real Max
+Coil Performance readings (142.31 → 0, printed 424 → computed 424.24).
+**Assumed coil hand:** the frozen path resolves `ctx.coil_hand or extract.hand or "LH"`, and
+Oxygen8 cover rows leave handing blank for water coils — so the hand (which picks the LH vs RH
+template, mirroring the whole drawing) is silently assumed. `_flag_defaulted_coil_hand(result,
+ctx)` marks it; **ctx is required** because by then the default is folded in and
+`extracted["hand"]` reads "LH" either way. It surfaces a `template_input` fill item, and
+`deriveSpecFromTemplate` must `pick("coil_hand", ex.hand)` — hardcoding `ex.hand` there meant
+the panel could offer the choice while the value never reached the backend.
 Downloads are client-side blob saves (`web/app.js::downloadBase64Pdf`, `anchor.download`),
 not server `Content-Disposition` — the quote package exports as `<uploaded-name>_Revised.pdf`.
 Dark theme is variable-driven: `[data-theme="dark"]` in `web/style.css` overrides the
@@ -305,11 +352,18 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   untouched) + threaded at `direct_coil_drawing_pipeline`. (Ventum+ was first un-blocked
   2026-07-03 — `_UNREGISTERED_PRODUCT_LINES` emptied — to reuse shared templates; the fork
   then gave it its own seeded set so the R-032 UP geometry is captured from the reference.)
-  That same submittal gate (`_gate_unregistered_product_line`) also **omits Terra V
-  CWC/HWC** drawings (variant `TERRA_V` + CWC/HWC) — no seeded Terra V water reference,
-  so the shared water template is withheld (not borrowed); Terra V DX/HGRH and Terra H
-  water still draw. The Terra V water engine rules (R-067 etc.) stay intact — only the
-  drawing is withheld.
+  That same submittal gate (`_gate_unregistered_product_line`) **used to omit Terra V
+  CWC/HWC** drawings; John **released them 2026-07-28** on the same reasoning that
+  un-blocked Ventum+ — a CoilMaster water-coil drawing has the same shape whichever AHU
+  it ships in, so the **shared Nova/Ventum-H water template is the correct carrier and
+  only the printed values are Terra-V-specific**. Those values were already correct
+  before the release (the slot layer's Terra V water special `O = CH − 2.75` and R-067's
+  vent/drain), so removing the gate changed the drawing and nothing else: Terra V and
+  Terra H water resolve DIFFERENT `slot.O2` on the SAME `coilmaster_{cwc,hwc}_lh`
+  template — pinned by `test_terra_v_water_carries_terra_v_drawing_parameters`. Caveat
+  carried over: the water templates still have un-redacted as-built dims (see
+  *Template hardcoded dims deferred*), which are Nova-shaped for every line that borrows
+  them, Terra V included.
 - **Hot gas bypass (HGBP) is a Nova / Ventum H option ONLY** (John 2026-07-15). Both HGBP
   DX templates (`coilmaster_dx_{lh,rh}_hgbp`, seeded from real `(1 ASC)` 1-header references)
   are Nova/Ventum-H-class, so `_gate_hgbp_unsupported_product_line` **omits** an HGBP drawing
@@ -376,9 +430,9 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
 - **Terra V** drawing values were SOP-confirmed and promoted **LOW→HIGH (now drawn)** on
   2026-06-28 (`R-023` DX return spacing, `R-046` HGRH supply/return, `R-067` CWC/HWC
   vent-drain) — it is no longer a blanket LOW/blocked line. What genuinely stays gated:
-  `R-082` Terra mounting holes (blocked/deferred), HGRH Supply 2/3/4 I/O (review-required —
-  a software default, not derivable), and the Terra V **CWC/HWC drawing** (withheld at the
-  submittal gate for lack of a seeded water reference; the engine rules are intact).
+  `R-082` Terra mounting holes (blocked/deferred) and HGRH Supply 2/3/4 I/O (review-required —
+  a software default, not derivable). The Terra V **CWC/HWC drawing** was the third item until
+  John released it 2026-07-28 — it now draws on the shared water template with Terra V values.
 
 ### MVP checklist
 

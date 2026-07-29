@@ -314,3 +314,61 @@ def test_kill_switch_off_strips_fills(monkeypatch):
     assert "manual_fill_plan" not in body
     # the override value must NOT have been applied
     assert body["drawing_parameter_set"]["parameters"]["CD"]["value"] != 9.9
+
+
+# --------------------------------------------------------------------------- #
+# Coil hand assumed vs. read (John 2026-07-28)
+# --------------------------------------------------------------------------- #
+# The frozen drawing path resolves the hand as
+# `ctx.coil_hand or extract.hand or "LH"`, so a submittal that states no handing
+# silently draws LEFT and the UI shows "HAND LH" as if it had been read. Oxygen8
+# cover rows carry handing for DX but leave it blank for water coils, so this is
+# the normal HWC/CWC case. The hand picks the LH vs RH template, i.e. it mirrors
+# the entire drawing.
+
+
+def _water_spec(**kw):
+    spec = dict(
+        coil_category="HWC", product_type="TERRA V", unit_size="040",
+        circuits=1, rows=1, feeds=2, finned_height=36.0, finned_length=33.0,
+        suction_conn_size=1.0, tag="HHWC-1",
+    )
+    spec.update(kw)
+    return spec
+
+
+def test_unstated_hand_is_flagged_as_assumed_and_still_draws():
+    result = derive_coil_template_drawing(_water_spec())
+    assert result["svg"], "the drawing must still render — the hand is labelled, not blanked"
+    assert result["coil_hand_defaulted"] is True
+    assert "not stated" in result["coil_hand_review"].lower()
+    assert result["template_id"] == "coilmaster_hwc_lh"
+
+
+def test_stated_hand_is_not_flagged():
+    for hand, template_id in (("Left", "coilmaster_hwc_lh"), ("Right", "coilmaster_hwc_rh")):
+        result = derive_coil_template_drawing(_water_spec(coil_hand=hand))
+        assert result.get("coil_hand_defaulted") is None, hand
+        assert result.get("coil_hand_review") is None, hand
+        assert result["template_id"] == template_id, hand
+
+
+def test_assumed_hand_surfaces_a_fill_item_that_reselects_the_template():
+    """The fill item is the whole point: picking RH must re-select the mirrored
+    template, not merely record a note."""
+    assumed = derive_coil_template_drawing(_water_spec())
+    items = {i["key"]: i for i in assumed["manual_fill_plan"]["items"]}
+    assert "coil_hand" in items
+    assert items["coil_hand"]["kind"] == "template_input"
+    assert items["coil_hand"]["allowed"] == ["Left", "Right"]
+
+    # Filling it (the /derive spec carries coil_hand) redraws the other hand.
+    filled = derive_coil_template_drawing(_water_spec(coil_hand="Right"))
+    assert filled["template_id"] == "coilmaster_hwc_rh"
+    assert filled["svg"] and filled["svg"] != assumed["svg"]
+
+
+def test_hand_fill_item_absent_when_the_hand_was_stated():
+    result = derive_coil_template_drawing(_water_spec(coil_hand="Left"))
+    keys = {i["key"] for i in result["manual_fill_plan"]["items"]}
+    assert "coil_hand" not in keys

@@ -104,6 +104,19 @@ _BLANK_REASON_AFTER_PRODUCT: dict[str, str] = {
     "R": "Needs the return connection size — not found in the submittal extract.",
 }
 
+# Per-(coil category, key) override. The generic R message names the connection size, which
+# is right for DX/HGRH but was a MISDIAGNOSIS on water coils (John 2026-07-28): a water
+# coil's connection size IS extracted (Inlet/Outlet Conn. Size), and water R mirrors the
+# supply spacing S rather than the connection size at all. Sending the engineer to hunt for
+# a value that is already present is worse than saying nothing.
+_BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
+    (category, "R"): (
+        "Water-coil R mirrors the supply spacing S (supply/return headers are symmetric); "
+        "S has not resolved yet — it needs the casing depth CD."
+    )
+    for category in ("CWC", "HWC")
+}
+
 # ZD (zone depth) is a fixed constant per owner rule (John 2026-06-22), applied to
 # every header assembly (ZD, ZD2, ZD3, ...). It is NOT an engine slot or selection
 # value -- it is surfaced review-required like every other panel dimension.
@@ -384,6 +397,7 @@ def parameter_set_from_template_drawing(
     # product line"; choose a reason that names the real gap (see _BLANK_REASON...).
     td = template_drawing or {}
     product_chosen = bool(td.get("product_type") and td.get("unit_size"))
+    coil_category = str((td.get("extracted") or {}).get("coil_category") or "").upper()
 
     parameters: dict[str, DrawingParameter] = {}
     review_required: list[str] = []
@@ -412,7 +426,9 @@ def parameter_set_from_template_drawing(
             # unit size are chosen the engine is gated; after, an empty slot is a missing
             # input — name it so the blank explains itself instead of reading as a bug.
             if product_chosen:
-                reason = _BLANK_REASON_AFTER_PRODUCT.get(
+                reason = _BLANK_REASON_BY_CATEGORY.get(
+                    (coil_category, key)
+                ) or _BLANK_REASON_AFTER_PRODUCT.get(
                     key, "Engine did not derive this dimension; review required."
                 )
             else:
@@ -514,7 +530,10 @@ class ManualFillItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: str
-    kind: Literal["engine_input", "drawing_param"]
+    # "template_input" is neither an engine input nor a dimension override: it re-selects
+    # the TEMPLATE (coil hand picks the LH vs RH artwork). It routes separately in the UI
+    # because filling it redraws from a different template rather than recomputing slots.
+    kind: Literal["engine_input", "drawing_param", "template_input"]
     label: str
     reason: str
     allowed: list[Any] = Field(default_factory=list)
@@ -553,14 +572,31 @@ def build_manual_fill_plan(
     """
     td = template_drawing or {}
 
-    # Gate-omit: the drawing is withheld regardless of fills (Terra V water, unseeded
-    # Ventum+ DX). Do NOT present its dims as fillable — filling cannot un-gate it.
+    # Gate-omit: the drawing is withheld regardless of fills (unseeded Ventum+ DX,
+    # unsupported HGBP line). Do NOT present its dims as fillable — filling cannot
+    # un-gate it.
     withheld = td.get("not_registered_reason")
     if withheld:
         return ManualFillPlan(items=[], withheld_reason=str(withheld))
 
     items: list[ManualFillItem] = []
     seen: set[str] = set()
+
+    # Coil hand assumed rather than read (the frozen path's `or "LH"` fallback, flagged by
+    # workflows.submittal_to_drawing._flag_defaulted_coil_hand). Offered unconditionally
+    # for such a coil — nothing is "blocked", the drawing renders fine; it is simply drawn
+    # from the LH template on an assumption, and the hand mirrors the whole drawing.
+    if td.get("coil_hand_defaulted"):
+        items.append(
+            ManualFillItem(
+                key="coil_hand", kind="template_input", label="Coil hand",
+                reason=str(td.get("coil_hand_review") or "Coil hand was not stated — confirm."),
+                allowed=["Left", "Right"],
+                current_value=(td.get("extracted") or {}).get("hand"),
+                unit="",
+            )
+        )
+        seen.add("coil_hand")
 
     # An invalid (not merely absent) unit_size — the engine returned unknown_unit_size —
     # also needs the picker, even though product_type/unit_size are both truthy.

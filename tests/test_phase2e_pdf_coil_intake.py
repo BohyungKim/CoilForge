@@ -18,6 +18,7 @@ from coilforge.submittal.pdf_intake import (
     _match_detail_label,
     _cover_row_summary,
     _detail_lines_by_cover_row,
+    _detail_table_field_pairs,
     _is_cover_coil_row,
     _normalize_fin_surface,
     _OcrPageResult,
@@ -484,6 +485,79 @@ def test_hgrh_reheat_coil_extracts_leaving_dry_bulb_from_max_performance() -> No
     assert air["leaving_dry_bulb_f"]["value"] != air["entering_dry_bulb_f"]["value"]
     # Reheat coil has no leaving WB in the source -> absent, not guessed.
     assert air.get("leaving_wet_bulb_f") is None
+
+
+# The Oxygen8 detail grid stacks "Coil Operating Setpoint" ABOVE "Max Coil Performance"
+# in the SAME column. Transcribed from the real 2949 Ferguson Theatre submittal p9
+# ("Heating HWC"); the DX page p8 has the identical shape. Reading one context per column
+# matched every max-performance row against the operating-setpoint label map, so the whole
+# block was dropped. On DX the text-line parser rescued it (those rows sit on otherwise
+# empty lines); on a water coil the denser "Coil" column collides with them, so nothing did.
+_STACKED_SECTION_TABLE: tuple[tuple[str, ...], ...] = (
+    ("Heating HWC", "", "", "", "", "", "", "", ""),
+    ("", "", "", "", "", "", "", "", ""),
+    ("Coil", "", "", "", "Entering", "", "", "Coil Operating Setpoint", ""),
+    ("Model:", "5W-01-36.0-12-33.0-2", "", "", "Airflow (CFM):", "3500", "", "DB (F):", "95"),
+    ("", "", "", "", "DB (F):", "58.2", "", "", ""),
+    ("Fin Surface:", "Corrugated", "", "", "Fluid Type:", "Water", "", "Max Coil Performance", ""),
+    ("Fin Height (in):", "36", "", "", "", "", "", "Airflow (CFM):", "3500"),
+    ("Fin Length (in):", "33", "", "", "Fluid Ent Temp (F):", "160", "", "Capacity (MBH):", "142.31"),
+    ("Face Area (sq.ft):", "8.2", "", "", "Fluid Lvg Temp (F):", "130", "", "DB (F):", "95"),
+    ("FPI:", "12", "", "", "", "", "", "Air Vel (FPM):", "424"),
+    ("Rows:", "1", "", "", "", "", "", "Air PD (inWG):", "0.07"),
+    ("Circuits:", "2", "", "", "", "", "", "Fluid Flow Rate (GPM):", "9.69"),
+    ("Coil Weight (lbs):", "57.79", "", "", "", "", "", "Fluid PD (ftWG):", "8.79"),
+    ("Inlet Conn. Size (in):", "1", "", "", "", "", "", "Fluid Vel (fps):", "5.34"),
+)
+
+
+def test_stacked_sections_in_one_column_read_against_their_own_labels() -> None:
+    """A column holding two sections stacked vertically must switch label maps at the
+    second section header — otherwise the lower block is matched against the upper
+    block's labels and vanishes (John 2026-07-28, 2949 Ferguson Theatre HWC)."""
+    pairs = {key: value for key, value, _row, _col in _detail_table_field_pairs(_STACKED_SECTION_TABLE)}
+
+    # The whole "Max Coil Performance" block now resolves.
+    assert pairs["TOTAL_CAPACITY_MBH"] == "142.31"
+    assert pairs["FACE_VELOCITY_FPM"] == "424"
+    assert pairs["AIR_PRESSURE_DROP_IWG"] == "0.07"
+    assert pairs["FLUID_FLOW_RATE_GPM"] == "9.69"
+    assert pairs["FLUID_PRESSURE_DROP_FTWG"] == "8.79"
+    assert pairs["FLUID_VELOCITY_FPS"] == "5.34"
+    # The neighbouring columns are unaffected.
+    assert pairs["FINNED_HEIGHT"] == "36"
+    assert pairs["INLET_CONNECTION_SIZE"] == "1"
+    assert pairs["FLUID_ENTERING_TEMP_F"] == "160"
+
+
+def test_same_label_resolves_per_section_not_per_column() -> None:
+    """"DB (F):" appears in BOTH stacked sections of the same column. Under the operating
+    setpoint it is the setpoint; under Max Coil Performance it is the LEAVING dry bulb.
+    This pair is the whole reason the context must be row-aware rather than column-aware."""
+    by_key: dict[str, list[int]] = {}
+    for key, _value, row, _col in _detail_table_field_pairs(_STACKED_SECTION_TABLE):
+        by_key.setdefault(key, []).append(row)
+
+    assert by_key["OPERATING_SETPOINT_DB_F"] == [3]   # under "Coil Operating Setpoint"
+    assert by_key["LEAVING_DRY_BULB_F"] == [8]        # under "Max Coil Performance"
+
+
+def test_single_section_per_column_table_is_unchanged() -> None:
+    """Behaviour preservation: a table whose columns each carry exactly one section
+    reads exactly as before, including rows ABOVE the section-header row."""
+    table = (
+        ("Cooling DX", "", "", ""),
+        ("Coil", "", "Entering", ""),
+        ("Fin Height (in):", "36", "Airflow (CFM):", "3500"),
+        ("Rows:", "3", "DB (F):", "77.41"),
+    )
+    pairs = {key: value for key, value, _row, _col in _detail_table_field_pairs(table)}
+    assert pairs == {
+        "FINNED_HEIGHT": "36",
+        "ROWS_DEEP": "3",
+        "TOTAL_AIR_FLOW_CFM": "3500",
+        "ENTERING_DRY_BULB_F": "77.41",
+    }
 
 
 def test_chilled_water_extracts_leaving_wet_bulb_but_hot_water_has_none() -> None:
