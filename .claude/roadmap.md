@@ -1,6 +1,27 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-29 (**[UI/UX 트랙] 계산 패널 Leaving DB/WB 강조 — c747ab4**: 전날 duty 강조가 입력 행에만
+> 마지막 갱신: 2026-07-29 (**[물코일 트랙] 게이트를 열자 드러난 값 결함 5건 일괄 수정 — ae415aa**: fb894da가
+> Terra V 물코일 도면을 렌더시키자 **한 번도 화면에 나온 적 없던 값 5개**가 John 눈에 걸림. 전부 기존 결함이고
+> 게이트가 검증 없이 보존하고 있었음("레퍼런스 없으니 막아두자"가 안전장치가 아니라 **틀린 값의 냉동고**였던 것).
+> ①**S/R = connection size**(John) — CD/2 폴백은 주석부터 "no equation to mirror"라 자백했고 시드 7장 중 0장 일치,
+> 1" 코일에 1.6875를 찍고 있었음. 연결 크기는 **룰 계열의 기존 형태**(DX R-022 `R1=D`, HGRH R-052 n=1 `R=D`)이고
+> 물코일은 항상 1HD 단일 연결이라 그 케이스 + SOP R-068("EZ 기본값을 두라")과도 화해(EZ 기본값이 곧 연결 크기).
+> **S가 CD 의존에서 해방**돼 CD 미해결 코일도 S/R이 나옴. ②**Terra V water O = 2.75**(34.5 아님) — **데이텀 불일치**.
+> 옛 주석이 "levels the return stubout with the supply stubout"이라 스스로 답을 절반 적어뒀음(수평이면 도면엔 같은
+> 수). `CH−2.75`는 같은 위치의 반대편 데이텀 표현이라 2~3인치 칸에 34.5가 들어간 것. 시드 7/7이 `O==I`, `O==CH−2.75`는
+> 0/7(CH 17.00~38.75 전 범위), Terra V만 자기 I와 어긋난 유일 라인. ③**Drawing Notes** — 노트가 *후보*의 product/size로
+> 게이트되는데 물코일 후보엔 없고 **도면만** full-PDF 스캔으로 해결 → 도면엔 vent/drain 노트, 패널엔 unmapped
+> (docstring이 "never diverge"라 약속한 바로 그 발산). 도면이 실제 해결한 값으로 재시도. **20개 (코일×제품군) 조합
+> 전수조사 = 엔진 누락 0** → 순수 전달 게이트 문제. 잔여 설계공백: coating 노트는 R-080(DX)·R-081(HGRH) 전용이라
+> 물코일엔 규칙 자체가 없음(무발명). ④**Air Flow Direction** — 초안 `airflow_direction`이 **모든 코일에서 blocked**이고
+> 라벨 정규화로 미러 행과 충돌 → blocked의 리터럴 `"review required"`가 "값"으로 취급돼 선언된 `Horizontal`이
+> **영구 死**. blocked는 선언된 기본값에 지도록(unmapped와 동일 취급). ⑤**Coil Hand = `not defined`**(John: LH 단정 금지)
+> — hand가 틀리면 **도면 전체가 좌우 반전**이라 그럴듯한 기본값이 빈칸보다 위험한 유일 필드. 도면은 검토 보조물이라
+> LH 아트워크로 계속 렌더 + 배너가 미기재를 명시, 데이터 필드는 hand를 주장하지 않음(그림/데이터 역할 분리).
+> 덤: hand 레버가 `coil_hand_defaulted` 게이트라 **값을 채우는 순간 사라져 RH→LH 오클릭을 되돌릴 수 없던** 문제 →
+> 도면 있으면 상시 제공(오독 hand도 미기재만큼 위험) + `current_value`를 피커 어휘(Left/Right)로 정규화(종전 "LH"라
+> 아무것도 선택 안 됨). 회귀 8개 + **도면 노트와 패널 노트가 갈라지면 실패하는 불변식 테스트**, **1150 green**,
+> frozen 무접촉, 전 값 review_required·export_allowed False. 이전: **[UI/UX 트랙] 계산 패널 Leaving DB/WB 강조 — c747ab4**: 전날 duty 강조가 입력 행에만
 >걸리고 계산 패널엔 안 걸린 이유가 **라벨 정규화** — `normalizeDcLabel`이 단위 글자를 남겨 `"...(°F)"`와 바로
 > `"..."`가 다른 키가 됨. 두 철자 등록 + `isDcDutyLabel`로 통일, 계산 패널은 status 클래스가 없어 sentinel 문자열로
 > "값 있음" 판정. 배경 틴트는 `--accent-soft` **미정의 토큰** 때문에 폴백 rgba가 양 테마에 박히는 걸 발견하고 철회.
@@ -458,6 +479,34 @@
   ⚠️ **미결(범위 밖·보고만)**: 물코일 `S` 공식이 시드 7개 중 **하나도 재현 못 함** — `R=S`가 그 불확실성을
   그대로 물려받음. 계획서 `~/.claude/plans/r-value-purrfect-crescent.md`. 🆕 이번 세션
 
+- [x] **[물코일 트랙] 게이트 해제로 드러난 값 결함 5건 (ae415aa, John 리포트·확인 2026-07-29)** — fb894da가
+  Terra V 물코일 도면을 렌더시키자 **한 번도 화면에 나온 적 없던 값 5개**가 전부 틀린 채로 드러남. 각각 다른
+  레이어의 기존 결함이고, 게이트가 "레퍼런스 없으니 보류"라는 이름으로 **검증 없이 보존**하고 있었다.
+  **① S/R = connection size** (슬롯층) — CD/2 폴백은 주석부터 "no equation to mirror"라 자백했고 시드 7장 중
+  0장 일치. 연결 크기는 룰 계열의 기존 형태(DX `R-022 R1=D`, HGRH `R-052` n=1 `R=D`)이고 물코일은 항상 1HD
+  단일 연결이라 그 케이스 — 새 관례가 아니다. SOP `R-068`("leave all S/R as EZ Coil default values")과도 화해:
+  단일 연결의 EZ 기본값이 곧 연결 크기. **S가 CD 의존에서 해방**돼 CD 미해결 코일도 S/R을 받는다.
+  **② Terra V water `O` = 2.75** (34.5 아님) — **데이텀 불일치**. `slot.O{even}`은 스터브아웃 I/O 칸(2~3인치)인데
+  SOP 문구 `CH−2.75`(같은 위치의 반대편 데이텀 표현)를 그대로 써서 34.5를 찍었다. 옛 주석 "levels the return
+  stubout with the supply stubout"이 답을 절반 적어둔 상태였다(수평이면 같은 수). 시드 **7/7 `O==I`**,
+  `O==CH−2.75`는 **0/7**(CH 17.00~38.75), Terra V만 자기 `I`와 어긋난 유일 라인.
+  **③ Drawing Notes** — 노트가 *후보*의 product/size로 게이트되는데 물코일 후보엔 없고 **도면만** full-PDF
+  모델코드 스캔으로 해결 → 도면엔 vent/drain 노트, 패널엔 `unmapped`(`_engine_drawing_notes` docstring이
+  "never diverge"라 약속한 바로 그 발산). 도면이 실제 해결한 값으로 재시도하도록 수정. **20개 (코일타입 ×
+  제품군) 조합 전수조사 → 엔진 노트 누락 0** = 순수 전달 게이트 문제였음. 잔여 설계공백(보고만): coating 노트는
+  `R-080`(DX)·`R-081`(HGRH) 전용이라 **물코일엔 규칙 자체가 없음** — 무발명 원칙상 비워둠.
+  **④ Air Flow Direction** — 초안 `airflow_direction`이 **모든 코일에서 blocked**이고 라벨 정규화로 미러 행과
+  충돌 → blocked가 내는 리터럴 `"review required"`가 "값"으로 취급돼 선언된 `Horizontal` 기본값이 **영구 死**.
+  blocked도 `unmapped`처럼 선언된 기본값에 지도록 수정(기본값 없는 행은 불변).
+  **⑤ Coil Hand = `not defined`** (John: LH 단정 금지) — hand가 틀리면 값 하나가 아니라 **도면 전체가 좌우
+  반전**이라, 그럴듯한 기본값이 빈칸보다 위험한 유일한 필드. 도면은 검토 보조물이므로 LH 아트워크로 계속
+  렌더하고 배너가 미기재를 명시하되, **데이터 필드는 hand를 주장하지 않는다**(그림/데이터 역할 분리).
+  덤으로 실사용 결함 2건: hand 레버가 `coil_hand_defaulted` 게이트라 **값을 채우는 순간 사라져 RH→LH 오클릭을
+  되돌릴 수 없었고**(설정 행동이 되돌릴 유일한 수단을 제거), `current_value`가 `"LH"`인데 선택지는
+  `["Left","Right"]`라 **피커에 현재값이 선택되지 않았다** → 도면 있으면 상시 제공 + 어휘 정규화.
+  회귀 8개(증상별 가드 + **도면 노트와 패널 노트가 갈라지면 실패하는 불변식 테스트**), **1150 green**,
+  frozen 3파일 무접촉, 전 값 `review_required`·`export_allowed` False. 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -580,4 +629,8 @@
   맞춤(현재 상수 6, H05/H10=17 누락) + 체크리스트 compare에 CoilForge 값 노출(현재 blank). John: "체크리스트에 6 push".
 - [ ] **[3058 트랙] Phase 4 — 코일별 product/size 오탐지 조사** — CDXC-3=VENTUM_H/H10 등 혼재(일부 전역폴백).
   오탐지면 R-074 casing W/H + 위 C59(17 vs 6) 틀어짐. `detect_product_and_size` per-coil 추적, 실 유닛 대조(John/BOM).
+- [ ] **[물코일 트랙] coating 노트가 물코일에 없음 (John 판정 필요)** — `R-080`은 `coil_type: [DX]`,
+  `R-081`은 `[HGRH]` 전용이라 CWC/HWC는 coating을 지정해도 노트가 늘지 않는다(HERESITE 실측 확인).
+  20조합 전수조사에서 **유일하게 남은 설계 공백**. 규칙이 없는 것이라 지어내지 않음 — 물코일에도
+  coating 제외 노트가 필요한지 John 확인 후 R-080/081 범위 확장 여부 결정.
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
