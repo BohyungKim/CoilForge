@@ -505,7 +505,9 @@
   되돌릴 수 없었고**(설정 행동이 되돌릴 유일한 수단을 제거), `current_value`가 `"LH"`인데 선택지는
   `["Left","Right"]`라 **피커에 현재값이 선택되지 않았다** → 도면 있으면 상시 제공 + 어휘 정규화.
   회귀 8개(증상별 가드 + **도면 노트와 패널 노트가 갈라지면 실패하는 불변식 테스트**), **1150 green**,
-  frozen 3파일 무접촉, 전 값 `review_required`·`export_allowed` False. 🆕 이번 세션
+  frozen 3파일 무접촉, 전 값 `review_required`·`export_allowed` False.
+  **John 눈확인 통과 + 푸시 완료 (`e548475..5930fc0`, 2026-07-29)** — 브랜치 `claude/ambient-supplier`,
+  다른 세션의 capture/tuning 미커밋 작업은 격리. 🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
