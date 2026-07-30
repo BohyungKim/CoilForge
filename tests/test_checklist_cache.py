@@ -178,6 +178,23 @@ def test_empty_override_payload_keys_like_no_override(monkeypatch, tmp_path) -> 
     assert calls[0] == 1
 
 
+def test_overwritten_copy_evicts_the_entry_that_pointed_at_it(monkeypatch, tmp_path) -> None:
+    """A refill now REPLACES the previous .xlsx, so the older entry describes a file whose
+    content has just been overwritten — reusing its saved_path would file the wrong
+    workbook (finalize with no overrides picking up the override refill's file)."""
+    calls = _stub_pipeline(monkeypatch, tmp_path)
+    pdf = b"%PDF-sample-M"
+
+    baseline = _run(pdf, filename="m.xlsx")
+    override = _run(pdf, filename="m.xlsx", coil_overrides=_overrides())
+    assert baseline.saved_path == override.saved_path  # same file, overwritten
+    assert calls[0] == 2
+
+    # The baseline key must NOT serve the (now overwritten) path back from cache.
+    again = _run(pdf, filename="m.xlsx")
+    assert calls[0] == 3  # regenerated instead of handing back the override's file
+
+
 # --- the route's two body forms --------------------------------------------
 def _capture_route_call(monkeypatch):
     """Replace the fill helper so a route test asserts what the ROUTE parsed and passed

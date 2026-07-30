@@ -55,11 +55,20 @@ def _dest_path(dest_dir: str | None, dest_name: str | None) -> str:
     if not base.lower().endswith(".xlsx"):
         base += ".xlsx"
     path = os.path.join(folder, base)
-    stem, ext = os.path.splitext(path)
-    n = 2
-    while os.path.exists(path):  # never clobber a previous fill
-        path = f"{stem} ({n}){ext}"
-        n += 1
+    # Re-filling the same submittal REPLACES its copy (John 2026-07-30). Auto-refill after
+    # a manual override used to leave "... (2).xlsx", "... (3).xlsx" piling up in Downloads
+    # and the engineer then had to work out which one was current. Pre-flight the replace:
+    # if the previous copy is open in Excel the delete raises, and no clobber is possible,
+    # so fall back to a numbered name rather than failing the whole fill.
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            stem, ext = os.path.splitext(path)
+            n = 2
+            while os.path.exists(path):
+                path = f"{stem} ({n}){ext}"
+                n += 1
     return path
 
 
@@ -328,6 +337,28 @@ def write_checklist(
             overridden_dims += _apply_dim_overrides(ws, sheet, entry["computed_dims"])
         if overridden_dims:
             app.CalculateFull()
+            # 6) Re-read so the review table describes the workbook's FINAL state. A dim
+            #    that merely DEPENDS on an override moves with it — this template's
+            #    CH (= C13 + C27 + C28) follows TF — and leaving the pre-override reading
+            #    in place would hide that from anyone reviewing the app instead of the
+            #    file. The OVERRIDDEN dims are deliberately excluded: their pre-overwrite
+            #    reading IS the cross-check, and re-reading would just echo the override
+            #    back and turn every override into a self-confirming match.
+            for entry, (ws, sheet) in zip(result_sheets, written):
+                overridden_labels = {
+                    T.normalize_label(d.label)
+                    for d in sheet.compare_dims
+                    if d.override is not None
+                }
+                rows = _label_rows(ws)
+                for dim in sheet.compare_dims:
+                    label = T.normalize_label(dim.label)
+                    if label in overridden_labels:
+                        continue
+                    row = rows.get(label)
+                    entry["computed_dims"][dim.label] = (
+                        ws.Cells(row, _VALUE_COL).Value if row else None
+                    )
 
         # Activate the first coil sheet for convenience (object ref, not name lookup).
         if written:

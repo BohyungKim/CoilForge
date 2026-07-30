@@ -165,6 +165,61 @@ def test_writer_annotates_the_override_with_the_value_it_replaced(tmp_path):
     assert "not approved" in comment.text  # the review-aid contract travels with the file
 
 
+def test_review_shows_dims_that_moved_because_of_an_override(tmp_path):
+    """A dim that DEPENDS on an override must report its post-override value, while the
+    overridden dim itself keeps the formula reading it replaced.
+
+    This template's CH is `= C13 + C27 + C28` and C27 is TF, so overriding TF moves CH.
+    Reporting the stale CH would hide the knock-on from anyone reviewing the app instead
+    of opening the workbook (John 2026-07-30, found on the real 2901 submittal).
+    """
+    plain = _write(tmp_path, [_dx()], "t10.xlsx")
+    base = plain["sheets"][0]["computed_dims"]
+    bumped = _write_with_overrides(tmp_path, [_dx()], "t11.xlsx",
+                                   _override_payload("CDXC-1", {"TF": base["TF"] + 1.0}))
+    got = bumped["sheets"][0]["computed_dims"]
+
+    # The overridden dim reports what the sheet's own formula said — NOT the override,
+    # which would make every override a self-confirming match.
+    assert got["TF"] == base["TF"]
+    # ...but CH followed the override.
+    assert got["CH"] == base["CH"] + 1.0
+    # An unrelated dim is untouched.
+    assert got["CD"] == base["CD"]
+
+
+def test_refill_replaces_the_previous_copy(tmp_path):
+    """Same submittal filled twice -> ONE file, not '... (2).xlsx' (John 2026-07-30)."""
+    first = _write(tmp_path, [_dx()], "t12.xlsx")
+    second = _write_with_overrides(tmp_path, [_dx()], "t12.xlsx",
+                                   _override_payload("CDXC-1", {"TF": 9.5}))
+    assert first["saved_path"] == second["saved_path"]
+    assert len(list(tmp_path.glob("t12*.xlsx"))) == 1
+    # And the surviving file is the LATEST one (the override), not the first write.
+    ws = openpyxl.load_workbook(second["saved_path"])["CDXC-1"]
+    assert ws.cell(_rows(ws)["TF"], 3).value == 9.5
+
+
+def test_locked_previous_copy_falls_back_to_a_numbered_name(tmp_path, monkeypatch):
+    """If the previous copy is open in Excel the replace is impossible — fall back to a
+    numbered name rather than losing the engineer's fill."""
+    from coilforge.checklist import excel_writer
+
+    first = _write(tmp_path, [_dx()], "t13.xlsx")
+    real_remove = os.remove
+
+    def _locked(path, *a, **k):
+        if str(path) == first["saved_path"]:
+            raise PermissionError("open in Excel")
+        return real_remove(path, *a, **k)
+
+    monkeypatch.setattr(excel_writer.os, "remove", _locked)
+    second = _write(tmp_path, [_dx()], "t13.xlsx")
+    assert second["saved_path"] != first["saved_path"]
+    assert second["saved_path"].endswith("(2).xlsx")
+    assert os.path.exists(first["saved_path"])  # the locked file is left alone
+
+
 def test_writer_without_overrides_writes_no_comments(tmp_path):
     res = _write(tmp_path, [_dx()], "t9.xlsx")
     ws = openpyxl.load_workbook(res["saved_path"])["CDXC-1"]

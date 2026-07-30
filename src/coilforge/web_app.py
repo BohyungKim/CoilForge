@@ -770,6 +770,17 @@ async def _run_or_reuse_checklist(
         return _ChecklistOutcome(None, None, f"Excel write failed: {exc}", 500)
 
     saved_path = (writer_result or {}).get("saved_path")
+    # A re-fill of the same submittal now REPLACES its .xlsx instead of writing a
+    # "... (2).xlsx" (John 2026-07-30), so an older entry pointing at that same path is
+    # describing a file whose CONTENT has just been overwritten — handing its saved_path
+    # back would file the wrong workbook (e.g. finalize with no overrides reusing the
+    # baseline entry after an override refill clobbered it). Drop those entries.
+    if saved_path:
+        for stale in [
+            k for k, v in _CHECKLIST_CACHE.items()
+            if k != key and v.get("saved_path") == saved_path
+        ]:
+            del _CHECKLIST_CACHE[stale]
     _CHECKLIST_CACHE[key] = {"review": review, "saved_path": saved_path}
     _CHECKLIST_CACHE.move_to_end(key)
     while len(_CHECKLIST_CACHE) > _CHECKLIST_CACHE_MAXSIZE:
