@@ -649,6 +649,11 @@ body.is-init-stage .project-search {
 .checklist-missing_one { background: rgba(220, 160, 0, 0.14); }
 .checklist-match .checklist-verdict { color: #2e9e4f; }
 .checklist-mismatch .checklist-verdict { color: #d83c3c; }
+/* Manually overridden by the engineer — neither a match nor a mismatch, so it gets its
+   own (theme-neutral rgba, like the rows above) tint rather than borrowing either. */
+.checklist-overridden { background: rgba(120, 110, 220, 0.18); }
+.checklist-overridden .checklist-verdict { color: #7b6fdc; }
+.checklist-override-badge { color: #7b6fdc; cursor: help; }
 
 .quote-package-section .quote-package {
   border-top: none;

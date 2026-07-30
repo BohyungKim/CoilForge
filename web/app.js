@@ -2762,6 +2762,11 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     } else {
       refreshMechanicalFit([fitInput]);
     }
+    // The Coil Checklist is derived from the submittal, so a manual correction leaves it
+    // stating the pre-override value until it is re-filled (John 2026-07-29).
+    if (fills && (Object.keys(fills.engineInputs || {}).length || (fills.paramOverrides || []).length)) {
+      scheduleChecklistRefill();
+    }
     return updated;
   } catch (error) {
     if (opts.headless) throw error;  // let the fan-out aggregate the failure
@@ -3843,8 +3848,11 @@ function hydratePdfWorkflow(workflow, statusText) {
   renderShell(workflowToUiState(state.ui, workflow, null));
   elements.savedStatus.textContent = statusText;
   refreshMechanicalFit();
-  maybeAutoFillChecklist();  // background, best-effort — never blocks analyze
+  // Background, best-effort — never blocks analyze. With prior manual fills to re-apply,
+  // the fill is deferred to reapplyManualFills so Excel runs ONCE, on the corrected
+  // values, instead of once now on the pre-override ones and again after.
   if (priorFillsByTag.size) reapplyManualFills(priorFillsByTag);
+  else maybeAutoFillChecklist();
 }
 
 // Headless re-apply of persisted manual fills after a full re-analyze. Each coil with
@@ -3866,11 +3874,17 @@ async function reapplyManualFills(priorFillsByTag) {
       ),
     );
   }
-  if (!jobs.length) return;
+  if (!jobs.length) {
+    maybeAutoFillChecklist();  // nothing to re-apply — the plain analyze-time fill
+    return;
+  }
   const results = await Promise.allSettled(jobs);
   const failed = results.filter((r) => r.status === "rejected").length;
   // Re-render the visible coil once from its (now re-derived) cached workflow.
   if (state.activePdfCoilPageIndex >= 0) selectPdfCoilPage(state.activePdfCoilPageIndex);
+  // ONE checklist fill for the whole fan-out (the headless derives deliberately skip it),
+  // now that every coil's fills are back on its page.
+  scheduleChecklistRefill();
   if (elements.savedStatus) {
     const ok = jobs.length - failed;
     elements.savedStatus.textContent =
@@ -4536,6 +4550,9 @@ async function finalizeDeliverable() {
     quote_pdf_base64: arrayBufferToBase64(quoteBytes),
     quote_filename: quote.name,
     revised_pdf_base64: ctx.revisedBase64,
+    // Same manual fills the checklist panel was filled with, so the .xlsx filed with the
+    // order is the override-bearing one (and reuses its cache entry — no second Excel run).
+    checklist_overrides: collectChecklistOverrides(),
   };
   let res;
   try {
@@ -4655,32 +4672,55 @@ function _checklistCell(value) {
 
 function _verdictIcon(verdict) {
   return (
-    { match: "✓", mismatch: "✗", missing_one: "·", both_missing: "—" }[verdict] || ""
+    { match: "✓", mismatch: "✗", missing_one: "·", both_missing: "—", overridden: "✎" }[
+      verdict
+    ] || ""
   );
+}
+
+// "was 0.875 (reason)" — what a manual override replaced. Shown as a hover title so the
+// table stays scannable while never hiding that the value is human-supplied, not derived.
+function _overrideTitle(override) {
+  if (!override) return "";
+  const was =
+    override.previous_value === null || override.previous_value === undefined
+      ? "blank"
+      : override.previous_value;
+  const reason = override.reason ? ` — ${override.reason}` : "";
+  return `Manual override (${override.key}): was ${was}${reason}`;
 }
 
 function renderChecklistSheet(sheet) {
   const inputs = (sheet.inputs || [])
     .map((i) => {
       const blank = i.value === null || i.value === undefined || i.value === "";
-      return `<tr class="${blank ? "checklist-blank" : ""}">
-        <td>${escapeHtml(i.label)}</td>
+      const cls = i.override ? "checklist-overridden" : blank ? "checklist-blank" : "";
+      const badge = i.override
+        ? ` <span class="checklist-override-badge" title="${escapeHtml(_overrideTitle(i.override))}">✎</span>`
+        : "";
+      return `<tr class="${cls}">
+        <td>${escapeHtml(i.label)}${badge}</td>
         <td>${_checklistCell(i.value)}</td>
         <td class="checklist-src">${escapeHtml(i.note || i.source || "")}</td></tr>`;
     })
     .join("");
   const comps = (sheet.comparisons || [])
     .map(
-      (c) => `<tr class="checklist-${c.verdict}">
+      (c) => `<tr class="checklist-${c.verdict}"${
+        c.override ? ` title="${escapeHtml(_overrideTitle(c.override))}"` : ""
+      }>
         <td>${escapeHtml(c.label)}</td>
         <td>${_checklistCell(c.coilforge)}</td>
         <td>${_checklistCell(c.checklist)}</td>
         <td class="checklist-verdict">${_verdictIcon(c.verdict)}</td></tr>`
     )
     .join("");
+  const overrides = sheet.override_count
+    ? ` · ${sheet.override_count} overridden`
+    : "";
   return `<div class="checklist-sheet">
     <h4>${escapeHtml(sheet.tag)}
-      <span class="subtle-label">${escapeHtml(sheet.category)} · ${sheet.mismatch_count} mismatch</span></h4>
+      <span class="subtle-label">${escapeHtml(sheet.category)} · ${sheet.mismatch_count} mismatch${overrides}</span></h4>
     <div class="checklist-tables">
       <table class="checklist-table"><caption>Inputs written to column C</caption>
         <thead><tr><th>Field</th><th>Value</th><th>Source / note</th></tr></thead>
@@ -4704,6 +4744,28 @@ function renderChecklistReview(review) {
   root.innerHTML = warnings + review.sheets.map(renderChecklistSheet).join("");
 }
 
+// The engineer's per-coil manual fills, in the shape /api/checklist/fill consumes. Keyed
+// by tag (the same identity reapplyManualFills uses) because the checklist re-derives its
+// coils from the submittal and cannot rely on page order. Empty => the checklist keeps its
+// original raw-PDF request, byte-for-byte.
+function collectChecklistOverrides() {
+  const out = [];
+  for (const page of state.pdfCoilPages || []) {
+    const fills = page.manualFills;
+    if (!page.tag || !fills) continue;
+    const engineInputs = fills.engineInputs || {};
+    const paramOverrides = fills.paramOverrides || [];
+    if (!Object.keys(engineInputs).length && !paramOverrides.length) continue;
+    out.push({
+      tag: page.tag,
+      engine_inputs: engineInputs,
+      param_overrides: paramOverrides,
+      reason: fills.reason || null,
+    });
+  }
+  return out;
+}
+
 async function fillCoilChecklist() {
   const file = state.selectedPdfFile || elements.pdfIntakeFile.files?.[0];
   const summary = document.querySelector("#checklist-fill-summary");
@@ -4714,23 +4776,60 @@ async function fillCoilChecklist() {
   if (summary) summary.textContent = "Auto-filling the checklist in background… (opens Excel briefly)";
   try {
     const pdfBytes = await file.arrayBuffer();
-    const review = await requestJson("/api/checklist/fill", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/pdf",
-        "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
-        ...coverPageHeader(),
-      },
-      body: pdfBytes,
-    });
+    const overrides = collectChecklistOverrides();
+    // Two request forms on purpose: with no manual fills this is the ORIGINAL raw-PDF
+    // POST (unchanged); the JSON form is used only when there is something to carry.
+    const request = overrides.length
+      ? {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
+            ...coverPageHeader(),
+          },
+          body: JSON.stringify({
+            submittal_pdf_base64: arrayBufferToBase64(pdfBytes),
+            coil_overrides: overrides,
+          }),
+        }
+      : {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/pdf",
+            "X-CoilForge-Filename": sanitizeHeaderValue(file.name),
+            ...coverPageHeader(),
+          },
+          body: pdfBytes,
+        };
+    const review = await requestJson("/api/checklist/fill", request);
     renderChecklistReview(review);
-    if (summary)
+    if (summary) {
+      const applied = review.override_total
+        ? ` · <strong>${review.override_total} manual override(s) applied</strong>`
+        : "";
       summary.innerHTML =
         `Saved <strong>${escapeHtml(review.saved_path || "")}</strong> · ` +
-        `${review.mismatch_total} dimension mismatch(es) to review · review aid, not exported`;
+        `${review.mismatch_total} dimension mismatch(es) to review${applied} · ` +
+        `review aid, not exported`;
+    }
   } catch (error) {
     if (summary) summary.textContent = `Checklist fill failed: ${error.message || error}`;
   }
+}
+
+// Re-fill the checklist after a manual correction so the sheet (and the .xlsx that gets
+// filed) states the values CoilForge is actually drawing. Debounced: one Apply click can
+// change several fields, and each Excel COM run costs seconds. Honours the same auto
+// toggle as the analyze-time fill, so switching it off silences this too.
+let _checklistRefillTimer = null;
+
+function scheduleChecklistRefill() {
+  if (!checklistAutoEnabled()) return;
+  if (_checklistRefillTimer) clearTimeout(_checklistRefillTimer);
+  _checklistRefillTimer = setTimeout(() => {
+    _checklistRefillTimer = null;
+    fillCoilChecklist();
+  }, 1500);
 }
 
 // Auto-fill toggle: default ON, persisted so John's OFF choice sticks across reloads.

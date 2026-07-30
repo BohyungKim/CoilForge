@@ -10,6 +10,13 @@ setting one is just writing ``True``/``False`` to its column-C cell — the cell
 checkbox format is preserved. Fields are located by scanning column B for their
 label, so the per-sheet layout differences don't need hardcoded addresses.
 
+Normally only INPUT cells are written and the sheet's own formulas compute the lower
+dimensions — that independence is what makes the engine-vs-checklist comparison a real
+check. The one exception is a manual override: a dim the engineer corrected in the
+browser is overwritten with the drawn value, but only AFTER the formula's own result has
+been read back (see ``write_checklist`` steps 4-5), so the comparison keeps both numbers
+and a cell comment records what was replaced.
+
 This module imports ``win32com`` lazily so the package imports on any platform;
 callers on non-Windows get a clear RuntimeError only when they actually write.
 """
@@ -123,6 +130,75 @@ def _fill_sheet(ws, sheet: SheetFill) -> list[str]:
     return missing
 
 
+def _set_comment(cell, text: str) -> None:
+    """Attach (replacing any existing) a note to a cell — best-effort.
+
+    Excel raises if a comment already exists, so clear first. The whole thing is
+    swallowed: an annotation failing must never lose the engineer's filled workbook.
+    """
+    try:
+        cell.ClearComments()
+        comment = cell.AddComment(text)
+        comment.Visible = False
+    except Exception:  # noqa: BLE001 — annotation is a nicety, the values are the point
+        pass
+
+
+def _annotate_input_overrides(ws, sheet: SheetFill) -> None:
+    """Note on every Tier-A input cell the engineer manually supplied."""
+    rows = _label_rows(ws)
+    for cell in sheet.cells:
+        if cell.override is None:
+            continue
+        row = rows.get(T.normalize_label(cell.label))
+        if row is None:
+            continue
+        was = "blank" if cell.override.previous_value in (None, "") else cell.override.previous_value
+        reason = f' · reason: "{cell.override.reason}"' if cell.override.reason else ""
+        _set_comment(
+            ws.Cells(row, _VALUE_COL),
+            f"CoilForge manual override — submittal read {was}, using {cell.value}"
+            f"{reason} · review aid, not approved",
+        )
+
+
+def _apply_dim_overrides(ws, sheet: SheetFill, formula_values: dict[str, Any]) -> list[dict[str, Any]]:
+    """Overwrite each manually overridden dimension with the value CoilForge is drawing.
+
+    ORDER IS LOAD-BEARING: the caller reads ``formula_values`` back BEFORE this runs, so
+    the sheet's own formula result is captured before it is replaced — that reading is
+    what keeps the engine-vs-checklist cross-check alive (``compare.build_review`` shows
+    it against the override as verdict ``overridden``). The comment records the same pair
+    inside the workbook, for whoever opens the .xlsx without the app.
+    """
+    rows = _label_rows(ws)
+    applied: list[dict[str, Any]] = []
+    for dim in sheet.compare_dims:
+        if dim.override is None or dim.coilforge_value is None:
+            continue
+        row = rows.get(T.normalize_label(dim.label))
+        if row is None:
+            continue
+        formula_value = formula_values.get(dim.label)
+        ws.Cells(row, _VALUE_COL).Value = _coerce(dim.coilforge_value)
+        reason = f' · reason: "{dim.override.reason}"' if dim.override.reason else ""
+        _set_comment(
+            ws.Cells(row, _VALUE_COL),
+            f"CoilForge manual override — this sheet's formula computed {formula_value}, "
+            f"using {dim.coilforge_value}{reason} · review aid, not approved",
+        )
+        applied.append(
+            {
+                "tag": sheet.sheet_tag,
+                "label": dim.label,
+                "value": dim.coilforge_value,
+                "formula_value": formula_value,
+                "reason": dim.override.reason,
+            }
+        )
+    return applied
+
+
 # Late-bound COM has no constants module; xlCalculationManual is -4135.
 _XL_CALCULATION_MANUAL = -4135
 
@@ -138,7 +214,8 @@ def write_checklist(
     """Write a filled copy of the checklist and return a small result dict.
 
     Result: ``{saved_path, sheets:[{tag,category}], removed:[...], skipped_labels:[...],
-    warnings:[...], export_allowed: False}``. The source template is untouched.
+    overridden_dims:[...], warnings:[...], export_allowed: False}``. The source template
+    is untouched.
     """
     if not fill.sheets:
         raise ValueError("nothing to write — no coil sheets in the fill")
@@ -170,6 +247,7 @@ def write_checklist(
     wb = app.Workbooks.Open(dest)
     skipped: list[str] = []
     removed: list[str] = []
+    overridden_dims: list[dict[str, Any]] = []
     result_sheets: list[dict[str, str]] = []
     try:
         # P1-C: during the many per-cell writes, suppress intermediate recalcs and
@@ -233,6 +311,24 @@ def write_checklist(
                 computed[dim.label] = ws.Cells(row, _VALUE_COL).Value if row else None
             entry["computed_dims"] = computed
 
+        # 5) Manual overrides (John 2026-07-29). The formula results are already captured
+        #    in `computed_dims` above, so replacing an overridden dim's formula with the
+        #    value CoilForge is actually drawing costs nothing analytically and makes the
+        #    filed .xlsx agree with the drawing. Both the replaced formula value and the
+        #    reason are written into a cell comment. Then recalc AGAIN so the formulas
+        #    that depend on an overridden dim (OAL/CH, the FIT checks) follow it.
+        #    A fill with no overrides skips this block entirely (no extra label scans,
+        #    no second recalc) — the pre-2026-07-29 path, unchanged.
+        for entry, (ws, sheet) in zip(result_sheets, written):
+            if not any(c.override for c in sheet.cells) and not any(
+                d.override for d in sheet.compare_dims
+            ):
+                continue
+            _annotate_input_overrides(ws, sheet)
+            overridden_dims += _apply_dim_overrides(ws, sheet, entry["computed_dims"])
+        if overridden_dims:
+            app.CalculateFull()
+
         # Activate the first coil sheet for convenience (object ref, not name lookup).
         if written:
             written[0][0].Activate()
@@ -251,6 +347,7 @@ def write_checklist(
         "sheets": result_sheets,
         "removed": removed,
         "skipped_labels": skipped,
+        "overridden_dims": overridden_dims,
         "warnings": list(fill.warnings),
         "export_allowed": False,
         "production_drawing_approval_claimed": False,

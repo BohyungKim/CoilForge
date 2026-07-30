@@ -102,3 +102,71 @@ def test_writer_reads_back_computed_dims(tmp_path):
     # Excel evaluated the CD formula from the inputs we wrote.
     assert computed["CD"] == 7.5
     assert computed["CH"] == 46.25
+
+
+# --- manual overrides (John 2026-07-29) ------------------------------------
+def _write_with_overrides(tmp_path, coils, name, payload):
+    from coilforge.checklist.overrides import normalize_coil_overrides
+
+    fill = build_checklist_fill(coils, normalize_coil_overrides(payload))
+    try:
+        return write_checklist(fill, dest_dir=str(tmp_path), dest_name=name)
+    except Exception as exc:  # noqa: BLE001 — Excel not installed / COM unavailable
+        pytest.skip(f"Excel COM unavailable: {exc}")
+
+
+def _override_payload(tag, params, reason="engineer correction"):
+    return [{"tag": tag, "engine_inputs": {}, "reason": reason,
+             "param_overrides": [{"key": k, "value": v, "override_reason": reason}
+                                 for k, v in params.items()]}]
+
+
+def test_writer_overwrites_an_overridden_dim_but_reads_the_formula_first(tmp_path):
+    """The formula's own result must be captured BEFORE it is replaced — that read-back
+    is what keeps the engine-vs-checklist cross-check meaningful."""
+    res = _write_with_overrides(tmp_path, [_dx()], "t5.xlsx",
+                                _override_payload("CDXC-1", {"CD": 10.0}))
+    # Baseline preserved: the sheet's own CD formula still computed 7.5.
+    assert res["sheets"][0]["computed_dims"]["CD"] == 7.5
+    assert res["overridden_dims"] == [
+        {"tag": "CDXC-1", "label": "CD", "value": 10.0, "formula_value": 7.5,
+         "reason": "engineer correction"}
+    ]
+    # The saved cell is now the value CoilForge draws, not the formula.
+    wb = openpyxl.load_workbook(res["saved_path"])
+    ws = wb["CDXC-1"]
+    rows = _rows(ws)
+    assert ws.cell(rows["CD"], 3).value == 10
+    assert not str(ws.cell(rows["CD"], 3).value).startswith("=")
+    # Untouched dims keep their formulas.
+    assert str(ws.cell(rows["S1"], 3).value).startswith("=")
+
+
+def test_writer_recalculates_formulas_that_depend_on_an_overridden_dim(tmp_path):
+    """S1 is derived from CD by the sheet's own formula, so overriding CD must move it —
+    proof the second CalculateFull ran after the overwrite."""
+    plain = _write(tmp_path, [_dx()], "t6.xlsx")
+    bumped = _write_with_overrides(tmp_path, [_dx()], "t7.xlsx",
+                                   _override_payload("CDXC-1", {"CD": 10.0}))
+    base_s1 = openpyxl.load_workbook(plain["saved_path"], data_only=True)["CDXC-1"]
+    new_s1 = openpyxl.load_workbook(bumped["saved_path"], data_only=True)["CDXC-1"]
+    rows = _rows(base_s1)
+    assert new_s1.cell(rows["S1"], 3).value != base_s1.cell(rows["S1"], 3).value
+
+
+def test_writer_annotates_the_override_with_the_value_it_replaced(tmp_path):
+    res = _write_with_overrides(tmp_path, [_dx()], "t8.xlsx",
+                                _override_payload("CDXC-1", {"CD": 10.0}, "shop measured"))
+    ws = openpyxl.load_workbook(res["saved_path"])["CDXC-1"]
+    comment = ws.cell(_rows(ws)["CD"], 3).comment
+    assert comment is not None
+    assert "7.5" in comment.text and "10" in comment.text
+    assert "shop measured" in comment.text
+    assert "not approved" in comment.text  # the review-aid contract travels with the file
+
+
+def test_writer_without_overrides_writes_no_comments(tmp_path):
+    res = _write(tmp_path, [_dx()], "t9.xlsx")
+    ws = openpyxl.load_workbook(res["saved_path"])["CDXC-1"]
+    assert res["overridden_dims"] == []
+    assert ws.cell(_rows(ws)["CD"], 3).comment is None

@@ -14,10 +14,22 @@ an unresolved field is left blank (``value=None``) and flagged, never guessed.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any
 
-from coilforge.checklist.model import CellFill, ChecklistFill, DimCompare, SheetFill
+from coilforge.checklist.model import (
+    CellFill,
+    ChecklistFill,
+    DimCompare,
+    OverrideNote,
+    SheetFill,
+)
 from coilforge.checklist import template_map as T
+from coilforge.checklist.overrides import (
+    CoilOverride,
+    apply_engine_inputs,
+    dim_overrides_by_slot,
+)
 
 # --------------------------------------------------------------------------- #
 # Normalizers
@@ -194,6 +206,65 @@ def _passthrough(label: str, value: Any, src_field: str, kind: str = "number") -
     return CellFill(label, value, kind, "ready", f"submittal:{src_field}")
 
 
+# --------------------------------------------------------------------------- #
+# Manual-override stamping
+# --------------------------------------------------------------------------- #
+# Coil-input key -> the column-B label whose cell is built from it. Applied in ONE pass
+# after the cells are built (rather than at each construction site) so a new manual-fill
+# key cannot be silently forgotten at one of a dozen `cells.append(...)` calls.
+def _label_by_coil_key(category: str, spec: dict[str, Any]) -> dict[str, str]:
+    conn = spec["connections"]
+    common = {
+        "product_label": "UNIT", "unit_size": "SIZE", "application": "APPLICATION",
+        "coating": "COATING", "rows": "ROWS", "feeds": "FEEDS/CIRCUITS",
+        "circuits": "FEEDS/CIRCUITS", "coil_hand": "HANDING",
+    }
+    if category == "DX":
+        return {**common, "suction_conn_size": conn[0], "qty_conn_per_header": conn[1]}
+    if category == "HGRH":
+        return {**common, "conn_size": conn[0], "qty_conn_per_header": conn[1]}
+    return {**common, "inlet_conn_size": conn[0], "outlet_conn_size": conn[1]}
+
+
+def _stamp_input_overrides(
+    cells: list[CellFill], notes: dict[str, OverrideNote], category: str, spec: dict[str, Any]
+) -> list[CellFill]:
+    """Mark every cell whose value came from a manual fill (Tier A).
+
+    The value itself is already the corrected one (``apply_engine_inputs`` rewrote the
+    coil dict before the cells were built); this records WHAT it replaced and re-routes
+    the cell to ``review_required`` -- a human-supplied value is never 'ready'.
+    """
+    if not notes:
+        return cells
+    label_of = _label_by_coil_key(category, spec)
+    by_label: dict[str, OverrideNote] = {}
+    for coil_key, note in notes.items():
+        label = label_of.get(coil_key)
+        if label:
+            by_label[T.normalize_label(label)] = note
+    if not by_label:
+        return cells
+    out: list[CellFill] = []
+    for cell in cells:
+        note = by_label.get(T.normalize_label(cell.label))
+        if note is None:
+            out.append(cell)
+            continue
+        was = "blank" if note.previous_value in (None, "") else note.previous_value
+        reason = f" ({note.reason})" if note.reason else ""
+        out.append(
+            replace(
+                cell,
+                status="review_required",
+                source=f"manual_override:{note.key}",
+                note=f"manual override: was {was}{reason}",
+                override=note,
+            )
+        )
+    return out
+
+
 def _category_of(coil: dict[str, Any]) -> str:
     ct = str(coil.get("coil_type") or "").strip().upper()
     return ct if ct in T.CATEGORY_SHEET else ct
@@ -241,17 +312,26 @@ def _install_widths(unit: str | None, unit_size: Any) -> tuple[Any, Any]:
     return (install_w, drain_w)
 
 
-def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[SheetFill, list[str]]:
+def _build_sheet(
+    coil: dict[str, Any],
+    coils: list[dict[str, Any]],
+    input_notes: dict[str, OverrideNote] | None = None,
+    override: CoilOverride | None = None,
+) -> tuple[SheetFill, list[str]]:
     category = _category_of(coil)
     spec = T.SHEET_LABELS[category]
     warnings: list[str] = []
     cells: list[CellFill] = []
     tag = coil.get("tag") or category
+    input_notes = input_notes or {}
 
     # Resolve UNIT + APPLICATION first: APPLICATION feeds the engine so casing
     # W/H (R-074, product|application|size) can resolve.
     unit = _to_unit(coil.get("product_label") or coil.get("product_type"))
-    if category == "HWC":
+    if category == "HWC" or "application" in input_notes:
+        # A manually filled APPLICATION beats the per-UNIT constant for EVERY category:
+        # the engineer supplied it precisely because the coil's casing class is not the
+        # default one, and it drives R-074 casing W/H below.
         application = coil.get("application")
     else:
         application = T.APPLICATION_FIXED.get(unit or "")
@@ -292,7 +372,7 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
         warnings.append(f"{tag}: SIZE not detected")
 
     # --- APPLICATION ---
-    if category == "HWC":
+    if category == "HWC" or "application" in input_notes:
         app = coil.get("application")
         if app:
             cells.append(CellFill("APPLICATION", app, "dropdown", "review_required",
@@ -447,6 +527,11 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
     # compute from the inputs above). We capture CoilForge's engine value for each
     # so the in-app comparison can show "checklist formula vs CoilForge engine".
     circuits = coil.get("circuits")
+    # Tier-B manual overrides, keyed by the SAME slot ids the drawing path merges into
+    # slot_values — so a dim the engineer corrected on the drawing lands on the matching
+    # checklist row and nowhere else.
+    dim_ov_by_slot, unmapped_params = dim_overrides_by_slot(override)
+    matched_slots: set[str] = set()
     compare: list[DimCompare] = []
     for label in spec["dims"]:
         if T.normalize_label(label) == "RB":
@@ -459,14 +544,38 @@ def _build_sheet(coil: dict[str, Any], coils: list[dict[str, Any]]) -> tuple[She
             cf_value: Any = "N/A"
         else:
             cf_value = dim_slots.get(slot)
-        compare.append(DimCompare(label=label, slot=slot, coilforge_value=cf_value))
+        dim_override: OverrideNote | None = None
+        if slot in dim_ov_by_slot:
+            # The override IS the drawn value, so it becomes the CoilForge column; the
+            # engine proposal it replaced rides along as previous_value. Applied even
+            # past the circuit count ("N/A") — the engineer typed it deliberately.
+            key, value, reason = dim_ov_by_slot[slot]
+            dim_override = OverrideNote(key=key, previous_value=cf_value, reason=reason)
+            cf_value = value
+            matched_slots.add(slot)
+        compare.append(DimCompare(label=label, slot=slot, coilforge_value=cf_value,
+                                  override=dim_override))
 
+    # Never drop an override in silence: a param with no slot at all (ZD) or one whose
+    # slot has no row on THIS category's sheet is surfaced for review.
+    for key in unmapped_params:
+        warnings.append(f"{tag}: manual override '{key}' has no checklist dimension row")
+    for slot, (key, _value, _reason) in dim_ov_by_slot.items():
+        if slot not in matched_slots:
+            warnings.append(
+                f"{tag}: manual override '{key}' ({slot}) is not on the {category} sheet"
+            )
+
+    cells = _stamp_input_overrides(cells, input_notes, category, spec)
     return SheetFill(category=category, source_sheet=T.CATEGORY_SHEET[category],
                      sheet_tag=tag, cells=tuple(cells),
                      compare_dims=tuple(compare)), warnings
 
 
-def build_checklist_fill(coils: list[dict[str, Any]]) -> ChecklistFill:
+def build_checklist_fill(
+    coils: list[dict[str, Any]],
+    overrides: dict[str, CoilOverride] | None = None,
+) -> ChecklistFill:
     """Build a ``ChecklistFill`` for every coil in a submittal.
 
     Each ``coils`` entry is a plain dict (mirrors ``mechanical_fit`` inputs):
@@ -475,20 +584,41 @@ def build_checklist_fill(coils: list[dict[str, Any]]) -> ChecklistFill:
          suction_conn_size, conn_size, inlet_conn_size, outlet_conn_size,
          qty_conn_per_header, coil_hand, coating, application?, hot_gas_bypass?}``.
     Coils whose category is unknown are skipped with a warning (never silently dropped).
+
+    ``overrides`` (``{tag: CoilOverride}``, from ``checklist.overrides``) carries the
+    engineer's browser manual fills. Tier-A engine inputs are applied to EVERY coil
+    before any sheet is built, so a partner-sourced cell (the DX sheet's HGRH CONN SZ,
+    the HGRH sheet's DX CD) sees the corrected partner too. Omitting it reproduces the
+    pre-override fill exactly.
     """
+    overrides = overrides or {}
+    # Pass 1 — apply Tier-A fills to every coil, so `coils` (used for partner lookups)
+    # is uniformly the corrected set.
+    applied: list[tuple[dict[str, Any], dict[str, OverrideNote], CoilOverride | None]] = []
+    for coil in coils:
+        override = overrides.get(str(coil.get("tag")))
+        updated, notes = apply_engine_inputs(coil, override, _category_of(coil))
+        applied.append((updated, notes, override))
+    resolved_coils = [entry[0] for entry in applied]
+
     sheets: list[SheetFill] = []
     warnings: list[str] = []
     used_categories: set[str] = set()
-    for coil in coils:
+    for coil, notes, override in applied:
         category = _category_of(coil)
         if category not in T.CATEGORY_SHEET:
             warnings.append(f"{coil.get('tag') or '?'}: unknown coil category "
                             f"'{coil.get('coil_type')}' — no checklist sheet")
             continue
-        sheet, sheet_warnings = _build_sheet(coil, coils)
+        sheet, sheet_warnings = _build_sheet(coil, resolved_coils, notes, override)
         sheets.append(sheet)
         warnings.extend(sheet_warnings)
         used_categories.add(category)
+        for key in (override.ignored_keys if override else ()):
+            warnings.append(
+                f"{coil.get('tag') or '?'}: manual fill '{key}' has no checklist field "
+                f"(applied to the drawing only)"
+            )
 
     remove = tuple(s for s in T.CATEGORY_SHEETS if s not in used_categories)
     return ChecklistFill(sheets=tuple(sheets), remove_sheets=remove,

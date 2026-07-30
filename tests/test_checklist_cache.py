@@ -47,7 +47,7 @@ def _stub_pipeline(monkeypatch, tmp_path, *, coils=("coil",), writer=None):
     )
     monkeypatch.setattr(
         web_app, "build_checklist_fill",
-        lambda coils: types.SimpleNamespace(sheets=[], warnings=[]),
+        lambda coils, overrides=None: types.SimpleNamespace(sheets=[], warnings=[]),
     )
     calls = [0]
 
@@ -128,6 +128,102 @@ def test_cover_page_hint_is_a_distinct_entry(monkeypatch, tmp_path) -> None:
     _run(pdf, filename="h.pdf", cover_page_hint=5)
 
     assert calls[0] == 2  # different cover page => different key => regenerated
+
+
+def _overrides(tag="CDXC-1", value=1.25):
+    return [{"tag": tag, "engine_inputs": {},
+             "param_overrides": [{"key": "TF", "value": value, "override_reason": "r"}]}]
+
+
+def test_manual_override_is_a_distinct_entry(monkeypatch, tmp_path) -> None:
+    """The bug this feature fixes: after a manual correction the SAME PDF must not serve
+    the pre-override sheet back."""
+    calls = _stub_pipeline(monkeypatch, tmp_path)
+    pdf = b"%PDF-sample-J"
+
+    _run(pdf, filename="j.pdf")
+    _run(pdf, filename="j.pdf", coil_overrides=_overrides())
+    _run(pdf, filename="j.pdf", coil_overrides=_overrides(value=2.5))
+
+    assert calls[0] == 3  # no override / TF=1.25 / TF=2.5 are three different sheets
+
+
+def test_same_overrides_still_reuse_one_fill(monkeypatch, tmp_path) -> None:
+    """The fingerprint is order-independent, so the analyze-time fill and the finalize
+    passing the same overrides share ONE Excel run (no double COM)."""
+    calls = _stub_pipeline(monkeypatch, tmp_path)
+    pdf = b"%PDF-sample-K"
+    payload = [
+        {"tag": "CDXC-1", "engine_inputs": {"rows": 6},
+         "param_overrides": [{"key": "TF", "value": 1.25}]},
+        {"tag": "RHHGRC-1", "engine_inputs": {}, "param_overrides": [{"key": "CD", "value": 3.0}]},
+    ]
+    analyze = _run(pdf, filename="k.pdf", coil_overrides=payload)
+    finalize = _run(pdf, filename="k.pdf", coil_overrides=list(reversed(payload)),
+                    source_id="DELIVERABLE-FINALIZE-001")
+
+    assert calls[0] == 1
+    assert analyze.saved_path == finalize.saved_path
+
+
+def test_empty_override_payload_keys_like_no_override(monkeypatch, tmp_path) -> None:
+    """An empty list must NOT split the cache — the plain analyze path is unchanged."""
+    calls = _stub_pipeline(monkeypatch, tmp_path)
+    pdf = b"%PDF-sample-L"
+
+    _run(pdf, filename="l.pdf")
+    _run(pdf, filename="l.pdf", coil_overrides=[])
+    _run(pdf, filename="l.pdf", coil_overrides=[{"tag": "CDXC-1"}])  # nothing filled
+
+    assert calls[0] == 1
+
+
+# --- the route's two body forms --------------------------------------------
+def _capture_route_call(monkeypatch):
+    """Replace the fill helper so a route test asserts what the ROUTE parsed and passed
+    on, without touching the workflow/Excel machinery underneath it."""
+    seen: dict = {}
+
+    async def _fake(pdf_bytes, **kwargs):
+        seen["pdf_bytes"] = pdf_bytes
+        seen.update(kwargs)
+        return web_app._ChecklistOutcome({"sheets": [], "export_allowed": False}, None, None, None)
+
+    monkeypatch.setattr(web_app, "_run_or_reuse_checklist", _fake)
+    return seen
+
+
+def test_route_accepts_raw_pdf_body(monkeypatch) -> None:
+    """The original contract, unchanged: raw bytes in, no overrides."""
+    from fastapi.testclient import TestClient
+
+    seen = _capture_route_call(monkeypatch)
+    client = TestClient(web_app.app)
+    res = client.post("/api/checklist/fill", content=b"%PDF-raw",
+                      headers={"Content-Type": "application/pdf"})
+
+    assert res.status_code == 200
+    assert seen["pdf_bytes"] == b"%PDF-raw"
+    assert seen["coil_overrides"] is None
+
+
+def test_route_accepts_json_body_with_overrides(monkeypatch) -> None:
+    import base64
+
+    from fastapi.testclient import TestClient
+
+    seen = _capture_route_call(monkeypatch)
+    client = TestClient(web_app.app)
+    overrides = [{"tag": "CDXC-1", "engine_inputs": {"rows": 6},
+                  "param_overrides": [{"key": "TF", "value": 1.25}], "reason": "why"}]
+    res = client.post("/api/checklist/fill", json={
+        "submittal_pdf_base64": base64.b64encode(b"%PDF-json").decode(),
+        "coil_overrides": overrides,
+    })
+
+    assert res.status_code == 200
+    assert seen["pdf_bytes"] == b"%PDF-json"   # base64 round-trips to the same bytes
+    assert seen["coil_overrides"] == overrides
 
 
 def test_never_raises_on_workflow_failure(monkeypatch, tmp_path) -> None:

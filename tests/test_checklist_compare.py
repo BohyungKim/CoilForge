@@ -52,6 +52,36 @@ def test_adapter_skips_unknown_category():
 
 
 # --- comparison ------------------------------------------------------------
+def test_overridden_dim_is_its_own_verdict_not_a_mismatch():
+    """A manual override is a human decision, not a divergence to chase: it must not
+    inflate mismatch_total, and the sheet's own formula value has to stay visible."""
+    from coilforge.checklist.overrides import normalize_coil_overrides
+
+    coils, _ = coil_inputs_from_candidates([_dx_candidate()], product_line="NOVA",
+                                           unit_size="C24")
+    overrides = normalize_coil_overrides([{
+        "tag": "CDXC-1", "engine_inputs": {"rows": 6}, "reason": "shop measured",
+        "param_overrides": [{"key": "CD", "value": 9.5, "override_reason": "shop measured"}],
+    }])
+    fill = build_checklist_fill(coils, overrides)
+    # Simulate the writer read-back: computed_dims still holds the FORMULA results,
+    # captured before the override overwrote the cell.
+    computed = {d.label: (7.5 if d.label == "CD" else d.coilforge_value)
+                for d in fill.sheets[0].compare_dims}
+    review = build_review(fill, {"saved_path": "x.xlsx",
+                                 "sheets": [{"tag": "CDXC-1", "computed_dims": computed}]})
+    cd = next(c for c in review["sheets"][0]["comparisons"] if c["label"] == "CD")
+    assert cd["verdict"] == "overridden"
+    assert cd["coilforge"] == 9.5 and cd["checklist"] == 7.5
+    assert cd["override"]["reason"] == "shop measured"
+    assert review["sheets"][0]["mismatch_count"] == 0
+    assert review["mismatch_total"] == 0
+    # Tier-A input cells count toward the override total too.
+    rows_input = next(i for i in review["sheets"][0]["inputs"] if i["label"] == "ROWS")
+    assert rows_input["override"]["previous_value"] == 5
+    assert review["override_total"] == 2  # ROWS cell + CD dim
+
+
 def test_match_helper():
     assert _match(7.5, 7.5) == "match"
     assert _match(7.5, 7.51) == "match"        # within tolerance

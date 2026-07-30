@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from coilforge.checklist.model import ChecklistFill
+from coilforge.checklist.model import ChecklistFill, OverrideNote
 
 _TOL = 0.01  # inches — numeric agreement tolerance
 
@@ -50,6 +50,13 @@ def _match(coilforge: Any, checklist: Any, *, tol: float = _TOL, rel_tol: float 
     return "match" if a == b else "mismatch"
 
 
+def _override_payload(note: OverrideNote | None) -> dict[str, Any] | None:
+    """JSON view of a manual override (or None) — what it replaced and why."""
+    if note is None:
+        return None
+    return {"key": note.key, "previous_value": note.previous_value, "reason": note.reason}
+
+
 def build_review(fill: ChecklistFill, writer_result: dict[str, Any]) -> dict[str, Any]:
     """Combine the fill + writer read-back into the review payload for the UI."""
     computed_by_tag = {
@@ -57,6 +64,7 @@ def build_review(fill: ChecklistFill, writer_result: dict[str, Any]) -> dict[str
     }
     sheets_out: list[dict[str, Any]] = []
     mismatch_total = 0
+    override_total = 0
     for sheet in fill.sheets:
         inputs = [
             {
@@ -65,17 +73,28 @@ def build_review(fill: ChecklistFill, writer_result: dict[str, Any]) -> dict[str
                 "status": c.status,
                 "source": c.source,
                 "note": c.note,
+                "override": _override_payload(c.override),
             }
             for c in sheet.cells
         ]
+        override_total += sum(1 for c in sheet.cells if c.override is not None)
         computed = computed_by_tag.get(sheet.sheet_tag, {})
         comparisons: list[dict[str, Any]] = []
         for dim in sheet.compare_dims:
             cf = dim.coilforge_value
             cl = computed.get(dim.label)
-            verdict = _match(cf, cl)
-            if verdict == "mismatch":
-                mismatch_total += 1
+            if dim.override is not None:
+                # The writer replaced this formula with the override AFTER reading the
+                # formula's own result, so `computed` still holds what the sheet derived
+                # on its own. Keep showing it: "the sheet says 0.875, we are using 1.25"
+                # is the review signal — collapsing it to a match would hide the
+                # divergence the override was made to resolve.
+                verdict = "overridden"
+                override_total += 1
+            else:
+                verdict = _match(cf, cl)
+                if verdict == "mismatch":
+                    mismatch_total += 1
             comparisons.append(
                 {
                     "label": dim.label,
@@ -83,6 +102,7 @@ def build_review(fill: ChecklistFill, writer_result: dict[str, Any]) -> dict[str
                     "coilforge": cf,
                     "checklist": cl,
                     "verdict": verdict,
+                    "override": _override_payload(dim.override),
                 }
             )
         sheets_out.append(
@@ -92,6 +112,7 @@ def build_review(fill: ChecklistFill, writer_result: dict[str, Any]) -> dict[str
                 "inputs": inputs,
                 "comparisons": comparisons,
                 "mismatch_count": sum(1 for c in comparisons if c["verdict"] == "mismatch"),
+                "override_count": sum(1 for c in comparisons if c["verdict"] == "overridden"),
             }
         )
     return {
@@ -101,6 +122,9 @@ def build_review(fill: ChecklistFill, writer_result: dict[str, Any]) -> dict[str
         "skipped_labels": writer_result.get("skipped_labels", []),
         "removed_sheets": writer_result.get("removed", []),
         "mismatch_total": mismatch_total,
+        # Manual fills carried in from the browser (Tier-A cells + Tier-B dims). An
+        # override is NOT a mismatch — it is a human decision, counted separately.
+        "override_total": override_total,
         # Review aid — never a production artifact.
         "export_allowed": False,
         "production_drawing_approval_claimed": False,

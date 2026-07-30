@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import hashlib
+import json
 import os
 
 from collections import OrderedDict
@@ -59,6 +60,7 @@ from coilforge.checklist.mapping import build_checklist_fill
 from coilforge.checklist.from_workflow import coil_inputs_from_candidates
 from coilforge.checklist.compare import build_review
 from coilforge.checklist.excel_writer import write_checklist
+from coilforge.checklist.overrides import normalize_coil_overrides
 from coilforge.case_journal import record_coil_milestone
 
 
@@ -633,10 +635,31 @@ def _checklist_output_name(source_filename: str | None) -> str:
 # in the key). A cached entry is reused only while its ``saved_path`` still exists
 # on disk; a deleted copy falls through to a fresh write. source_id is deliberately
 # excluded so the analyze-time fill and the finalize-time reuse share one entry.
+# The 5th key element is a fingerprint of the engineer's manual overrides: correcting a
+# coil in the browser MUST produce a new sheet instead of reusing the pre-override one
+# (that reuse IS the "drawing updated but the checklist still shows the old value" bug).
+# It is None when no override is supplied, so the plain analyze path keys as before.
 _CHECKLIST_CACHE_MAXSIZE = 32
-_CHECKLIST_CACHE: "OrderedDict[tuple[str, str | None, str | None, int | None], dict[str, Any]]" = (
-    OrderedDict()
-)
+_CHECKLIST_CACHE: (
+    "OrderedDict[tuple[str, str | None, str | None, int | None, str | None], dict[str, Any]]"
+) = OrderedDict()
+
+
+def _overrides_fingerprint(overrides: dict[str, Any] | None) -> str | None:
+    """Stable sha1 over the normalized manual overrides (order-independent), else None."""
+    if not overrides:
+        return None
+    canonical = json.dumps(
+        {
+            tag: {
+                "engine_inputs": dict(sorted(ov.engine_inputs.items())),
+                "param_overrides": dict(sorted(ov.param_overrides.items())),
+            }
+            for tag, ov in sorted(overrides.items())
+        },
+        sort_keys=True, default=str,
+    )
+    return hashlib.sha1(canonical.encode("utf-8")).hexdigest()
 
 
 class _ChecklistOutcome(NamedTuple):
@@ -667,19 +690,29 @@ async def _run_or_reuse_checklist(
     filename: str | None = None,
     cover_page_hint: int | None = None,
     source_id: str = "CHECKLIST-FILL-001",
+    coil_overrides: Any = None,
 ) -> _ChecklistOutcome:
     """Fill the Coil Checklist for a submittal PDF and return its review table,
     reusing an already-generated result (and its Downloads .xlsx) when the same PDF
     bytes were filled before. Never raises: returns an outcome whose ``review`` is
     ``None`` with a ``reason`` when no recognizable coils exist or Excel/pywin32 is
-    unavailable, so callers degrade cleanly."""
+    unavailable, so callers degrade cleanly.
+
+    ``coil_overrides`` is the raw ``[{tag, engine_inputs, param_overrides, reason}]``
+    payload of the engineer's browser manual fills; it is normalized here and carried
+    into ``build_checklist_fill`` so the sheet states the values CoilForge is actually
+    drawing."""
     if not pdf_bytes:
         return _ChecklistOutcome(None, None, "POST the submittal PDF bytes.", 400)
 
+    overrides = normalize_coil_overrides(coil_overrides)
     # cover_page_hint is in the key (like _WORKFLOW_CACHE): reselecting the cover
     # page on the same bytes changes which coils are read, so it must not hit a
     # stale entry computed under the previous selection.
-    key = (hashlib.sha1(pdf_bytes).hexdigest(), product, size, cover_page_hint)
+    key = (
+        hashlib.sha1(pdf_bytes).hexdigest(), product, size, cover_page_hint,
+        _overrides_fingerprint(overrides),
+    )
     cached = _CHECKLIST_CACHE.get(key)
     if cached is not None:
         saved_path = cached.get("saved_path")
@@ -726,7 +759,7 @@ async def _run_or_reuse_checklist(
         )
 
     try:
-        fill = build_checklist_fill(coils)
+        fill = build_checklist_fill(coils, overrides)
         writer_result = await asyncio.to_thread(
             write_checklist, fill, dest_name=_checklist_output_name(filename)
         )
@@ -751,12 +784,24 @@ async def checklist_fill(request: Request):
     """Auto-fill a COPY of the Coil Checklist from a submittal PDF and return the
     review table (checklist formula dims vs CoilForge engine dims).
 
-    POST the submittal PDF bytes (``application/pdf``). Optional headers override
-    auto-detection: ``X-CoilForge-Product`` (e.g. ``NOVA``), ``X-CoilForge-Size``
-    (e.g. ``C24``), ``X-CoilForge-Filename`` (names the Downloads copy). The source
-    template is never modified; the filled copy is written to the Downloads folder.
-    Review aid only (``export_allowed: False``)."""
-    pdf_bytes = await request.body()
+    Two body forms:
+
+    - ``application/pdf`` — the raw submittal bytes (the original contract, unchanged).
+    - ``application/json`` — ``{submittal_pdf_base64, coil_overrides:[{tag,
+      engine_inputs, param_overrides, reason}]}``, so the engineer's browser manual
+      fills reach the sheet instead of it silently re-deriving the pre-override values.
+
+    Optional headers override auto-detection: ``X-CoilForge-Product`` (e.g. ``NOVA``),
+    ``X-CoilForge-Size`` (e.g. ``C24``), ``X-CoilForge-Filename`` (names the Downloads
+    copy). The source template is never modified; the filled copy is written to the
+    Downloads folder. Review aid only (``export_allowed: False``)."""
+    coil_overrides = None
+    if "application/json" in (request.headers.get("content-type") or "").lower():
+        payload = await request.json()
+        pdf_bytes = _b64_to_bytes(payload.get("submittal_pdf_base64"), "submittal_pdf_base64")
+        coil_overrides = payload.get("coil_overrides")
+    else:
+        pdf_bytes = await request.body()
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="POST the submittal PDF bytes.")
     outcome = await _run_or_reuse_checklist(
@@ -766,6 +811,7 @@ async def checklist_fill(request: Request):
         filename=request.headers.get("x-coilforge-filename"),
         cover_page_hint=_cover_page_hint_from_request(request),
         source_id=request.headers.get("x-coilforge-source-id", "CHECKLIST-FILL-001"),
+        coil_overrides=coil_overrides,
     )
     if outcome.review is None:
         raise HTTPException(status_code=outcome.http_status or 400, detail=outcome.reason)
@@ -1202,7 +1248,10 @@ async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict
     degrades to engine-only when Excel/pywin32 is absent. Shares the checklist
     cache, so a project review reuses an already-generated fill. ``result`` is the
     caller's workflow dict, kept for signature stability; the fill is re-derived
-    (and memoized) from ``pdf_bytes`` inside the helper."""
+    (and memoized) from ``pdf_bytes`` inside the helper.
+
+    NOTE: passes no ``coil_overrides`` — the project gate re-derives from the submittal
+    alone, so it reads the machine proposal, not the engineer's browser manual fills."""
     outcome = await _run_or_reuse_checklist(
         pdf_bytes,
         product=request.headers.get("x-coilforge-product"),
@@ -1240,8 +1289,10 @@ async def deliverable_finalize(request: Request):
 
     POST JSON: ``submittal_pdf_base64`` (project identity + checklist),
     ``quote_pdf_base64`` (original source quote), ``revised_pdf_base64`` (the built
-    revised PDF), plus ``submittal_filename`` / ``quote_filename``. Original PDFs are
-    copied, never modified. Review aid only (``export_allowed: False``)."""
+    revised PDF), plus ``submittal_filename`` / ``quote_filename`` and the optional
+    ``checklist_overrides`` (the browser's manual fills, so the filed checklist matches
+    the drawings). Original PDFs are copied, never modified. Review aid only
+    (``export_allowed: False``)."""
     import asyncio
 
     from coilforge.deliverable.finalize import (
@@ -1281,8 +1332,12 @@ async def deliverable_finalize(request: Request):
     # Reuse the Coil Checklist auto-generated on analyze (best-effort — surfaced,
     # never silent). Shares the checklist cache, so the same submittal bytes hit the
     # already-written Downloads copy instead of re-running Excel (no double COM).
+    # The same manual overrides the browser sent to /api/checklist/fill ride along, so the
+    # .xlsx filed with the order is the override-bearing one AND hits its cache entry (a
+    # missing payload here would key differently and quietly file the pre-override sheet).
     checklist_outcome = await _run_or_reuse_checklist(
-        submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001"
+        submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001",
+        coil_overrides=payload.get("checklist_overrides"),
     )
     checklist_path = checklist_outcome.saved_path
     checklist_status = "ok" if checklist_outcome.review is not None else (

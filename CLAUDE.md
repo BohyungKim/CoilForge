@@ -192,8 +192,30 @@ never guessed. The DO-NOT-TOUCH drawing/template path is untouched.
 Auto-fills on analyze (frontend `maybeAutoFillChecklist` after `hydratePdfWorkflow`; default-on
 `#checklist-auto-toggle`, the manual "Fill" button was removed) and is memoized server-side by
 `sha1(pdf_bytes)` (`_run_or_reuse_checklist` / `_CHECKLIST_CACHE`, key = sha1 + product + size +
-cover_page_hint) so `deliverable_finalize` reuses the same Downloads .xlsx instead of re-running
-Excel COM (no double-fill).
+cover_page_hint + **overrides fingerprint**) so `deliverable_finalize` reuses the same Downloads
+.xlsx instead of re-running Excel COM (no double-fill).
+
+**Manual overrides reach the checklist (John 2026-07-29)** — the drawing regenerated from a
+manual fill while the checklist kept re-deriving from the submittal, so the sheet (and the .xlsx
+filed with the order) silently disagreed with the drawing. `checklist/overrides.py` (pure) carries
+the browser fills in: **Tier A** engine inputs (`rows`/`application`/`coil_hand`/`return_conn_size`
+…) are ordinary column-C INPUT cells, so writing them lets the sheet recompute and *strengthens*
+the cross-check; **Tier B** drawing params resolve their slot through the DRAWING path's own
+`PARAM_TO_SLOT`/`_header_slot` (`overrides.param_slot`) so the two can't disagree about what `S2`
+means. This partially amends the load-bearing fact above: an overridden dim's formula IS
+overwritten with the drawn value — but only in writer step 5, **after** step 4 read the formula's
+own result back, so `compare.py` still reports both as verdict `overridden` (never `match`, never
+counted as a mismatch) and an Excel cell comment records the replaced value + reason. A second
+`CalculateFull` then follows so dependents (OAL/CH, the FIT checks) track the override. **Order is
+load-bearing** — overwrite before read-back and the independent check is gone. A fill with no
+overrides skips the whole block (byte-identical to the pre-2026-07-29 path). Overrides ride the
+JSON body form of `POST /api/checklist/fill` (`{submittal_pdf_base64, coil_overrides}`; the raw
+`application/pdf` body is unchanged) and `checklist_overrides` on `/api/deliverable/finalize` —
+without that second thread the finalize would key differently and file the pre-override sheet.
+Frontend: `collectChecklistOverrides` (keyed by `page.tag`, like `reapplyManualFills`) +
+debounced `scheduleChecklistRefill` after an interactive derive; the headless re-analyze fan-out
+fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
+gate) deliberately passes none — it reads the machine proposal.
 
 **CCSI value push + green/red compare** (`ccsi/compare.py`, `web/ccsi/`) — pushes the resolved
 drawing params into the external CCSI Direct Coil form (Claude-in-Chrome `/ccsi-fill`; never

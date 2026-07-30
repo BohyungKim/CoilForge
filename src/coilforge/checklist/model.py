@@ -15,6 +15,20 @@ CellStatus = Literal["ready", "review_required", "blocked", "constant", "detecte
 
 
 @dataclass(frozen=True)
+class OverrideNote:
+    """A value the engineer manually corrected in the browser, carried into the checklist.
+
+    ``previous_value`` is what CoilForge proposed BEFORE the override (the machine
+    proposal), so the filled sheet and the review table can both state what was
+    replaced instead of silently showing the new number.
+    """
+
+    key: str  # the manual-fill key: an engine input ("rows") or a drawing param ("TF")
+    previous_value: Any = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class CellFill:
     """One column-C cell to write (or leave blank when ``value is None``)."""
 
@@ -25,6 +39,7 @@ class CellFill:
     source: str  # short provenance: "submittal:finned_height" | "engine:slot.CD" | "constant" | "detected"
     drawing_slot: str | None = None  # the slot it mirrors (for the compare view)
     note: str | None = None  # why blank / why review-required
+    override: OverrideNote | None = None  # set when a manual fill supplied this value
 
 
 @dataclass(frozen=True)
@@ -39,6 +54,12 @@ class DimCompare:
     label: str  # the dim's column-B label, e.g. "CD", "S1", "OAL"
     slot: str  # the CoilForge slot it mirrors, e.g. "slot.CD"
     coilforge_value: Any  # CoilForge's engine value (or "N/A" beyond circuit count, or None)
+    # Set when the engineer manually overrode this dimension (Tier B). ``coilforge_value``
+    # is then the override — the value actually drawn — and ``override.previous_value`` is
+    # the engine's proposal. The WRITER overwrites this formula cell with the override
+    # AFTER reading the formula's own result back, so the cross-check survives (compare.py
+    # reports it as verdict ``overridden``, never as a match).
+    override: OverrideNote | None = None
 
 
 @dataclass(frozen=True)
