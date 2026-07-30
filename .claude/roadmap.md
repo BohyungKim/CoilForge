@@ -1,6 +1,24 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-29 (**[물코일 트랙] 게이트를 열자 드러난 값 결함 5건 일괄 수정 — ae415aa**: fb894da가
+> 마지막 갱신: 2026-07-30 (**[체크리스트 트랙] 수동 오버라이드를 Coil Checklist까지 전파 + 코멘트 — 0c8bb84**:
+> 도면은 새 값으로 다시 그려지는데 Coil Checklist는 계속 제출물에서 재유도돼, **패널과 주문에 딸려 나가는
+> .xlsx가 도면과 조용히 어긋나던** 문제(John 지적). 오버라이드는 성격이 둘로 갈린다 — **Tier A(엔진입력)** 는
+> 원래 C열 **입력** 셀이라 써 넣으면 시트가 스스로 재계산 = 교차검증이 **강화**되고, **Tier B(도면 파라미터)** 는
+> **수식** 셀이라 손대면 독립 대조가 사라진다. 해법은 **순서**: 입력 기록 → 재계산 → **수식 결과를 먼저 읽어둔
+> 뒤** → 그 셀을 실제 그리는 값으로 덮고 코멘트(대체된 수식값+사유) → **2차 재계산**. 그래서 `.xlsx`는 도면과
+> 일치하면서 대조는 `overridden` verdict로 살아남는다(match도 mismatch도 아님 — 사람의 결정이라 mismatch
+> 카운트를 부풀리지 않음). 순서를 뒤집으면 read-back이 자기 값을 되읽어 **교차검증이 조용히 자기참조로 변함**
+> → 그 순서를 고정하는 실-Excel 테스트를 박음. 키→슬롯 변환은 새로 짜지 않고 **도면 경로의
+> `PARAM_TO_SLOT`/`_header_slot` 재사용**(멀티헤더 논리키 `S2`→parity `slot.S3`가 공짜로 일치; 별도 테이블이면
+> 첫 버그 자리). Tier A는 **모든 코일에 먼저 적용**해 파트너 셀(DX시트 HGRH CONN SZ / HGRH시트 DX CD)까지 따라옴.
+> 캐시 키에 오버라이드 지문 추가(없으면 종전과 동일 키) — 안 넣으면 finalize가 다른 키로 빠져 **오버라이드 없는
+> 시트를 폴더에 파일링**. 실증(2901 CDXC-1 재현, 실 Excel COM + 실 사내 템플릿): TF 1.625→2.0에서 CoilForge 2 /
+> Checklist(수식) 1.625 / ✎, 나머지 35개 ✓, `C27`이 수식 아닌 상수 2 + 코멘트, 그리고 **시트 자체 수식
+> `CH = C13+C27+C28`이 TF를 참조**해 **CH 26.125→26.5**(+0.375) 동반 이동 = 2차 재계산의 실물 증거(무관한 CD
+> 8.125 불변). 이건 테스트가 못 잡던 종속(테스트는 CD→S1만 고정)이라, 2차 재계산이 없었으면 .xlsx의 CH가
+> 화면상 아무 이상 없이 TF와 어긋난 채 저장됐을 것. 무오버라이드 경로는 블록 전체 스킵 = 종전과 byte-identical.
+> 신규 24테스트, **1174 green**, frozen 무접촉, 전 항목 review_required·export_allowed False. 미결=TR-8(브라우저
+> Apply→1.5s 자동 재실행). 이전: **[물코일 트랙] 게이트를 열자 드러난 값 결함 5건 일괄 수정 — ae415aa**: fb894da가
 > Terra V 물코일 도면을 렌더시키자 **한 번도 화면에 나온 적 없던 값 5개**가 John 눈에 걸림. 전부 기존 결함이고
 > 게이트가 검증 없이 보존하고 있었음("레퍼런스 없으니 막아두자"가 안전장치가 아니라 **틀린 값의 냉동고**였던 것).
 > ①**S/R = connection size**(John) — CD/2 폴백은 주석부터 "no equation to mirror"라 자백했고 시드 7장 중 0장 일치,
@@ -106,6 +124,16 @@
 - [x] R-074 2차 출처 판정 + R-048/R-085 조건부 발화 검증 (fc7037c, 794 green) — R-074 내부 2차출처 부재→MEDIUM 유지 확정(외부 출처 대기); R-048/R-085 유닛테스트 4건으로 HIGH 발화 검증; 검증 중 발견한 R-048 supply≠return 공식 결함·R-085 back_to_back 실경로 미배선을 [REVIEW-REQUIRED]로 등재(hunk격리로 R-006 재배제)
 - [x] Coil Checklist 자동화 (b8b2168) — analyze 시 백그라운드 자동채움(기본ON 토글, 수동 "Fill" 버튼 제거) + sha1(pdf_bytes) 캐시로 finalize 이중 Excel COM 제거; `_run_or_reuse_checklist`/`_CHECKLIST_CACHE`(analyze↔finalize source_id 무관 공유), 신규 10테스트+818 green, invariant-guard clean(WARN 2건 수정), 실서버 실측 270.3s→0.053s 재사용 + 브라우저 자동채움 실증 · **John eyeball 확인 완료(2026-07-14)**- [x] 미시드 Ventum+ DX = not-registered 차단 (003928f, John 2026-07-14) — 미시드 Ventum+ DX가 공유 ConnectionDOWN 템플릿으로 폴백하던 걸 차단(R-032 UP를 공용이 못 그림); `_gate_unseeded_ventum_plus_dx`(DX 전용, 비-DX는 공유 폴백 유지), 시드 DX는 전용 UP 그대로; 테스트 2건 갱신+818 green, CLAUDE.md+위키 3파일 정정, 런타임 eyeball 확인 · **John 브라우저 확인 완료(2026-07-14)**- [x] Analyze 진행 표시 = 확정형 % 바 + 단계명 (10544f1, John 요청 2026-07-14) — 회전 스피너+고정문구를 초록 % 바+단계 라벨(Extracting→Cover rows→Coil sections→Product line→Building drawing)로 교체; 백엔드는 단일 블로킹 POST라 클라 `pdfProgress` 트리클(92% 상한 감속, 결과 그리드가 카드 대체=완료, 강제100% 없음); 덤으로 John 스크린샷이 가리킨 빈 초록 띠 버그 수정(`#brain-case-banner[hidden]{display:none}` — `display:grid`가 UA `[hidden]`을 덮던 것); 실 27p submittal 라이브 검증(57%→89%→코일2개 결과), 라이트/다크 정상, 826 green · **John 라이브 확인(2026-07-14)**- [x] 커버리지 대시보드 생성기 (16b0852) — 수기 HTML → `scripts/generate_coverage_dashboard.py`가 `catalog.list_template_entries()`에서 자동생성(+`--check` 드리프트 가드, CI에서 인코딩된 MVP 택소노미와 라이브 SHARED 버킷 불일치 시 실패)- [x] Drawing Notes 자동채움 (4b6d29f, John 확정 차트 2026-07-14) — "Drawing Notes" 필드가 (제품군×코일타입)으로 자동채움; 엔진이 이미 조립하던 노트(R-007/008/080/081)를 폼필드+검토용 SVG에 배선 + **신규 R-035a/b 분배기 노트**('Distributor 6" Extension Upwards' Ventum+ DX=R-032 UP 미러 / '...Downwards' 그 외 DX=R-031 DOWN 미러, 상호배타 2룰 → DX당 정확히 1개). `assemble_drawing_notes` 헬퍼 + `_NOTES_APPEND_IDS`/루프 등록; 엔진노트를 **기존** `distributor_notes`의 CANONICAL 사본에 주입(신규 레지스트리 필드 없음=52필드 표면 무churn) — 도면 렌더러는 slot.DISTRIBUTORS를 raw candidate/typed draft에서 읽으므로 분배기 콜아웃 오염 없음; product-gated(제품/사이즈 미상 시 공란, 무발명). 828 green, 착수 전 adversarial 재검토가 블로커 2건 포착·정정. ⚠️ **미결**: DX template.svg의 NOTES는 하드코딩("Copper Straps Required", `{{slot.NOTES}}` 플레이스홀더 없음)이라 신규 노트가 템플릿 도면엔 미표시 — 재시드(DO-NOT-TOUCH) 필요, John 판정 대기
 - [x] Human-in-the-loop 수동 채움 (bc0c145, John 요청 2026-07-15) — 코일 데이터 blocked 시 엔지니어가 브라우저에서 누락값을 채우면 도면이 재생성됨(멈춰서 Claude로 돌아오는 루프 제거). Tier A=엔진입력 재계산(동결 `pdf_to_template_drawing` 대신 비동결 `derive_coil_template_drawing`에서 `build_drawing_slots` 재실행+`slot.X` 병합, 세 입력 application/header_count/qty_conn 있을 때만 발화=무회귀 byte-identical), Tier B=도면파라미터 직접 override(패널만, SVG 불변). 자동노출 fill-plan(product/size picker 포함) + tag기준 헤드리스 `/derive` 재적용 + `ManualOverride` 감사로그 + 하드중단 가드(`UnknownCoilInputError`/unknown_unit_size→picker) + API 검증(500 없음) + `COILFORGE_MANUAL_FILL` 킬스위치. **착수 전 4회 독립 적대검토**(C1 동결파일 위반·멀티코일 재분석 캐시결함 등 전건 해소 후 GO). 신규 17테스트(tests/test_manual_fill.py), 857 green, 라이브 eyeball(CD 5.5 un-gate 확인). ⚠️ 실 고객 PDF 브라우저 최종확인은 John 몫(고객데이터 gitignore) 🆕 이번 세션
+- [x] **오버라이드 → 체크리스트 전파 + 코멘트 (0c8bb84, John 요청 2026-07-29)** — 위 수동채움의 반쪽 완성. 도면만
+  갱신되고 Coil Checklist는 제출물에서 재유도돼 **패널·주문용 .xlsx가 도면과 어긋나던** 문제. Tier A(엔진입력)는
+  C열 입력 셀이라 그대로 기록→시트 재계산(교차검증 강화), Tier B(도면 파라미터)는 수식 셀이라 **수식 결과를 먼저
+  읽어둔 뒤** 덮고 셀 코멘트(대체값+사유)+2차 재계산 — 대조는 `overridden` verdict로 생존(mismatch로 안 셈).
+  키→슬롯은 도면 경로의 `PARAM_TO_SLOT`/`_header_slot` 재사용(멀티헤더 `S2`→`slot.S3` 자동 일치), 캐시 키에
+  오버라이드 지문(없으면 종전 키 그대로), `/api/checklist/fill` JSON 바디 폼 + finalize 스레딩(안 하면 오버라이드
+  없는 시트가 파일링됨), 프런트는 tag 기준 수집 + 1.5s 디바운스 재실행(재분석 팬아웃은 1회만). 신규 24테스트
+  (실 Excel COM으로 읽기→덮어쓰기 **순서**·종속 재계산·셀 코멘트 고정), **1174 green**, frozen 무접촉.
+  실증: 2901 CDXC-1 재현에서 TF 1.625→2.0 시 `C27` 상수화+코멘트, 시트 수식 `CH=C13+C27+C28`이 따라 26.125→26.5.
+  ⚠️ 브라우저 Apply→자동 재실행 확인은 John 몫(TR-8) 🆕 이번 세션
 
 - [x] **MVP 사인오프 마무리 (John 2026-07-15)** — 파라미터 완전성 감사(Stage 2b) 판정 전부 해소.
   **템플릿 eyeball 사인오프 승인**(Ventum+ 11 + 공용 10, review-aid only·`export_allowed=False`·프로덕션 승인 아님) +
@@ -560,6 +588,17 @@
   123.88로 바뀐 것 외 값 불변 + 도면 무변경. 자동검증 완료(1141 green·실 PDF 12개 수용기준 전부 OK); 남은 건
   실 렌더 사람 눈 확인.
 
+- [ ] **[TR-8] 오버라이드 후 체크리스트 자동 재실행 브라우저 눈확인 (John)** — ⚠️ `run_server.bat`은 `--reload`
+  없음 → **서버 재시작** + `pdfCoilPages` 클라 캐시라 **재분석 필수**(2026-07-30 세션에서 :8011 재기동해 둠, PID
+  독립). 백엔드·Excel·렌더링은 실데이터로 확인 끝(2901 CDXC-1 재현: TF 1.625→2.0, `C27` 상수+코멘트, `CH`
+  26.125→26.5 동반 이동, 화면은 배포 `app.js` 렌더 함수 실행) — **미확인은 브라우저에서 Apply를 누른 뒤의
+  자동 재실행 경로 하나**(실 제출물 PDF가 있어야 밟힘). 절차: 2901 submittal 분석 → CDXC-1 → `TF`에 값+사유
+  입력 → **Apply & complete drawing**. 확인: **①도면이 새 값으로 갱신 ②약 1.5초 뒤 체크리스트 패널이 스스로
+  다시 채워짐**(Excel이 잠깐 뜸) **③TF 행이 보라색 ✎ = CoilForge 새값 / Checklist 옛 수식값, 나머지 행 ✓ 유지**
+  **④요약줄에 "N manual override(s) applied"** **⑤Downloads에 새 .xlsx가 생기고 TF 셀에 코멘트**. 회귀 확인:
+  **오버라이드를 하나도 안 한 코일은 종전과 동일하게 1회만 자동채움**(중복 Excel 실행 없음). 참고용 폰 검증
+  페이지(스크린샷+실수치): `claude.ai/code/artifact/976a22c8-3438-4c5f-bb14-7e91d2f4e2cc`
+
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
   **실사용으로 코퍼스 + 교정 축적**. 현황 **46/50 · 교정 0**. 착수조건 n≥50까지 4개 부족하나, **개수보다
@@ -570,6 +609,9 @@
   **2026-07-29 보강:** 물코일 트랙(fb894da)이 이 항목을 직접 돕는다 — HWC/CWC가 이제 도면·패널까지 정상
   작동하므로 물코일도 브라우저 edit 대상이 됐고(종전엔 도면조차 없어 교정이 원천 불가), Coil Hand 수동
   레버가 새 correction 축을 하나 더 연다.
+  **2026-07-30 보강:** 0c8bb84도 같은 방향으로 돕는다 — 브라우저 edit이 이제 도면뿐 아니라 체크리스트·주문용
+  .xlsx까지 일관되게 끌고 가므로, "고칠 거면 브라우저에서" 라는 유인이 실제로 생긴다(종전엔 브라우저에서
+  고쳐도 체크리스트가 어긋나 손으로 다시 맞춰야 했음 = 교정을 원장에 남길 이유가 약했음).
 ## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
