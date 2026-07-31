@@ -1,6 +1,21 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-30 (**[도면 트랙] 수동 채움이 DX with-HGRH 케이싱 깊이를 되돌리던 회귀 수정 — 228d731**:
+> 마지막 갱신: 2026-07-31 (**[Case Retrieval 트랙] 2.1 커밋 — 그리고 커밋하면서 드러난 브랜치 파손 복구
+> (343b972 · f54d5f1)**: 미커밋으로 묵혀둔 Stage 2.1을 검토·커밋하려다 **브랜치가 이미 깨져 있던 걸 발견**.
+> `fb894da`(7/29, 다른 세션)가 derive 심에 `features_from_result` **import를 커밋**했는데 그 함수는 작업트리에만
+> 있었음. import가 `try` **바깥**이고 `/derive` 라우트는 `UnknownCoilInputError`/`ValidationError`만 잡으므로
+> **클린 체크아웃에서 모든 수동 채움·제품 픽·재분석 팬아웃이 500**. 속성을 지워 커밋본을 재현해 실증
+> (`ImportError: cannot import name 'features_from_result'`). **로컬은 계속 초록**이었음 — 미커밋 파일이
+> 전체 스위트와 그날 브라우저 검증까지 통과시켜 줬기 때문. 로드맵에 반복 등장하는 "hunk 격리(2.1 제외)"가
+> 이번엔 **한쪽만 커밋된 의존**을 만든 것. 교훈: 격리 커밋 뒤엔 `git show HEAD:<file>`로 커밋본을 대조해야 함.
+> 커밋 내용 — `343b972`: `features_from_result`(ledger WRITE 축과 대칭인 질의측 추출, `record._coil_row`
+> 무접촉) + 가산 `min_shared_axes` + `corpus_min` + 이웃별 축 요약(엔지니어링 축뿐이라 redaction 무영향).
+> `f54d5f1`: A5 오프라인 가중치 튜닝 하네스 — 읽기 전용·자동채택 없음·근거 부족 시 `signal_too_weak`로 제안
+> 거부(무발명), 라이브 경로 무접촉. **동종 구멍 전수점검**: HEAD를 임시 worktree에 체크아웃해 전체 스위트
+> 실행 → 1177 통과, **미커밋 코드 의존 0**. 남은 4 실패는 `test_phase2c_*`가
+> `default_po_logic_source_paths()`로 `cwd().parent/PO_Release_Engineering_Workflow`를 읽는 **형제 리포 의존**
+> (실 리포 옆엔 존재해 로컬은 통과, worktree/CI에선 실패) — 기존 사항, 이번 작업 무관. 1181 green.
+> 이전: **[도면 트랙] 수동 채움이 DX with-HGRH 케이싱 깊이를 되돌리던 회귀 수정 — 228d731**:
 > TR-8 실행 중 도면 SVG가 `7.5 CD`인데 체크리스트는 `8.125`인 걸 발견. 기존 표시 불일치인 줄 알았으나
 > **수동 채움이 유발하는 회귀**였음 — 손 안 댄 CDXC-2는 8.125, TF 오버라이드를 거친 CDXC-1만 7.5.
 > `_apply_hgrh_pairing_cd`(재열 짝 DX의 R-072 with-HGRH 분기)가 **analyze 경로에만 배선**돼 있고
@@ -652,6 +667,9 @@
   **2026-07-30 보강:** 0c8bb84도 같은 방향으로 돕는다 — 브라우저 edit이 이제 도면뿐 아니라 체크리스트·주문용
   .xlsx까지 일관되게 끌고 가므로, "고칠 거면 브라우저에서" 라는 유인이 실제로 생긴다(종전엔 브라우저에서
   고쳐도 체크리스트가 어긋나 손으로 다시 맞춰야 했음 = 교정을 원장에 남길 이유가 약했음).
+  **2026-07-31:** Phase 2.1이 드디어 커밋됨(343b972 · f54d5f1) — 이웃 패널의 질의측 추출과 A5 튜닝 하네스가
+  이제 브랜치에 있다. 가중치 **채택은 여전히 미배선**(John eyeball 후 1줄)이고, 착수 조건은 그대로
+  **교정 축적**이다. 덤으로 `/derive`가 클린 체크아웃에서 500이던 파손이 이 커밋으로 복구됐다.
 ## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
