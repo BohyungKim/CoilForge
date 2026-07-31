@@ -625,6 +625,20 @@
   finalize가 오버라이드본을 파일링). 재검증 후 1178 green. 폰 확인 페이지(1차 실행 근거):
   `claude.ai/code/artifact/976a22c8-3438-4c5f-bb14-7e91d2f4e2cc`
 
+- [ ] **[TR-9] derive가 Drawing Notes·엔진 치수를 재계산하지 않음 (2026-07-30 전수조사 발견, 수정 보류)** —
+  228d731의 CD 회귀와 **같은 계열**(analyze에만 배선된 후처리)을 찾으려 analyze
+  `_run_candidate_to_drawing_payload` vs `derive_coil_template_drawing` 후처리를 1:1 대조한 결과. 게이트 5종·
+  플래그 2종·`_clean_template_svg`·`_attach_parametric_schematic`·`build_manual_fill_plan`은 양쪽 다 있고,
+  **`_engine_drawing_notes` + `_engine_drawing_dims`만 analyze 전용** — derive는 `spec["panel"]`을 그대로
+  되돌려줄 뿐이라 붙여넣기 52필드 세트의 Drawing Notes·엔진 치수가 **analyze 시점 값에 고정**된다.
+  헤드리스 실측: `_engine_drawing_notes(coating='HERESITE')`는 R-080 `Do Not Coat Last 5-6 inches...`를 넣지만
+  `derive_coil_template_drawing(coating='HERESITE')`의 반환 키는 `panel`뿐이고 노트는 재계산되지 않음.
+  증상 예상: ①브라우저에서 coating을 고쳐도 코팅 노트가 안 붙음 ②게이트됐던 코일을 제품/사이즈 픽으로 풀어도
+  붙여넣기 세트의 노트·치수는 unmapped 유지. **메커니즘은 코드+헤드리스로 확인, 브라우저 증상은 미재현** —
+  착수 시 재현부터. 고칠 때 주의: analyze는 후보에 product/size가 없으면 도면이 해결한 값으로 **재시도**하는
+  분기(1798~1807)를 갖고 있으므로 derive에도 같은 폴백이 필요하고, `distributor_notes`(도면 분배기 콜아웃)와
+  섞으면 안 됨(전용 manufacturing_options 키).
+
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
   **실사용으로 코퍼스 + 교정 축적**. 현황 **46/50 · 교정 0**. 착수조건 n≥50까지 4개 부족하나, **개수보다
