@@ -275,11 +275,16 @@ def _empty(**extra: Any) -> dict[str, Any]:
 
 
 def _neighbor(case: dict[str, Any], distance: float, shared: int, *, redact: bool) -> dict[str, Any]:
+    feats = case.get("features") or {}
     out: dict[str, Any] = {
         "coil_uid": case["coil_uid"],
         "tag": case["tag"],
         "distance": round(float(distance), 4),
         "shared_axes": int(shared),
+        # Compact axis summary for the UI "which past coil" chips. All engineering attributes
+        # (no customer identity), so shown under redaction too.
+        "features": {k: feats.get(k) for k in
+                     ("coil_category", "product_line", "unit_size", "hand", "header_type")},
         "corrections": [
             {k: v for k, v in c.items() if not (redact and k == "reason")}
             for c in case["corrections"]
@@ -291,8 +296,11 @@ def _neighbor(case: dict[str, Any], distance: float, shared: int, *, redact: boo
 
 
 def _search(cases, query_idx, query_features, *, k, same_category, weights,
-            exclude_coil_uid, redact) -> dict[str, Any]:
-    """Shared kernel. Exactly one of query_idx / query_features is used."""
+            exclude_coil_uid, redact, min_shared_axes=None) -> dict[str, Any]:
+    """Shared kernel. Exactly one of query_idx / query_features is used.
+
+    ``min_shared_axes`` overrides the module-constant floor for a single call (the offline
+    tuning harness sweeps it); None means use ``MIN_SHARED_AXES`` (the live default)."""
     try:
         import numpy as np
     except ImportError:
@@ -319,6 +327,7 @@ def _search(cases, query_idx, query_features, *, k, same_category, weights,
         # HTTP surface additionally redacts free-text reason + project_number (redact=True).
         "raw_private_data_returned": False,
         "corpus_size": corpus_size,
+        "corpus_min": CORPUS_MIN,
         "corpus_ready": corpus_size >= CORPUS_MIN,
         "insufficient_corpus": corpus_size < CORPUS_MIN,
     }
@@ -337,7 +346,8 @@ def _search(cases, query_idx, query_features, *, k, same_category, weights,
 
     idx = np.array(kept, dtype=np.int64)
     dist, shared = _distances(cat[idx], num[idx], qcat, qnum, ranges, wc, wn, np)
-    eligible = (shared >= MIN_SHARED_AXES) & np.isfinite(dist)
+    floor = MIN_SHARED_AXES if min_shared_axes is None else min_shared_axes
+    eligible = (shared >= floor) & np.isfinite(dist)
     order = np.argsort(dist)
     neighbors = []
     for pos in order:
@@ -357,7 +367,8 @@ def _search(cases, query_idx, query_features, *, k, same_category, weights,
 
 def similar_by_coil_uid(coil_uid: str, *, k: int = 5, same_category: bool = True,
                         weights: dict[str, float] | None = None,
-                        redact: bool = False) -> dict[str, Any]:
+                        redact: bool = False,
+                        min_shared_axes: int | None = None) -> dict[str, Any]:
     """Neighbors of a coil already in the ledger (by its representative coil_uid)."""
     if not db.capture_enabled():
         return _empty(enabled=False)
@@ -373,15 +384,61 @@ def similar_by_coil_uid(coil_uid: str, *, k: int = 5, same_category: bool = True
         if query_idx is None:
             return _empty(exists=True, error="unknown_coil_uid", corpus_size=len(cases))
         return _search(cases, query_idx, None, k=k, same_category=same_category,
-                       weights=weights, exclude_coil_uid=None, redact=redact)
+                       weights=weights, exclude_coil_uid=None, redact=redact,
+                       min_shared_axes=min_shared_axes)
     except Exception as exc:  # noqa: BLE001 — retrieval never raises into a caller
         return _empty(error=type(exc).__name__)
+
+
+def features_from_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Extract the case-retrieval axes from a derive/analyze RESULT dict (a what-if query).
+
+    Mirrors ``capture.record._coil_row`` source-expression for source-expression so a query
+    lands in the SAME categorical codebook the ledger WRITE path stored — otherwise a coil
+    would read as "unseen" against its own past. ``record.py`` stays untouched: its ``_coil_row``
+    returns a SQL tuple (not a dict) and also pulls gate flags, so duplicating the ~14 mappings
+    here is the drift-proof cost of not reaching into that path. KEEP IN SYNC with ``_coil_row``.
+
+    Numeric-source equivalence (MINOR-1): corpus numerics come from the analyze run's
+    ``run_input`` (``record._input_rows`` / ``fit_inputs``); the query numerics come from
+    ``result["extracted"]``. Both echo the same physical values — extracted ``rows/feeds/
+    finned_height/finned_length`` are ``extract.get(..) or ctx.get(..)``
+    (``pdf_to_template_drawing.py:458-461``), the same ``ctx`` the engine input vector is built
+    from — so a coil compares equal to itself across the analyze/derive boundary.
+    """
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    td = result or {}
+    extracted = td.get("extracted") or {}
+    # product_line = the picker label ("TERRA H"/"NOVA"/...), NOT the cover-row family (record.py).
+    product_line = td.get("product_type") or None
+    _family, terra_variant = resolve_product_line(product_line)
+    return {
+        # --- categorical (mirror record._coil_row) ---
+        "coil_category": extracted.get("coil_category"),
+        "product_line": product_line,
+        "terra_variant": terra_variant,
+        "unit_size": td.get("unit_size"),
+        "hand": extracted.get("hand"),
+        "header_type": extracted.get("header_type"),
+        "special_feature": extracted.get("special_feature"),
+        "template_id": td.get("template_id"),
+        # the suction_conn_size axis is the derive-time "return_conn_size" (see _RUN_INPUT_KEYS)
+        "suction_conn_size": extracted.get("return_conn_size"),
+        # --- numeric (extracted echoes; circuits included so all 5 _NUMERIC_AXES are sourced) ---
+        "circuits": extracted.get("circuits"),
+        "rows": extracted.get("rows"),
+        "feeds": extracted.get("feeds"),
+        "finned_height": extracted.get("finned_height"),
+        "finned_length": extracted.get("finned_length"),
+    }
 
 
 def similar_by_features(features: dict[str, Any], *, k: int = 5, same_category: bool = True,
                         weights: dict[str, float] | None = None,
                         exclude_coil_uid: str | None = None,
-                        redact: bool = False) -> dict[str, Any]:
+                        redact: bool = False,
+                        min_shared_axes: int | None = None) -> dict[str, Any]:
     """Neighbors of an arbitrary feature dict (a live/what-if coil not yet in the ledger)."""
     if not db.capture_enabled():
         return _empty(enabled=False)
@@ -395,7 +452,8 @@ def similar_by_features(features: dict[str, Any], *, k: int = 5, same_category: 
             conn.close()
         query = features if isinstance(features, dict) else {}
         return _search(cases, None, query, k=k, same_category=same_category,
-                       weights=weights, exclude_coil_uid=exclude_coil_uid, redact=redact)
+                       weights=weights, exclude_coil_uid=exclude_coil_uid, redact=redact,
+                       min_shared_axes=min_shared_axes)
     except Exception as exc:  # noqa: BLE001 — retrieval never raises into a caller
         return _empty(error=type(exc).__name__)
 

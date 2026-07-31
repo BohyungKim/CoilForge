@@ -20,9 +20,15 @@ from coilforge.capture import db  # noqa: E402
 from coilforge.capture.observe import health  # noqa: E402
 from coilforge.capture.retrieve import (  # noqa: E402
     CORPUS_MIN,
+    _CATEGORICAL_AXES,
+    _NUMERIC_AXES,
     corpus_status,
+    features_from_result,
     similar_by_coil_uid,
     similar_by_features,
+)
+from coilforge.submittal.coilmaster_drawing_extract import (  # noqa: E402
+    resolve_product_line,
 )
 
 pytest.importorskip("numpy")
@@ -364,3 +370,140 @@ def test_health_embeds_corpus_meter(ledger):
     assert h["corpus"]["distinct_coils"] == 1
     assert h["corpus"]["threshold"] == CORPUS_MIN
     assert h["raw_private_data_returned"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2.1 — features_from_result + the "past corrections" panel data path
+# --------------------------------------------------------------------------- #
+def _derive_result(**over):
+    """A minimal derive/analyze RESULT dict in the real shape (extracted + top-level)."""
+    result = {
+        "product_type": "NOVA",
+        "unit_size": "B20",
+        "template_id": "coilmaster_dx_lh_1",
+        "extracted": {
+            "coil_category": "DX",
+            "hand": "LH",
+            "header_type": "single",
+            "special_feature": None,
+            "circuits": 1,
+            "rows": 4,
+            "feeds": 2,
+            "finned_height": 30.0,
+            "finned_length": 120.0,
+            "return_conn_size": "2-5/8",
+        },
+    }
+    result.update(over)
+    return result
+
+
+def test_features_from_result_covers_all_axes():
+    # A Terra product so terra_variant is exercised (non-None), from the real result shape.
+    result = _derive_result(product_type="TERRA H")
+    feats = features_from_result(result)
+    # Exactly the 14 case-retrieval axes — no more, no less (guards a silently dropped axis).
+    assert set(feats) == set(_CATEGORICAL_AXES) | set(_NUMERIC_AXES)
+    # suction_conn_size axis is sourced from the derive-time return_conn_size.
+    assert feats["suction_conn_size"] == "2-5/8"
+    # product_line is the picker label; terra_variant is DERIVED, not carried on the result.
+    assert feats["product_line"] == "TERRA H"
+    assert feats["terra_variant"] == resolve_product_line("TERRA H")[1]
+    # circuits is a numeric axis and must be sourced (MINOR regression from round 2).
+    assert feats["circuits"] == 1
+    assert feats["rows"] == 4 and feats["finned_length"] == 120.0
+
+
+def test_features_from_result_is_pure():
+    result = _derive_result()
+    snapshot = json.dumps(result, sort_keys=True)
+    features_from_result(result)
+    assert json.dumps(result, sort_keys=True) == snapshot  # no mutation of the input
+
+
+def test_features_query_matches_own_corpus_row(ledger):
+    """The crown-jewel guard for MAJOR-1: a coil must compare ~0 to ITSELF across the
+    analyze(ledger-write)/derive(query) boundary — proving features_from_result lands in the
+    SAME codebook the WRITE path stored. A categorical-only or mis-sourced axis would break it."""
+    _fam, tv = resolve_product_line("NOVA")  # keep corpus terra_variant consistent with the query
+    conn = db.connect()
+    try:
+        with conn:
+            _run(conn, "rA", project="P1")
+            _coil(conn, "cA", "rA", tag="A", category="DX", product="NOVA", terra_variant=tv,
+                  size="B20", hand="LH", header_type="single", template_id="coilmaster_dx_lh_1",
+                  circuits=1)
+            _input(conn, "rA", 0, "rows", 4)
+            _input(conn, "rA", 0, "feeds", 2)
+            _input(conn, "rA", 0, "finned_height", 30.0)
+            _input(conn, "rA", 0, "finned_length", 120.0)
+            _input(conn, "rA", 0, "suction_conn_size", "2-5/8")
+    finally:
+        conn.close()
+    res = similar_by_features(features_from_result(_derive_result()))
+    assert res["neighbors"][0]["tag"] == "A"
+    assert res["neighbors"][0]["distance"] == 0.0
+    # 7 categorical present (terra_variant None + special_feature None are absent) + 5 numeric.
+    assert res["neighbors"][0]["shared_axes"] == 12
+    assert res["corpus_min"] == CORPUS_MIN  # threshold echoed for the UI badge
+
+
+def test_case_neighbors_redacts_reason_and_project(ledger):
+    conn = db.connect()
+    try:
+        with conn:
+            _run(conn, "rA", project="SECRET-PROJ")
+            _coil(conn, "cA", "rA", tag="A", category="DX", product="NOVA", size="B20",
+                  hand="LH", circuits=1)
+            _input(conn, "rA", 0, "rows", 4)
+            _correction(conn, "rA", "cA", "CD", 5.5, 3.25, reason="john override note")
+    finally:
+        conn.close()
+    res = similar_by_features(features_from_result(_derive_result()), redact=True)
+    nb = res["neighbors"][0]
+    assert "project_number" not in nb  # raw project dropped on the browser surface
+    assert nb["corrections"][0]["before"] == 5.5 and nb["corrections"][0]["after"] == 3.25
+    assert "reason" not in nb["corrections"][0]  # free-text reason redacted
+
+
+def test_zero_correction_neighbor_lists_empty_corrections(ledger):
+    conn = db.connect()
+    try:
+        with conn:
+            _run(conn, "rA", project="P1")
+            _coil(conn, "cA", "rA", tag="A", category="DX", product="NOVA", size="B20",
+                  hand="LH", circuits=1)
+            _input(conn, "rA", 0, "rows", 4)
+    finally:
+        conn.close()
+    res = similar_by_features(features_from_result(_derive_result()))
+    assert res["neighbors"][0]["tag"] == "A"
+    assert res["neighbors"][0]["corrections"] == []  # neighbor shown, but no correction history
+
+
+def test_kill_switch_features_path_returns_empty(ledger, monkeypatch):
+    monkeypatch.setenv(db.ENV_CAPTURE_ENABLED, "0")
+    db.reset_caches_for_tests()
+    res = similar_by_features(features_from_result(_derive_result()))
+    assert res["enabled"] is False
+    assert res["neighbors"] == []
+
+
+def test_min_shared_axes_param_defaults_are_byte_identical(ledger):
+    # The additive min_shared_axes param must default to the module constant: passing None or
+    # MIN_SHARED_AXES explicitly reproduces the no-arg result exactly (A5 no-regression guard).
+    conn = db.connect()
+    try:
+        with conn:
+            for uid, tag in (("a", "A"), ("b", "B")):
+                _run(conn, f"r{uid}", project="P1")
+                _coil(conn, f"c{uid}", f"r{uid}", tag=tag, category="DX", product="NOVA",
+                      size="B20", hand="LH", circuits=1)
+                _input(conn, f"r{uid}", 0, "rows", 4)
+    finally:
+        conn.close()
+    from coilforge.capture.retrieve import MIN_SHARED_AXES
+
+    default = similar_by_coil_uid("ca")
+    assert similar_by_coil_uid("ca", min_shared_axes=None) == default
+    assert similar_by_coil_uid("ca", min_shared_axes=MIN_SHARED_AXES) == default
