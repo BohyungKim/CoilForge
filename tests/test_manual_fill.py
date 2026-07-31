@@ -386,3 +386,60 @@ def test_hand_fill_item_offered_even_when_the_hand_was_read():
     assert "coil_hand" in items
     assert items["coil_hand"]["current_value"] == "Left"
     assert result.get("coil_hand_defaulted") is None   # not flagged as assumed
+
+
+# --------------------------------------------------------------------------- #
+# DX-with-reheat casing depth across /derive (John 2026-07-30, real 2901)
+# --------------------------------------------------------------------------- #
+def _hgrh_siblings(conn=0.625, partner_tag="RHHGRC-1"):
+    return [{"tag": "CDXC-1", "conn_size": 1.125}, {"tag": partner_tag, "conn_size": conn}]
+
+
+def test_partner_conn_resolves_through_the_canonical_pairing():
+    """The pairing rule stays server-side, so the reheat-tag SPELLINGS all work."""
+    from coilforge.workflows.submittal_to_drawing import _partner_conn_from_spec
+
+    for partner_tag in ("RHHGRC-1", "RHHGRH-1", "HGRH-1"):
+        spec = {"tag": "CDXC-1", "sibling_coils": _hgrh_siblings(partner_tag=partner_tag)}
+        assert _partner_conn_from_spec(spec) == 0.625, partner_tag
+    # A standalone DX has no partner, and an explicit value wins.
+    assert _partner_conn_from_spec({"tag": "CDXC-1", "sibling_coils": []}) is None
+    assert _partner_conn_from_spec(
+        {"tag": "CDXC-1", "hgrh_partner_conn_size": 0.875,
+         "sibling_coils": _hgrh_siblings()}
+    ) == 0.875
+
+
+def test_derive_keeps_the_with_hgrh_casing_depth():
+    """Regression: a manual fill on a reheat-paired DX used to revert CD 8.125 -> 7.5
+    (and drag the distributor spacing S with it) because only the analyze path applied
+    the with-HGRH branch. Caught on the real 2901 submittal."""
+    spec = _base_spec(
+        tag="CDXC-1", product_type="TERRA H", unit_size="040", rows=5, feeds=15,
+        circuits=3, suction_conn_size=1.125, finned_height=24.0, finned_length=48.0,
+    )
+    standalone = derive_coil_template_drawing(dict(spec))
+    paired = derive_coil_template_drawing({**spec, "sibling_coils": _hgrh_siblings()})
+
+    assert standalone["slot_values"]["slot.CD"] == 7.5      # unchanged without a partner
+    assert paired["slot_values"]["slot.CD"] == 8.125        # matches the checklist formula
+    # CD feeds S = k*CD/(circuits+1), so the distributor spacing moves with it.
+    assert paired["slot_values"]["slot.S1"] == 2.0
+    assert paired["slot_values"]["slot.S3"] == 4.125
+
+
+def test_tier_a_fill_and_the_pairing_correction_compose():
+    """Both corrections must land in ONE recompute: the pairing helper merges its full
+    slot set and knows nothing about the Tier-A inputs, so running it afterwards would
+    silently undo the fill."""
+    spec = _base_spec(
+        tag="CDXC-1", product_type="TERRA H", unit_size="040", rows=5, feeds=15,
+        circuits=3, suction_conn_size=1.125, finned_height=24.0, finned_length=48.0,
+        qty_conn_per_header=3, application="INTEGRATED",
+    )
+    result = derive_coil_template_drawing({**spec, "sibling_coils": _hgrh_siblings()})
+    slots = result["slot_values"]
+    assert slots["slot.CD"] == 8.125     # pairing survived the Tier-A re-run
+    assert slots["slot.S1"] == 2.0
+    # ...and the Tier-A input is still the one the engine used (3 connections -> S3/S5).
+    assert slots["slot.S3"] == 4.125

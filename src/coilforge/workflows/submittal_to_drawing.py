@@ -879,6 +879,11 @@ def _rerun_slots_with_manual_inputs(
     byte-for-byte unchanged — the H4 regression guard). Returns the engine
     ``HeaderPrepopulateResponse`` (for the fill plan / unknown_unit_size), or None
     when the engine can't run (no product / size) or an input is invalid.
+
+    Carries the with-HGRH casing-depth branch (R-072) in the SAME call rather than
+    letting ``_apply_hgrh_pairing_cd`` run afterwards: that helper merges its FULL
+    recomputed slot set, and it knows nothing about the three Tier-A inputs, so a
+    second pass would silently undo the fill it was supposed to complement.
     """
     from coilforge.services.direct_coil_drawing_pipeline import (
         UnknownCoilInputError,
@@ -895,6 +900,11 @@ def _rerun_slots_with_manual_inputs(
     conn = ex.get("return_conn_size")
     if conn is None:
         conn = spec.get("suction_conn_size") or spec.get("return_conn_size")
+    partner_conn = (
+        _coerce_float(_partner_conn_from_spec(spec))
+        if str(coil_category).strip().upper() == "DX"
+        else None
+    )
     try:
         slots, response = build_drawing_slots(
             coil_type=coil_category,
@@ -907,6 +917,8 @@ def _rerun_slots_with_manual_inputs(
             qty_conn_per_header=spec.get("qty_conn_per_header"),
             application=spec.get("application"),
             header_count=spec.get("header_count"),
+            with_hgrh=True if partner_conn is not None else None,
+            hgrh_conn_size=partner_conn,
             finned_height=ex.get("finned_height"),
             finned_length=ex.get("finned_length"),
             tag=ex.get("tag"),
@@ -917,6 +929,31 @@ def _rerun_slots_with_manual_inputs(
     # additive/overwrite so a base input the re-run didn't produce can never drop a slot.
     result.setdefault("slot_values", {}).update(slots)
     return response
+
+
+def _partner_conn_from_spec(spec: dict[str, Any]) -> Any:
+    """The reheat partner's connection size for a ``/derive`` spec, or None.
+
+    ``derive`` resolves ONE coil, so the caller ships the sibling coils
+    (``sibling_coils: [{tag, conn_size}]``) and the pairing itself is decided HERE by
+    the canonical ``drain_pan_partner_tag`` — duplicating that rule in the browser
+    would fork the tag-alias table (RHHGRC / RHHGRH / HGRC / HGRH) and drift.
+    An explicit ``hgrh_partner_conn_size`` wins, for callers that already know it.
+    """
+    explicit = spec.get("hgrh_partner_conn_size")
+    if explicit is not None:
+        return explicit
+    siblings = spec.get("sibling_coils")
+    tag = spec.get("tag")
+    if not isinstance(siblings, list) or not tag:
+        return None
+    by_tag = {
+        str(s.get("tag")): s.get("conn_size")
+        for s in siblings
+        if isinstance(s, dict) and s.get("tag")
+    }
+    partner_tag = drain_pan_partner_tag(str(tag), list(by_tag))
+    return by_tag.get(partner_tag) if partner_tag else None
 
 
 def _apply_hgrh_pairing_cd(
@@ -1208,7 +1245,16 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # response for the fill plan (missing_inputs) and unknown_unit_size surfacing.
     fill_response = None
     if any(spec.get(key) is not None for key in _MANUAL_ENGINE_INPUT_KEYS):
+        # The Tier-A re-run carries the with-HGRH branch itself (see its docstring).
         fill_response = _rerun_slots_with_manual_inputs(result, spec)
+    else:
+        # A DX paired with a reheat HGRH takes the with-HGRH casing-depth branch (R-072).
+        # Analyze applies it (`_run_candidate_to_drawing_payload`), but this path never
+        # did, so ANY manual fill on a reheat-paired DX silently reverted CD 8.125 -> 7.5
+        # and dragged the distributor spacing S = k*CD/(circuits+1) with it (John
+        # 2026-07-30, caught on the real 2901). The partner's connection size comes from
+        # the caller because derive resolves ONE coil and cannot see its siblings.
+        _apply_hgrh_pairing_cd(result, _partner_conn_from_spec(spec))
 
     # 1c seam-A: capture engine provenance (rule_id + confidence per field) from the
     # Tier-A-fill response — the only wired non-frozen path that returns it.

@@ -2662,6 +2662,20 @@ function attachCoilDrawingPicker(templateDrawing) {
   });
 }
 
+// Every analyzed coil's tag + connection size, for the backend's drain-pan pairing. Only
+// data is shipped — which tag pairs with which stays in pdf_intake.drain_pan_partner_tag,
+// the one place that knows the RHHGRC / RHHGRH / HGRC / HGRH spellings.
+function siblingCoilsForPairing() {
+  return (state.pdfCoilPages || [])
+    .map((page) => {
+      const ex = (page.workflow?.template_drawing || {}).extracted || {};
+      const tag = ex.tag || page.tag;
+      if (!tag) return null;
+      return { tag, conn_size: ex.return_conn_size ?? null };
+    })
+    .filter(Boolean);
+}
+
 // Build the /api/coil-drawing/derive request body from a coil's extracted geometry
 // plus the engineer's product/size pick and any human-in-the-loop manual fills. Manual
 // engine inputs OVERRIDE the extracted spec value (a filled `rows` beats a blank/wrong
@@ -2696,6 +2710,12 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     application: engineInputs.application,
     header_count: engineInputs.header_count,
     qty_conn_per_header: engineInputs.qty_conn_per_header,
+    // A DX paired with a reheat HGRH takes the engine's with-HGRH casing-depth branch
+    // (CD 8.125, not 7.5 — and CD feeds the distributor spacing S). Analyze resolves the
+    // partner across the sibling coils; /derive handles ONE coil and cannot see them, so
+    // ship the siblings or the correction is lost on every manual fill. The PAIRING stays
+    // server-side (drain_pan_partner_tag) — repeating the tag-alias table here would fork it.
+    sibling_coils: siblingCoilsForPairing(),
     param_overrides: f.paramOverrides || [],
     // Phase 2 spec-field corrections (parallel capture channel; stage 'spec_field').
     spec_overrides: f.specOverrides || [],
