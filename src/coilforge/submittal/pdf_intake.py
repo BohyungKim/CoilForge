@@ -173,27 +173,46 @@ class _CoverPageDetection:
 # That row is (correctly) discarded by _is_cover_coil_row as an accessory, so the flag
 # is read from PAGE TEXT rather than from parsed rows.
 #
-# Deliberately NARROWER than workflows.submittal_to_drawing._detect_hgbp: this scans the
-# WHOLE document, so it must match only an EXPLICIT statement of the option. The EZ coil
-# drawing states hot gas bypass as an ASC count -- "(1)501-2-3/16-1.5(1 ASC)" -- and
-# matching that here would let one HGBP coil's drawing page blanket every DX coil in the
-# package. Excluding ASC is what keeps the whole-document scan safe.
+# Deliberately NARROWER than workflows.submittal_to_drawing._detect_hgbp: this scan spans
+# many pages, so it must match only an EXPLICIT statement of the option. Two readings of
+# the same words are NOT the option and must not match:
+#   * the EZ coil drawing states hot gas bypass as an ASC count --
+#     "(1)501-2-3/16-1.5(1 ASC)" -- so ASC is excluded entirely; matching it would let
+#     one HGBP coil's drawing page blanket every DX coil in the package;
+#   * a consulting engineer's spec narrative names the field refrigerant PIPE --
+#     "...liquid line, insulated hot gas bypass line, insulated hot gas line..."
+#     (2968 HTS Houston / College of the Mainland p.12) -- which tagged every DX coil in
+#     that package HGBP and got their drawings withheld by the Nova/Ventum-H product-line
+#     gate. "<token> line/pipe/piping" is the piping-run form, never the line item; the
+#     quoted option reads "HGBP VALVE ... hot-gas bypass stub-out on coils adder".
 _PACKAGE_HGBP_RE = re.compile(
-    r"\bHGBP\b|\bHOT[\s\-]*GAS[\s\-]*BY[\s\-]?PASS\b", re.IGNORECASE
+    r"(?:\bHGBP\b|\bHOT[\s\-]*GAS[\s\-]*BY[\s\-]?PASS\b)"
+    r"(?![\s\-]*(?:line|pipe|piping)\b)",
+    re.IGNORECASE,
 )
 
 
-def _package_hgbp_pages(pages: list[_TextPage]) -> tuple[int, ...]:
+def _package_hgbp_pages(
+    pages: list[_TextPage], *, cover_page: int | None = None
+) -> tuple[int, ...]:
     """Page numbers explicitly stating the hot-gas-bypass (HGBP) option, ascending.
 
     Empty when the option is absent. Callers treat a non-empty result as a
     PROJECT-level fact applied to the package's DX coils (never water/reheat coils --
     no HGBP template bucket exists for those).
+
+    ``cover_page`` (when the cover schedule was located) starts the scan window: the
+    option is a cover LINE ITEM, so pages BEFORE the cover -- the consulting engineer's
+    spec sections -- cannot state it and are skipped. The window has no upper bound
+    because the adder can sit on a cover continuation page that yields no coil rows;
+    :data:`_PACKAGE_HGBP_RE` carries the rest. Without a cover page the whole document
+    is scanned (previous behavior).
     """
     return tuple(
         page.page_number
         for page in sorted(pages, key=lambda p: p.page_number)
-        if _PACKAGE_HGBP_RE.search(page.text or "")
+        if (cover_page is None or page.page_number >= cover_page)
+        and _PACKAGE_HGBP_RE.search(page.text or "")
     )
 
 
@@ -649,7 +668,7 @@ def extract_coil_candidate_from_pdf_bytes(
     cover_detail_lines = _detail_lines_by_cover_row(pages, cover_detection)
     # Read after both OCR passes have rebuilt `pages`, so the scan covers every cover
     # detection tier -- including the two that never look at page text themselves.
-    hgbp_pages = _package_hgbp_pages(pages)
+    hgbp_pages = _package_hgbp_pages(pages, cover_page=cover_detection.page_number)
     cover_candidates = [
         _candidate_from_cover_row(
             row,
@@ -2069,6 +2088,24 @@ def _extract_detail_lines_from_page(page: _TextPage) -> tuple[SanitizedSubmittal
     return _extract_detail_lines_from_block(page, block)
 
 
+# The submittal states a custom coil coating as an ASTERISK-DELIMITED annotation inside the
+# coil detail block -- "*Finkote2 Epoxy Coil Coating*" -- either standalone (2968 HTS Houston
+# / College of the Mainland p.26, Cooling DX) or trailing another label/value line ("Coil
+# Weight (lbs) 32.94 *Finkote2 Epoxy Coil Coating*", p.27, Reheat HGRH). It is NOT a
+# "Coil Coating: <value>" label line, so the COIL_COATING _FieldPattern never matched it:
+# every coated coil read as the "Plain" Direct Coil default AND lost the R-080/R-081
+# "Do Not Coat Last 5-6 inches..." drawing note, which fires `only_when: coating_set`
+# (John 2026-07-31).
+#
+# BOTH asterisks are required. The same blocks carry UNTERMINATED footnote markers --
+# "*Separate electrical connection required for heater" (p.27, inside the condensing block,
+# whose boundary runs on into the Backup Heating section) -- so the closing "*" plus the
+# literal "coating" token is what keeps those out.
+_DETAIL_COATING_ANNOTATION_RE = re.compile(
+    r"\*\s*(?P<value>[^*]*\bcoating\b[^*]*?)\s*\*", re.IGNORECASE
+)
+
+
 def _extract_detail_lines_from_block(
     page: _TextPage,
     block: tuple[tuple[int, str], ...],
@@ -2106,6 +2143,20 @@ def _extract_detail_lines_from_block(
             )
         if trailing_contexts:
             contexts = trailing_contexts
+        # Read off `normalized_line`, not `value_line`: the annotation is not a label/value
+        # pair, and this must not consume the line -- p.27 carries the coating annotation
+        # and a Coil Weight reading on the SAME line, and both are wanted.
+        coating_match = _DETAIL_COATING_ANNOTATION_RE.search(normalized_line)
+        if coating_match:
+            order = _add_line(
+                extracted,
+                "COIL_COATING",
+                _clean_line(coating_match.group("value")),
+                order,
+                page,
+                line_number,
+                "detail page coating annotation",
+            )
         for field_pattern in _FIELD_PATTERNS:
             if field_pattern.source_key in {"COIL_TAG", "COIL_QUANTITY"}:
                 continue

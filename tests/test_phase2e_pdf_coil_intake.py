@@ -1858,23 +1858,65 @@ _HGBP_COVER_LINE = (
 )
 
 
+# The SAME words in a consulting engineer's spec narrative name the field refrigerant
+# PIPE, not the quoted option. Real source: 2968 HTS Houston / College of the Mainland,
+# Addendum No. 1 p.12 (2.2 COMPRESSOR item E) -- 9 pages BEFORE the p.21 cover schedule.
+# It tagged both DX coils in that package HGBP, and the Nova/Ventum-H product-line gate
+# then withheld the Terra H drawing (John 2026-07-31).
+_HGBP_SPEC_PROSE_LINE = (
+    "expansion valve, liquid line, insulated hot gas bypass line, "
+    "insulated hot gas line and insulated suction line."
+)
+
+
 def test_package_hgbp_detected_from_real_cover_line_item() -> None:
     pages = [
         _TextPage(page_number=1, text="1 CDXC-1 DX Cooling Coil"),
         _TextPage(page_number=2, text=_HGBP_COVER_LINE),
     ]
-    assert _package_hgbp_pages(pages) == (2,)
+    assert _package_hgbp_pages(pages, cover_page=1) == (2,)
 
 
 def test_package_hgbp_detected_on_continuation_page_yielding_no_coil_rows() -> None:
     """The adder sits on a later page that produces NO coil rows. The continuation
-    scan breaks on the first such page, so the HGBP read must not depend on it."""
+    scan breaks on the first such page, so the HGBP read must not depend on it --
+    which is why the cover-page scan window has no upper bound."""
     pages = [
         _TextPage(page_number=1, text="1 CDXC-1 DX Cooling Coil"),
         _TextPage(page_number=2, text="Notes    Start Up Assistance"),  # no coil rows
         _TextPage(page_number=3, text=_HGBP_COVER_LINE),
     ]
-    assert _package_hgbp_pages(pages) == (3,)
+    assert _package_hgbp_pages(pages, cover_page=1) == (3,)
+
+
+def test_package_hgbp_ignores_spec_narrative_before_the_cover_page() -> None:
+    """The 2968 regression. The option is a cover LINE ITEM, so a spec section ahead
+    of the cover schedule cannot state it -- scanning it blanket-tagged every DX coil
+    in the package and got their drawings withheld."""
+    pages = [
+        _TextPage(page_number=12, text=_HGBP_SPEC_PROSE_LINE),
+        _TextPage(page_number=21, text="1 CDXC-1 DXC Cooling TR_C_032 LH"),
+    ]
+    assert _package_hgbp_pages(pages, cover_page=21) == ()
+
+
+def test_package_hgbp_ignores_the_piping_run_form_inside_the_scan_window() -> None:
+    """Second, independent guard: "<token> line" is a refrigerant PIPE, never the
+    quoted option -- so the prose is ignored even when it lands at/after the cover."""
+    pages = [_TextPage(page_number=1, text=_HGBP_SPEC_PROSE_LINE)]
+    assert _package_hgbp_pages(pages, cover_page=1) == ()
+    assert _package_hgbp_pages(pages) == ()  # and under the no-cover whole-doc scan
+
+
+def test_package_hgbp_line_item_still_wins_on_a_page_that_also_has_the_prose() -> None:
+    """Recall guard: excluding the piping-run form must not cost a real adder that
+    shares its page."""
+    pages = [
+        _TextPage(
+            page_number=2, text=f"{_HGBP_SPEC_PROSE_LINE}\n{_HGBP_COVER_LINE}"
+        ),
+    ]
+    assert _package_hgbp_pages(pages, cover_page=1) == (2,)
 
 
 def test_package_hgbp_ignores_asc_count_on_a_coil_drawing_page() -> None:
@@ -1972,3 +2014,67 @@ def test_drawing_notes_never_diverge_from_the_drawings_own_notes() -> None:
         checked += 1
 
     assert checked, "fixture produced no drawing notes — the guard would be vacuous"
+
+
+# --------------------------------------------------------------------------- #
+# Custom coil coating: the submittal states it as an ASTERISK-DELIMITED annotation
+# inside the coil detail block, not as a "Coil Coating: <value>" label line. Missing
+# it made every coated coil read as the "Plain" Direct Coil default AND dropped the
+# R-080/R-081 "Do Not Coat Last 5-6 inches..." note, which fires `only_when:
+# coating_set`. Real source: 2968 HTS Houston / College of the Mainland p.26 (Cooling
+# DX, standalone) and p.27 (Reheat HGRH, trailing a Coil Weight line) -- John
+# 2026-07-31. Fixtures are synthetic.
+# --------------------------------------------------------------------------- #
+def test_detail_coating_annotation_extracted_when_standalone() -> None:
+    page = _TextPage(
+        page_number=26,
+        text="Cooling DX\nRows: 6\n*Finkote2 Epoxy Coil Coating*\n",
+    )
+    assert _detail_lines_as_dict(page)["COIL_COATING"] == "Finkote2 Epoxy Coil Coating"
+
+
+def test_detail_coating_annotation_does_not_consume_its_host_line() -> None:
+    """On the HGRH page the annotation trails a real label/value pair. Both readings are
+    wanted: the coating comes off the flattened text line while Coil Weight comes off the
+    structured cell (tables are seeded first and `_add_line` is first-wins), so neither
+    displaces the other. Verified against the real 2968 p.27 -- COIL_WEIGHT_LBS reads
+    '32.94', not the annotation-polluted text-line form."""
+    table = (
+        ("Reheat Hot Gas Reheat Coil", "", ""),
+        ("", "", ""),
+        ("Coil", "", ""),
+        ("Coil Weight (lbs)", "32.94", ""),
+    )
+    page = _TextPage(
+        page_number=27,
+        text=(
+            "Reheat Hot Gas Reheat Coil\n"
+            "Coil Entering Coil Operating Setpoint\n"  # sets the "coil" label context
+            "Coil Weight (lbs) 32.94 *Finkote2 Epoxy Coil Coating*\n"
+        ),
+        tables=(table,),
+    )
+    fields = _detail_lines_as_dict(page)
+    assert fields["COIL_COATING"] == "Finkote2 Epoxy Coil Coating"
+    assert fields["COIL_WEIGHT_LBS"] == "32.94"
+
+
+def test_detail_coating_annotation_ignores_unterminated_footnote_markers() -> None:
+    """The detail block also carries one-sided footnote markers. Requiring the CLOSING
+    asterisk is what separates the coating annotation from those."""
+    page = _TextPage(
+        page_number=27,
+        text=(
+            "Reheat Hot Gas Reheat Coil\nRows: 1\n"
+            "*Separate electrical connection required for heater\n"
+        ),
+    )
+    assert "COIL_COATING" not in _detail_lines_as_dict(page)
+
+
+def test_detail_coating_annotation_absent_on_an_uncoated_coil() -> None:
+    """Regression guard: Oxygen8 submittals simply omit the annotation when there is no
+    coating, and a missing value must keep reading as "no coating" (R-080/R-081 stay
+    silent) rather than being invented."""
+    page = _TextPage(page_number=26, text="Cooling DX\nRows: 6\nTotal Feeds: 18\n")
+    assert "COIL_COATING" not in _detail_lines_as_dict(page)
