@@ -1,6 +1,38 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-07-31 (**[Case Retrieval 트랙] 2.1 커밋 — 그리고 커밋하면서 드러난 브랜치 파손 복구
+> 마지막 갱신: 2026-08-02 (**[제출물 파싱 트랙] 2968이 드러낸 커버/상세 오독 2건 — 971e2e4**: John이
+> "왜 도면에 에러가 뜨냐"고 물어온 실 제출물(2968 HTS Houston / College of the Mainland) 하나에서 결함 2개가
+> 나왔고, 둘 다 원인이 **pdf_intake의 읽기 규칙**이었다. ①**HGBP 오탐** — `_package_hgbp_pages`가 124p 문서
+> 전체를 훑어 p.12(Addendum 2.2 COMPRESSOR item E)의 "...liquid line, **insulated hot gas bypass line**..."에
+> 걸렸다. 이건 컨설턴트 스펙의 **현장 냉매 배관 서술**이지 견적된 옵션이 아닌데, 패키지의 모든 DX 코일에
+> HGBP가 찍히고 TERRA H로 해석된 CDXC-1이 `_gate_hgbp_unsupported_product_line`에 걸려 도면이 보류됐다.
+> **게이트 자체는 정상 작동** — Nova/Ventum-H 기하가 Terra 태그로 나가는 걸 막았다(오탐이 상류에 있었을 뿐).
+> 고침은 두 겹: 스캔 창을 **커버 페이지 이후로 제한**(옵션은 커버 라인아이템이므로 커버 앞 스펙 섹션은 그걸
+> 말할 수 없다) + 정규식에서 **"<토큰> line/pipe/piping" 배관 서술형 배제**. 상한은 두지 않았다 — 어더가 코일
+> 행을 내지 않는 커버 연속 페이지에 앉는 실제 케이스를 **기존 테스트가 이미 문서화**하고 있었다. 처음 제안한
+> "부품번호/VALVE/adder 동반 조건"은 **구현 중 폐기** — 문제의 산문이 이미 "expansion **valve**"를 포함했고,
+> 마커 없이 표기한 패키지를 조용히 놓치는 쪽(→ 잘못된 Header-N 도면이 무음 링크)이 눈에 보이는 보류보다 나쁘다.
+> ②**코팅 미추출** — 제출물은 커스텀 코팅을 상세 블록의 **별표 주석**으로 적는다(`*Finkote2 Epoxy Coil Coating*`,
+> p.26 단독 / p.27은 Coil Weight 줄에 꼬리로). "Coil Coating: <값>" 라벨 줄이 아니라 `COIL_COATING` 패턴이
+> 매칭하지 못했고, 코팅 코일이 전부 Direct Coil 기본값 **"Plain"**으로 읽혔다. 드롭다운보다 심각한 건
+> **R-080/R-081 "Do Not Coat Last 5-6 inches..." 도면 노트가 통째로 빠진 것** — `only_when: coating_set`이라
+> coating이 비면 발화하지 않는다. 닫는 별표를 **필수**로 요구해 같은 블록의 한쪽만 있는 각주
+> (`*Separate electrical connection required for heater`)를 걸러내고, `normalized_line`에서 읽어 host 줄을
+> 소비하지 않는다(p.27은 Coil Weight와 공존). **실앱 검증**(수정 코드 로드한 별도 인스턴스, 브라우저 실업로드):
+> Coil Coating `Plain`→`review required`, Drawing Notes에 `Do Not Coat Last 5-6 inches of Distributor
+> Extensions.` 추가, Drawing이 `HGBP (special) — no matching template / withheld`→
+> `DX / LH / Header 3 — logic-derived (coilmaster_dx_lh_header3)` + `DIMS READ 0`→`3`. 업로드 10MB 상한 때문에
+> UI는 관련 8p 추림본으로 돌렸으나, **원본 124p 무트리밍**을 엔드포인트가 부르는 워크플로 함수에 그대로 태워
+> 동일 결과 재확인(`cover_page_hgbp_pages []` · `special_feature None` · 두 코일 모두 coating
+> `'Finkote2 Epoxy Coil Coating'`(review_required) + 도면 생성). **1188 green**(1184+8). 곁가지 교훈 2건:
+> ⓐ같이 손댔던 `web/app.js` 리뷰노트 개선은 **검증해보니 죽은 코드**였다 — `field.notes`를 그리는 곳은
+> `pasteReadyNotes`(Review & Export 표, **서버** surface) 한 곳뿐이고 내가 고친 `directCoilCoatingField`는
+> **브라우저** surface(`fieldsByLabel`)로 가는데 `renderDcInputRow`는 value/status만 쓴다 → DOM 전수 스윕
+> 0건 확인 후 **원복**(diff 0). 화면 개선은 전부 Python 쪽에서 나온 것. ⓑUI 검증이 프런트의 자동
+> `/api/checklist/fill` 호출을 타서 **Downloads에 .xlsx를 쓰고 journal 3줄을 남겼다** — 클릭한 건
+> "Analyze PDF" 하나뿐이었다. 검증 산출물은 승인 후 전량 삭제. ⚠️ John의 :8011은 `--reload`가 없어
+> **재시작해야 반영**.
+> 이전: **[Case Retrieval 트랙] 2.1 커밋 — 그리고 커밋하면서 드러난 브랜치 파손 복구
 > (343b972 · f54d5f1)**: 미커밋으로 묵혀둔 Stage 2.1을 검토·커밋하려다 **브랜치가 이미 깨져 있던 걸 발견**.
 > `fb894da`(7/29, 다른 세션)가 derive 심에 `features_from_result` **import를 커밋**했는데 그 함수는 작업트리에만
 > 있었음. import가 `try` **바깥**이고 `/derive` 라우트는 `UnknownCoilInputError`/`ValidationError`만 잡으므로
@@ -572,7 +604,30 @@
   회귀 8개(증상별 가드 + **도면 노트와 패널 노트가 갈라지면 실패하는 불변식 테스트**), **1150 green**,
   frozen 3파일 무접촉, 전 값 `review_required`·`export_allowed` False.
   **John 눈확인 통과 + 푸시 완료 (`e548475..5930fc0`, 2026-07-29)** — 브랜치 `claude/ambient-supplier`,
-  다른 세션의 capture/tuning 미커밋 작업은 격리. 🆕 이번 세션
+  다른 세션의 capture/tuning 미커밋 작업은 격리.
+- [x] **[제출물 파싱 트랙] 2968이 드러낸 커버/상세 오독 2건 (971e2e4, John 리포트 2026-08-01~02)** — 실 제출물
+  하나(2968 HTS Houston / College of the Mainland, 124p)에서 결함 2개. 레이어는 둘 다 **source extraction**
+  (`pdf_intake.py`) — 게이트·기하·렌더러·템플릿 카탈로그 무접촉.
+  **①HGBP 오탐**: `_package_hgbp_pages`의 전체 문서 스캔이 p.12 컨설턴트 스펙의 "insulated hot gas bypass
+  **line**"(현장 냉매 배관 서술)에 걸려 패키지 전 DX 코일에 HGBP를 찍었고, TERRA H인 CDXC-1이
+  `_gate_hgbp_unsupported_product_line`에 막혀 도면 보류. 게이트는 제 역할을 한 것(Nova/Ventum-H 기하가 Terra
+  태그로 나가는 걸 차단) — 결함은 상류. 고침: **스캔 창을 커버 페이지 이후로 제한**(`cover_page` 인자) +
+  정규식에서 **`<토큰> line/pipe/piping` 배관 서술형 배제**. 상한 없음 — 어더가 코일 행 없는 커버 연속
+  페이지에 앉는 케이스를 기존 테스트가 문서화. 긍정 마커(부품번호/VALVE/adder) 요구는 **폐기**: 문제의 산문이
+  이미 `expansion valve`를 포함하고, 미탐(잘못된 Header-N 도면 무음 링크)이 오탐(눈에 보이는 보류)보다 나쁘다.
+  **②코팅 미추출**: 코팅이 상세 블록의 별표 주석(`*Finkote2 Epoxy Coil Coating*`)으로 적혀 라벨/값 패턴이
+  못 읽었고 → Direct Coil 기본값 `Plain` + **`only_when: coating_set`인 R-080/R-081 "Do Not Coat Last 5-6
+  inches..." 노트 전면 누락**. `_DETAIL_COATING_ANNOTATION_RE` 신설(닫는 별표 필수 → 한쪽만 있는 각주
+  `*Separate electrical connection required for heater` 배제), `normalized_line`에서 읽어 host 줄 무소비
+  (p.27은 Coil Weight와 공존, 표 경로가 준 `32.94` 유지).
+  **실앱 검증**(수정 코드 로드 인스턴스에 브라우저 실업로드): `Plain`→`review required`, Drawing Notes에
+  `Do Not Coat Last 5-6 inches of Distributor Extensions.` 추가, Drawing `HGBP (special) — no matching
+  template / withheld`→`DX / LH / Header 3 — logic-derived (coilmaster_dx_lh_header3)`, `DIMS READ 0`→`3`.
+  업로드 10MB 상한 때문에 UI는 8p 추림본, **원본 124p 무트리밍은 워크플로 함수로 별도 재확인**(동일 결과).
+  신규 8테스트, **1188 green**. 곁가지: ⓐ함께 손댄 `web/app.js` 리뷰노트 개선은 렌더 경로 부재로 죽은 코드임을
+  DOM 스윕으로 확인하고 **원복**(diff 0) — 화면 개선은 전부 Python 쪽 산물. ⓑUI 검증이 프런트의 자동
+  `/api/checklist/fill`을 타 Downloads에 .xlsx를 쓰고 journal 3줄을 남김(클릭은 "Analyze PDF" 하나뿐) →
+  승인 후 전량 삭제. ⚠️ John의 :8011은 `--reload` 없음 → **재시작해야 반영**. 🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
@@ -735,4 +790,9 @@
   `R-081`은 `[HGRH]` 전용이라 CWC/HWC는 coating을 지정해도 노트가 늘지 않는다(HERESITE 실측 확인).
   20조합 전수조사에서 **유일하게 남은 설계 공백**. 규칙이 없는 것이라 지어내지 않음 — 물코일에도
   coating 제외 노트가 필요한지 John 확인 후 R-080/081 범위 확장 여부 결정.
+  **2026-08-02 승격 — 이론 → 실전:** 971e2e4가 별표 주석(`*Finkote2 Epoxy Coil Coating*`)에서 coating을
+  실제로 추출하기 시작했다. 종전엔 제출물에서 coating이 **거의 채워지지 않아** 이 공백이 사실상 잠자고
+  있었는데, 이제 CWC/HWC를 포함한 제출물이 coating을 명시하면 **DX/HGRH만 노트가 늘고 물코일은 조용히
+  안 는다** = 같은 패키지 안에서 코일 타입에 따라 노트가 갈리는 게 눈에 보이게 된다. 2968은 DX+HGRH만이라
+  드러나지 않았음. 물코일이 섞인 코팅 제출물이 들어오기 전에 John 판정을 받는 편이 낫다.
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류
