@@ -27,7 +27,15 @@ is no install step or `pyproject.toml`.
 - Full suite: `python -m pytest -q`
 - Single file: `python -m pytest tests/test_header_prepopulate_engine.py -q`
 - Single test: `python -m pytest tests/test_header_prepopulate_engine.py::test_name -x`
-- Run the local web app (Windows, port 8011): double-click / run `run_server.bat`
+- Run the local web app (Windows, port 8011 by default): double-click / run `run_server.bat`,
+  or `run_server.bat 8012` to run a second project side by side. A busy port is auto-avoided
+  by scanning upward and the port actually used is printed on startup, so **read the window**
+  rather than assuming 8011. Excel COM is serialized across every running server
+  (`common/excel_lock.py`), so two checklist fills queue instead of leaving zombie EXCEL.EXE
+  processes; a fill still blocked after the bounded wait returns HTTP **409** (distinct from
+  the 501 that means Excel/pywin32 is absent), and `/api/deliverable/finalize` treats 409 as a
+  hard error rather than filing the order folder without its .xlsx. `COILFORGE_EXCEL_LOCK=0`
+  disables the guard.
   (NOTE: `run_server.bat` runs uvicorn WITHOUT `--reload` — restart it after any `src/`
   edit, and re-analyze the PDF in the browser since `pdfCoilPages` is cached client-side,
   or your change won't show. The manual `--reload` entrypoint below auto-reloads.)

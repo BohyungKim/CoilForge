@@ -21,7 +21,7 @@ Hard rules:
    `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__javascript_tool`
    Read `web/ccsi/ccsi_nav_map.json` for the handlers.
 
-2. **Find the tabs**: CCSI (`ccsi.ie`, on the project's FullDetails or a revision) + CoilForge (`:8011`).
+2. **Find the tabs**: CCSI (`ccsi.ie`, on the project's FullDetails or a revision) + CoilForge (`localhost`, any port).
 
 3. **[CONFIRM] Export the CCSI report.** On the project's revision row, invoke
    `retrieveReport({revisionId}, {projectId})` (title "Latest Report", `fa fa-list`) — read the

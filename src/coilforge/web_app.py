@@ -60,6 +60,7 @@ from coilforge.checklist.mapping import build_checklist_fill
 from coilforge.checklist.from_workflow import coil_inputs_from_candidates
 from coilforge.checklist.compare import build_review
 from coilforge.checklist.excel_writer import write_checklist
+from coilforge.common.excel_lock import ExcelBusyError
 from coilforge.checklist.overrides import normalize_coil_overrides
 from coilforge.case_journal import record_coil_milestone
 
@@ -764,6 +765,10 @@ async def _run_or_reuse_checklist(
             write_checklist, fill, dest_name=_checklist_output_name(filename)
         )
         review = build_review(fill, writer_result)
+    except ExcelBusyError as exc:  # another Excel write holds the single-flight guard
+        # BEFORE the RuntimeError clause on purpose: 409 (retryable, someone else is
+        # mid-write) must not be swallowed by the 501 that means "Excel is missing".
+        return _ChecklistOutcome(None, None, str(exc), 409)
     except RuntimeError as exc:  # Excel / pywin32 unavailable
         return _ChecklistOutcome(None, None, str(exc), 501)
     except Exception as exc:  # noqa: BLE001 -- surface COM/fill failures clearly
@@ -1242,6 +1247,11 @@ async def ambient_excel(request: Request):
         raise HTTPException(status_code=500, detail=f"Excel fill mapping failed: {exc}")
     try:
         result = write_ambient_excel(fill)
+    except ExcelBusyError as exc:  # the shared single-flight guard is held elsewhere
+        # Must precede the RuntimeError clause, and must exist at all: without it the
+        # generic `except Exception` below would report a busy guard as a 500
+        # "Excel write failed" — the same misdiagnosis the guard was added to remove.
+        raise HTTPException(status_code=409, detail=str(exc))
     except RuntimeError as exc:  # Excel COM / pywin32 unavailable
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:  # no coil sheets (e.g. only water coils)
@@ -1350,6 +1360,19 @@ async def deliverable_finalize(request: Request):
         submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001",
         coil_overrides=payload.get("checklist_overrides"),
     )
+    # A BUSY guard is a hard error here, not a degraded status. Everywhere else a
+    # checklist failure is absorbed into `checklist_status` and the order documents are
+    # filed anyway — which was safe while failures meant "Excel is absent". The
+    # single-flight guard adds a TRANSIENT failure, and absorbing that would file the
+    # DirectCoil folder with no .xlsx purely because a fill was running in the next tab.
+    if checklist_outcome.http_status == 409:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{checklist_outcome.reason} — the Coil Checklist is filed with this "
+                "deliverable, so finalize was stopped rather than filing without it."
+            ),
+        )
     checklist_path = checklist_outcome.saved_path
     checklist_status = "ok" if checklist_outcome.review is not None else (
         checklist_outcome.reason or "unavailable"

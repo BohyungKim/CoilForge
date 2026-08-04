@@ -2,7 +2,7 @@
 description: Sync CoilForge → CCSI across a multi-coil project — match the open CCSI coil to its CoilForge coil by tag, push the drawing params, read back and colour green/red, and track per-coil progress across the whole project (review aid; John confirms every save).
 ---
 
-John has a multi-coil project open in **CoilForge** (`localhost:8011`, several coils in the
+John has a multi-coil project open in **CoilForge** (`localhost` on any port, several coils in the
 sidebar) and is working the same project on the external **CCSI** site (`coil.ccsi.ie`). He wants
 to run the push + compare for **every** coil, not one at a time. This command drives one coil per
 run — matched by tag — and keeps a running tally so he knows which coils are done and which remain.
@@ -23,7 +23,7 @@ Hard rules (same as `/ccsi-fill` + `/ccsi-compare`):
    `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__javascript_tool`
 
 2. **Find the tabs** with `tabs_context_mcp` (`createIfEmpty:true` if none). CCSI tab = host ends
-   `ccsi.ie` (on `/Coils/Edit/<id>`); CoilForge tab = `localhost`/`127.0.0.1:8011`. If the CoilForge
+   `ccsi.ie` (on `/Coils/Edit/<id>`); CoilForge tab = `localhost`/`127.0.0.1` on any port. If the CoilForge
    tab shows "No PDF analyzed", tell John to analyze the project's submittal in CoilForge first
    (he can drag the PDF in — no upload-size limit on a manual drag).
 

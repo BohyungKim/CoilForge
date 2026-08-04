@@ -4,7 +4,7 @@ description: Turn on the CCSI autofill filler on the open CCSI Direct Coil form 
 
 John is on the external **CCSI Online "Direct Coil" DX form** (`coil.ccsi.ie`) and wants
 the CoilForge filler turned on, with the drawing parameters (13 base plus any multi-header
-I2/S2… the coil produced) carried over from his open **CoilForge** tab (`localhost:8011` / `127.0.0.1:8011`). Do it by driving both tabs
+I2/S2… the coil produced) carried over from his open **CoilForge** tab (`localhost` / `127.0.0.1`, any port). Do it by driving both tabs
 directly via Claude-in-Chrome — **no clipboard, no Tampermonkey**. This is the same flow
 the team validated live; it just removes the manual steps.
 
@@ -25,9 +25,9 @@ Hard rules:
 
 2. **Find the tabs** with `tabs_context_mcp` (`createIfEmpty:true` if no group). Identify:
    - **CCSI tab** = url host ends with `ccsi.ie`
-   - **CoilForge tab** = host `localhost` or `127.0.0.1` on port `8011`
+   - **CoilForge tab** = host `localhost` or `127.0.0.1` on ANY port (the launcher takes a port argument, so parallel projects sit on 8011, 8012, …)
    If either is missing from the MCP group, ask John to confirm both are open in this Chrome
-   window (or navigate a spare tab to `http://localhost:8011/`). Never reuse tab ids from a
+   window (or navigate a spare tab to `http://localhost:8011/` — or whichever port that server window printed on startup). Never reuse tab ids from a
    prior session.
 
 3. **Build the payload from the CoilForge tab** — run on the CoilForge `tabId` with
