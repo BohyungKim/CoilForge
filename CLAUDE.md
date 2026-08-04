@@ -461,7 +461,19 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   2026-06-28 (`R-023` DX return spacing, `R-046` HGRH supply/return, `R-067` CWC/HWC
   vent-drain) — it is no longer a blanket LOW/blocked line. What genuinely stays gated:
   `R-082` Terra mounting holes (blocked/deferred) and HGRH Supply 2/3/4 I/O (review-required —
-  a software default, not derivable). The Terra V **CWC/HWC drawing** was the third item until
+  a software default, not derivable). **Since 2026-08-04 the code matches that sentence:** the
+  slot layer used to broadcast R-046's Supply-**1** constant to every odd header, so a
+  multi-header Terra V HGRH printed 2.75 on positions the SOP declines to specify (the
+  checklist caught it as `I3: CoilForge 2.75 vs Checklist TBD`). `slot.I{2k-1}` for k≥2 is now
+  left blank; the drawing prints one more "REVIEW REQUIRED" callout (18→19 on a header-2
+  reference) instead of a fabricated number, and the panel names R-046 as the reason rather
+  than the generic "engine did not derive this". Terra V HGRH `slot.S{2k-1}` past the R-052
+  return-spacing list is blanked for the same reason — it used to fall through to the generic
+  even-spacing net and print DX distributor spacing on a reheat coil (reachable when the
+  CoilMaster prose states more circuits than connections-per-header). Both are Terra-V-HGRH
+  scoped; every other line's broadcast is unchanged. Blanks are counted by
+  `project_gate` as `blocked` exceptions, so `exceptions_K` rises for these coils (pinned by
+  `tests/test_terra_v_hgrh_headers.py`). The Terra V **CWC/HWC drawing** was the third item until
   John released it 2026-07-28 — it now draws on the shared water template with Terra V values.
 
 ### MVP checklist

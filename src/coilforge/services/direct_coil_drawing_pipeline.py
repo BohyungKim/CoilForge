@@ -360,7 +360,15 @@ def build_drawing_slots(
     if circuits:
         for k in range(1, circuits + 1):
             supply_id, return_id = 2 * k - 1, 2 * k
-            if hdr_i is not None:
+            if hdr_i is not None and not (is_hgrh and is_terra_v and k > 1):
+                # Terra V HGRH: R-046 asserts Supply **1** I/O = 2.75 and its own comment
+                # says Supply 2/3/4 I/O "is NOT derivable here and stays review-required"
+                # (a software default, per the SOP). Broadcasting the Supply-1 constant to
+                # every odd header printed 2.75 on headers the SOP declines to specify —
+                # exactly the "never invent an engineering value" line. Left blank instead,
+                # with the panel naming why (drawing_param_resolver._WITHHELD_REASON...).
+                # Scoped to Terra V HGRH: every other line's supply_io comes from rules
+                # that DO cover all headers, so their broadcast is unchanged.
                 slots[f"slot.I{supply_id}"] = hdr_i
             if hdr_hdx is not None:
                 slots[f"slot.HDx{supply_id}"] = hdr_hdx
@@ -396,6 +404,14 @@ def build_drawing_slots(
                     # this branch wins for Terra V so the checklist-family HGRH S below never
                     # applies to Terra V (guards the SOP-confirmed Terra V geometry).
                     slots[f"slot.S{supply_id}"] = round(cd - return_spacing[k - 1], 4)
+                elif is_terra_v and is_hgrh:
+                    # Terra V HGRH past the return-spacing list has NO basis for S. Its S is
+                    # CD - Rn (SOP, the branch above) and Rn only runs to the connections-
+                    # per-header count, so this header has no Rn to subtract. Falling through
+                    # reached the generic net below and printed the DX even-spacing
+                    # k*CD/(circuits+1) on a REHEAT coil (a 6-circuit Terra V HGRH drew
+                    # S5=1.6071 … S11=3.2143). Leave it blank; the panel names why.
+                    pass
                 elif is_hgrh and not is_terra_v and conn_size is not None:
                     # HGRH supply S is family-branched (checklist HGRH!C46), NOT the DX
                     # even-spacing: TERRA H / VENTUM+ -> conn, NOVA / VENTUM H -> CD-formula.

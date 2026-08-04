@@ -34,7 +34,10 @@ from coilforge.drawing.parameters import (
 )
 from coilforge.services.direct_coil_drawing_pipeline import build_header_request
 from coilforge.services.header_prepopulate_engine import prepopulate, round_eighth
-from coilforge.submittal.coilmaster_drawing_extract import product_size_options
+from coilforge.submittal.coilmaster_drawing_extract import (
+    product_size_options,
+    resolve_product_line,
+)
 
 # Drawing param key -> scalar engine field (HIGH values).
 PARAM_TO_ENGINE_FIELD: dict[str, str] = {
@@ -116,6 +119,55 @@ _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
     )
     for category in ("CWC", "HWC")
 }
+
+# Per-(coil category, terra variant, key BASE) reason for a value the engine could have
+# written and DELIBERATELY did not. Distinct in kind from the two maps above, which
+# describe a missing INPUT: these say "no rule covers this position, so nothing was
+# invented". Without them the panel falls back to "Engine did not derive this
+# dimension", which reads as a bug on a value withheld on SOP grounds — and Phase C
+# then paints it red with no explanation. Keyed on the base letter so every header
+# index (I2/I3/I4) inherits the same reason.
+_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {
+    ("HGRH", "TERRA_V", "I"): (
+        "Terra V HGRH Supply I/O is SOP-confirmed for Supply 1 only (R-046); Supply 2+ "
+        "is a software default, not derivable — fill it in if the drawing needs it."
+    ),
+    ("HGRH", "TERRA_V", "S"): (
+        "Terra V HGRH supply spacing is S = CD − Rn (SOP), and Rn only runs to the "
+        "connections-per-header count — this header has no Rn to subtract."
+    ),
+}
+
+_KEY_BASE_RE = re.compile(r"^([A-Za-z]+)")
+
+
+def _key_base(key: str) -> str:
+    """Panel key -> its letter base ("I2" -> "I", "HDx1" -> "HDx", "CD" -> "CD")."""
+    m = _KEY_BASE_RE.match(key or "")
+    return m.group(1) if m else (key or "")
+
+
+def _blank_reason(
+    key: str, *, coil_category: str, terra_variant: str | None, product_chosen: bool
+) -> str:
+    """The message a blank drawing-parameter row shows in place of a number.
+
+    Order matters: a DELIBERATE withholding outranks the generic "missing input"
+    wording, because the two send the engineer to different places (supply the value
+    vs. hunt for a submittal field that was never going to exist).
+    """
+    if not product_chosen:
+        return "Pick a product line + unit size to derive this dimension."
+    withheld = _WITHHELD_REASON_BY_VARIANT.get(
+        (coil_category, (terra_variant or "").upper(), _key_base(key))
+    )
+    if withheld:
+        return withheld
+    return _BLANK_REASON_BY_CATEGORY.get(
+        (coil_category, key)
+    ) or _BLANK_REASON_AFTER_PRODUCT.get(
+        key, "Engine did not derive this dimension; review required."
+    )
 
 # ZD (zone depth) is a fixed constant per owner rule (John 2026-06-22), applied to
 # every header assembly (ZD, ZD2, ZD3, ...). It is NOT an engine slot or selection
@@ -398,6 +450,13 @@ def parameter_set_from_template_drawing(
     td = template_drawing or {}
     product_chosen = bool(td.get("product_type") and td.get("unit_size"))
     coil_category = str((td.get("extracted") or {}).get("coil_category") or "").upper()
+    # Terra variant is DERIVED here, not threaded in: no caller has it (grep for
+    # terra_variant across this module, submittal_to_drawing and pdf_to_template_drawing
+    # returns nothing), and one of the four call sites is capture/record.py, which builds
+    # the correction ledger's pristine baseline through this same function — a threaded
+    # argument that call site forgot would make the baseline's blocked_reason silently
+    # disagree with the live panel.
+    _, terra_variant = resolve_product_line(td.get("product_type"))
 
     parameters: dict[str, DrawingParameter] = {}
     review_required: list[str] = []
@@ -425,14 +484,12 @@ def parameter_set_from_template_drawing(
             # Mappable, but the drawing has not derived it yet. Before a product line +
             # unit size are chosen the engine is gated; after, an empty slot is a missing
             # input — name it so the blank explains itself instead of reading as a bug.
-            if product_chosen:
-                reason = _BLANK_REASON_BY_CATEGORY.get(
-                    (coil_category, key)
-                ) or _BLANK_REASON_AFTER_PRODUCT.get(
-                    key, "Engine did not derive this dimension; review required."
-                )
-            else:
-                reason = "Pick a product line + unit size to derive this dimension."
+            reason = _blank_reason(
+                key,
+                coil_category=coil_category,
+                terra_variant=terra_variant,
+                product_chosen=product_chosen,
+            )
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
                 mode="blocked", status="review_required", review_required=True,
@@ -450,10 +507,18 @@ def parameter_set_from_template_drawing(
     # bridge and degrade-to-present logic live in multi_header_logical_values.
     for key, value in multi_header_logical_values(slot_values, circuits=circuits):
         if value is None and not key.startswith("ZD"):
+            # Consults the SAME reason lookup as the base loop above. It used to hardcode
+            # its message, so a deliberately-withheld multi-header value (Terra V HGRH I2+)
+            # was indistinguishable from an engine that simply failed.
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
                 mode="blocked", status="review_required", review_required=True,
-                blocked_reason="Engine did not derive this header dimension; review required.",
+                blocked_reason=_blank_reason(
+                    key,
+                    coil_category=coil_category,
+                    terra_variant=terra_variant,
+                    product_chosen=product_chosen,
+                ),
             )
         else:
             parameters[key] = DrawingParameter(

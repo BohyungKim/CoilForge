@@ -483,7 +483,20 @@ def _build_sheet(
                               "review_required" if installed else "constant",
                               "derived:partner_tag"))
         if partner:
-            p_slots, _p = _resolve_engine(partner, None)  # CD does not depend on application
+            # The partner's CD must be resolved the SAME way that partner's OWN sheet
+            # resolves it, or the number written here disagrees with the number the DX
+            # sheet shows for the very same coil — and this cell is an INPUT to the
+            # sheet's INSTALL FIT, so the disagreement propagates into the drain-pan
+            # verdict. On an HGRH sheet the partner IS the reheat-paired DX, so it takes
+            # R-072's with-HGRH branch exactly as `_build_sheet` does at :344-351.
+            # Gated on the category because this block also serves the HWC sheet, whose
+            # partner is a CWC — an ungated with_hgrh=True would apply the reheat branch
+            # to a water coil.
+            p_with_hgrh = True if category == "HGRH" else None
+            p_hgrh_conn = coil.get("conn_size") if category == "HGRH" else None
+            p_slots, _p = _resolve_engine(  # CD does not depend on application
+                partner, None, with_hgrh=p_with_hgrh, hgrh_conn_size=p_hgrh_conn
+            )
             p_cd = p_slots.get("slot.CD")
             ptag = partner.get("tag")
             if category == "HGRH":
