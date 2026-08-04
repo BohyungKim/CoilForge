@@ -885,6 +885,29 @@ body.is-init-stage .primary-intake-panel {
   font-variant-numeric: tabular-nums;
 }
 
+/* Coil Checklist divergence: the sheet's own formula disagrees with the engine on THIS
+   dimension. Styled like the CCSI mismatch on purpose — both mean "two sources disagree,
+   look before you act" — but it is a separate class because it outranks CCSI in the
+   border-precedence chain (a checklist mismatch says CoilForge itself may be wrong). */
+.dc-control.dc-control--divergence {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  border-left-color: var(--status-blocked);
+  color: var(--danger-text);
+}
+
+/* Neutral, informational badge: no counterpart on the sheet, a value only one side has,
+   an override John already made, a re-fill in flight. Deliberately NOT red — spending
+   red on these would train the eye to skip the ones that matter. */
+.dc-dimension-row .dc-dimension-note {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
 .ccsi-compare-banner {
   border: 1px solid var(--ok-border, var(--status-ready));
   background: var(--ok-bg, rgba(64, 197, 140, 0.08));

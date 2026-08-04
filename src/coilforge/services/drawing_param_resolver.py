@@ -197,6 +197,34 @@ def _header_slot(base: str, n: int) -> str | None:
     }.get(base)
 
 
+def slot_for_param_key(key: str) -> str | None:
+    """Drawing-parameter key -> engine slot id (base keys AND logical multi-header keys).
+
+    The single place that answers "which slot does this panel row render?". Base keys
+    (and ``HDx1``, which carries digits, hence the direct lookup first) come from
+    ``PARAM_TO_SLOT``; a logical multi-header key (``S2``, ``O3``) goes through
+    ``_header_slot`` for the logical->parity bridge. ``ZD``/``ZD2`` have no slot.
+
+    Hoisted out of ``checklist/overrides.param_slot`` (which now delegates) so the
+    checklist comparison, the Tier-B override path and the panel all resolve a row's
+    slot identically — that shared answer is what lets the checklist's per-dim verdicts
+    be joined onto the panel by slot rather than by an ambiguous label.
+    """
+    key = str(key)
+    if key in PARAM_TO_SLOT:
+        return PARAM_TO_SLOT[key]
+    base = key.rstrip("0123456789")
+    digits = key[len(base):]
+    if base and digits:
+        try:
+            n = int(digits)
+        except ValueError:
+            return None
+        if n >= 2:
+            return _header_slot(base, n)
+    return None
+
+
 # Parity-encoded per-header slot ids the resolver inspects to learn how many header
 # assemblies the engine actually produced (so the panel degrades: 1HD -> no extra
 # columns, 4HD -> headers 2/3/4 appear only when the engine derived them).

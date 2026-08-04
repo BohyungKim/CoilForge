@@ -24,6 +24,20 @@ const state = {
   productOptions: null,
   loadingProductOptions: false,
   lastTemplateDrawing: null,
+  // Coil Checklist comparison, indexed for the Drawing Parameters panel:
+  //   Map<coil tag, Map<engine slot id, comparison row>>
+  // Keyed by TAG so one coil's verdicts can never colour another's rows — the bug
+  // ccsiVerdictsByTag below now also avoids. Keyed by SLOT inside, because the panel's
+  // key and the checklist's label disagree about which dimension they name (the panel's
+  // logical O2 is the sheet's O4), and a name join would flag the wrong row.
+  checklistBySlot: null,
+  // True while a re-fill is queued/in flight after a manual correction. A row is only
+  // treated as stale on THIS explicit signal — never by comparing the two CoilForge
+  // numbers, which can differ permanently (the checklist resolves its own product line).
+  checklistRefillPending: false,
+  // CCSI compare verdicts, per coil tag. Was a flat object, so switching coils carried
+  // the previous coil's green/red until the next Compare click.
+  ccsiVerdictsByTag: {},
 };
 
 const LEGACY_COMPATIBILITY_ENDPOINT = "/api/compatibility/default-review";
@@ -2112,10 +2126,13 @@ async function compareCcsi(ccsiValues) {
     body: JSON.stringify({ fields }),
   });
   const report = await response.json();
-  state.ccsiVerdicts = {};
+  const verdicts = {};
   for (const row of report.fields || []) {
-    state.ccsiVerdicts[row.key] = row;
+    verdicts[row.key] = row;
   }
+  // Stored under the ACTIVE coil's tag: these verdicts describe the CCSI record for
+  // this coil only, and the previous flat store kept them on screen after a coil switch.
+  state.ccsiVerdictsByTag[activeCoilTag() || "__no_tag__"] = verdicts;
   renderDrawingParameters(state.ui);
   renderCcsiCompareBanner(report);
   return report;
@@ -3353,7 +3370,8 @@ function renderParameterRow(parameter) {
   // CCSI compare verdict (Phase 3): after "Compare vs CCSI", each field carries a
   // verdict. Match -> green edge; mismatch -> red edge + both values inline so a
   // divergence can't slip through before John saves the CCSI record. Review aid only.
-  const cmp = state.ccsiVerdicts && state.ccsiVerdicts[parameter.key];
+  const ccsiForCoil = state.ccsiVerdictsByTag?.[activeCoilTag() || "__no_tag__"];
+  const cmp = ccsiForCoil && ccsiForCoil[parameter.key];
   let compareClass = "";
   let mismatchBadge = "";
   let compareTitle = "";
@@ -3366,8 +3384,37 @@ function renderParameterRow(parameter) {
     compareTitle = escapeHtml(`CCSI ${cc} vs CoilForge ${cf} — review before saving`);
     mismatchBadge = `<span class="dc-dimension-mismatch">⚠ CCSI ${escapeHtml(String(cc))} &ne; CoilForge ${escapeHtml(String(cf))}</span>`;
   }
-  // A mismatch tooltip wins over the empty-reason tooltip.
-  const titleAttr = compareTitle || reason;
+
+  // Coil Checklist verdict for this same dimension, joined by SLOT (the panel's key and
+  // the sheet's label name different dimensions — see DrawingParameter.slot). This is the
+  // whole point of the feature: the disagreement is visible here instead of requiring a
+  // scroll down to the comparison table and a mental line-up of two tables.
+  const chk = checklistEntryFor(parameter);
+  const chkView = checklistRowView(chk, parameter);
+
+  // ONE border class wins, worst state first. `--empty` outranks everything because a
+  // row with no value at all is a bigger problem than any disagreement about its value.
+  // The unadjudicated checklist divergence outranks the CCSI one: a checklist mismatch
+  // says CoilForge itself may be wrong, while a CCSI mismatch says an external form
+  // disagrees with us. Green is CCSI's alone — two implementations agreeing is not
+  // approval, and every value here stays review-required regardless.
+  const borderClass = emptyControl || chkView.controlClass || compareClass;
+
+  // Badges stack (both spans already span the full row), so nothing is hidden by
+  // something else. Order: why it's blank -> what the checklist says -> what CCSI says.
+  const badges = [
+    chkView.badge,
+    mismatchBadge,
+    reason ? `<span class="dc-dimension-reason">⚠ ${reason}</span>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  // Tooltips join rather than override — the old code let a CCSI mismatch hide the
+  // reason a field was blank.
+  const titleAttr = [chkView.title, compareTitle, reason]
+    .filter(Boolean)
+    .join(" · ");
   // data-drawing-param / data-unit stay present in both modes so the derive
   // round-trip (collectDrawingPreviewValues) always finds the value; `readonly`
   // locks the field outside manual mode while keeping the Direct-Coil look.
@@ -3376,7 +3423,7 @@ function renderParameterRow(parameter) {
       <span>${escapeHtml(parameter.key)}</span>
       <input class="dc-dimension-check" type="checkbox" ${hasValue ? "checked" : ""} disabled />
       <input
-        class="dc-control ${statusClass(parameter.status)}${emptyControl}${compareClass}"
+        class="dc-control ${statusClass(parameter.status)}${borderClass}"
         data-drawing-param="${escapeHtml(parameter.key)}"
         data-unit="${escapeHtml(parameter.unit || "in")}"
         type="number"
@@ -3385,9 +3432,87 @@ function renderParameterRow(parameter) {
         ${titleAttr ? `title="${titleAttr}"` : ""}
         ${state.manualDrawingMode ? "" : "readonly"}
       />
-      ${mismatchBadge || (reason ? `<span class="dc-dimension-reason">⚠ ${reason}</span>` : "")}
+      ${badges}
     </label>
   `;
+}
+
+// The checklist comparison row describing the SAME dimension as this panel row, or null.
+// Joined on the backend-supplied slot id, never on the key/label (they disagree).
+function checklistEntryFor(parameter) {
+  if (!parameter.slot || !state.checklistBySlot) return null;
+  const bySlot = state.checklistBySlot.get(activeCoilTag());
+  return bySlot ? bySlot.get(parameter.slot) || null : null;
+}
+
+function _num(value) {
+  return value === null || value === undefined || value === "" ? "—" : value;
+}
+
+// How one checklist verdict presents on a panel row: {controlClass, badge, title}.
+//
+// Red is spent carefully. Only an unexplained disagreement earns it — a structural
+// absence or a decision John already made must not look like a defect, or the colour
+// stops meaning anything.
+function checklistRowView(entry, parameter) {
+  const none = { controlClass: "", badge: "", title: "" };
+  if (!state.checklistBySlot) return none;
+
+  if (state.checklistRefillPending) {
+    return {
+      controlClass: "",
+      badge: `<span class="dc-dimension-note">checklist re-running…</span>`,
+      title: "Checklist is being re-filled with your correction",
+    };
+  }
+
+  // No counterpart on this coil's sheet. Said out loud rather than left silent: on a
+  // water sheet the panel's I row has no checklist twin (the sheet's single "I/O" row
+  // maps to slot.O2, which is the panel's O), and an unmarked row reads as "agrees".
+  if (!entry) {
+    if (!parameter.slot || !state.checklistBySlot.has(activeCoilTag())) return none;
+    return {
+      controlClass: "",
+      badge: `<span class="dc-dimension-note">no checklist counterpart on this sheet</span>`,
+      title: "This dimension has no row on the coil's checklist sheet",
+    };
+  }
+
+  const cf = _num(entry.coilforge);
+  const cl = _num(entry.checklist);
+
+  if (entry.verdict === "overridden") {
+    const prev = entry.override && entry.override.previous_value;
+    return {
+      controlClass: "",
+      badge: `<span class="dc-dimension-note">✎ overridden — sheet computed ${escapeHtml(String(_num(prev)))}</span>`,
+      title: `Manual override; the sheet's own formula gave ${_num(prev)}`,
+    };
+  }
+
+  if (entry.verdict === "missing_one") {
+    return {
+      controlClass: "",
+      badge: `<span class="dc-dimension-note">checklist has no value for this dim</span>`,
+      title: `Checklist ${cl} vs CoilForge ${cf}`,
+    };
+  }
+
+  if (entry.verdict === "mismatch") {
+    return {
+      controlClass: " dc-control--divergence",
+      badge:
+        `<span class="dc-dimension-mismatch">⚠ Checklist ${escapeHtml(String(cl))} ` +
+        `&ne; CoilForge ${escapeHtml(String(cf))}</span>`,
+      title: escapeHtml(
+        `Checklist formula ${cl} vs CoilForge ${cf} — unadjudicated divergence`,
+      ),
+    };
+  }
+
+  // verdict === "match": deliberately no styling. Two independent implementations
+  // agreeing is evidence, not approval, and the value stays review-required.
+  return none;
 }
 
 function currentDrawingTemplateState(uiState) {
@@ -3864,6 +3989,14 @@ function hydratePdfWorkflow(workflow, statusText) {
   state.pdfCoilPages = workflow.pdf_coil_pages || [];
   state.activePdfCoilPageIndex = state.pdfCoilPages.length ? 0 : -1;
   state.reviewedCoils = new Set();  // fresh PDF -> nothing reviewed yet
+  // Drop the previous submittal's comparison verdicts. They describe coils that are no
+  // longer on screen, and a tag can repeat across projects (CDXC-1 is in every one), so
+  // keeping them would paint this analyze's rows from the last one's numbers. Cleared
+  // rather than left to be overwritten: the checklist re-fill is async and best-effort,
+  // and it may never arrive (auto-fill off, or Excel unavailable).
+  state.checklistBySlot = null;
+  state.checklistRefillPending = false;
+  state.ccsiVerdictsByTag = {};
   setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
   renderShell(workflowToUiState(state.ui, workflow, null));
   elements.savedStatus.textContent = statusText;
@@ -4786,6 +4919,53 @@ function collectChecklistOverrides() {
   return out;
 }
 
+// The coil whose rows the Drawing Parameters panel is currently showing. Everything
+// per-coil (checklist verdicts, CCSI verdicts) is keyed on this, so nothing can bleed
+// from one coil to the next.
+function activeCoilTag() {
+  const page = state.pdfCoilPages?.[state.activePdfCoilPageIndex];
+  return page?.tag || null;
+}
+
+// Index the checklist review so the Drawing Parameters panel can show each dimension's
+// disagreement inline — John reviews that panel constantly and was scrolling down to the
+// comparison table to cross-check every number by eye.
+//
+// Rows deliberately dropped, because painting them would train him to ignore the colour:
+//   * no slot            — the row has no engine dimension to join on (never happens today)
+//   * coilforge === "N/A"— past the coil's circuit count; compare() reports the literal
+//                          string, and "N/A" vs a number scores as a mismatch
+//   * both_missing       — neither side has a value; nothing to disagree about
+function ingestChecklistReview(review) {
+  const byTag = new Map();
+  for (const sheet of review?.sheets || []) {
+    const bySlot = new Map();
+    for (const row of sheet.comparisons || []) {
+      if (!row.slot) continue;
+      if (String(row.coilforge ?? "").trim().toUpperCase() === "N/A") continue;
+      if (row.verdict === "both_missing") continue;
+      bySlot.set(row.slot, row);
+    }
+    byTag.set(sheet.tag, bySlot);
+  }
+  state.checklistBySlot = byTag;
+  state.checklistRefillPending = false;
+  // Repaint the panel in place. The review arrives seconds after the panel first
+  // rendered (Excel COM), and it carries EVERY sheet, so there is no "which coil was
+  // active when it landed" race — the lookup is by the active tag at render time.
+  if (state.ui) renderDrawingParameters(state.ui);
+}
+
+// How many coil pages the checklist could not be joined to. Surfaced next to the fill
+// summary so "this row has no badge" is distinguishable from "this coil matched no sheet"
+// (an untagged page falls back to "Coil 3" and joins nothing).
+function checklistUnjoinedCount() {
+  if (!state.checklistBySlot) return 0;
+  return (state.pdfCoilPages || []).filter(
+    (page) => !page.tag || !state.checklistBySlot.has(page.tag),
+  ).length;
+}
+
 async function fillCoilChecklist() {
   const file = state.selectedPdfFile || elements.pdfIntakeFile.files?.[0];
   const summary = document.querySelector("#checklist-fill-summary");
@@ -4822,14 +5002,19 @@ async function fillCoilChecklist() {
           body: pdfBytes,
         };
     const review = await requestJson("/api/checklist/fill", request);
+    ingestChecklistReview(review);
     renderChecklistReview(review);
     if (summary) {
       const applied = review.override_total
         ? ` · <strong>${review.override_total} manual override(s) applied</strong>`
         : "";
+      const unjoined = checklistUnjoinedCount();
+      const unmatched = unjoined
+        ? ` · <strong>${unjoined} coil page(s) matched no sheet</strong> (no inline flags there)`
+        : "";
       summary.innerHTML =
         `Saved <strong>${escapeHtml(review.saved_path || "")}</strong> · ` +
-        `${review.mismatch_total} dimension mismatch(es) to review${applied} · ` +
+        `${review.mismatch_total} dimension mismatch(es) to review${applied}${unmatched} · ` +
         `review aid, not exported`;
     }
   } catch (error) {
@@ -4845,6 +5030,11 @@ let _checklistRefillTimer = null;
 
 function scheduleChecklistRefill() {
   if (!checklistAutoEnabled()) return;
+  // The panel's numbers have just changed while the indexed review still describes the
+  // pre-correction values. Mark it explicitly rather than inferring staleness from a
+  // value difference — see state.checklistRefillPending.
+  state.checklistRefillPending = true;
+  if (state.ui) renderDrawingParameters(state.ui);
   if (_checklistRefillTimer) clearTimeout(_checklistRefillTimer);
   _checklistRefillTimer = setTimeout(() => {
     _checklistRefillTimer = null;

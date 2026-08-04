@@ -186,22 +186,13 @@ def param_slot(key: str) -> str | None:
     ``PARAM_TO_SLOT``; a logical multi-header key (``S2``, ``O3``) goes through
     ``_header_slot`` for the logical->parity bridge. Sharing those helpers is what keeps
     "which dimension is TF/S2" identical between the drawing and the checklist.
-    """
-    from coilforge.services.drawing_param_resolver import PARAM_TO_SLOT, _header_slot
 
-    key = str(key)
-    if key in PARAM_TO_SLOT:
-        return PARAM_TO_SLOT[key]
-    base = key.rstrip("0123456789")
-    digits = key[len(base):]
-    if base and digits:
-        try:
-            n = int(digits)
-        except ValueError:
-            return None
-        if n >= 2:
-            return _header_slot(base, n)
-    return None
+    Now a one-line delegation: the body moved to ``drawing_param_resolver`` so the
+    drawing panel can carry the same answer on every row (``DrawingParameter.slot``).
+    """
+    from coilforge.services.drawing_param_resolver import slot_for_param_key
+
+    return slot_for_param_key(key)
 
 
 def dim_overrides_by_slot(

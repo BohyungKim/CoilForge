@@ -274,7 +274,27 @@ responses deliberately assert safety flags (`raw_private_data_returned: False`,
 Empty drawing-parameter fields render RED with their `blocked_reason` as inline English
 evidence + a hover tooltip (`web/app.js::renderParameterRow`); the frontend colors by
 emptiness, not backend `status`, so a missing value never reads as a silent blank — don't
-revert empties to plain blanks. A `blocked_reason` may be **category-scoped**
+revert empties to plain blanks.
+**Inline checklist divergence (John 2026-08-04)** — the same row also carries the Coil
+Checklist's verdict for that dimension (red + both numbers on hover), so the panel John
+reviews most no longer requires scrolling to the comparison table and lining two tables up
+by eye. The join key is **`DrawingParameter.slot`**, never the key/label: the panel's
+logical `O2` is the sheet's `O4` while the sheet's own `O2` is the panel's `O`, so a name
+join flags the wrong row. `slot` is a Pydantic **computed field** (`drawing/parameters.py`)
+delegating to `drawing_param_resolver.slot_for_param_key` — the model is built at ~12 call
+sites across 3 modules, so a constructor argument would eventually be forgotten; the
+logical↔parity bridge stays in ONE place and is never re-implemented in JS.
+Front-end contract: `state.checklistBySlot` = `Map<tag, Map<slot, row>>` (per-coil, so
+verdicts cannot bleed across coils — `state.ccsiVerdicts` was flat and did bleed; it is now
+`ccsiVerdictsByTag`); one border class wins, `--empty` > `--divergence` (checklist) >
+`--mismatch` (CCSI) > `--match`, and **badges stack** rather than one hiding another.
+A checklist `match` earns **no** styling (two implementations agreeing is evidence, not
+approval — green stays CCSI's "safe to save"); `overridden`/`missing_one`/"no counterpart
+on this sheet" get a neutral note, not red. Staleness after a manual correction is an
+**explicit flag** (`checklistRefillPending`), never a value comparison — `mapping.py:353-357`
+resolves the checklist's CoilForge column with the checklist's OWN product detection, so the
+two CoilForge numbers can differ permanently and a value-based rule would hide the badge
+forever on exactly the coils under investigation. A `blocked_reason` may be **category-scoped**
 (`_BLANK_REASON_BY_CATEGORY`): the generic R message names the connection size, which is right
 for DX/HGRH but was a misdiagnosis on water coils whose conn size IS extracted — sending the
 engineer to hunt for a value already present is worse than saying nothing.
