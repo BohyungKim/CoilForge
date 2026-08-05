@@ -225,6 +225,35 @@ debounced `scheduleChecklistRefill` after an interactive derive; the headless re
 fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
 gate) deliberately passes none — it reads the machine proposal.
 
+**Drain-pan option from the unit model code** (`submittal/model_code.py`) — R-077 keys
+Terra's drain-pan width by option D1/D2/D3, and nothing produced that value, so every Terra
+INSTALL FIT reported `CANNOT_EVALUATE` while explaining its own blockage. The option is
+**token index 7** of the 22-token underscore model code (first digit = control qty, second =
+pan type); confirmed for **Terra H**. Three things make this harder than a split():
+① **The full code must never reach `detect_product_and_size`.** Its Terra regexes end in
+`\b`, which cannot match a code continuing with `_`, and what happens next depends on the
+code's INNER size token — Terra V's `H10` IS a valid Ventum H size → confidently WRONG
+(`VENTUM_H`), Terra H's `H11` is not → `(None, None)`. So the full code lives in a dedicated
+field, NEVER in `row.model`/`candidate.notes`. **Pre-existing latent defect** (not fixed
+here, pinned by `test_documented_limitation_...`): real submittals survive only because the
+cover schedule ALSO prints the short code, which detection finds first. ② **Attribution is
+by unit SIZE** (`drain_pan_option_for_unit_size`), never document-wide: the code sits alone
+on a configuration page with no coil tag, and 2755 is a MULTI-unit submittal (009 + 012)
+printing only ONE full code — "one distinct code = one unit" silently gives 009 the 012
+unit's pan. A size with no code stays blocked rather than borrowing. ③ **Terra V is refused**
+(its code carries a two-digit token at the same index, so the refusal must be explicit):
+its pan is size-keyed and the Install sheet has no Terra V rows. That guard lives INSIDE
+`mechanical_fit._drain_pan_row` because both callers reach R-077 through it — and the
+checklist caller (`mapping._install_widths`, whose number is written into the .xlsx filed
+with the order) used to fold `"TERRA V" → "TERRA"` in `_FAMILY_FROM_UNIT`, which was the
+route around any call-site guard. R-077 deliberately has NO empty `TERRA_V|<size>` rows:
+`_drain_pan_row` tests `row is None`, and `{}` would fall to "no width column available"
+instead of the real reason. **Partner size guard:** a DX+HGRH / CWC+HWC pair is one unit,
+so differing `unit_size` means a detection is wrong — width/height **and `drain_pan`** all
+degrade to `CANNOT_EVALUATE` (drain_pan reads the same size through the same lookup, so
+leaving it live keeps a verdict standing on a distrusted value) and the note states BOTH
+sizes without choosing.
+
 **Known-divergence registry / adjudication** (`review/divergence.py`, `review/adjudicate.py`,
 `rules/known_divergences.yaml`, `scripts/promote_divergences.py`) — John rules ONCE on a
 checklist-vs-engine disagreement so the same known gap stops re-asking. A ruling **only

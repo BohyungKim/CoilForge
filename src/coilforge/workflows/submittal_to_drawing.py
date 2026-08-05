@@ -26,6 +26,7 @@ from coilforge.submittal.pdf_intake import (
     drain_pan_partner_tag,
     extract_coil_candidate_from_pdf_bytes,
 )
+from coilforge.submittal.model_code import drain_pan_option_for_unit_size
 from coilforge.submittal.to_canonical import map_submittal_candidate_to_canonical_result
 
 
@@ -252,6 +253,10 @@ def run_pdf_to_direct_draft_workflow(
         cover_page_hint=cover_page_hint,
     )
     candidates = intake.cover_candidates or [intake.candidate]
+    try:
+        pdf_text = _safe_pdf_text(pdf_bytes)
+    except Exception:  # text extraction is best-effort; the draft still builds
+        pdf_text = ""
     workflows = [
         _run_candidate_to_direct_draft_workflow(
             candidate,
@@ -268,6 +273,7 @@ def run_pdf_to_direct_draft_workflow(
     selected_result["pdf_coil_pages"] = _pdf_coil_pages(
         workflows,
         intake.summary.cover_page_rows,
+        pdf_text,
     )
     return selected_result
 
@@ -385,6 +391,7 @@ def _run_pdf_to_drawing_workflow_uncached(
     selected_result["pdf_coil_pages"] = _pdf_coil_pages(
         workflows,
         intake.summary.cover_page_rows,
+        pdf_text,
     )
     # Each candidate now carries its own linked template_drawing (built from the
     # submittal classification); the selected candidate's is surfaced top-level.
@@ -1945,7 +1952,13 @@ def _stamp_missing_drawing_tag(workflow: dict[str, Any], tag: str) -> None:
 def _pdf_coil_pages(
     workflows: list[dict[str, Any]],
     cover_rows: list[Any],
+    pdf_text: str = "",
 ) -> list[dict[str, Any]]:
+    # The drain-pan option is read from the whole document, then attributed BY UNIT SIZE:
+    # the full model code sits alone on a configuration page with no coil tag, and its own
+    # token 2 is the only thing that says which unit it describes. 2755 proved why that
+    # matters — it is a multi-unit submittal (009 and 012) that prints one code, so a
+    # document-wide application would put the 012 unit's pan under the 009 unit's coils.
     pages: list[dict[str, Any]] = []
     for index, workflow in enumerate(workflows):
         summary = workflow["selected_candidate_summary"]
@@ -1971,7 +1984,7 @@ def _pdf_coil_pages(
                 "cover_page_number": cover_payload.get("page_number"),
                 "cover_row_number": cover_payload.get("row_number"),
                 "fit_inputs": _fit_inputs_from_ctx(
-                    workflow.get("template_header_context"), tag
+                    workflow.get("template_header_context"), tag, pdf_text=pdf_text,
                 ),
                 "workflow": workflow,
             }
@@ -1979,15 +1992,31 @@ def _pdf_coil_pages(
     return pages
 
 
-def _fit_inputs_from_ctx(ctx: dict[str, Any] | None, tag: str) -> dict[str, Any] | None:
+def _fit_inputs_from_ctx(
+    ctx: dict[str, Any] | None,
+    tag: str,
+    *,
+    pdf_text: str = "",
+) -> dict[str, Any] | None:
     """Compact mechanical-fit inputs for one coil (consumed by /api/mechanical-fit).
 
     ``coil_category`` (DX/HGRH/CWC/HWC) is the engine coil_type token. product_type
     (product line) / unit_size may be absent when no model code validated — the fit
     endpoint then reports the coil as needing those inputs rather than guessing.
+
+    ``drain_pan_option`` closes the gap that made every Terra INSTALL FIT report
+    ``CANNOT_EVALUATE``: R-077 keys Terra's pan width by D1/D2/D3, and until now nothing
+    produced that value, so the check explained its own blockage forever. It is resolved
+    from ``pdf_text`` (the code lives on a configuration page, not in this coil's header
+    context) and matched to THIS coil's unit size, never applied document-wide. The reason
+    travels with it, including on success — a width that changes a PASS/FAIL verdict
+    should be able to say where it came from.
     """
     if not ctx:
         return None
+    drain_pan_option, drain_pan_reason = drain_pan_option_for_unit_size(
+        pdf_text, ctx.get("unit_size")
+    )
     return {
         "tag": ctx.get("tag") or tag,
         "coil_type": ctx.get("coil_category"),
@@ -1999,6 +2028,8 @@ def _fit_inputs_from_ctx(ctx: dict[str, Any] | None, tag: str) -> dict[str, Any]
         "feeds": ctx.get("feeds"),
         "circuits": ctx.get("circuits"),
         "suction_conn_size": ctx.get("suction_conn_size"),
+        "drain_pan_option": drain_pan_option,
+        "drain_pan_option_reason": drain_pan_reason,
     }
 
 

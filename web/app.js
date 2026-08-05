@@ -2791,8 +2791,8 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     // The engineer just picked a product line + unit size, so the mechanical fit
     // can now evaluate. Update the active coil's fit inputs (preserving the rest
     // of the pair list) and re-run; fall back to just this coil if no PDF pages.
-    const fitInput = fitInputFromSpec(spec);
     const active = state.pdfCoilPages[state.activePdfCoilPageIndex];
+    const fitInput = fitInputFromSpec(spec, active?.fit_inputs);
     if (active) {
       active.fit_inputs = fitInput;
       refreshMechanicalFit();
@@ -4184,7 +4184,13 @@ function collectFitInputs() {
 }
 
 // Map a coil-drawing derive spec to the /api/mechanical-fit coil-input shape.
-function fitInputFromSpec(spec) {
+//
+// `previous` is the fit_inputs this REPLACES. The drain-pan option is read once from the
+// whole submittal (it lives on a configuration page, not in any per-coil spec), so it is
+// not present on `spec` and would be dropped on every manual correction — the INSTALL FIT
+// would silently fall back to CANNOT_EVALUATE the moment the engineer fixed anything.
+// Carry it forward instead of re-deriving it, which the browser could not do anyway.
+function fitInputFromSpec(spec, previous) {
   return {
     tag: spec.tag,
     coil_type: spec.coil_category,
@@ -4196,6 +4202,8 @@ function fitInputFromSpec(spec) {
     feeds: spec.feeds,
     circuits: spec.circuits,
     suction_conn_size: spec.suction_conn_size,
+    drain_pan_option: previous?.drain_pan_option ?? null,
+    drain_pan_option_reason: previous?.drain_pan_option_reason ?? "",
   };
 }
 
@@ -4241,9 +4249,17 @@ function renderMechanicalFit(report) {
       const head = `<div class="fit-coil-head"><strong>${escapeHtml(c.tag || "coil")}</strong> <em>${escapeHtml(
         [c.coil_type, c.product_family, c.unit_size].filter(Boolean).join(" / ")
       )}</em></div>`;
-      if (c.note) {
+      // A note used to mean "this coil could not be evaluated at all", so it returned
+      // early. The partner-size guard also sets a note, but its verdicts DO exist as
+      // CANNOT_EVALUATE and carry the casing/CD numbers the engineer needs to work out
+      // WHICH size is wrong — returning early there would hide the evidence for the very
+      // warning being shown. So: early-return only when there is genuinely nothing else.
+      if (c.note && !c.width && !c.height && !c.drain_pan) {
         return `<div class="fit-coil">${head}<p class="fit-note">⚠ ${escapeHtml(c.note)}</p></div>`;
       }
+      const noteLine = c.note
+        ? `<p class="fit-note">⚠ ${escapeHtml(c.note)}</p>`
+        : "";
       const dp = c.drain_pan;
       const dpLine = dp
         ? `<div class="fit-line">${fitChip(dp.verdict)} <span>Drain pan</span> ${escapeHtml(dp.detail)}</div>`
@@ -4251,6 +4267,7 @@ function renderMechanicalFit(report) {
       return `
         <div class="fit-coil">
           ${head}
+          ${noteLine}
           <div class="fit-line">${fitChip(c.width && c.width.verdict)} <span>Width</span> ${escapeHtml(
             (c.width && c.width.detail) || "—"
           )}</div>

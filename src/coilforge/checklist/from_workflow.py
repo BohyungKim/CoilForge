@@ -63,6 +63,7 @@ def coil_inputs_from_candidates(
     second element is the fallback/override pair, for logging.
     """
     from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+    from coilforge.submittal.model_code import drain_pan_option_for_unit_size
     from coilforge.submittal.pdf_intake import coil_category_of_tag, drain_pan_partner_tag
 
     override = bool(product_line and unit_size)
@@ -131,6 +132,12 @@ def coil_inputs_from_candidates(
                 "qty_conn_per_header": _g(conn, "qty_connections_per_header"),
                 "coil_hand": _g(conn, "coil_hand"),
                 "coating": _g(mfg, "coil_coating"),
+                # Matched to THIS coil's unit size, not applied document-wide: one
+                # submittal can carry several units (2755 has 009 and 012) while printing
+                # only one full model code, and different units can have different pans.
+                # Feeds the sheet's INSTALL WIDTH / DRAIN PAN WIDTH cells, which were
+                # blank on every Terra unit because nothing produced the option.
+                "drain_pan_option": drain_pan_option_for_unit_size(pdf_text, size)[0],
             }
         )
     return coils, (global_line, global_size)
