@@ -343,6 +343,44 @@ def _compare_rows(run_id: str, compare: dict[str, Any]) -> list[tuple]:
             ))
         return rows
 
+    if comparator == "checklist":
+        # Engine vs the Coil Checklist's own Excel formulas — two independent
+        # implementations of the same engineering, so a disagreement is a correctness
+        # signal about CoilForge itself, not just about an external form. Unlike ccsi
+        # these rows DO carry the coil tag (report.sheets[].tag), so they are
+        # attributable at the (tag, project) identity grain and can be joined to a
+        # later correction — that join is what makes "of the dims we flagged, how many
+        # did John actually change?" answerable.
+        #
+        # "N/A" rows are dropped: mapping.py writes the literal string past the coil's
+        # circuit count, and _match scores string-vs-number as a mismatch, so keeping
+        # them would inflate the divergence rate with rows that have no dimension.
+        from coilforge.services.drawing_param_resolver import param_key_for_slot
+
+        for sheet in report.get("sheets") or []:
+            if not isinstance(sheet, dict):
+                continue
+            tag = sheet.get("tag")
+            for row in sheet.get("comparisons") or []:
+                if not isinstance(row, dict) or not row.get("verdict"):
+                    continue
+                if str(row.get("coilforge") or "").strip().upper() == "N/A":
+                    continue
+                # `key` is the PANEL key, not the sheet's label. Corrections are filed
+                # under the panel key (`_drawing_param_correction_rows`), and the sheet
+                # calls the same dimension something else — its `S1` is the panel's `S`,
+                # its `O4` is the panel's `O2`. Filed under the label, a flag would never
+                # join the correction that followed it, and the override rate would read
+                # zero for every per-header dim. The label is kept alongside for humans.
+                rows.append((
+                    run_id, tag, "checklist",
+                    param_key_for_slot(row.get("slot")) or row.get("label"),
+                    row.get("slot"), row.get("label"),
+                    _json(row.get("coilforge")), _json(row.get("checklist")),
+                    row["verdict"],
+                ))
+        return rows
+
     return rows
 
 

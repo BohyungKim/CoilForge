@@ -146,6 +146,22 @@ def _identity_flags(
     ).fetchall():
         add(tag, project, key, "fit")
 
+    # B2. checklist divergence (run + coil_tag path, like mechanical_fit — these rows
+    # carry the tag, unlike ccsi). This is the signal Stage 3.0 found MISSING: the gate's
+    # `engine_vs_checklist` exception only ever fired for the six non-per-header dims,
+    # because it joined the panel key against the sheet's label. These rows are filed
+    # under the PANEL key (record._compare_rows), so a per-header divergence finally
+    # reaches the ranking. `overridden` is excluded on purpose — it records a decision
+    # John already made, not a disagreement awaiting one.
+    for key, tag, project in conn.execute(
+        "SELECT co.key, co.coil_tag, r.project_number"
+        " FROM compare_observation co JOIN run r ON co.run_id = r.run_id"
+        " WHERE co.comparator = 'checklist'"
+        " AND co.verdict IN ('mismatch', 'missing_one')"
+        " AND co.coil_tag IS NOT NULL AND r.project_number IS NOT NULL"
+    ).fetchall():
+        add(tag, project, key, "checklist_mismatch")
+
     # C. field_observation with a blocked_reason (coil_uid path). Presence of the reason is the
     # robust signal — the exact status/mode string is not relied on.
     for field_key, tag, project in conn.execute(

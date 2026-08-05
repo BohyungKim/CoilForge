@@ -19,6 +19,7 @@ Only HIGH engine values are emitted as generated; MEDIUM/blocked stay review.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -223,6 +224,34 @@ def slot_for_param_key(key: str) -> str | None:
         if n >= 2:
             return _header_slot(base, n)
     return None
+
+
+@lru_cache(maxsize=1)
+def _slot_to_param_key() -> dict[str, str]:
+    """Inverse of :func:`slot_for_param_key`, for the panel keys only.
+
+    Header 1 comes from ``PARAM_TO_SLOT``; headers 2..8 from ``_header_slot``. No
+    collisions: ``_header_slot`` is only consulted for n>=2, so ``slot.O2`` belongs to
+    the bare ``O`` and never to a numbered key.
+    """
+    inverse = {slot: key for key, slot in PARAM_TO_SLOT.items()}
+    for n in range(2, 9):
+        for base in _MULTI_HEADER_BASES:
+            slot = _header_slot(base, n)
+            if slot and slot not in inverse:
+                inverse[slot] = f"{base}{n}"
+    return inverse
+
+
+def param_key_for_slot(slot: str | None) -> str | None:
+    """Engine slot id -> the drawing-parameter key the panel shows it under.
+
+    Needed wherever a slot-addressed record has to line up with something keyed by
+    panel key — the correction ledger, for one, stores ``field_key`` as the panel key,
+    so a checklist observation filed under the SHEET's label (``S1``, ``O4``) would
+    never join the correction that followed it.
+    """
+    return _slot_to_param_key().get(str(slot)) if slot else None
 
 
 # Parity-encoded per-header slot ids the resolver inspects to learn how many header

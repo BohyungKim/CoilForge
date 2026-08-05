@@ -840,6 +840,12 @@ async def checklist_fill(request: Request):
             cover_page_hint=_cover_page_hint_from_request(request),
             product=request.headers.get("x-coilforge-product"),
             size=request.headers.get("x-coilforge-size"),
+            # Weak label for review triage: every dimension the sheet and the engine
+            # were compared on, with the coil tag, so a later correction on that tag
+            # can be joined back to the flag that preceded it. Only on a FRESH fill —
+            # a cache reuse re-reports numbers already recorded, and double-counting
+            # them would skew the divergence rate.
+            compare={"comparator": "checklist", "report": outcome.review},
         )
     return jsonable_encoder(outcome.review)
 
