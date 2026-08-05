@@ -556,17 +556,22 @@ def build_mechanical_fit_report(
                 "both coils. Fit verdicts are withheld because casing and drain-pan widths "
                 "are both keyed by unit size."
             )
+            # The card already shows `note` once, as its own banner. Repeating the full
+            # sentence as the detail of all three checks turned one warning into four
+            # copies of itself — noise that buries the numbers underneath. The per-check
+            # line says only what is specific to it and points at the banner.
+            short = f"withheld — unit size disputed with {partner} (see note above)"
             paired.append(
                 CoilFitEntry(
                     **{
                         **entry.__dict__,
-                        "width": _cannot_evaluate_fit(entry.width, note),
-                        "height": _cannot_evaluate_fit(entry.height, note),
+                        "width": _cannot_evaluate_fit(entry.width, short),
+                        "height": _cannot_evaluate_fit(entry.height, short),
                         # The original plan degraded width/height only. The drain-pan
                         # check reads entry.unit_size through the SAME lookup, so leaving
                         # it live would keep a PASS/FAIL standing on the distrusted size.
                         "drain_pan": _cannot_evaluate_drain_pan(
-                            entry, partner, note
+                            entry, partner, short
                         ),
                         "partner_tag": partner,
                         "note": note if not entry.note else f"{entry.note} {note}",

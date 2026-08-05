@@ -179,6 +179,22 @@ def test_a_pair_detected_at_different_sizes_withholds_every_size_keyed_verdict()
         assert coil.drain_pan.verdict == "CANNOT_EVALUATE", coil.tag
 
 
+def test_the_conflict_explanation_appears_once_not_on_every_line():
+    """Found by eyeballing the card: the full sentence was repeated four times — once as
+    the banner and again as the detail of width, height and drain pan — which buries the
+    numbers the engineer needs in order to work out WHICH size is wrong."""
+    report = build_mechanical_fit_report(
+        [_coil("CDXC-1", "DX", size="012"), _coil("RHHGRC-1", "HGRH", size="024")],
+        installed_on_drain_pan=True,
+    )
+    coil = report.coils[0]
+    assert "A DX+HGRH" in (coil.note or ""), "the banner still carries the full account"
+    for check in (coil.width, coil.height, coil.drain_pan):
+        assert "A DX+HGRH" not in check.detail, "and no line repeats it"
+        assert "see note above" in check.detail
+        assert "RHHGRC-1" in check.detail, "each line still names the disputing partner"
+
+
 def test_the_size_conflict_note_states_both_sizes_and_picks_neither():
     report = build_mechanical_fit_report(
         [
