@@ -93,6 +93,61 @@ def test_terra_h_still_gets_the_option_message_when_the_code_was_unreadable():
     assert "D1/D2/D3" in result.detail
 
 
+def test_the_readers_own_reason_wins_over_the_generic_one():
+    """John's eyeball found this: the 009 coils of a multi-unit 2755 showed
+    "provide the drain-pan option to evaluate", and he reasonably asked whether a missing
+    drawing number was the cause.
+
+    It was not — that submittal prints only the 012 unit's code and we deliberately refuse
+    to borrow it. But the generic wording reads as "supply the option and this unblocks",
+    an instruction that cannot be followed because the option is nowhere in the document.
+    Same failure mode already fixed for Terra V; this closes it on the multi-unit path.
+    """
+    reason = (
+        "no unit model code for size 009 appears in this submittal (found: 012) — it "
+        "deliberately does not borrow another unit's drain-pan option"
+    )
+    result = evaluate_drain_pan_fit(
+        product_family="TERRA_H", unit_size="009", this_cd=3.75, partner_cd=3.75,
+        partner_tag="RHHGRC-1", installed_on_drain_pan=True, drain_pan_option=None,
+        drain_pan_option_reason=reason,
+    )
+    assert result.verdict == "CANNOT_EVALUATE"
+    assert "does not borrow another unit" in result.detail
+    assert "provide the drain-pan option" not in result.detail
+    # The keying is still stated -- the engineer needs to know WHAT is missing as well as why.
+    assert "D1/D2/D3" in result.detail
+
+
+def test_the_reason_reaches_the_card_through_the_report(tmp_path):
+    """End-to-end through build_mechanical_fit_report, since the plumbing is where it was
+    lost: the reason was computed and carried on fit_inputs but never passed on."""
+    coils = [
+        _coil("CDXC-1", "DX", size="009"),
+        _coil("RHHGRC-1", "HGRH", size="009"),
+    ]
+    for c in coils:
+        c["drain_pan_option_reason"] = (
+            "no unit model code for size 009 appears in this submittal (found: 012) — it "
+            "deliberately does not borrow another unit's drain-pan option"
+        )
+    report = build_mechanical_fit_report(coils, installed_on_drain_pan=True)
+    for entry in report.coils:
+        assert "does not borrow another unit" in entry.drain_pan.detail, entry.tag
+
+
+def test_terra_v_keeps_its_own_reason_even_when_a_reader_reason_is_supplied():
+    """Terra V's blocker is structural and outranks the option story: no option, borrowed
+    or supplied, would unblock it."""
+    result = evaluate_drain_pan_fit(
+        product_family="TERRA_V", unit_size="072", this_cd=3.75, partner_cd=3.75,
+        partner_tag="RHHGRC-1", installed_on_drain_pan=True, drain_pan_option=None,
+        drain_pan_option_reason="no unit model code for size 072 appears in this submittal",
+    )
+    assert "keyed by unit size" in result.detail
+    assert "no unit model code" not in result.detail
+
+
 def test_terra_h_pair_now_produces_an_actual_verdict():
     report = build_mechanical_fit_report(
         [_coil("CDXC-1", "DX", option="D1"), _coil("RHHGRC-1", "HGRH", option="D1")],

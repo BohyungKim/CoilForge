@@ -525,6 +525,12 @@ def build_mechanical_fit_report(
     # Pairing pass: drain-pan INSTALL FIT for each coil that has a partner.
     all_tags = [c.get("tag") for c in coils if c.get("tag")]
     option_by_tag = {c.get("tag"): c.get("drain_pan_option") for c in coils}
+    # Carried alongside the option, not derived here: the reason belongs to whoever read
+    # the model code, and re-deriving it in this module would be a second interpretation
+    # that could disagree with the first.
+    option_reason_by_tag = {
+        c.get("tag"): str(c.get("drain_pan_option_reason") or "") for c in coils
+    }
     cd_by_tag = {e.tag: e.cd for e in entries if e.tag}
     size_by_tag = {e.tag: e.unit_size for e in entries if e.tag}
     paired: list[CoilFitEntry] = []
@@ -577,6 +583,7 @@ def build_mechanical_fit_report(
             partner_tag=partner,
             installed_on_drain_pan=installed_on_drain_pan,
             drain_pan_option=option_by_tag.get(entry.tag),
+            drain_pan_option_reason=option_reason_by_tag.get(entry.tag, ""),
         )
         paired.append(
             CoilFitEntry(
@@ -651,8 +658,16 @@ def evaluate_drain_pan_fit(
     partner_tag: str | None,
     installed_on_drain_pan: bool,
     drain_pan_option: str | None = None,
+    drain_pan_option_reason: str = "",
 ) -> DrainPanFitResult:
     """INSTALL FIT for a coil pair sharing one drain pan.
+
+    ``drain_pan_option_reason`` is the model-code reader's own account of why there is (or
+    is not) an option for THIS coil. It is used verbatim when the option is missing,
+    because this function cannot reconstruct it: "no option" has several causes and they
+    send the engineer to different places. Without it the card falls back to a generic
+    "provide the drain-pan option", which on a multi-unit submittal is an instruction that
+    cannot be followed — the option it asks for is not printed anywhere in the document.
 
     PASS iff ``this_cd + partner_cd < width`` (strict, per the CHK INSTALL FIT).
     Only meaningful when the coil is installed on a shared drain pan AND a partner
@@ -705,10 +720,18 @@ def evaluate_drain_pan_fit(
                 "borrow the Terra H D1/D2/D3 widths"
             )
         elif _coarse_terra_family(product_family) == ProductFamily.TERRA.value and not drain_pan_option:
-            reason = (
+            # Prefer the reader's account. "No option" is not one situation: the code may
+            # be absent entirely, or belong to a DIFFERENT unit in the same submittal (in
+            # which case we deliberately refuse to borrow it), or disagree with a second
+            # code for the same size. Only the reader knows which, and the generic text
+            # below reads as "supply the option" in every one of them — advice that is
+            # actionable in the first case and impossible in the others.
+            reason = drain_pan_option_reason.strip() or (
                 "Terra drain-pan width is keyed by option D1/D2/D3, which was not read "
                 "from the unit model code — provide the drain-pan option to evaluate"
             )
+            if drain_pan_option_reason.strip():
+                reason = f"Terra drain-pan width is keyed by option D1/D2/D3: {reason}"
         else:
             reason = (
                 f"no drain-pan width for {product_family}|{unit_size} "

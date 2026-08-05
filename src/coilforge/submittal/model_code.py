@@ -4,10 +4,16 @@ The full unit model code is a 22-token underscore run that the submittal prints 
 configuration pages::
 
     TR_C_012_I_R_1_H11_21_XSXS_V_XX_X_X_X_XX_XX_X_XXX_XX_X_X_X
-     0  1  2  3 4 5  6  7                    ^ index 7 = the control/drain-pan token
+     0  1  2  3 4 5  6  ^^
+                       ││
+                       │└─ index 7, second digit: the DRAIN PAN size (1/2/3 -> D1/D2/D3)
+                       └── index 7, first digit: control quantity
 
-Token 7 is always two digits: the FIRST is the control quantity, the SECOND is the
-drain-pan type (1/2/3 -> D1/D2/D3). John confirmed the position for **Terra H**.
+Token 7 is always two digits. John confirmed the position for **Terra H**, and confirmed
+the second-digit reading against a live 2755 submittal on 2026-08-05 (``..._H11_21_...``
+-> pan 1). Note how easy the neighbouring ``H11`` is to mistake for the pan token — that
+is why the index is fixed at 7 and the token must be exactly two digits, rather than
+searched for by shape.
 
 Everything this module refuses to answer, it refuses loudly
 -----------------------------------------------------------
