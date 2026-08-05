@@ -144,8 +144,16 @@
 > `fit_inputs.drain_pan_option_reason`("no unit model code for size 009 appears in this submittal
 > (found: 012) — it deliberately does not borrow another unit's drain-pan option")로 **실려 있으나 화면에
 > 도달하지 않는다**: `evaluate_drain_pan_fit`이 그 문자열을 인자로 받지 않고 자기 일반 문구를 만든다.
-> **수정 방향**: `drain_pan_option_reason`을 `evaluate_drain_pan_fit`에 스레딩해 옵션 부재 사유가 있으면
-> 그걸 detail로 쓰기(Terra V 분기와 동일한 패턴). 곁가지 아님 — 이 검사의 실제 산출물은 판정이 아니라 사유다.
+> **수정 완료(`e6d3a80`)**: `drain_pan_option_reason`을 `evaluate_drain_pan_fit`에 스레딩해, 옵션이 없을 때
+> 리더의 사유를 **그대로** 쓰되 키잉("무엇이 없는지")을 앞에 붙인다. 재도출이 아니라 **전달**인 이유 —
+> "옵션 없음"의 원인이 여러 개(코드 부재 / 다른 유닛 코드 / 같은 사이즈 코드 2개 불일치)라 이 모듈이 두 번째
+> 해석을 만들면 첫 번째와 어긋날 수 있다. Terra V는 리더 사유가 와도 **자기 문구를 유지**(구조적 차단이라
+> 어떤 옵션으로도 안 풀림, 테스트로 고정). 실 2755 확인: 009 카드가 이제
+> *"…no unit model code for size 009 appears in this submittal (found: 012) — it deliberately does not borrow
+> another unit's drain-pan option"* 로 뜨고 012 카드는 무변경. 1319 green.
+> 🆕 **John 확인으로 격상된 사실**: 토큰 7의 **둘째 자리가 드레인팬**(`..._H11_21_…` → pan 1)임을 라이브
+> 제출물에서 John이 확인 — 계획서 주장이 아니라 엔지니어 확인 사실이 됐다. docstring에 반영하면서 **이웃한
+> `H11`이 팬 토큰으로 오인되기 쉽다**는 점도 명시(인덱스를 7로 고정하고 "정확히 2자리"를 요구하는 이유).
 > 남은 것: **F**(CCSI Notes — CCSI 로그인 탭 필요, John 몫).
 > 이전: **[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
 > `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
