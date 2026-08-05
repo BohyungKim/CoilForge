@@ -90,7 +90,17 @@
 > 사이즈 가드가 붙는 순간 **경고의 근거가 되는 수치를 가렸다**. **실 제출물 검증**: 2755(Terra H) →
 > `combined CD 11.875 vs drain_pan_width 14.5 (PASS)` (종전 항상 CANNOT_EVALUATE), 009 유닛은 올바르게 blocked
 > 유지; 2948(Terra V) → 제품라인 유지·사이즈 키잉 사유로 거부·width 판정 무영향. 1314 green.
-> ⚠️ **브라우저 눈확인 미완**. 남은 것: **F**(CCSI Notes — CCSI 로그인 탭 필요, John 몫).
+> **브라우저 눈확인 — 부분 완료(2026-08-05)**: 2948을 워크트리 서버 :8013에 **실업로드**해 Mechanical Fit
+> 카드 확인 — `CDXC-1 DX / TERRA_V / 006`(제품군 오염 없음), Width/Height **PASS**(무영향),
+> Drain pan **CANNOT_EVALUATE** + 새 사유 *"Terra V drain-pan width is keyed by unit size, and the Install
+> sheet has no Terra V rows yet — blocked pending that data. It deliberately does NOT borrow the Terra H
+> D1/D2/D3 widths"*. 종전 문구("provide the drain-pan option to evaluate")는 Terra V에선 **영원히 따를 수 없는
+> 안내**였으므로 이 교체가 이번 눈확인의 핵심 성과. Terra H **PASS 카드는 같은 서버의 `/api/mechanical-fit`
+> 라이브 호출로만 확인**(`combined CD 11.0 vs drain_pan_width 14.5`) — 실 Terra H 제출물 2755가 **15MB로
+> 브라우저 브리지 한도(10MB) 초과**라 업로드하지 못했다. **미확인 2건**: ①Terra H PASS 카드의 화면 렌더
+> (John이 2755를 직접 드롭하면 즉시 확인됨 — 기능 문제가 아니라 내 업로드 경로의 한계) ②짝 사이즈 충돌 카드
+> (노트 + 강등된 3판정 동시 표시) — **어느 실 제출물도 이 상태를 만들지 않아** 단위 테스트로만 고정됨.
+> 남은 것: **F**(CCSI Notes — CCSI 로그인 탭 필요, John 몫).
 > 이전: **[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
 > `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
 > 요청은 6개(①인라인 체크리스트 불일치 표시 ②교정 로직 ③드레인팬 핏 ④병렬 서버 ⑤Terra V HGRH 트러블슈팅
