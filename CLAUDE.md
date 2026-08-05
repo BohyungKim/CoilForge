@@ -225,6 +225,40 @@ debounced `scheduleChecklistRefill` after an interactive derive; the headless re
 fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
 gate) deliberately passes none — it reads the machine proposal.
 
+**Known-divergence registry / adjudication** (`review/divergence.py`, `review/adjudicate.py`,
+`rules/known_divergences.yaml`, `scripts/promote_divergences.py`) — John rules ONCE on a
+checklist-vs-engine disagreement so the same known gap stops re-asking. A ruling **only
+re-labels a review row** (red → amber); it changes no value, no confidence, and
+**`project_gate` is deliberately untouched** — the ledger's `gate_verdict` label must keep one
+meaning across the corpus, so a suppression that lowered `exceptions_K` would corrupt every
+measurement taken before it. Identity =
+`(coil_category, product_family, terra_variant, unit_size_scope, slot)`; `terra_variant` is
+load-bearing (a Terra V ruling must not silence Terra H) and the family token is the **split**
+`TERRA_H`/`TERRA_V` straight from `resolve_product_line` — deliberately NOT the coarse `TERRA`
+that `mechanical_fit._coarse_terra_family` folds back to for its `TERRA|…` R-077/R-078 keys.
+`unit_size_scope` is **declared** (`"*"` or a size), never inferred. **Numbers are not in the
+identity** — CD varies per coil, so a numeric key would never match twice; magnitude is policed
+by an optional signed `delta_band` on `coilforge - checklist`, and outside it (wrong sign or too
+large) the row **re-escalates** instead of staying amber. A bandless ruling is *structural*, not
+unmeasured (when the sheet has no branch for the line at all, no magnitude makes it right).
+`coilforge_wrong` keeps its RED (`known_defect`) — dimming an open defect of ours would hide the
+one class that most needs fixing. Two files: the tracked promoted registry, and
+`outputs/divergence_staging.yaml` (**gitignored**) which is the ONLY thing
+`POST /api/divergence/adjudicate` writes — a concurrent session auto-commits this tree, so a
+browser action must never touch a tracked path; promotion is John's script + his commit.
+Staging **wins** on a key collision and a differing band raises a warning onto the annotation.
+Ledger side: migration 5 `divergence_adjudication` (append-only, re-ruling INSERTs) kept
+separate from `correction` so `retrieve`/`tuning` don't read a ruling as a manual override;
+`unresolved` is ledgered but **never registered**. `annotate_known_divergences` runs on **both**
+`_run_or_reuse_checklist` return paths and annotates the DEEPCOPY — bake it into the cache and a
+new ruling silently does nothing (the fill is memoized by PDF bytes); the cache carries an
+`identities` map so the hit path can annotate without re-running the workflow. Rule proposals
+(`review/rule_proposal.py` → gitignored `outputs/rule_proposals/`) may only ever *reduce* what is
+drawn — `demote_confidence` / `narrow_applies_to` / `new_medium_scope`, the last forced to
+MEDIUM so the existing gate does the enforcing; an inferred HIGH is not expressible. They flag
+`_SPECIAL_IDS` targets as **inert** (helper hardcodes MEDIUM, YAML flip does nothing) and treat
+"no governing rule" as a valid finding. Env `COILFORGE_DIVERGENCE=0` disables the whole feature.
+
 **CCSI value push + green/red compare** (`ccsi/compare.py`, `web/ccsi/`) — pushes the resolved
 drawing params into the external CCSI Direct Coil form (Claude-in-Chrome `/ccsi-fill`; never
 auto-saves, read-only CCSI-computed fields skipped) and reads them back to compare vs CoilForge,

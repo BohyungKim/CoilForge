@@ -303,6 +303,44 @@ _M4_OBSERVABILITY = (
     "CREATE INDEX ix_audit_sample_reviewed ON audit_sample(reviewed)",
 )
 
+# Divergence adjudication (Phase D). John's ruling on a checklist-vs-engine disagreement:
+# "the sheet is wrong / we are wrong / both readings are defensible / not yet decided".
+#
+# Deliberately NOT the `correction` table. A correction means "John changed a value"; an
+# adjudication means "John decided which side is right", which may change no value at all.
+# `retrieve`/`tuning` mine `correction` as evidence of an edit, so mixing the two would
+# teach case retrieval that a ruling was a manual override and skew the weights.
+#
+# APPEND ONLY -- a re-adjudication INSERTs a new row rather than updating the old one, so
+# the sequence of rulings on one divergence_key stays readable (D5: "suppression outliving
+# its cause" is only detectable if you can see when the suppression was granted). Nothing
+# in the codebase issues UPDATE or DELETE against this table.
+_M5_DIVERGENCE_ADJUDICATION = (
+    """
+    CREATE TABLE divergence_adjudication (
+        adj_id          INTEGER PRIMARY KEY,
+        ts_utc          TEXT NOT NULL,
+        divergence_key  TEXT NOT NULL,
+        coil_category   TEXT,
+        product_family  TEXT,
+        terra_variant   TEXT,
+        unit_size_scope TEXT,
+        slot            TEXT,
+        verdict         TEXT NOT NULL,
+        reason          TEXT NOT NULL,
+        evidence_json   TEXT,
+        adjudicated_by  TEXT,
+        delta_min       REAL,
+        delta_max       REAL,
+        registry_id     TEXT,
+        run_id          TEXT,
+        coil_tag        TEXT
+    )
+    """,
+    "CREATE INDEX ix_adj_key ON divergence_adjudication(divergence_key)",
+    "CREATE INDEX ix_adj_ts ON divergence_adjudication(ts_utc)",
+)
+
 # (description, statements). Index + 1 == PRAGMA user_version after it applies.
 # APPEND ONLY -- never edit or remove an entry that has shipped.
 MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -310,4 +348,5 @@ MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("correction table (1b)", _M2_CORRECTION),
     ("engine provenance (1c)", _M3_ENGINE_PROVENANCE),
     ("observability (1d)", _M4_OBSERVABILITY),
+    ("divergence adjudication (Phase D)", _M5_DIVERGENCE_ADJUDICATION),
 )

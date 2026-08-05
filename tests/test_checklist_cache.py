@@ -300,3 +300,107 @@ def test_cache_is_bounded(monkeypatch, tmp_path) -> None:
     for i in range(overflow):
         _run(pdf, filename="g.pdf", product=f"P{i}")
     assert len(web_app._CHECKLIST_CACHE) <= web_app._CHECKLIST_CACHE_MAXSIZE
+
+
+# ---------------------------------------------------------------------------
+# Known-divergence annotation (Phase D) rides on BOTH cache paths.
+#
+# The checklist result is memoized by PDF bytes, so a ruling John records in the browser
+# would never appear if annotation only ran on a fresh fill — he would re-analyze, hit the
+# cache, and see his own decision do nothing.
+# ---------------------------------------------------------------------------
+_TERRA_V_COIL = {
+    "tag": "RHHGRC-1", "coil_type": "HGRH", "product_label": "TERRA V", "unit_size": "072",
+}
+
+
+def _stub_review_with_cd_mismatch(monkeypatch):
+    """A one-row review whose CD disagrees — the shape KD-001 rules on."""
+    monkeypatch.setattr(
+        web_app, "build_review",
+        lambda fill, writer_result: {
+            "saved_path": writer_result.get("saved_path"),
+            "sheets": [{
+                "tag": "RHHGRC-1", "category": "HGRH", "inputs": [],
+                "comparisons": [{
+                    "label": "CD", "slot": "slot.CD", "coilforge": 7.5,
+                    "checklist": 6.0, "verdict": "mismatch", "override": None,
+                }],
+                "mismatch_count": 1, "override_count": 0,
+            }],
+            "warnings": [], "mismatch_total": 1, "override_total": 0,
+            "export_allowed": False, "production_drawing_approval_claimed": False,
+        },
+    )
+
+
+def test_a_ruling_annotates_on_the_fresh_fill(monkeypatch, tmp_path) -> None:
+    _stub_pipeline(monkeypatch, tmp_path, coils=(_TERRA_V_COIL,))
+    _stub_review_with_cd_mismatch(monkeypatch)
+
+    outcome = _run(b"%PDF-divergence-A", filename="a.pdf")
+
+    row = outcome.review["sheets"][0]["comparisons"][0]
+    assert row["divergence"]["id"] == "KD-001"
+    assert row["divergence"]["severity"] == "known_gap"
+
+
+def test_a_ruling_also_annotates_on_a_cache_hit(monkeypatch, tmp_path) -> None:
+    calls = _stub_pipeline(monkeypatch, tmp_path, coils=(_TERRA_V_COIL,))
+    _stub_review_with_cd_mismatch(monkeypatch)
+    pdf = b"%PDF-divergence-B"
+
+    _run(pdf, filename="b.pdf")
+    hit = _run(pdf, filename="b.pdf")
+
+    assert calls[0] == 1, "still one Excel run — annotation must not defeat the cache"
+    assert hit.review["sheets"][0]["comparisons"][0]["divergence"]["id"] == "KD-001"
+
+
+def test_the_cached_original_stays_un_annotated_so_a_later_ruling_appears(
+    monkeypatch, tmp_path
+) -> None:
+    """Bake the annotation into the cache and a NEW ruling is invisible until the entry
+    expires — the engineer would record a decision and watch it do nothing."""
+    from coilforge.review import divergence
+
+    _stub_pipeline(monkeypatch, tmp_path, coils=(_TERRA_V_COIL,))
+    monkeypatch.setattr(
+        web_app, "build_review",
+        lambda fill, writer_result: {
+            "saved_path": writer_result.get("saved_path"),
+            "sheets": [{
+                "tag": "RHHGRC-1", "category": "HGRH", "inputs": [],
+                "comparisons": [{
+                    "label": "S5", "slot": "slot.S5", "coilforge": 1.5,
+                    "checklist": 3.0, "verdict": "mismatch", "override": None,
+                }],
+                "mismatch_count": 1, "override_count": 0,
+            }],
+            "warnings": [], "mismatch_total": 1, "override_total": 0,
+            "export_allowed": False, "production_drawing_approval_claimed": False,
+        },
+    )
+    staging = tmp_path / "staging.yaml"
+    monkeypatch.setattr(divergence, "_STAGING_PATH", staging)
+    pdf = b"%PDF-divergence-C"
+
+    first = _run(pdf, filename="c.pdf")
+    assert "divergence" not in first.review["sheets"][0]["comparisons"][0]
+
+    # John rules on it between the two renders.
+    from coilforge.review.adjudicate import record_adjudication
+    monkeypatch.setenv("COILFORGE_CAPTURE", "0")  # ledger is not what this test is about
+    record_adjudication(
+        {
+            "coil_category": "HGRH", "product_family": "TERRA_V",
+            "terra_variant": "TERRA_V", "unit_size_scope": "*", "slot": "slot.S5",
+            "verdict": "both_defensible", "reason": "two valid spacing conventions",
+        },
+        staging_path=staging,
+    )
+
+    hit = _run(pdf, filename="c.pdf")
+    assert hit.review["sheets"][0]["comparisons"][0]["divergence"]["applies"] is True, (
+        "a ruling must change the very next render, cache hit or not"
+    )

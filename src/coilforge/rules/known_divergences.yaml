@@ -1,0 +1,155 @@
+# Known divergences — John's adjudicated rulings on Coil-Checklist-vs-engine disagreements.
+#
+# THIS FILE IS NOT A RULE TABLE. Nothing here changes a drawn value, a confidence, or the
+# project gate. It only re-labels a review row: red ("look at this") becomes amber
+# ("adjudicated — here is why"). The engine never imports it; `tests/test_divergence_registry.py`
+# pins that boundary, because a registry the engine could read would be a back door around
+# the confidence gate.
+#
+# This is the PROMOTED half of the registry. The browser's adjudication route appends to
+# `outputs/divergence_staging.yaml` (gitignored) and NEVER writes here — entries arrive via
+# `scripts/promote_divergences.py`, and John's commit is the approval step.
+#
+# Identity (see review/divergence.py):
+#   coil_category | product_family | terra_variant | unit_size_scope | slot
+# `unit_size_scope: "*"` means every size and must be DECLARED, never inferred from one
+# observation. Numbers are deliberately absent from the identity — CD varies with
+# rows/circuits/conn on every coil, so a numeric key would never match twice.
+#
+# delta_band (optional): {min, max} on `coilforge - checklist`. While the observed delta
+# stays inside it the ruling applies; outside — wrong sign or too large — the row
+# RE-ESCALATES, because a divergence that changed character is a new question. Omit the
+# band only when the ruling is structural (below): when the sheet has no branch for this
+# product line at all, no magnitude makes its output right.
+#
+# verdict:
+#   checklist_wrong   — the Excel sheet is wrong; CoilForge stands. -> amber
+#   coilforge_wrong   — WE are wrong. Stays RED on purpose: an open defect must not dim.
+#   both_defensible   — two valid conventions.                      -> amber
+#   (`unresolved` is recorded in the ledger but never registered — "I could not decide"
+#    must not suppress anything.)
+
+version: 1
+
+divergences:
+  # ---------------------------------------------------------------------------
+  # KD-001..005 — Terra V HGRH: the checklist template has no TERRA V branch.
+  #
+  # Traced 2026-08-04 (plan rev.3 Phase B/D4). Of the six Terra V HGRH disagreements,
+  # FIVE are the sheet's fault and one was ours. The one that was ours (I3 — CoilForge
+  # asserted 2.75, a value R-046 explicitly declines to derive for Supply 2+) was FIXED
+  # in commit 9abe5a7 and is deliberately NOT registered here: a defect we repaired is
+  # not a known gap, and leaving it in the registry would suppress a real regression if
+  # it ever came back.
+  #
+  # These five are structural, hence no delta_band. The HGRH sheet's formulas branch on
+  # unit family and have no TERRA V arm, so a Terra V coil falls through to the
+  # NOVA / VENTUM H else-branch. The fingerprint is `S = -conn_size` — a negative supply
+  # spacing is not a Terra V value at all, it is the else-branch arithmetic running on
+  # inputs it was never written for. Whatever number that produces is wrong regardless of
+  # how far it lands from ours, so a magnitude band would be describing the wrong thing.
+  #
+  # Scope is `*` (every Terra V size) BY DECLARATION: the missing branch is a property of
+  # the template, not of any one unit size. Recorded as `status: proposed` — promoting the
+  # file is not the same as John signing off on the engineering, and the badge says so
+  # until he flips it.
+  #
+  # The fix lives on the Excel side, not ours: see rule_proposal RP-001, which drafts the
+  # TERRA V arm for HGRH!C27/C33/C37/C46. We do not apply it; the sheet is Oxygen8's.
+  - id: KD-001
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.CD
+    verdict: checklist_wrong
+    reason: >-
+      The checklist HGRH sheet has no TERRA V branch, so a Terra V coil computes its
+      casing depth through the NOVA / VENTUM H else-branch. CoilForge's CD comes from the
+      Terra V casing table (R-074 `TERRA_V|INTEGRATED|0xx`), which the EZ Coil SOP
+      confirms. Structural, not numeric — the sheet cannot produce a right answer here.
+    evidence_refs:
+      - "SOP:2024018#HGRH-TNVH"
+      - "RULE:R-074"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-04"
+    status: proposed
+    rule_proposal: RP-001
+
+  - id: KD-002
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.S1
+    verdict: checklist_wrong
+    reason: >-
+      Supply-1 spacing. The sheet's else-branch yields `S = -conn_size`; a negative supply
+      spacing is the signature of formulas running on a product line they were not written
+      for. CoilForge resolves S1 from the Terra V `S = CD - Rn` SOP branch.
+    evidence_refs:
+      - "SOP:2024018#HGRH-TNVH"
+      - "RULE:R-046"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-04"
+    status: proposed
+    rule_proposal: RP-001
+
+  - id: KD-003
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.S3
+    verdict: checklist_wrong
+    reason: >-
+      Supply-3 spacing, same else-branch cause as KD-002. Note the boundary: S3 comes from
+      the Terra V `CD - R2` SOP branch (the observed R2/R4 agreeing with the sheet pins
+      `len(return_spacing) == 2`), so it is a REAL value we stand behind. `S5+` is a
+      different matter — that was CoilForge falling into the DX even-spacing safety net and
+      was blanked in 9abe5a7, so it is not registered here.
+    evidence_refs:
+      - "SOP:2024018#HGRH-TNVH"
+      - "RULE:R-046"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-04"
+    status: proposed
+    rule_proposal: RP-001
+
+  - id: KD-004
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.O2
+    verdict: checklist_wrong
+    reason: >-
+      Return-header I/O. The else-branch derives it from the Nova/Ventum geometry; Terra V
+      carries its own I/O constant per the SOP. Structural — the sheet has no arm to take.
+    evidence_refs:
+      - "SOP:2024018#HGRH-TNVH"
+      - "RULE:R-046"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-04"
+    status: proposed
+    rule_proposal: RP-001
+
+  - id: KD-005
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.O4
+    verdict: checklist_wrong
+    reason: >-
+      Second return-header I/O, same cause as KD-004. Registered separately rather than as
+      a wildcard over O-slots: the header index is semantically meaningful (R-046 rules on
+      some positions and declines others), so a ruling that spanned every O position would
+      silence positions nobody has looked at.
+    evidence_refs:
+      - "SOP:2024018#HGRH-TNVH"
+      - "RULE:R-046"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-04"
+    status: proposed
+    rule_proposal: RP-001

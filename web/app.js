@@ -3398,6 +3398,9 @@ function renderParameterRow(parameter) {
   // says CoilForge itself may be wrong, while a CCSI mismatch says an external form
   // disagrees with us. Green is CCSI's alone — two implementations agreeing is not
   // approval, and every value here stays review-required regardless.
+  // An ADJUDICATED divergence (amber `--adjudicated`) arrives in the same slot: it is
+  // still a statement about our own value, so it still outranks CCSI — it has simply
+  // stopped being an open question and no longer competes with the red rows.
   const borderClass = emptyControl || chkView.controlClass || compareClass;
 
   // Badges stack (both spans already span the full row), so nothing is hidden by
@@ -3498,14 +3501,52 @@ function checklistRowView(entry, parameter) {
     };
   }
 
+  // An ADJUDICATED divergence. The backend attached this (review/divergence.py) — the
+  // scope match (variant axis, exact-size-before-wildcard, delta band) is never
+  // re-implemented here, or the two would drift on exactly the coils under investigation.
+  //
+  // Amber is only for a gap in the OTHER implementation. `known_defect` — "CoilForge is
+  // wrong" — deliberately keeps its red: dimming an open defect of ours would hide the one
+  // class of divergence that most needs fixing.
+  const adj = entry.divergence;
+  if (adj && adj.applies && adj.severity === "known_gap") {
+    const stamp = adj.promoted ? adj.id : `${adj.id} · unpromoted`;
+    return {
+      controlClass: " dc-control--adjudicated",
+      badge:
+        `<span class="dc-dimension-adjudicated">◈ ${escapeHtml(stamp)} — ` +
+        `checklist ${escapeHtml(String(cl))}, ours ${escapeHtml(String(cf))}</span>`,
+      title: escapeHtml(
+        `${adj.id} (${adj.verdict}${adj.promoted ? "" : ", not yet promoted"}): ` +
+          `${adj.reason}` + (adj.note ? ` — ${adj.note}` : ""),
+      ),
+    };
+  }
+  if (adj && adj.severity === "re_escalated") {
+    return {
+      controlClass: " dc-control--divergence",
+      badge:
+        `<span class="dc-dimension-mismatch">⚠ ${escapeHtml(adj.id)} no longer covers ` +
+        `this — checklist ${escapeHtml(String(cl))} &ne; CoilForge ${escapeHtml(String(cf))}</span>`,
+      title: escapeHtml(adj.note || "This ruling no longer applies; re-adjudicate."),
+    };
+  }
+
   if (entry.verdict === "mismatch") {
+    // `known_defect` falls through to here on purpose — it is still a real mismatch, and
+    // the ruling only adds the explanation, not a downgrade.
+    const known = adj && adj.severity === "known_defect"
+      ? ` <span class="dc-dimension-note">${escapeHtml(adj.id)}: known CoilForge defect</span>`
+      : "";
     return {
       controlClass: " dc-control--divergence",
       badge:
         `<span class="dc-dimension-mismatch">⚠ Checklist ${escapeHtml(String(cl))} ` +
-        `&ne; CoilForge ${escapeHtml(String(cf))}</span>`,
+        `&ne; CoilForge ${escapeHtml(String(cf))}</span>${known}`,
       title: escapeHtml(
-        `Checklist formula ${cl} vs CoilForge ${cf} — unadjudicated divergence`,
+        adj
+          ? `${adj.id} (${adj.verdict}): ${adj.reason}`
+          : `Checklist formula ${cl} vs CoilForge ${cf} — unadjudicated divergence`,
       ),
     };
   }

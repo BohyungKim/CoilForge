@@ -896,6 +896,31 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
+/* ADJUDICATED divergence — John has already ruled on this exact (category, family,
+   variant, size-scope, slot) and said the sheet is the wrong side. Amber, not red: the
+   disagreement is real and still visible, but it is a settled question, so it must not
+   compete for attention with one nobody has looked at yet.
+
+   Only `known_gap` lands here. A ruling of "CoilForge is wrong" (`known_defect`) keeps
+   the red `--divergence` styling on purpose — an open defect of ours is exactly what
+   should not be dimmed. See review/divergence.py::_SEVERITY_BY_VERDICT. */
+.dc-control.dc-control--adjudicated {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  border-left-color: var(--status-review);
+  color: var(--warn-text);
+}
+
+.dc-dimension-row .dc-dimension-adjudicated {
+  color: var(--warn-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Neutral, informational badge: no counterpart on the sheet, a value only one side has,
    an override John already made, a re-fill in flight. Deliberately NOT red — spending
    red on these would train the eye to skip the ones that matter. */
