@@ -117,6 +117,35 @@
 > 한다"고 적혀 있었는데 그 이유가 사라졌다. 격리 자체는 유지(`row.model`은 스케줄 코드를 뜻하고 22토큰
 > 문자열은 이를 echo하는 모든 노트에서 노이즈), 다만 **고쳐진 결함을 방어하는 독자는 무엇이 실제로 load-bearing
 > 인지 오판한다**.
+> **Phase E 브라우저 눈확인 완료(2026-08-05, John이 직접 업로드)** — 재시작한 :8013에 2755를 올려
+> Mechanical Fit 카드를 육안 확인. **012 유닛 4개 전부 `PASS Drain pan — partner …: combined CD 12.75 vs
+> drain_pan_width 14.5 (PASS)`**; 이 검사는 종전에 **6개 코일 전부 CANNOT_EVALUATE**였으므로 Phase E의 성과가
+> 화면에 나온 것. **009 유닛 2개는 blocked 유지**(`Terra drain-pan width is keyed by option D1/D2/D3, which was
+> not read from the unit model code`) = 사이즈별 귀속이 의도대로 동작 — 2755는 유닛이 둘인데 전체 모델 코드를
+> 하나만 인쇄하므로 012의 옵션을 009에 빌려주지 않는다. 제품군은 6개 전부 `TERRA_H`(정규식 수정 후 오검출 없음).
+> ⓐ**뜻밖의 독립 검증** — John이 올린 건 내가 헤드리스로 돌린 문서와 **다른 파일**이었다
+> (`Project Gumbo - As built` vs `DOAS VRF Units AAN`, 같은 2755 프로젝트). 그런데 **009 blocked / 012 PASS
+> 패턴이 동일**하게 재현되고 CD만 달랐다(12.75 vs 11.875) → 내 검증 파일에 우연히 맞춘 결과가 아니라는 증거.
+> ⓑ**Phase D 격리 속성이 실데이터로 확인됐다** — 이 제출물의 `RHHGRC-1/2/3`은 **HGRH + TERRA_H**로, KD-001~005의
+> 키(`HGRH|TERRA_V|TERRA_V|*|slot.*`)와 **coil_category까지 같고 variant만 다른 최근접 이웃**이다. 판정 배지
+> 0건 = coarse 키였다면 전부 오발화했을 자리에서 정확히 안 걸렸다는 뜻. ⓒ체크리스트도 6시트 전부
+> **"0 mismatch"** — 배지가 하나도 없는 건 조인 실패가 아니라 설계대로(`match`는 무표시, 슬롯 없는 ZD/ZD2는
+> 침묵)임을 시트 태그·mismatch 카운트로 교차 확인했다. ⚠️ **진단 교훈**: 진행률이 "92% Building drawing"에서
+> 멈춘 것처럼 보여 서버 블록을 의심했으나, `read_network_requests`가 답이었다 — `/api/mechanical-fit`은 이미
+> **200으로 끝났고** `/api/checklist/fill`만 대기 중이었다. **두 요청이 한 진행률 막대 뒤에 숨어 있는 것**이
+> 오해의 원인. 여전히 **미확인 1건**: 짝 사이즈 충돌 카드(노트 + 강등된 3판정 동시 표시) — 어느 실 제출물도
+> 이 상태를 만들지 않아 단위 테스트로만 고정.
+> 🔴 **눈확인이 잡아낸 결함(미수정) — 009 카드의 사유가 틀린 곳을 가리킨다.** John이 "CDXC-1이 왜
+> CANNOT_EVALUATE냐, drawing number 미포착이 원인이냐"고 물었고, 그렇게 읽히는 것 자체가 문제다. 카드는
+> `mechanical_fit`의 **일반 문구** *"…which was not read from the unit model code — provide the drain-pan
+> option to evaluate"* 를 띄우는데, 009의 진짜 사정은 **"이 제출물엔 012 유닛의 코드만 인쇄돼 있고, 우리가
+> 일부러 안 빌린다"** 이다. 즉 "옵션을 넣으라"는 안내가 **따를 수 없는 지시**다 — Terra V에서 고쳤던 실패
+> 유형과 **정확히 같은 것**을 다중 유닛 경로에 남겨둔 셈. 정확한 사유는 이미 계산돼
+> `fit_inputs.drain_pan_option_reason`("no unit model code for size 009 appears in this submittal
+> (found: 012) — it deliberately does not borrow another unit's drain-pan option")로 **실려 있으나 화면에
+> 도달하지 않는다**: `evaluate_drain_pan_fit`이 그 문자열을 인자로 받지 않고 자기 일반 문구를 만든다.
+> **수정 방향**: `drain_pan_option_reason`을 `evaluate_drain_pan_fit`에 스레딩해 옵션 부재 사유가 있으면
+> 그걸 detail로 쓰기(Terra V 분기와 동일한 패턴). 곁가지 아님 — 이 검사의 실제 산출물은 판정이 아니라 사유다.
 > 남은 것: **F**(CCSI Notes — CCSI 로그인 탭 필요, John 몫).
 > 이전: **[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
 > `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
