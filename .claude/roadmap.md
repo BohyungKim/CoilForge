@@ -1,6 +1,50 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-04 (**[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
+> 마지막 갱신: 2026-08-05 (**[검토 수렴 트랙] Phase D 종료 — D-2 커밋 `67586f4`**: 판정 원장 +
+> 알려진 갭 레지스트리 + 규칙 제안서가 붙어 **Phase D가 닫혔다**. D-1이 체크리스트 불일치를 원장 *신호*로
+> 만들었다면 D-2는 그것을 *판정 가능한* 대상으로 만든다 — John이 한 번 판정하면 그 정체성이 재등장하는 모든
+> 곳에서 빨강이 앰버 + 근거로 바뀐다. **판정이 하지 *않는* 것이 설계의 핵심**: 값·confidence 무변경이고
+> `project_gate`는 의도적으로 손대지 않았다(원장의 `gate_verdict` 라벨은 코퍼스 전체에서 한 의미를 유지해야
+> 하므로, `exceptions_K`를 낮추는 억제는 그 이전에 측정한 모든 수치를 소급 오염시킨다). 정체성은
+> `(coil_category, product_family, terra_variant, unit_size_scope, slot)` 5축. ⓐ`terra_variant`가 이걸
+> 두 줄짜리 기능이 아니게 만든다 — Terra V 판정이 Terra H를 침묵시키는 것이 이 축이 막으려는 바로 그 실패이고,
+> family 토큰은 `resolve_product_line`이 내주는 **split** `TERRA_H`/`TERRA_V`다(`mechanical_fit`이 R-077/078의
+> `TERRA|…` 키 때문에 coarse `TERRA`로 되접는 것과 **의도적으로 반대**; 이 레지스트리를 키잉하는 건 이
+> 레지스트리뿐이라 더 고운 토큰을 유지 → 나중의 coarsening이 판정 범위를 우발적으로 넓힐 수 없다).
+> ⓑ`unit_size_scope`는 **선언**("*" 또는 특정 사이즈)이지 추론이 아니다 — 관측 1건에서 범위를 기계 추론하는
+> 것이야말로 이 레지스트리가 막으려는 never-invent 위반. ⓒ**수치는 정체성에 없다** — CD는 rows/circuits/conn에
+> 따라 매 코일 달라져 수치 키는 두 번 매칭되지 않는다. 대신 `coilforge - checklist`에 대한 **부호 있는**
+> `delta_band`가 감시하고, 밴드 밖(부호 반대 or 과대)이면 앰버 유지가 아니라 **재escalate**한다(성격이 바뀐
+> 불일치는 새 질문이므로). 밴드는 사람 없이 넓어지지 않는다. 밴드 **없는** 판정은 "미측정"이 아니라 **구조적**
+> 이다 — 시트에 해당 제품라인 분기가 아예 없으면 else-분기가 내는 어떤 수치도 틀렸고 크기가 이를 바꾸지
+> 못한다(주석이 이를 명시하지, 검사를 통과한 척하지 않는다). `coilforge_wrong`은 **빨강 유지** — 앰버는
+> *상대* 구현의 갭 전용이고, 우리 쪽 미해결 결함을 흐리면 가장 고쳐야 할 부류가 가려진다.
+> **저장 분리는 리뷰가 찾아낸 이유 때문**: 라우트는 gitignore된 `outputs/divergence_staging.yaml`에만 쓰고
+> 추적 파일엔 절대 쓰지 않는다(동시 세션이 이 워킹트리를 자동 커밋하므로 브라우저 동작이 추적 경로를 건드리면
+> 미검토 판정이 커밋에 실려 갈 수 있다). 승격은 `scripts/promote_divergences.py` + **John의 커밋이 승인 단계**.
+> 키 충돌 시 작업본이 이기고, 두 파일의 **밴드가 다르면** 조용히 해소하지 않고 주석에 경고를 싣는다(밴드가
+> 억제를 결정하므로 로드 순서에 좌우되는 밴드는 D5의 "억제 부패" 그 자체). 원장은 마이그레이션 5
+> `divergence_adjudication`(append-only, 재판정은 INSERT) — `correction`과 섞지 않은 이유는 `retrieve`/`tuning`이
+> 그 테이블을 *편집의 증거*로 마이닝하기 때문(값을 안 바꾼 판정이 수동 override로 학습된다). `unresolved`는
+> 원장엔 남고 레지스트리엔 **안 들어간다**. 주석은 `_run_or_reuse_checklist`의 **두 반환 경로 모두**에서
+> deepcopy에 붙는다 — 캐시에 구우면 체크리스트가 PDF 바이트로 메모이즈되므로 John이 판정 → 재분석 → 캐시 히트
+> → **자기 결정이 아무것도 안 하는** 것을 보게 된다. 배선 중 발견: 정체성 빌더가 dict 코일을 가정해 그 외
+> 입력에서 fill 전체를 500시켰다 — 이 레이어는 행 라벨만 바꾸므로 John이 정작 쓰러 온 fill이 실패하는 이유가
+> 되어선 안 된다. **규칙 제안서**(`review/rule_proposal.py` → gitignore된 `outputs/rule_proposals/`)는 그려지는
+> 것을 **줄이는 방향만** 표현 가능하다 — `demote_confidence`/`narrow_applies_to`/`new_medium_scope`, 마지막은
+> MEDIUM 강제라 **기존 confidence gate가 집행**하고 생성기를 신뢰할 필요가 없다. 관측에서 추론한 HIGH는 아예
+> 표현 불가. `_SPECIAL_IDS` 타깃은 **INERT**로 표시(헬퍼가 Python에서 MEDIUM 하드코딩 → YAML flip 무효),
+> "지배 규칙 없음"은 조회 실패가 아니라 **결론**으로 렌더(I3 케이스 — 값이 슬롯 레이어에서 나와 YAML로는
+> 못 고친다). `coil_header_rules.yaml`은 읽기 전용이고 sha256을 테스트로 고정. **D4**: Terra V HGRH 5개 dim
+> (CD/S1/S3/O2/O4)을 KD-001~005로 등록 — 원인은 체크리스트 템플릿에 TERRA V 분기가 **통째로 없는** 것이고
+> 지문은 `S = −conn_size`(else-분기가 쓰라고 만들어지지 않은 입력으로 도는 것). 구조적이라 밴드 없음. 6번째
+> 불일치 I3는 **우리 쪽**이었고 9be71fe 계열 `9abe5a7`에서 고쳤으므로 **의도적으로 미등록** — 고친 결함은
+> 알려진 갭이 아니고, 등록하면 재발 시 회귀를 억제해버린다. `docs/rule_proposals/RP-001`이 Excel 쪽 수정안을
+> 담되 **수식 텍스트는 일부러 비웠다**(워크북이 외부라 바깥에서 그 관행을 지어내는 것이야말로 이 서브시스템이
+> 거부하려는 행위). env `COILFORGE_DIVERGENCE=0`로 전체 비활성. 1280 green(`test_phase2c_*` 4건은 알려진
+> 워크트리 cwd 아티팩트 — 같은 코드가 메인 트리 cwd에서 36/36 통과, 이번 세션 재확인). ⚠️ **브라우저 눈확인
+> 미완** — 앰버 행과 `미승격` 배지는 코드 레벨만 검증됨. 남은 것: **Phase E**(드레인팬) / **F**(CCSI Notes).
+> 이전: **[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
 > `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
 > 요청은 6개(①인라인 체크리스트 불일치 표시 ②교정 로직 ③드레인팬 핏 ④병렬 서버 ⑤Terra V HGRH 트러블슈팅
 > ⑥CCSI Notes 전송)였고, **계획 전에 독립 리뷰 2라운드**를 돌렸다(신선 컨텍스트 2명 → BLOCKER 4/MAJOR 14,
