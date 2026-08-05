@@ -157,29 +157,24 @@ def test_checklist_coils_get_the_option_and_keep_the_right_product_line():
         assert coil["unit_size"] == "012"
 
 
-def test_documented_limitation_detection_is_rescued_by_the_short_code_not_by_design():
-    """A pre-existing latent defect this work uncovered but does NOT fix.
+def test_a_document_carrying_only_the_full_code_now_resolves_its_line():
+    """The limitation this file used to pin, since closed at the source.
 
-    Detection survives the full code only because the cover schedule ALSO prints the short
-    form (`TR_C_012` / `TV_B_006`), and `detect_product_and_size` finds that first. Strip
-    the short form and the same document misdetects today, with no involvement from Phase E:
+    Phase E originally routed AROUND a detection defect: real submittals were correct only
+    because the cover schedule ALSO prints the short code, which `detect_product_and_size`
+    finds first. A document carrying only the full code misdetected — Terra V confidently
+    as VENTUM_H, Terra H not at all. The regexes were corrected on 2026-08-05, so the
+    rescue is no longer load-bearing.
 
-        Terra V, full code only -> ('VENTUM_H', 'H10')   -- confidently wrong
-        Terra H, full code only -> (None, None)          -- unresolved
-
-    The cause is the trailing ``\\b`` in `_TERRA_MODEL_RE` / `_TERRA_V_MODEL_RE`, which
-    cannot match a code that continues with ``_``. Fixing it means editing an lru_cached
-    function read by the template, checklist, fit and drawing paths, so it is deliberately
-    out of scope here — Phase E routes AROUND the defect by keeping the full code in a
-    dedicated field. This test exists so the limitation is visible and has a home when
-    someone does fix it; it asserts today's behaviour, so it will fail loudly (and should
-    then be rewritten) the moment the regexes are corrected.
+    Still asserted rather than deleted: this is the exact shape that would regress if
+    anyone reinstated a `\\b` boundary, and "no short code on the page" is a submittal
+    layout we have no control over.
     """
     from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
 
-    assert detect_product_and_size(f"Configuration\n{TERRA_V_FULL}") == ("VENTUM_H", "H10")
-    assert detect_product_and_size(f"Configuration\n{TERRA_H_FULL}") == (None, None)
-    # ...and the rescue that keeps real submittals correct:
+    assert detect_product_and_size(f"Configuration\n{TERRA_V_FULL}") == ("TERRA V", "006")
+    assert detect_product_and_size(f"Configuration\n{TERRA_H_FULL}") == ("TERRA H", "012")
+    # ...and the short-code layout that always worked, unchanged:
     assert detect_product_and_size(f"TV_B_006 LH\n{TERRA_V_FULL}") == ("TERRA V", "006")
 
 

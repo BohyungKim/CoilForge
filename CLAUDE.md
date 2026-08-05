@@ -230,13 +230,18 @@ Terra's drain-pan width by option D1/D2/D3, and nothing produced that value, so 
 INSTALL FIT reported `CANNOT_EVALUATE` while explaining its own blockage. The option is
 **token index 7** of the 22-token underscore model code (first digit = control qty, second =
 pan type); confirmed for **Terra H**. Three things make this harder than a split():
-① **The full code must never reach `detect_product_and_size`.** Its Terra regexes end in
-`\b`, which cannot match a code continuing with `_`, and what happens next depends on the
-code's INNER size token — Terra V's `H10` IS a valid Ventum H size → confidently WRONG
-(`VENTUM_H`), Terra H's `H11` is not → `(None, None)`. So the full code lives in a dedicated
-field, NEVER in `row.model`/`candidate.notes`. **Pre-existing latent defect** (not fixed
-here, pinned by `test_documented_limitation_...`): real submittals survive only because the
-cover schedule ALSO prints the short code, which detection finds first. ② **Attribution is
+① **The full code is kept in a dedicated field, not `row.model`/`candidate.notes`** — those
+mean "the schedule code", and a 22-token string there is noise in every note and summary
+that echoes it. This USED to be a safety guard and no longer is: until 2026-08-05 the Terra
+regexes in `detect_product_and_size` ended in `\b`, which cannot match a code continuing
+with `_`, and the outcome depended on the code's INNER size token — Terra V's `H10` IS a
+valid Ventum H size → confidently WRONG (`VENTUM_H`), Terra H's `H11` is not → `(None,None)`.
+Real submittals survived only because the cover schedule also prints the short code, which
+detection finds first. **Now fixed at the source** (`(?![0-9])` = "no further size digit",
+which is what the regex always meant; R-076 size validation still gates every match, and
+real-submittal output is byte-identical). Don't defend against the old defect — check
+`test_the_full_code_now_detects_correctly_in_both_terra_formats` for what is actually
+guaranteed. ② **Attribution is
 by unit SIZE** (`drain_pan_option_for_unit_size`), never document-wide: the code sits alone
 on a configuration page with no coil tag, and 2755 is a MULTI-unit submittal (009 + 012)
 printing only ONE full code — "one distinct code = one unit" silently gives 009 the 012

@@ -52,12 +52,18 @@ _TERRA_V_RUN = re.compile(r"\b(?:TR_V|TV_[A-Z])_\d{1,3}(?:_[A-Za-z0-9]+)+", re.I
 def find_model_code_run(text: str | None) -> str | None:
     """The longest full (underscore-joined) unit model code in ``text``, or ``None``.
 
-    Returned for STORAGE IN A DEDICATED FIELD ONLY. It must never be written into
-    ``row.model`` / ``candidate.notes``: ``detect_product_and_size`` mis-reads a full code
-    (the trailing ``\\b`` in its Terra regexes cannot match a code that continues with
-    ``_``), so a Terra V code resolves to ``('VENTUM_H','H10')`` off its inner size token
-    and a Terra H code resolves to ``(None, None)``. Both are silent — see
-    ``tests/test_model_code.py``.
+    Returned for STORAGE IN A DEDICATED FIELD. Keep it out of ``row.model`` /
+    ``candidate.notes``: those mean "the schedule code", and a 22-token string there turns
+    every note and summary that echoes it into noise.
+
+    **The stronger reason is gone, and saying so matters.** Until 2026-08-05 this
+    separation was a safety guard: ``detect_product_and_size`` mis-read a full code
+    (the trailing ``\\b`` in its Terra regexes could not match a code continuing with
+    ``_``), resolving Terra V to ``('VENTUM_H','H10')`` off its inner size token and Terra H
+    to ``(None, None)``. Both were silent. The regexes now use ``(?![0-9])`` and handle the
+    full code correctly, so storing it would no longer break detection — leaving the old
+    warning here would have a future reader defending against a defect that no longer
+    exists, and misjudging what is actually load-bearing.
     """
     if not text:
         return None

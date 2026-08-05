@@ -99,34 +99,50 @@ def test_the_short_schedule_code_alone_is_not_enough():
 # --------------------------------------------------------------------------- #
 # E2: why the full code must stay OUT of the detection path
 # --------------------------------------------------------------------------- #
-def test_the_full_code_breaks_product_detection_in_two_different_ways():
-    """Pinning the defect this feature has to route around.
+def test_the_full_code_now_detects_correctly_in_both_terra_formats():
+    """The defect this module was built to route around, since fixed at the source.
 
-    ``detect_product_and_size``'s Terra regexes end in ``\\b``, which cannot match a code
-    that continues with ``_``. What happens next depends on the code's INNER size token,
-    so the two Terra formats fail differently — which is why one regression case is not
-    enough:
+    ``detect_product_and_size``'s Terra regexes used to end in ``\\b``, which cannot match
+    a code that continues with ``_``. What happened next depended on the code's INNER size
+    token, so the two formats failed DIFFERENTLY — which is why both are asserted here and
+    one case would have been a false sense of coverage:
 
-      * Terra V's inner ``H10`` IS a valid Ventum H size -> confidently WRONG product line
-      * Terra H's inner ``H11`` is NOT -> product line unresolved
+      * Terra V's inner ``H10`` IS a valid Ventum H size -> ('VENTUM_H','H10'), confidently
+        wrong: wrong R-074 casing, wrong R-076 sizes, wrong drain-pan widths, no symptom
+      * Terra H's inner ``H11`` is NOT -> (None, None), unresolved
 
-    A wrong line picks the wrong R-074 casing, the wrong R-076 sizes and the wrong
-    drain-pan widths, and nothing in the UI says so.
+    Both now resolve to the real line. The boundary is ``(?![0-9])`` — "no further size
+    digit", which is what the regex always meant — and the R-076 size validation still
+    gates every match, so a looser boundary cannot admit a size that is not real.
     """
-    assert detect_product_and_size(TERRA_V) == ("VENTUM_H", "H10")
-    assert detect_product_and_size(TERRA_H) == (None, None)
+    assert detect_product_and_size(TERRA_V) == ("TERRA V", "006")
+    assert detect_product_and_size(TERRA_H) == ("TERRA H", "012")
 
-    # The short forms — what the cover row actually carries — are correct.
+    # The short forms — what the cover row carries — are unchanged.
     assert detect_product_and_size("TR_C_012") == ("TERRA H", "012")
     assert detect_product_and_size("TV_B_006") == ("TERRA V", "006")
+
+
+def test_an_over_long_digit_run_is_still_refused():
+    """`(?![0-9])` loosened the boundary only for non-digits. A size that keeps going is
+    still not a size, so the fix cannot silently accept a truncated number."""
+    assert detect_product_and_size("TR_C_01234") == (None, None)
+
+
+def test_a_real_terra_code_now_outranks_a_stray_filter_appendix_token():
+    """Bonus effect worth pinning: the Terra branch runs BEFORE the loose non-Terra size
+    scan, so a document carrying a real full Terra code plus a stray catalog ``V###`` row
+    no longer resolves to VENTUM_PLUS off the appendix."""
+    text = f"Unit {TERRA_H}\nFilter appendix: V150 1 16 x 20"
+    assert detect_product_and_size(text) == ("TERRA H", "012")
 
 
 def test_model_code_run_never_returns_the_short_form():
     """The dedicated field holds the FULL code; the short code keeps its own field.
 
-    If this ever returned 'TR_C_012', a caller storing the result would be storing
-    something safe to detect on, and the separation this module exists to enforce would
-    quietly stop mattering.
+    This separation OUTLIVES the regex fix, but its reason changed. It is no longer a
+    safety guard against misdetection — it is that ``row.model`` means "the schedule code",
+    and a 22-token string there turns every note and summary that echoes it into noise.
     """
     assert find_model_code_run("TR_C_012") is None
     assert find_model_code_run(TERRA_H) == TERRA_H
