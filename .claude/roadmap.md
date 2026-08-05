@@ -1,6 +1,67 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-02 (**[제출물 파싱 트랙] 2968이 드러낸 커버/상세 오독 2건 — 971e2e4**: John이
+> 마지막 갱신: 2026-08-04 (**[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
+> `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
+> 요청은 6개(①인라인 체크리스트 불일치 표시 ②교정 로직 ③드레인팬 핏 ④병렬 서버 ⑤Terra V HGRH 트러블슈팅
+> ⑥CCSI Notes 전송)였고, **계획 전에 독립 리뷰 2라운드**를 돌렸다(신선 컨텍스트 2명 → BLOCKER 4/MAJOR 14,
+> 재검토 1명 → MAJOR 6/MINOR 7). 리뷰가 잡아낸 것 중 셋이 계획을 실제로 바꿨다: ⓐ**Phase F 원안이 통째로
+> 틀렸다** — `tests/test_ccsi_field_map.py:88`이 `assert "NOTE" not in key.upper()`로 Notes의 field map 진입을
+> **의도적으로 금지**(2026-07-28 설계)하고 있어, 등록하면 5개 테스트가 깨지고 등록해도 `ccsiFillKeys` 정규식에
+> 걸려 payload에 실리지 않으며 `export_audit`엔 유령 행만 생긴다 → 실제 작업은 "라이브 id 확인 +
+> `selector_verified` 플립"으로 축소. ⓑ**드레인팬 지름길이 회귀 함정** —
+> `detect_product_and_size('TR_C_015_I_L_1_H10_11_…')`이 `('VENTUM_H','H10')`을 반환한다(`_TERRA_MODEL_RE`의
+> 후행 `\b`가 `015_`에 매칭 실패 → Pass A가 내부 `H10`을 집음). 전체 모델 코드를 기존 `row.model`에 담으면
+> 모든 Terra H가 Ventum H로 오검출. ⓒ**네 번째 불일치 축** — 체크리스트의 "CoilForge" 열은
+> `mapping.py:353-357`에서 **체크리스트 자신의 제품 감지**로 계산되어 도면 경로와 영구히 다를 수 있으므로,
+> 원안의 "값 차이 > 0.01 → 노후" 가드는 바로 그 코일에서 배지를 영원히 지운다 → 노후는 명시 플래그로,
+> CF-vs-CF 격차는 독립 배지 등급으로.
+> **Phase A(`eca938c`)** — `run_server{,_dev}.bat`가 포트 인자를 받고 점유 시 상향 스캔으로 자동 회피(실
+> 리스너 상대 검증: 8011 점유→8012, 해제→8011). `common/excel_lock.py`는 프로세스 내부 `threading.Lock`(각
+> 요청이 `asyncio.to_thread`로 별도 스레드라 교착이 아니라 직렬화) + **pid + 프로세스 생성시각** 키 파일 락
+> (Windows는 pid를 재사용하므로 pid만으로는 남남을 산 소유자로 오인해 타임아웃을 다 기다림). `write_checklist`와
+> `write_ambient_excel` **둘 다** 통과. 획득은 **유한 대기 후 실패** — 즉시 실패면 `/api/deliverable/finalize`가
+> 체크리스트 실패를 상태 문자열로 흡수하고 **.xlsx 없이 주문 폴더를 파일링**하므로, finalize는 busy를 하드
+> 에러로 취급. `ExcelBusyError`는 **`RuntimeError` 비상속**이고 절 순서가 그 **앞** — 아니면 501 "Excel 없음"과
+> 500 "write failed"로 강등돼 가드가 고치려던 오진이 재현된다(두 라우트 모두 테스트로 고정). CCSI 스킬 12개
+> 파일이 CoilForge 탭을 **포트 8011로 식별**하고 있어 8012 서버를 못 찾는 문제도 같은 패스에서 포트 무관 규칙으로 교체.
+> **Phase B(`9abe5a7`)** — 이미지 #3의 Terra V HGRH 불일치 6건 중 **5건은 Excel 템플릿 탓**(HGRH 시트에 TERRA V
+> 분기가 없어 NOVA/VENTUM else-분기로 떨어짐; 지문은 `S = −conn_size`), **1건만 CoilForge 탓**이었다.
+> `slot.I{2k-1}`(k≥2)은 R-046이 자기 주석에서 "Supply 2/3/4 I/O는 도출 불가"라고 못박은 값인데 Supply-1 상수를
+> 전 홀수 헤더에 브로드캐스트하고 있었음 → 공백 처리. `slot.S{2k-1}`도 R-052 리스트를 넘어가면 일반 등간격
+> 안전망으로 떨어져 **재열 코일에 DX 분배기 간격**을 찍었음(6회로 Terra V HGRH가 S5=1.6071…S11=3.2143) → 제외.
+> 도면 변화 정량화: header-2 레퍼런스에서 `REVIEW REQUIRED` **18→19**, 늘어난 하나가 I3(전엔 조작된 2.75).
+> 패널 사유는 다중헤더 분기가 문구를 하드코딩하고 있어 SOP 근거 보류와 엔진 실패가 구별되지 않았음 → 기존
+> 사유 조회에 `terra_variant` 축 추가, 다만 변수는 **스레딩하지 않고 `resolve_product_line`으로 내부 도출**
+> (호출부 4곳 중 하나가 `capture/record.py:405`의 교정 원장 기준선이라, 한 곳이 빠지면 기준선과 라이브 패널의
+> `blocked_reason`이 조용히 갈라진다). 곁가지: `checklist/mapping.py`가 HGRH 시트의 `DX CD`를 `with_hgrh` 없이
+> 계산해 **같은 DX가 7.5 / 7.5625로 두 번 서술**되고 있었고, 그 값이 시트 INSTALL FIT 입력이라 드레인팬 판정까지
+> 오염(`category == "HGRH"` 게이트 필수 — 같은 블록이 HWC 시트의 CWC 짝도 처리).
+> **Phase C(`c03ac7e`)** — 도면 파라미터 행이 체크리스트 판정을 바로 이고 다닌다(빨강 + hover 시 양쪽 수치).
+> 조인 키는 **slot**이고 그게 난점의 전부다: 패널의 논리 `O2`는 시트의 `O4`, 시트 자신의 `O2`는 패널의 `O` —
+> 이름 조인이면 빨간 표시가 **한 칸 밀린다**(표시 없음보다 나쁨). `DrawingParameter.slot`은 생성자 인자가 아니라
+> **Pydantic computed field**: 모델이 3개 모듈 12곳에서 생성되고 그중 하나가 원장 기준선이라 인자였다면 언젠가
+> 한 곳이 빠진다. 빨강은 아꼈다 — `match`는 **무표시**(두 구현의 일치는 근거지 승인이 아니고 초록은 CCSI의
+> "저장해도 안전" 전용), `overridden`/`missing_one`/"이 시트에 대응 없음"은 중립 배지. 테두리는 하나만 이김
+> (`--empty` > `--divergence` > `--mismatch` > `--match`), **배지는 스택**(전엔 CCSI 배지가 빈값 사유를 가림).
+> 곁가지 누수 수정: `state.ccsiVerdicts`가 평면이라 코일을 바꿔도 이전 색이 남았음 → 태그별로.
+> **Phase D-1(`2277cc1`)** — 체크리스트 불일치가 원장 신호가 됨. 여기서 **리뷰가 지목한 게이트 결함의 실체**가
+> 확인됐다: `project_gate`가 패널 키를 시트 라벨에 조인해서 **헤더별 dim의 불일치는 한 번도 집계된 적이 없다**
+> — Stage 3.0이 "flag와 correction이 identity-disjoint"라 측정한 것의 상당 부분이 행동이 아니라 이 기계적 누락.
+> 게이트는 **건드리지 않고**(원장 라벨 의미가 코퍼스 중간에 바뀌면 안 됨) 관측을 **패널 키로 기록**해 측정
+> 경로만 우회. `param_key_for_slot`을 `slot_for_param_key`의 정확한 역함수로 두고 왕복을 테스트로 고정.
+> **실앱 검증(John 눈확인 6/6)**: 2770 CACI Reston(47p, CDXC-1+RHHGRC-1, TR_C_024)을 워크트리 서버 :8012에서
+> 실업로드 → 불일치 0건, 붉은 배지 0, 코일 전환 시 색 이월 없음, 값·헤더 위치 타당, .xlsx의 DX CD 정합,
+> Excel 인스턴스 1→2→1(좀비 없음), 포트 자동 회피 확인, 도면 평소와 동일. "배지 없음"이 **일치인지 조인
+> 실패인지** 구별되지 않는 게 이 기능의 진짜 위험이라 백엔드에서 직접 대조 — CDXC-1은 패널 20키 중 18개가
+> 체크리스트 행에 연결(ZD/ZD2는 설계상 슬롯 없음), **고아 0개**, `HDx1→slot.HDx1(HD1)`·`I2→slot.I3`·
+> `O2→slot.O4`까지 정확. ⚠️ 아직 **음성(오탐 없음)만 검증**됨 — 양성(실 불일치가 제대로 빨갛게)은 미확인.
+> 전체 PO 486개 제출물 스캔에서 Terra V+HGRH 후보 다수 확보(**2901 CAP1 Ball FAC = TV_B_072 + RHHGRC-3**이
+> 이미지 #3과 동일 조합) → 다음 검증 대상. 1199 green. ⚠️ 워크트리에서 돌리면 `test_phase2c_*` 4건이 실패하는데
+> 이는 `po_logic_bridge.py:70`의 `cwd().parent` 형제 리포 조회 탓(메인 트리 cwd로 같은 워크트리 코드를 돌리면
+> 36건 전부 통과) — 이번 작업 무관, 기존 로드맵 항목이 이미 기록한 사항. 남은 것: Phase D-2(레지스트리·판정
+> UI·규칙 제안서) / E(드레인팬 — 실 제출물에 20+토큰 모델 코드가 남는지 선행 확인 필요, 남으면 위 ⓑ 오검출이
+> **이미 라이브**) / F(CCSI 폼 탭 필요).
+> 이전: **[제출물 파싱 트랙] 2968이 드러낸 커버/상세 오독 2건 — 971e2e4**: John이
 > "왜 도면에 에러가 뜨냐"고 물어온 실 제출물(2968 HTS Houston / College of the Mainland) 하나에서 결함 2개가
 > 나왔고, 둘 다 원인이 **pdf_intake의 읽기 규칙**이었다. ①**HGBP 오탐** — `_package_hgbp_pages`가 124p 문서
 > 전체를 훑어 p.12(Addendum 2.2 COMPRESSOR item E)의 "...liquid line, **insulated hot gas bypass line**..."에
