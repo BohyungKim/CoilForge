@@ -239,6 +239,25 @@ def test_hgrh_multi_feed_slots_are_byte_identical() -> None:
         assert s["slot.SL1"] == round(6 + conn / 2 - s["slot.S1"], 4), prod
 
 
+def test_hgrh_single_feed_sl1_present_when_cd_unresolved() -> None:
+    """The single-feed 6 is a constant, but it used to sit inside the `cd is not None`
+    block, so an un-gated coil lost SL1 with no value and no reason -- just absent.
+
+    Terra V in the same state gains nothing new: its 5 is not this constant."""
+    ungated, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="ZZ99",
+        rows=None, circuits=1, feeds=1, conn_size=None,
+    )
+    assert ungated.get("slot.CD") is None      # CD genuinely unresolved
+    assert ungated["slot.SL1"] == 6
+
+    terra_v, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA V", unit_size="ZZ99",
+        rows=None, circuits=1, feeds=1, conn_size=None,
+    )
+    assert "slot.SL1" not in terra_v
+
+
 def test_engine_supply_sl_agrees_with_slot_layer_single_feed() -> None:
     """The bridge test. ``supply_sl`` is emitted by the rule engine and read by NO python
     in src/, so engine (6) and slot layer (3) contradicted each other for a year without

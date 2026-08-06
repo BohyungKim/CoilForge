@@ -505,6 +505,21 @@ def build_drawing_slots(
                         slots[f"slot.SL{supply_id}"] = round(
                             6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
                         )
+            if (
+                is_hgrh
+                and not is_terra_v
+                and (feeds if feeds is not None else circuits) == 1
+                and f"slot.SL{supply_id}" not in slots
+            ):
+                # The single-feed 6 is a CONSTANT -- it needs neither the casing depth nor
+                # the connection size. But it lived inside `elif cd is not None:` and
+                # behind `conn_size is not None`, so a coil whose CD never resolved lost
+                # SL1 entirely and silently: no value, no blocked_reason, just absent.
+                #
+                # `not in slots` makes this a strict no-op whenever the branch above
+                # already ran, so it can only ADD a value where one was missing -- it can
+                # never overwrite the position formula or Terra V's 5.
+                slots[f"slot.SL{supply_id}"] = 6
             if hdr_o is not None:
                 # Return I/O = the engine's io value, for EVERY product line including
                 # Terra V (John 2026-07-29).
