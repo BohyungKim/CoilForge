@@ -2177,6 +2177,33 @@ h4 {
   padding: 9px 11px;
 }
 
+/* Rows the coil-tag gate refused. Informational, not an error: the exclusion is
+   usually correct (a valve kit is not a coil), but it must be visible with its reason
+   so a WRONG exclusion cannot masquerade as "the submittal never listed that coil".
+   Defined tokens only -- an undefined one silently falls back to white and breaks
+   dark mode (see the CLAUDE.md guard). */
+.non-coil-excluded {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 11px;
+}
+
+.non-coil-excluded > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.non-coil-excluded ul {
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
 .template-not-registered {
   align-items: center;
   background: var(--danger-bg);

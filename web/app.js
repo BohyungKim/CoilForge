@@ -2216,7 +2216,27 @@ function renderPdfIntakeSummary(uiState) {
       <div><span>Text extraction</span><strong>${escapeHtml(extractionStatus(summary))}</strong></div>
       <div><span>Raw PDF stored</span><strong>${escapeHtml(summary.raw_pdf_stored ? "yes" : "no")}</strong></div>
     </div>
+    ${renderNonCoilRowsExcluded(summary)}
     ${renderPdfCoilReviewPages(summary)}
+  `;
+}
+
+function renderNonCoilRowsExcluded(summary) {
+  const excluded = summary && summary.non_coil_rows_excluded;
+  if (!Array.isArray(excluded) || excluded.length === 0) {
+    return "";
+  }
+  // Shown, never silent. A row the coil-tag gate refused has to be visible with its
+  // reason -- otherwise a wrongly-excluded coil looks identical to one the submittal
+  // never listed, which is the exact ambiguity the gate exists to remove.
+  const items = excluded
+    .map((reason) => `<li>${escapeHtml(reason)}</li>`)
+    .join("");
+  return `
+    <details class="non-coil-excluded" open>
+      <summary>Non-coil rows excluded (${excluded.length})</summary>
+      <ul>${items}</ul>
+    </details>
   `;
 }
 

@@ -1853,6 +1853,20 @@ def test_drain_pan_partner_resolves_after_compound_tag_filter() -> None:
     assert drain_pan_partner_tag("CDXC-1", ["RHHGRH-1"]) == "RHHGRH-1"   # what we now keep
 
 
+def test_non_coil_rows_are_surfaced_not_silent() -> None:
+    """End-to-end: the excluded row reaches the summary the browser renders, naming the
+    tag and why. Dropping it silently would make a WRONGLY-excluded coil look exactly
+    like one the submittal never listed -- the ambiguity the gate exists to remove."""
+    result = extract_coil_candidate_from_pdf_bytes(
+        _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes()
+    )
+    excluded = result.summary.non_coil_rows_excluded
+    assert any("EKEXV-CDXC-1" in entry for entry in excluded), excluded
+    # The two real coils are not reported as exclusions.
+    assert not any(entry.startswith("CDXC-1:") for entry in excluded), excluded
+    assert not any(entry.startswith("CDXC-2:") for entry in excluded), excluded
+
+
 def test_eev_valve_dropped_and_second_dx_section_reaches_cdxc_2() -> None:
     pdf_bytes = _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes()
 

@@ -100,6 +100,11 @@ class PdfCoilIntakeSummary(BaseModel):
     cover_page_ocr_required: bool = False
     cover_page_user_input_required: bool = False
     cover_page_review_note: str | None = None
+    # Rows/lines the coil-tag gate refused, each with its English reason. Surfaced rather
+    # than dropped in silence: a row that disappears with no explanation reads as "not in
+    # the submittal", and the whole point of the gate is to stop a NON-coil reading that
+    # way -- it must not create the same ambiguity in the other direction.
+    non_coil_rows_excluded: list[str] = Field(default_factory=list)
     # Project-level hot-gas-bypass (HGBP/ASC) option, stated as a cover line item
     # ("HGBP VALVE - DANFOSS AXV-H and hot-gas bypass stub-out on coils adder"). The
     # pages are surfaced as evidence because the flag is applied package-wide to DX
@@ -167,6 +172,10 @@ class _CoverPageDetection:
     ocr_required: bool = False
     user_page_input_required: bool = False
     review_note: str | None = None
+    # Cover rows the coil-tag gate refused, as (tag, reason). Defaults to () so the many
+    # "not detected / OCR required" construction sites -- which parsed no rows at all --
+    # stay correct without listing it. Only the sites that actually PARSE rows fill it.
+    rejected_rows: tuple[tuple[str, str], ...] = ()
 
 
 # Hot gas bypass is quoted as a project-level cover line item, never as a coil row --
@@ -780,7 +789,16 @@ def extract_coil_candidate_from_pdf_bytes(
                     "signature was not detected, so extracted label/value candidates require review."
                 ),
             )
-    lines = extract_coil_lines_from_pdf_text(pages, cover_detection=cover_detection)
+    line_rejections: list[str] = []
+    lines = extract_coil_lines_from_pdf_text(
+        pages, cover_detection=cover_detection, rejections=line_rejections
+    )
+    # Cover-row exclusions first (that is the schedule the engineer reads), then the
+    # free-text ones. Both are reported: the cover gate and the line gate can each fire
+    # on a submittal the other never sees.
+    non_coil_excluded = [
+        f"{tag}: {reason}" for tag, reason in cover_detection.rejected_rows
+    ] + line_rejections
     candidate = extract_submittal_candidate_from_structured(
         lines,
         source_id=source_id,
@@ -873,6 +891,7 @@ def extract_coil_candidate_from_pdf_bytes(
         cover_page_ocr_required=cover_detection.ocr_required,
         cover_page_user_input_required=cover_detection.user_page_input_required,
         cover_page_review_note=cover_detection.review_note,
+        non_coil_rows_excluded=non_coil_excluded,
         cover_page_hgbp_detected=bool(hgbp_pages),
         cover_page_hgbp_pages=list(hgbp_pages),
         reused_rule_sources=[
@@ -1488,10 +1507,35 @@ def detect_cover_page_from_pdf_pages(
     )
 
 
+def _accept_line_tag(
+    tag_text: str,
+    line: str,
+    page: _TextPage,
+    line_number: int,
+    rejections: list[str] | None,
+) -> bool:
+    """Gate a tag captured from a free text line, recording the reason when it fails.
+
+    The whole ``line`` plays the cover row's "item" column -- see the call sites. Reasons
+    are page/line located in the same shape ``_add_line`` uses for evidence, and
+    de-duplicated: the three regexes overlap, so one accessory line would otherwise be
+    reported up to three times.
+    """
+    rejection = coil_tag_rejection_reason(tag_text, line)
+    if rejection is None:
+        return True
+    if rejections is not None:
+        located = f"pdf-page-{page.page_number}-line-{line_number}; {rejection}"
+        if located not in rejections:
+            rejections.append(located)
+    return False
+
+
 def extract_coil_lines_from_pdf_text(
     pages: list[_TextPage],
     *,
     cover_detection: _CoverPageDetection | None = None,
+    rejections: list[str] | None = None,
 ) -> list[SanitizedSubmittalLine]:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = 1
@@ -1518,14 +1562,18 @@ def extract_coil_lines_from_pdf_text(
             # this is a valve. The structural rule and the item-token rule each catch a
             # case the other cannot -- which is why coil_tag_rejection_reason keeps both.
             qty_tag = _RE_QTY_TAG_ROW.search(normalized_line)
-            if qty_tag and coil_tag_rejection_reason(qty_tag.group("tag"), normalized_line) is None:
+            if qty_tag and _accept_line_tag(
+                qty_tag.group("tag"), normalized_line, page, line_number, rejections
+            ):
                 # The quantity is gated WITH the tag on purpose: it belongs to this row,
                 # so a row that is not a coil has no coil quantity to contribute either.
                 order = _add_line(extracted, "COIL_QUANTITY", qty_tag.group("qty"), order, page, line_number, "POs-style Qty/Tag row")
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(qty_tag.group("tag")), order, page, line_number, "POs-style Qty/Tag row")
 
             component = _RE_COMPONENT_COIL.search(normalized_line)
-            if component and coil_tag_rejection_reason(component.group("tag"), normalized_line) is None:
+            if component and _accept_line_tag(
+                component.group("tag"), normalized_line, page, line_number, rejections
+            ):
                 coil_tag = _normalize_tag(component.group("tag"))
                 existing_tag = extracted.get(normalize_source_key("COIL_TAG"))
                 # A coil listed as a component (e.g. a preheat coil beneath its parent
@@ -1543,7 +1591,9 @@ def extract_coil_lines_from_pdf_text(
                     order = _set_line(extracted, "COIL_TAG", coil_tag, order, page, line_number, reason)
 
             anchor = _RE_UNIT_TAG_ANCHOR.search(normalized_line)
-            if anchor and coil_tag_rejection_reason(anchor.group("value"), normalized_line) is None:
+            if anchor and _accept_line_tag(
+                anchor.group("value"), normalized_line, page, line_number, rejections
+            ):
                 # "Unit Tag: EKEXV-CDXC-1" reached here with no filter of any kind and
                 # became the candidate's tag outright (reproduced 2026-08-06).
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(anchor.group("value")), order, page, line_number, "POs-style Unit Tag anchor")
@@ -1604,20 +1654,27 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
         header_idx, header_map = _find_cover_header_row(table)
         if header_idx is None or header_map is None:
             continue
-        rows = tuple(_extract_cover_rows_from_table(page, table, header_idx, header_map))
+        rejected: list[tuple[str, str]] = []
+        rows = tuple(
+            _extract_cover_rows_from_table(page, table, header_idx, header_map, rejected)
+        )
         return _CoverPageDetection(
             detected=True,
             page_number=page.page_number,
             detection_method="pdfplumber_table_header",
             detected_headers=COVER_PAGE_REQUIRED_HEADERS,
             rows=rows,
+            rejected_rows=tuple(rejected),
             review_note="Cover page detected by required Qty/Tag/Item/Model/Voltage/Controls/Installation/Duct/Handing table headers.",
         )
     for table in page.tables:
         header_idx, header_map = _find_cover_coil_table(table)
         if header_idx is None or header_map is None:
             continue
-        rows = tuple(_extract_cover_rows_from_table(page, table, header_idx, header_map))
+        rejected = []
+        rows = tuple(
+            _extract_cover_rows_from_table(page, table, header_idx, header_map, rejected)
+        )
         if not rows:
             continue
         return _CoverPageDetection(
@@ -1626,6 +1683,7 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
             detection_method="pdfplumber_table_positional_no_header",
             detected_headers=(),
             rows=rows,
+            rejected_rows=tuple(rejected),
             review_note=(
                 "Cover coil rows detected by canonical column order in a borderless table "
                 "whose header band was dropped during extraction; the column mapping is "
@@ -1638,13 +1696,15 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
 def _detect_cover_page_from_text(page: _TextPage) -> _CoverPageDetection:
     if not _has_cover_header_signature(page.text):
         return _CoverPageDetection(detected=False)
-    rows = tuple(_extract_cover_rows_from_text(page))
+    rejected: list[tuple[str, str]] = []
+    rows = tuple(_extract_cover_rows_from_text(page, rejected))
     return _CoverPageDetection(
         detected=True,
         page_number=page.page_number,
         detection_method="text_header_signature",
         detected_headers=COVER_PAGE_REQUIRED_HEADERS,
         rows=rows,
+        rejected_rows=tuple(rejected),
         review_note="Cover page detected by required header signature in extracted page text.",
     )
 
@@ -1688,6 +1748,7 @@ def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDete
     if not item_starts:
         return _CoverPageDetection(detected=False)
     rows: list[_CoverRow] = []
+    rejected: list[tuple[str, str]] = []
     for idx, start in enumerate(item_starts):
         end = item_starts[idx + 1] if idx + 1 < len(item_starts) else len(lines)
         tag = _normalize_tag(_dc_quote_value_after_label(lines, "Tagged", start, end))
@@ -1702,7 +1763,9 @@ def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDete
                 model_line = _clean_line(lines[j])
                 if model_line:
                     break
-        if not _is_cover_coil_row(tag, model_line):
+        rejection = coil_tag_rejection_reason(tag, model_line)
+        if rejection is not None:
+            rejected.append((tag, rejection))
             continue
         rows.extend(
             _expand_cover_row(
@@ -1724,6 +1787,7 @@ def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDete
         page_number=page.page_number,
         detection_method="direct_coil_quote_numbered_items",
         rows=tuple(rows),
+        rejected_rows=tuple(rejected),
         review_note=(
             "Cover page detected as a Direct Coil quote (numbered 'Tagged:' coil items)."
         ),
@@ -1781,13 +1845,21 @@ def _extract_cover_rows_from_table(
     table: tuple[tuple[str, ...], ...],
     header_idx: int,
     header_map: dict[str, int],
+    rejected: list[tuple[str, str]] | None = None,
 ) -> list[_CoverRow]:
     rows: list[_CoverRow] = []
     for row_number, row in enumerate(table[header_idx + 1 :], start=header_idx + 2):
         qty = _extract_qty(_cell_at(row, header_map["qty"]))
         tag = _normalize_tag(_cell_at(row, header_map["tag"]))
         item = _cell_at(row, header_map["item"])
-        if not tag or not _is_cover_coil_row(tag, item):
+        if not tag:
+            # A blank tag cell is table padding, not a refused coil -- reporting it as
+            # an exclusion would bury the real ones in noise.
+            continue
+        rejection = coil_tag_rejection_reason(tag, item)
+        if rejection is not None:
+            if rejected is not None:
+                rejected.append((tag, rejection))
             continue
         rows.extend(
             _expand_cover_row(
@@ -1807,13 +1879,16 @@ def _extract_cover_rows_from_table(
     return rows
 
 
-def _extract_cover_rows_from_text(page: _TextPage) -> list[_CoverRow]:
+def _extract_cover_rows_from_text(
+    page: _TextPage,
+    rejected: list[tuple[str, str]] | None = None,
+) -> list[_CoverRow]:
     rows: list[_CoverRow] = []
     for line_number, line in enumerate(page.text.splitlines(), start=1):
         line = _clean_line(line)
         if not line or _has_cover_header_signature(line):
             continue
-        row = _cover_row_from_text_line(page, line_number, line)
+        row = _cover_row_from_text_line(page, line_number, line, rejected)
         if row is not None:
             rows.extend(row)
     return rows
@@ -1827,6 +1902,10 @@ def _with_continuation_cover_rows(
         return detection
 
     rows: list[_CoverRow] = list(detection.rows)
+    # Continuation-page rejections join the primary page's. This rebuild is the one place
+    # they can be lost: the dataclass is frozen, so a field omitted here silently resets
+    # to () and an accessory row on page 2+ would go back to vanishing without a reason.
+    rejected: list[tuple[str, str]] = list(detection.rejected_rows)
     seen = {(row.page_number, row.row_number, row.tag) for row in rows}
     for page in sorted(pages, key=lambda item: item.page_number):
         if page.page_number <= detection.page_number:
@@ -1840,11 +1919,15 @@ def _with_continuation_cover_rows(
         # resolve its product line + unit size. Fall back to text only when no
         # cover table is found on the page.
         page_detection = _detect_cover_page_from_tables(page)
-        continuation_rows = (
-            page_detection.rows
-            if page_detection.detected
-            else tuple(_extract_cover_rows_from_text(page))
-        )
+        if page_detection.detected:
+            continuation_rows = page_detection.rows
+            rejected.extend(page_detection.rejected_rows)
+        else:
+            page_rejected: list[tuple[str, str]] = []
+            continuation_rows = tuple(
+                _extract_cover_rows_from_text(page, page_rejected)
+            )
+            rejected.extend(page_rejected)
         if not continuation_rows:
             break
         for row in continuation_rows:
@@ -1854,7 +1937,7 @@ def _with_continuation_cover_rows(
             seen.add(key)
             rows.append(row)
 
-    if tuple(rows) == detection.rows:
+    if tuple(rows) == detection.rows and tuple(rejected) == detection.rejected_rows:
         return detection
     return _CoverPageDetection(
         detected=detection.detected,
@@ -1862,6 +1945,7 @@ def _with_continuation_cover_rows(
         detection_method=detection.detection_method,
         detected_headers=detection.detected_headers,
         rows=tuple(rows),
+        rejected_rows=tuple(rejected),
         ocr_required=detection.ocr_required,
         user_page_input_required=detection.user_page_input_required,
         review_note=(
@@ -1893,6 +1977,7 @@ def _cover_row_from_text_line(
     page: _TextPage,
     line_number: int,
     line: str,
+    rejected: list[tuple[str, str]] | None = None,
 ) -> list[_CoverRow] | None:
     match = re.match(
         r"^(?P<qty>\d+)\s+(?P<tag>[A-Z0-9]+(?:\s*-\s*[A-Z0-9]+)+)\s+(?P<rest>.+)$",
@@ -1904,7 +1989,13 @@ def _cover_row_from_text_line(
     tag = _normalize_tag(match.group("tag"))
     rest = match.group("rest")
     item = _cover_item_from_text(rest)
-    if not _is_cover_coil_row(tag, item):
+    # `rest`, not `item`: _cover_item_from_text canonicalizes "EKEXV Valve (DX Coil)"
+    # down to "DX Coil", destroying the accessory tokens before the gate can read them.
+    # The table path passes its raw cell, so this is what makes the two paths agree.
+    rejection = coil_tag_rejection_reason(tag, rest)
+    if rejection is not None:
+        if rejected is not None:
+            rejected.append((tag, rejection))
         return None
     handing_match = re.search(r"\b(?P<handing>LH|RH|Left|Right|L|R)\b\s*$", rest, re.IGNORECASE)
     return _expand_cover_row(
