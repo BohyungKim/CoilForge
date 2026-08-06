@@ -2680,7 +2680,7 @@ function siblingCoilsForPairing() {
 // plus the engineer's product/size pick and any human-in-the-loop manual fills. Manual
 // engine inputs OVERRIDE the extracted spec value (a filled `rows` beats a blank/wrong
 // extracted `rows`); param overrides + reason ride along for Tier-B + the audit log.
-function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
+function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, candidate) {
   const ex = templateDrawing.extracted || {};
   const f = fills || {};
   const engineInputs = f.engineInputs || {};
@@ -2723,6 +2723,13 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     // Round-trip the submittal spec-panel values so the right-side panel stays
     // populated after the dimensions are logic-derived.
     panel: templateDrawing.panel,
+    // Source candidate for the Direct Coil review-surface refresh (TR-9). /derive resolves
+    // ONE coil from this spec and never sees the submittal, so it cannot rebuild the
+    // paste-ready 52 fields on its own — without this the Drawing Notes and engine
+    // dimensions stay frozen at analyze time. Same round-trip shape as `panel` /
+    // `sibling_coils`; the backend re-validates it and checks its tag against `tag` above,
+    // so a candidate from the wrong coil page is discarded rather than used.
+    candidate,
     // Project identity so the coil_manual_fill milestone journals to the right case
     // and Case Retrieval can name the project. derive's result carries no
     // pdf_intake_summary, so the backend cannot recover these on its own.
@@ -2741,6 +2748,14 @@ function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
   if (updated.drawing_parameter_set) {
     page.workflow.drawing_parameter_set = updated.drawing_parameter_set;
   }
+  // Direct Coil review surfaces refreshed by the re-derive (TR-9). They also ride along
+  // nested inside `updated`, but `workflowToUiState` reads the OUTER keys — this copy is
+  // the authoritative one, and without it a page switch re-renders the analyze-time values.
+  if (updated.direct_coil_paste_ready) {
+    page.workflow.direct_coil_paste_ready = updated.direct_coil_paste_ready;
+    page.workflow.readiness_report = updated.readiness_report;
+    page.workflow.direct_coil_input_draft = updated.direct_coil_input_draft;
+  }
   if (fills && (Object.keys(fills.engineInputs || {}).length || (fills.paramOverrides || []).length)) {
     page.manualFills = { ...fills, productLine, unitSize };
   }
@@ -2748,7 +2763,15 @@ function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
 
 async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, options) {
   const opts = options || {};
-  const spec = deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills);
+  // The candidate that rebuilds the Direct Coil review surfaces must be THIS coil's.
+  // A headless re-analyze fan-out runs one derive per coil concurrently, so it reads the
+  // explicitly targeted page — the shared active index would hand coil A's candidate to
+  // coil B. An interactive fill is a click on the coil currently on screen, so the active
+  // page is by definition the right one there (same assumption `targetPage` already makes).
+  const candidate = opts.page
+    ? opts.page.workflow?.candidates?.[0] || null
+    : activePdfCandidate();
+  const spec = deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, candidate);
   if (elements.previewStatus && !opts.headless) {
     elements.previewStatus.textContent = "Deriving…";
   }
@@ -2763,6 +2786,14 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     persistDerivedToPage(targetPage, updated, fills, productLine, unitSize);
     if (opts.headless) {
       return updated;  // background re-apply: store only, caller re-renders the active coil once
+    }
+    // The re-derive rebuilt the Direct Coil review surfaces, so re-render the whole shell
+    // from the persisted workflow: the paste table, the draft groups, the blocked-field
+    // list and the header count chips all read those keys, and refreshing only some of
+    // them would leave one panel showing analyze-time values next to another showing the
+    // new ones. Runs BEFORE the drawing render below so the preview keeps the last word.
+    if (updated.direct_coil_paste_ready && targetPage?.workflow) {
+      renderShell(workflowToUiState(state.ui, targetPage.workflow, null));
     }
     // The panel mirrors the drawing's slot values: refresh it from the re-derived
     // response so the Drawing Parameters stay aligned with the new dimensions.
@@ -2805,18 +2836,28 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
 // shows only the OTHER fillable engine inputs + blocked drawing-param overrides.
 function renderManualFillPanel(templateDrawing) {
   const plan = templateDrawing.manual_fill_plan;
-  if (!plan) return "";
+  // Resolved BEFORE the early returns below: these carry the backend's skip reasons (e.g.
+  // "coil tag missing - identity unverifiable, Direct Coil review fields not refreshed"),
+  // and a withheld or plan-less coil is exactly when the engineer needs to be told why a
+  // panel did not move. Returning early on those left the reason invisible.
+  const errors = templateDrawing.manual_fill_errors || [];
+  const errorHtml = errors.length
+    ? `<div class="manual-fill-errors">${errors.map((e) => `<span>⚠ ${escapeHtml(e)}</span>`).join("")}</div>`
+    : "";
+  if (!plan) {
+    return errorHtml ? `<div class="manual-fill-panel">${errorHtml}</div>` : "";
+  }
   if (plan.withheld_reason) {
     return `
       <div class="manual-fill-panel is-withheld">
         <span class="manual-fill-title">Drawing withheld</span>
         <span class="manual-fill-hint">${escapeHtml(plan.withheld_reason)}</span>
+        ${errorHtml}
       </div>`;
   }
   const items = (plan.items || []).filter(
     (it) => it.key !== "product_type" && it.key !== "unit_size",
   );
-  const errors = templateDrawing.manual_fill_errors || [];
   if (!items.length && !errors.length) return "";
   const rows = items
     .map((it) => {
@@ -2841,9 +2882,6 @@ function renderManualFillPanel(templateDrawing) {
         </label>`;
     })
     .join("");
-  const errorHtml = errors.length
-    ? `<div class="manual-fill-errors">${errors.map((e) => `<span>⚠ ${escapeHtml(e)}</span>`).join("")}</div>`
-    : "";
   return `
     <div class="manual-fill-panel">
       <span class="manual-fill-title">Fill these to complete the drawing</span>

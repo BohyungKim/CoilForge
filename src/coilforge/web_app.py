@@ -1509,9 +1509,21 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
     if not _manual_fill_enabled():
         clean.pop("param_overrides", None)
         clean.pop("spec_overrides", None)
+        # The Direct Coil review-surface refresh rides the same feature, so the documented
+        # kill switch has to strip its input too -- otherwise the refresh keeps running
+        # with COILFORGE_MANUAL_FILL=0 and the env var stops being a whole-feature lever.
+        clean.pop("candidate", None)
         for key in ("application", "header_count", "qty_conn_per_header"):
             clean.pop(key, None)
         return clean, errors
+
+    # Source candidate for the Direct Coil review-surface refresh (TR-9). The workflow
+    # validates it and checks its tag against the coil being derived; here we only reject
+    # a non-object so a junk value never reaches model_validate.
+    if "candidate" in clean and clean["candidate"] is not None:
+        if not isinstance(clean["candidate"], dict):
+            errors.append("candidate must be an object")
+            clean.pop("candidate", None)
 
     valid_overrides: list[dict[str, Any]] = []
     for item in spec.get("param_overrides") or []:
@@ -1606,7 +1618,12 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
     if not _manual_fill_enabled():
         result.pop("manual_fill_plan", None)
     if errors:
-        result["manual_fill_errors"] = errors
+        # MERGE, never assign: the workflow puts its own skip reasons here (e.g. the coil
+        # tag could not be verified, so the Direct Coil review fields were not refreshed).
+        # Assigning would drop that reason whenever any unrelated sanitizer error fired --
+        # and an unexplained stale panel is exactly the failure this reporting exists for.
+        existing = result.get("manual_fill_errors")
+        result["manual_fill_errors"] = (list(existing) if existing else []) + errors
     # request_payload=clean carries the coil tag (singular) and the project
     # identity the frontend now sends; derive's result has neither pdf_intake_summary
     # nor pdf_coil_pages, so without this the milestone hits the identity gate and
