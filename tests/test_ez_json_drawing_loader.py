@@ -25,7 +25,8 @@ GEOM_1 = {
             {"ID": 1, "IsSupply": True, "IsDistributor": True, "HD": 4.5,
              "IO": [3.0, 0, 0], "SR": 2.75, "SL": [0, 0, 0]},
             {"ID": 2, "IsSupply": False, "HD": 3.5,
-             "IO": [2.0, 0, 0], "SR": 0.625, "SL": [8.0, 0, 0]},
+             "IO": [2.0, 0, 0], "SR": 0.625, "SL": [8.0, 0, 0],
+             "ConnectionSize": [0.625, 0, 0]},
         ],
     }
 }
@@ -77,6 +78,7 @@ def test_geometry_single_pair_slots() -> None:
     assert slots["slot.R2"] == 0.625    # Headers[1].SR
     assert slots["slot.SL2"] == 8.0
     assert slots["slot.HD2"] == 3.5     # return/suction HD
+    assert slots["slot.RETURN_CONN_SIZE"] == 0.625  # Headers[1].ConnectionSize[0]
 
 
 def test_forbidden_top_level_fields_not_sourced() -> None:

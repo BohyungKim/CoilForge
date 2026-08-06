@@ -16,12 +16,26 @@ from coilforge.compatibility import (
 )
 from coilforge.submittal import (
     build_po_logic_intake_summary,
+    default_po_logic_source_paths,
     load_submittal_candidate_fixture,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SANITIZED_DIR = ROOT / "examples" / "sanitized"
+PO_LOGIC_FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "po_logic"
+
+
+def _po_logic_summary():
+    """Hermetic PO-logic summary built from the in-repo sanitized fixture.
+
+    Avoids depending on the private external sibling project being present on
+    disk, so the asserted ``found`` rule set is produced on any machine.
+    """
+
+    return build_po_logic_intake_summary(
+        default_po_logic_source_paths(PO_LOGIC_FIXTURE_ROOT)
+    )
 EXPECTED = json.loads(
     (
         ROOT
@@ -51,7 +65,7 @@ def _matrix(candidate=None, ez_payload=None):
 
 
 def test_po_logic_intake_summary_can_be_generated_safely() -> None:
-    summary = build_po_logic_intake_summary()
+    summary = _po_logic_summary()
     payload = summary.to_dict()
 
     assert payload["raw_private_source_data_read"] is False
@@ -136,7 +150,7 @@ def test_cd_bf_tf_ch_are_included_if_still_missing_or_blocked() -> None:
 
 def test_raw_private_source_text_is_absent() -> None:
     matrix_json = json.dumps(_matrix().to_dict())
-    po_summary_json = json.dumps(build_po_logic_intake_summary().to_dict())
+    po_summary_json = json.dumps(_po_logic_summary().to_dict())
 
     assert "FINNED_HEIGHT:" not in matrix_json
     assert "submittal_text" not in matrix_json

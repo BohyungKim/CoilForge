@@ -74,6 +74,9 @@ def _slots_geometry(geom: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
             slots[f"slot.R{hid}"] = header.get("SR")
             slots[f"slot.SL{hid}"] = sl0
             slots[f"slot.HD{hid}"] = header.get("HD")
+            # The return header carries the one real sweat connection (the supply
+            # distributor has none); source its size from the header's own data.
+            slots["slot.RETURN_CONN_SIZE"] = (header.get("ConnectionSize") or [None])[0]
 
     # OAL is derived (not stored) -> review item, never auto-sourced.
     notes.append("slot.OAL: derived (Geometry.OAL not stored) -> review_required.")

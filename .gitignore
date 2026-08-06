@@ -60,3 +60,4 @@ temp/
 *.log
 
 .claude/agent-memory/
+.claude/settings.local.json
