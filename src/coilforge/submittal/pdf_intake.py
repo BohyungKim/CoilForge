@@ -6,6 +6,7 @@ import hashlib
 import os
 import re
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -316,6 +317,10 @@ class _FieldPattern:
     source_key: str
     labels: tuple[str, ...]
     value_pattern: str = r"(?P<value>[^\n\r]+?)"
+    # Optional post-match acceptance test. Enforced once in _match_field_value, so a
+    # pattern's rule holds for EVERY loop over _FIELD_PATTERNS (there are three) and for
+    # any added later -- rather than being re-implemented per call site and missed.
+    validator: Callable[[str], bool] | None = None
 
 
 # These deterministic rules intentionally mirror the safe portions of the POs
@@ -532,7 +537,10 @@ _DETAIL_SECTION_STOP_PATTERN = re.compile(
 
 
 _FIELD_PATTERNS: tuple[_FieldPattern, ...] = (
-    _FieldPattern("COIL_TAG", ("Coil Unit Tag", "Unit Tag", "Coil Tag", "Tag"), r"(?P<value>[A-Z][A-Z0-9][\w\-\s]*\d+)"),
+    # The value pattern is loose by design (it must survive "Coil Unit Tag: CDXC - 1"),
+    # which also let "Unit Tag: EKEXV-CDXC-1" through. The validator, not a tighter
+    # regex, is what decides whether the captured token names a coil.
+    _FieldPattern("COIL_TAG", ("Coil Unit Tag", "Unit Tag", "Coil Tag", "Tag"), r"(?P<value>[A-Z][A-Z0-9][\w\-\s]*\d+)", validator=is_coil_tag),
     _FieldPattern("COIL_QUANTITY", ("Coil Quantity", "Quantity", "Qty"), r"(?P<value>\d+)"),
     _FieldPattern("HANDING", ("Handing", "Coil Hand", "Hand"), r"(?P<value>Left|Right|L|R)\b"),
     _FieldPattern("PRODUCT_TYPE", ("Product Type", "Coil Type"), r"(?P<value>DX|CHW|HW|CW)\b"),
@@ -1498,26 +1506,46 @@ def extract_coil_lines_from_pdf_text(
             if not normalized_line:
                 continue
 
+            # Every path below that can emit a COIL_TAG is gated. Each of the three
+            # regexes is deliberately permissive about shape -- _RE_QTY_TAG_ROW even has
+            # explicit compound-tag support ((?:[\w]+-)*) so "1 ERV-CDXC-1 ..." captures
+            # whole -- and none of them consulted the accessory filter, which lived only
+            # in _is_cover_coil_row on the cover path.
+            #
+            # The WHOLE LINE stands in for the cover row's "item" column, and it has to:
+            # an accessory line NAMES the coil it serves ("2 CDXC-1 EEV Kit EKEXVA72U"),
+            # so the tag alone is structurally perfect and only the surrounding text says
+            # this is a valve. The structural rule and the item-token rule each catch a
+            # case the other cannot -- which is why coil_tag_rejection_reason keeps both.
             qty_tag = _RE_QTY_TAG_ROW.search(normalized_line)
-            if qty_tag:
+            if qty_tag and coil_tag_rejection_reason(qty_tag.group("tag"), normalized_line) is None:
+                # The quantity is gated WITH the tag on purpose: it belongs to this row,
+                # so a row that is not a coil has no coil quantity to contribute either.
                 order = _add_line(extracted, "COIL_QUANTITY", qty_tag.group("qty"), order, page, line_number, "POs-style Qty/Tag row")
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(qty_tag.group("tag")), order, page, line_number, "POs-style Qty/Tag row")
 
             component = _RE_COMPONENT_COIL.search(normalized_line)
-            if component:
+            if component and coil_tag_rejection_reason(component.group("tag"), normalized_line) is None:
                 coil_tag = _normalize_tag(component.group("tag"))
                 existing_tag = extracted.get(normalize_source_key("COIL_TAG"))
                 # A coil listed as a component (e.g. a preheat coil beneath its parent
                 # air-handling unit) must win over a unit tag captured earlier by the
                 # generic Qty/Tag row rule; otherwise the unit (ERV/AHU/...) shadows the
                 # actual coil. Only override when no coil tag has been captured yet.
+                #
+                # _set_line OVERWRITES, so this is the one path that can replace an
+                # already-captured tag -- which is why the gate matters most here: an
+                # accessory line reading "2 CDXC-1 EEV Kit ..." used to manufacture a
+                # phantom coil out of the tag its own description was qualifying.
                 if existing_tag is None or not _tag_prefix_is_coil(existing_tag.source_value):
                     reason = "POs-style coil component row (coil tag prioritized over unit tag)"
                     order = _set_line(extracted, "COIL_QUANTITY", component.group("qty"), order, page, line_number, reason)
                     order = _set_line(extracted, "COIL_TAG", coil_tag, order, page, line_number, reason)
 
             anchor = _RE_UNIT_TAG_ANCHOR.search(normalized_line)
-            if anchor:
+            if anchor and coil_tag_rejection_reason(anchor.group("value"), normalized_line) is None:
+                # "Unit Tag: EKEXV-CDXC-1" reached here with no filter of any kind and
+                # became the candidate's tag outright (reproduced 2026-08-06).
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(anchor.group("value")), order, page, line_number, "POs-style Unit Tag anchor")
 
             ez_dx_model = _RE_EZ_DX_MODEL_NUMBER.search(normalized_line)
@@ -2202,8 +2230,40 @@ def _ordered_detail_blocks_from_page(
     return tuple(blocks)
 
 
+_RE_TAG_LIKE = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")
+
+
+def _without_embedded_non_coil_tags(text: str, known_tags: tuple[str, ...]) -> str:
+    """Blank out compound ACCESSORY tags that EMBED one of ``known_tags``.
+
+    ``_detail_page_tags`` matches by normalized substring containment -- separators are
+    stripped, so "CDXC1" is a substring of "EKEXVCDXC1" and an expansion-valve page
+    attaches itself to the coil its own tag was qualifying. A boundary check is
+    impossible after normalization, so the masking happens before it.
+
+    Narrow on purpose: a token is removed only when it is BOTH not a coil tag AND
+    contains one. That keeps the containment match's real job -- rescuing the "CDXC - 1"
+    and "CDXC1" spellings of a genuine tag -- completely intact.
+    """
+    if not known_tags:
+        return text
+
+    def _mask(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if is_coil_tag(token):
+            return token
+        normalized = _normalize_tag_search_text(token)
+        if any(_normalize_tag_search_text(tag) in normalized for tag in known_tags):
+            return " "
+        return token
+
+    return _RE_TAG_LIKE.sub(_mask, text)
+
+
 def _detail_page_tags(text: str, known_tags: tuple[str, ...]) -> tuple[str, ...]:
-    normalized_text = _normalize_tag_search_text(text)
+    normalized_text = _normalize_tag_search_text(
+        _without_embedded_non_coil_tags(text, known_tags)
+    )
     matched = tuple(
         tag for tag in known_tags if _normalize_tag_search_text(tag) in normalized_text
     )
@@ -2978,6 +3038,12 @@ def _match_field_value(line: str, field_pattern: _FieldPattern) -> str | None:
             continue
         value = _clean_value(match.group("value"))
         if value:
+            if field_pattern.validator is not None and not field_pattern.validator(value):
+                # The label matched but the captured token fails this pattern's own
+                # acceptance test. Keep scanning the remaining labels instead of
+                # returning: one line can carry an accessory "Unit Tag: EKEXV-CDXC-1"
+                # and a real "Coil Tag: CDXC-2", and only the second is the answer.
+                continue
             if field_pattern.source_key in {"HANDING", "HAND", "COIL_HAND"}:
                 return _normalize_handing(value)
             if field_pattern.source_key == "FIN_SURFACE":

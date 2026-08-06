@@ -19,10 +19,12 @@ from coilforge.submittal.pdf_intake import (
     _match_detail_label,
     _cover_row_summary,
     _detail_lines_by_cover_row,
+    _detail_page_tags,
     _detail_table_field_pairs,
     _is_cover_coil_row,
     _normalize_fin_surface,
     coil_tag_rejection_reason,
+    drain_pan_partner_tag,
     is_coil_tag,
     _OcrPageResult,
     _package_hgbp_pages,
@@ -1798,6 +1800,57 @@ def test_cover_item_canonicalization_cannot_launder_a_valve_row() -> None:
     # The real coil on the same cover still parses.
     rows = _cover_row_from_text_line(page, 2, "1 CDXC-1 DXC Cooling TR_C_032 LH")
     assert rows is not None and [r.tag for r in rows] == ["CDXC-1"]
+
+
+def _tags_from_text(*lines: str) -> list[str]:
+    page = _TextPage(page_number=1, text="\n".join(lines))
+    return [
+        line.source_value
+        for line in extract_coil_lines_from_pdf_text([page])
+        if line.source_key == "COIL_TAG"
+    ]
+
+
+def test_unit_tag_anchor_rejects_compound_accessory_tag() -> None:
+    """The "Unit Tag:"/"Coil Tag:" anchor had NO non-coil filter at all -- the leak that
+    actually fired (reproduced 2026-08-06). Both the anchor regex and the _FIELD_PATTERNS
+    COIL_TAG label path read the same line, so both have to refuse it."""
+    assert _tags_from_text("Unit Tag: EKEXV-CDXC-1") == []
+    assert _tags_from_text("Coil Tag: EKEXV-CDXC-1") == []
+    assert _tags_from_text("Unit Tag: EKEXVA72U-CDXC-1") == []
+    # A real coil on the same shape still lands.
+    assert _tags_from_text("Unit Tag: CDXC-1") == ["CDXC-1"]
+
+
+def test_qty_tag_row_rejects_eev_kit_phantom_coil() -> None:
+    """A valve accessory line NAMES the coil it serves. The component-row rule harvested
+    that name into a phantom coil -- and via _set_line it could overwrite a tag already
+    captured, so the phantom won."""
+    assert _tags_from_text("2 CDXC-1 EEV Kit EKEXVA72U") == []
+    assert _tags_from_text("1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH") == []
+    # The genuine component row still wins over its parent unit tag.
+    assert _tags_from_text("Unit Tag: ERV-1", "1 PHWC-2 Preheat Coil") == ["PHWC-2"]
+
+
+def test_detail_page_tags_ignores_embedded_coil_tag_in_accessory_tag() -> None:
+    """Containment matching strips separators, so "CDXC1" sits inside "EKEXVCDXC1" and an
+    EEV page attached itself to the real coil even after that row was correctly dropped."""
+    assert _detail_page_tags("EKEXV-CDXC-1 Valve Kit Data", ("CDXC-1",)) == ()
+    # Recall guard: the spellings the containment match exists to rescue still match.
+    assert _detail_page_tags("Tag: CDXC-1", ("CDXC-1",)) == ("CDXC-1",)
+    assert _detail_page_tags("Tag: CDXC - 1", ("CDXC-1",)) == ("CDXC-1",)
+    assert _detail_page_tags("CDXC1 Cooling DX", ("CDXC-1",)) == ("CDXC-1",)
+    # A page naming both the accessory and the coil still resolves to the coil.
+    assert _detail_page_tags(
+        "EKEXV-CDXC-1 Valve Kit\nCDXC-1 Cooling DX", ("CDXC-1",)
+    ) == ("CDXC-1",)
+
+
+def test_drain_pan_partner_resolves_after_compound_tag_filter() -> None:
+    """The downstream payoff. A leaked compound tag failed drain_pan_partner_tag's anchor
+    and returned None, so the DX/HGRH pair silently lost its INSTALL FIT check."""
+    assert drain_pan_partner_tag("EKEXV-CDXC-1", ["RHHGRH-1"]) is None   # the old state
+    assert drain_pan_partner_tag("CDXC-1", ["RHHGRH-1"]) == "RHHGRH-1"   # what we now keep
 
 
 def test_eev_valve_dropped_and_second_dx_section_reaches_cdxc_2() -> None:
