@@ -15,12 +15,15 @@ from fastapi.testclient import TestClient
 from coilforge.submittal.pdf_intake import (
     _candidate_from_cover_row,
     _CoverRow,
+    _cover_row_from_text_line,
     _match_detail_label,
     _cover_row_summary,
     _detail_lines_by_cover_row,
     _detail_table_field_pairs,
     _is_cover_coil_row,
     _normalize_fin_surface,
+    coil_tag_rejection_reason,
+    is_coil_tag,
     _OcrPageResult,
     _package_hgbp_pages,
     _TextPage,
@@ -1733,6 +1736,68 @@ def test_is_cover_coil_row_rejects_eev_valve_accessory_rows() -> None:
     assert _is_cover_coil_row("EKEXV-CDXC-1", "DX Coil") is False
     # A plain valve item is rejected via the item-token guard.
     assert _is_cover_coil_row("PHWCV-2", "HWC Pre-Heat Valve") is False
+
+
+def test_is_coil_tag_structural_predicate() -> None:
+    """A coil tag is EXACTLY <coil-prefix>-<seq>. Everything else is an accessory,
+    a unit, or a mangled read -- and none of those may become a coil.
+
+    The rejected spellings are not hypothetical variants: this codebase names the
+    expansion-valve kit ``EKEXVA{n}U``, so a submittal tagging it ``EKEXVA-CDXC-1``
+    walked straight past the old three-string denylist.
+    """
+    for tag in ("CDXC-1", "RHHGRH-2", "RHHGRC-10", "ccwc-3", "PHWC - 4", " HHWC-1 "):
+        assert is_coil_tag(tag) is True, tag
+    for tag in (
+        "EKEXV-CDXC-1",     # the reported case
+        "EKEXVA-CDXC-1",    # spelling variant the denylist never listed
+        "EKEXVA72U-CDXC-1",
+        "EEVK-CDXC-1",
+        "TXV-CDXC-1",
+        "PHWCV-2",          # valve tag that merely starts like a coil prefix
+        "ERV-02",           # parent unit, not a coil
+        "DOAS-1",
+        "660024-001",       # a part number (the HGBP adder line)
+        "CDXC",             # no sequence
+        "CDXC-1-EXTRA",     # trailing segment -- old split("-")[0] read this as a coil
+        "",
+    ):
+        assert is_coil_tag(tag) is False, tag
+
+
+def test_coil_tag_rejection_reason_names_the_tag_and_the_cause() -> None:
+    """Every rejection is explainable. A row that vanishes without a reason reads as
+    'not in the submittal', which is the failure this filter must not cause."""
+    assert coil_tag_rejection_reason("CDXC-1", "DXC Cooling") is None
+
+    structural = coil_tag_rejection_reason("EKEXV-CDXC-1", "DX Coil")
+    assert structural is not None
+    assert "EKEXV-CDXC-1" in structural and "not a coil tag" in structural
+
+    # A structurally-VALID coil tag whose item names an accessory: the item-token
+    # signal is the only thing that catches this, so it must survive independently.
+    item_based = coil_tag_rejection_reason("CDXC-1", "EEV Kit")
+    assert item_based is not None
+    assert "accessory" in item_based
+
+    # A multi-tag cover cell (qty 2, two coils on one row) is a coil row; a cell with
+    # any accessory member is not. _expand_cover_tags splits the accepted one later.
+    assert coil_tag_rejection_reason("CDXC-1, CDXC-2", "DXC Cooling") is None
+    assert coil_tag_rejection_reason("CDXC-1, EKEXV-CDXC-1", "DXC Cooling") is not None
+
+
+def test_cover_item_canonicalization_cannot_launder_a_valve_row() -> None:
+    """The text-line cover path canonicalizes the item BEFORE the coil test, so
+    "EKEXV Valve (DX Coil)" arrives as "DX Coil" with the 'valve'/'ekexv' tokens
+    already destroyed. The structural tag rule is what closes that asymmetry (the
+    table path passes the raw cell and never had it)."""
+    page = _TextPage(page_number=1, text="")
+    assert _cover_row_from_text_line(
+        page, 1, "1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH"
+    ) is None
+    # The real coil on the same cover still parses.
+    rows = _cover_row_from_text_line(page, 2, "1 CDXC-1 DXC Cooling TR_C_032 LH")
+    assert rows is not None and [r.tag for r in rows] == ["CDXC-1"]
 
 
 def test_eev_valve_dropped_and_second_dx_section_reaches_cdxc_2() -> None:

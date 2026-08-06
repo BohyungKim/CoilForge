@@ -435,18 +435,69 @@ def drain_pan_partner_tag(tag: str, candidate_tags: list[str]) -> str | None:
 
 # Accessory line items that must never be detected as coils, even when their
 # description mentions a coil keyword (e.g. an electronic expansion valve kit
-# tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"). Tag-prefix signal +
-# item-token signal; both are checked before the coil-keyword fallthrough.
+# tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)").
+#
+# TWO signals, answering different questions -- neither subsumes the other:
+#   * STRUCTURAL (``is_coil_tag``): is this a coil tag at all? Catches the compound
+#     accessory tag whatever its spelling, and survives ``_cover_item_from_text``
+#     canonicalizing "EKEXV Valve (DX Coil)" down to "DX Coil" before anyone reads it.
+#   * ITEM TOKEN (below): does a structurally-VALID tag's line item name an accessory?
+#     The only thing that catches a bare "CDXC-1" row whose item reads "EEV Kit".
+# ``_NON_COIL_TAG_PREFIXES`` is retained as documentation of the observed spellings; the
+# structural rule is what actually rejects them (and their unlisted variants).
 _NON_COIL_TAG_PREFIXES = {"EKEXV", "EEV", "EXV"}
 _NON_COIL_ITEM_TOKENS = ("valve", "ekexv", "eev", "expansionvalve")
+
+
+def is_coil_tag(tag: str) -> bool:
+    """True only when ``tag`` is EXACTLY ``<coil-prefix>-<seq>`` (``CDXC-1``, ``RHHGRH-2``).
+
+    Delegates to ``coil_category_of_tag`` so "this names a coil" has ONE definition:
+    adding a prefix to ``_COIL_TYPE_BY_PREFIX`` then propagates here, to
+    ``coil_tag_aliases`` and to ``drain_pan_partner_tag`` together, instead of to a
+    parallel denylist someone has to remember.
+
+    A compound tag (``EKEXV-CDXC-1``) is a qualifier PREPENDED to a coil tag, and the
+    anchor rejects it structurally -- so unlisted spellings need no entry anywhere.
+    That is not hypothetical: this codebase names the kit ``EKEXVA{n}U``
+    (``ambient/package.py``), so the exact ``EKEXV`` spelling was never the only one.
+    """
+    return coil_category_of_tag(_normalize_tag(tag)) is not None
+
+
+def coil_tag_rejection_reason(tag: str, item: str = "") -> str | None:
+    """``None`` when the row IS a coil; otherwise the English reason it was excluded.
+
+    Accepts a cover TAG CELL, which may name more than one coil ("CDXC-1, CDXC-2" with
+    qty 2 -- ``_expand_cover_tags`` splits those into one row each downstream). The cell
+    is a coil row when EVERY member is a coil tag; one accessory member is enough to
+    reject, because a mixed cell is not a thing a cover schedule writes.
+
+    Callers surface this rather than dropping the row silently. A coil that disappears
+    without explanation reads to the engineer as "absent from the submittal" -- which is
+    the very failure a too-eager filter would cause, so the filter has to say why.
+    """
+    normalized_tag = _normalize_tag(tag)
+    members = [part for part in str(tag or "").split(",") if _normalize_tag(part)]
+    if not members or not all(is_coil_tag(part) for part in members):
+        return (
+            f"'{normalized_tag or tag}' is not a coil tag - a coil tag is "
+            f"<prefix>-<number> with prefix in {'/'.join(_COIL_TAG_PREFIXES)}. "
+            "Read as an accessory or unit line, not a coil."
+        )
+    normalized_item = _normalize_header_token(item)
+    if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
+        return (
+            f"'{normalized_tag}' item text names an accessory "
+            f"({_clean_value(item)}), not a coil."
+        )
+    return None
+
+
 _UNIT_PREFIXES = (
     r"(?:ERV|DOAS|AHU|RTU|MAU|FCU|WSHP|TV|TH|NV|NH|VH|VV|PU|"
     + "|".join(_COIL_TAG_PREFIXES)
     + r")"
-)
-_RE_COIL_TAG_TOKEN = re.compile(
-    rf"\b(?P<prefix>{'|'.join(_COIL_TAG_PREFIXES)})-(?P<sequence>\d+)\b",
-    re.IGNORECASE,
 )
 _RE_UNIT_TAG_ANCHOR = re.compile(
     r"(?:Unit\s+Tag|Coil\s+Tag|Tag)\s*[:#]?\s*(?P<value>[A-Z][A-Z0-9][\w\-\s]*\d+)",
@@ -2759,30 +2810,18 @@ def _extract_qty(raw: Any) -> int | None:
 
 
 def _is_cover_coil_row(tag: str, item: str) -> bool:
-    normalized_tag = _normalize_tag(tag)
-    tag_prefix = normalized_tag.split("-", 1)[0]
-    normalized_item = _normalize_header_token(item)
-    # Reject valves / EEV kits / accessories before the coil-keyword fallthrough so a
-    # description like "EKEXV Valve (DX Coil)" can't sneak through on the "dxcoil" token.
-    if tag_prefix in _NON_COIL_TAG_PREFIXES:
-        return False
-    if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
-        return False
-    if tag_prefix in _COIL_TAG_PREFIXES:
-        return True
-    return any(
-        token in normalized_item
-        for token in (
-            "dxccooling",
-            "coolingcoil",
-            "hgrcreheat",
-            "hgrhreheat",
-            "reheatcoil",
-            "dxcoil",
-            "hotwatercoil",
-            "chilledwatercoil",
-        )
-    )
+    """Is this cover row a coil? One question, answered by ``coil_tag_rejection_reason``.
+
+    The former coil-KEYWORD fallthrough ("the tag prefix is unknown but the item says
+    'DX Coil', so call it a coil") is deliberately gone. It was the hole the accessory
+    rows came through: ``_cover_item_from_text`` reduces "EKEXV Valve (DX Coil)" to the
+    canonical "DX Coil" BEFORE this is called, so on the text-line path the keyword
+    always matched and the item-token guard never saw the word "valve" (John 2026-08-06,
+    structural-rule ruling). Its cost is that an OCR-mangled REAL coil tag is now
+    rejected instead of rescued -- which is why every caller reports the reason rather
+    than dropping the row in silence.
+    """
+    return coil_tag_rejection_reason(tag, item) is None
 
 
 def _expand_cover_row(
@@ -3016,7 +3055,12 @@ def _set_line(
 
 
 def _tag_prefix_is_coil(tag: str) -> bool:
-    return _normalize_tag(tag).split("-", 1)[0] in _COIL_TAG_PREFIXES
+    """Kept as the historical name; the definition is now the structural one.
+
+    The old form took the segment before the FIRST hyphen, so ``CDXC-1-EXTRA`` and
+    ``CDXC-`` both read as coils. ``is_coil_tag`` anchors the whole tag instead.
+    """
+    return is_coil_tag(tag)
 
 
 def _normalize_tag(raw: str) -> str:
