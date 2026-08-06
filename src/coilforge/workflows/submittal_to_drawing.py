@@ -1189,6 +1189,98 @@ def _attach_engine_provenance(result: dict[str, Any], response: Any) -> None:
     }
 
 
+def _attach_recomputed_engine_provenance(
+    result: dict[str, Any], *, hgrh_partner_conn: Any = None
+) -> None:
+    """1c': reconstruct WHICH rules fired for a coil the frozen path already drew.
+
+    ``_attach_engine_provenance`` above only ever fired on a Tier-A manual fill — the one
+    wired path that hands the ``HeaderPrepopulateResponse`` back — so ``rule_firing``
+    stayed at ZERO rows for every ordinary analyse. Without a (field -> rule_id) edge the
+    ledger can say "O was wrong nine times" but never "R-061v is wrong", and rule
+    correction is the whole point of collecting the corpus. So re-run the engine
+    caller-side, purely to observe it (John 2026-08-06).
+
+    Same discipline as ``_apply_hgrh_pairing_cd`` / ``_rerun_slots_with_manual_inputs``:
+    the frozen ``pdf_to_template_drawing`` is never edited, its result's own echo of its
+    inputs (``extracted`` + product/unit_size) is what the call is rebuilt from, and every
+    argument the frozen path did NOT pass stays unpassed. ``with_hgrh`` is threaded because
+    the DX-with-reheat CD the drawing shows came from ``_apply_hgrh_pairing_cd``'s re-run,
+    not from the frozen call — reproducing the frozen call there would "drift" against a
+    value that is deliberately different.
+
+    THIS NEVER CHANGES A DRAWN VALUE. It reads ``slot_values`` and writes exactly one key,
+    ``engine_provenance``. Reconstruction is a claim, though, so it is checked rather than
+    trusted: every numeric slot the re-run produced is compared against the slot the
+    drawing actually rendered, and a mismatch is recorded as ``fidelity='drifted'`` with
+    the offending keys. The row is KEPT — dropping it would hide the one signal that says
+    the reconstruction is not to be believed. Readers exclude drifted from their rates.
+
+    Never raises: provenance is an observation, and losing it must never cost the caller
+    a drawing.
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return
+    # A live Tier-A response already described this coil. Never overwrite it: 'live' and
+    # 'recomputed' must not mix inside one (run, coil), and the live one is the truth.
+    if result.get("engine_provenance"):
+        return
+    if not result.get("header_engine_used"):
+        return
+    try:
+        from coilforge.checklist.compare import _match
+        from coilforge.services.direct_coil_drawing_pipeline import build_drawing_slots
+        from coilforge.services.drawing_param_resolver import _coerce_float
+
+        extracted = result.get("extracted") or {}
+        coil_type = extracted.get("coil_category")
+        product = result.get("product_type")
+        unit_size = result.get("unit_size")
+        if not (coil_type and product and unit_size):
+            return
+        kwargs: dict[str, Any] = {}
+        if str(coil_type).strip().upper() == "DX" and hgrh_partner_conn is not None:
+            kwargs["with_hgrh"] = True
+            kwargs["hgrh_conn_size"] = _coerce_float(hgrh_partner_conn)
+        slots, response = build_drawing_slots(
+            coil_type=coil_type,
+            product_type=product,
+            unit_size=unit_size,
+            rows=extracted.get("rows"),
+            feeds=extracted.get("feeds"),
+            circuits=extracted.get("circuits") or 1,
+            suction_conn_size=_coerce_float(extracted.get("return_conn_size")),
+            finned_height=extracted.get("finned_height"),
+            finned_length=extracted.get("finned_length"),
+            tag=extracted.get("tag"),
+            **kwargs,
+        )
+    except Exception:  # noqa: BLE001 — provenance must never cost a drawing
+        return
+
+    _attach_engine_provenance(result, response)
+    provenance = result.get("engine_provenance")
+    if not isinstance(provenance, dict):
+        return
+
+    # Fidelity check. Numeric slots only: the string title-block slots are overlaid by
+    # `material_title_slots` inside the frozen path from a `model_number` the result does
+    # not echo, so comparing them would report drift the engine never caused.
+    drawn = result.get("slot_values") or {}
+    drift = sorted(
+        slot
+        for slot, value in slots.items()
+        if isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and slot in drawn
+        and _match(drawn[slot], value) != "match"
+    )
+    provenance["source"] = "recomputed"
+    provenance["fidelity"] = "drifted" if drift else "verified"
+    if drift:
+        provenance["drift_keys"] = drift
+
+
 # Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
 _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "application", "header_count", "qty_conn_per_header",
@@ -1294,6 +1386,13 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # 1c seam-A: capture engine provenance (rule_id + confidence per field) from the
     # Tier-A-fill response — the only wired non-frozen path that returns it.
     _attach_engine_provenance(result, fill_response)
+    # 1c': no Tier-A fill on this request means no live response, so reconstruct it. MUST
+    # run before the Tier-B reflection below — that merges the human's overrides into
+    # slot_values, and comparing against those would report the ENGINEER's edit as engine
+    # drift. No-op when the line above already attached a live block.
+    _attach_recomputed_engine_provenance(
+        result, hgrh_partner_conn=_partner_conn_from_spec(spec)
+    )
 
     # Tier-B reflection (1b): merge param overrides into slot_values + re-populate the
     # SVG so the drawing shows the corrected dimension, and event-source the pre-override
@@ -1976,6 +2075,13 @@ def _run_candidate_to_drawing_payload(
         # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
         # every downstream artifact shows the corrected CD. No-op unless DX + partner.
         _apply_hgrh_pairing_cd(template_drawing, hgrh_partner_conn)
+        # 1c': the frozen path discards its engine response, so reconstruct which rules
+        # fired. AFTER the pairing correction — the CD this coil actually draws is the
+        # one that helper just re-derived, and reproducing the frozen call instead would
+        # read as drift against a value that is deliberately different.
+        _attach_recomputed_engine_provenance(
+            template_drawing, hgrh_partner_conn=hgrh_partner_conn
+        )
         # Same raw-SVG stage: print THIS coil's coating, replacing the coating name the
         # template was seeded with. Mirrored in derive_coil_template_drawing.
         _apply_coating_note_to_drawing(template_drawing, ctx.get("coating"))
