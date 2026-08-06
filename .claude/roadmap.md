@@ -1049,9 +1049,31 @@
   `intake_drawing`/`checklist_filled`/`coil_manual_fill` 라인을 남긴다(project=None). 8/6 13:58 라인 2개는
   John의 실 2755 Gumbo 실행이고 그 뒤 7개가 검증분 — **append-only 저널이라 삭제하지 않았다**. 코퍼스 카운트를
   읽을 때 project=None 검증 실행을 어떻게 다룰지는 미결(Stage 2 착수 시 판단 필요).
+  ✅ **착수조건 해소(2026-08-06 실측, `scripts/override_rate.py`)**: 위의 "46/50 · 교정 0"은 **낡았다**.
+  현재 **flagged identity 123 · 교정 보유 17 · correction 32행**(원표는 36행이고, 그중 tag+project가 둘 다
+  있어 신원에 귀속되는 것이 32 — 두 숫자가 다른 건 정상이다)으로, n≥50 게이트는 이미 통과했고 "교정 0"도
+  더는 사실이 아니다. 즉 **Phase 2.1을 "지금 하면 헛작업"이라던 근거가 사라졌다** — 가중치 채택(John eyeball
+  후 1줄)을 실제로 판단할 수 있는 상태다. 덤으로 검토수렴 트랙의 B2 신호가 살아 있음이 확인됐다:
+  `S`/`O`의 `by_reason`에 `checklist_mismatch`가 실제로 찍힌다.
+  🔴 **원장이 이미 말하고 있는 것**: John의 교정 사유가 `S`·`O`에서 반복적으로
+  **"incorrect logic error from coilforge"**(2.375→1.375, 2.75→2.0)라고 적혀 있다. 이건 "값이 애매했다"가
+  아니라 **우리 로직이 틀렸다는 진술**이고, 4단계가 규칙으로 번역해야 할 1순위 후보다. 반대로
+  `airflow_direction`은 123/123 identity에서 blocked인데 교정은 0 — 아무도 신경 쓰지 않는 항목을 flag가
+  계속 만들어내고 있다는 뜻이라, 3.1 랭킹의 노이즈 원천으로 따로 봐야 한다.
+- [ ] **4단계 Phase 4.1 — 실측 대기** (엔진은 4.0a·4.0b로 구축·커밋 완료, e31a92d·75fe368) — 다음 걸음:
+  **John이 실 제출물을 브라우저에서 몇 건 돌리는 것**. `rule_firing`은 1c'가 붙은 **새 실행부터** 쌓이므로
+  라이브 원장은 아직 `insufficient`다(정직한 0, 파손 아님). ⚠️ `run_server.bat`은 `--reload`가 없으므로
+  **재시작 필수** — 안 하면 옛 프로세스가 새 코드를 안 물어 영원히 0행이다.
+  **Stage 2와 착수 행동이 동일하다**(둘 다 "브라우저 edit으로 실사용") — 한 번의 실사용이 두 단계를 함께 푼다.
+  실행 후 볼 것: ①임계값 `min_second_opinion=5`/`min_identities=10`이 맞는지 ②`join_quality.same_run` vs
+  `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에 뭐가 쌓이는지
+  ④R-033 `DIST EXTENTION`이 실제로 귀속되는지.
 ## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
+  **2026-08-06 확정**: 가설이 아니라 사실이 됐다 — `capture/observatory.py`가 ccsi 행을 원천 제외하고
+  (`triage.py`와 같은 이유) 그 사유를 코드에 적어두고 있다. 즉 CCSI 비교는 지금 **어느 측정에도 기여하지
+  않는다**. 다만 CCSI 자체가 2026-07-05에 DEPRIORITIZED된 트랙이라 이 항목의 우선순위는 그대로 낮다.
 - [~] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
   틀린 값 자동승인). 실제 override율은 1단계가 처음 알려줌 → **그 숫자를 보고 착수, 미리 약속 안 함**
   - [x] **Phase 3.0 측정 도구 (af3b4fc)** — `measure_override_rate`가 그 override율을 원장에서 산출(위 ✅ 참조).
@@ -1068,10 +1090,8 @@
   - [x] **Phase 4.0b Observatory (75fe368)** — `capture/observatory.py` + `GET /api/capture/rule-observatory`
     + `scripts/rule_observatory.py`. **`accuracy` 필드 없음**(표본 편향 대응은 경고문이 아니라 구조),
     분모는 `second_opinion`, coverage 0 → `disagreement_rate: None`, `blind_spots`를 나란히 출력.
-  - [ ] **Phase 4.1 실측 대기** — 라이브 원장은 아직 `insufficient`(1c'는 새 실행부터). John이 실제 제출물을
-    몇 건 돌려야 숫자가 나온다. 그때 볼 것: ①`min_second_opinion=5`/`min_identities=10` 임계값이 맞는지
-    ②`join_quality.same_run` vs `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에
-    뭐가 쌓이는지 ④R-033 DIST EXTENTION이 실제로 귀속되는지.
+  - [ ] **Phase 4.1 실측 대기 → `▶️ 지금`으로 승격** (2026-08-06). 착수 행동이 Stage 2와 **동일**하므로
+    (둘 다 "브라우저 edit으로 실사용") 거기서 함께 관리한다. 상세는 지금 섹션 참조.
   - [ ] **감사샘플이 여전히 유일한 통계적 수단** — `audit_sample`은 0행이라 현재 모든 규칙이
     `review_conditional: True`. 이걸 채우기 전까지 어떤 수치도 "John이 이미 의심한 코일" 조건부다.
 - [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →
