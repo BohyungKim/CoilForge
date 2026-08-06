@@ -162,7 +162,25 @@
 > 🆕 **John 확인으로 격상된 사실**: 토큰 7의 **둘째 자리가 드레인팬**(`..._H11_21_…` → pan 1)임을 라이브
 > 제출물에서 John이 확인 — 계획서 주장이 아니라 엔지니어 확인 사실이 됐다. docstring에 반영하면서 **이웃한
 > `H11`이 팬 토큰으로 오인되기 쉽다**는 점도 명시(인덱스를 7로 고정하고 "정확히 2자리"를 요구하는 이유).
-> 남은 것: **F**(CCSI Notes — CCSI 로그인 탭 필요, John 몫).
+> **Phase F 완료(`8d315d2`) — 검토 수렴 트랙 6항목 전부 종료.** 독립 리뷰가 원안을 폐기하고 축소한
+> 그대로("라이브 id 확인 + `selector_verified` 플립"): John이 CCSI에 로그인하고 Custom Dimensions까지 열어준
+> 뒤 `coil.ccsi.ie/Coils/Edit`에서 **`#DrawingNotes`**(단일 `<input type=text>`, 고유·편집가능) 캡처.
+> 🔴 **캡처가 예상보다 큰 걸 밝혀냈다 — 기존 폴백은 계속 *아무것도 안 하고* 있었다.** CCSI 자체 마크업이
+> 라벨을 **존재하지 않는 id**에 연결하고 있다(`<label for="Drawing_Notes">` vs 실제 input `DrawingNotes`,
+> 언더스코어 없음) → `label.control === null` → labelText 전략이 반환할 요소가 없었다. 즉 Notes 푸시는
+> 그동안 조용한 무동작이었고, 이것이 정확히 `selector_verified: false`가 광고하려던 실패다 — **추론 셀렉터가
+> 동작한다고 가정하지 않고 플래그를 달고 다닌 판단이 값을 했다.** 변경 후 라이브 재확인: css 전략 resolve+편집가능,
+> labelText `resolved:false`. labelText는 **삭제하지 않고 2순위로 유지**(CCSI가 `for`를 고치면 id가 함께 옮겨갈
+> 수 있고, 남의 수정 후에야 동작하는 폴백은 지금 비용이 0). **F5 여러 줄 노트도 동시 해결**: 단일행 `<input>`은
+> 개행을 버리는데 CoilForge는 노트를 줄당 하나로 조립하므로, 원문을 쓰고 원문과 비교하면 **성공한 채움마다
+> mismatch**가 뜬다 → `forTarget()`이 textarea가 아니면 개행을 `"; "`로 접고, **쓰기와 verify가 같은 정규화를
+> 쓴다**(`setNativeValue`만 정규화하면 접힌 값 vs 원문을 비교해 여전히 mismatch). 곁가지: 스킬/앱 payload
+> 드리프트 해소 — `.claude/commands/ccsi-fill.md`의 인라인 빌더가 `map.fields`만 순회해 **스킬 경로는 치수 25개만
+> 밀고 노트는 안 실었다**(앱 경로는 둘 다). 이제 양쪽이 `entriesOf()`가 기대하는 top-level `drawing_notes`를
+> 내고, 스킬에 "이건 미러다" 경고를 달았다. 가드 테스트는 **삭제가 아니라 의도적 갱신** — "미검증 유지" assert를
+> 캡처된 id assert로 바꾸되, 유저스크립트의 `selector_verified === false` 분기 검사는 **별도 테스트로 존치**
+> (그 분기는 Notes 전용이 아니라 *앞으로 id 캡처 전에 추가될 모든 필드*를 경고하는 장치). 1322 green.
+> **CCSI엔 아무것도 쓰지 않았다 — 라이브 폼과의 모든 상호작용은 읽기였다.**
 > 이전: **[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
 > `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
 > 요청은 6개(①인라인 체크리스트 불일치 표시 ②교정 로직 ③드레인팬 핏 ④병렬 서버 ⑤Terra V HGRH 트러블슈팅
