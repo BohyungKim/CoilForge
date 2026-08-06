@@ -2065,8 +2065,8 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
     // re-typing them into CCSI's own Drawing Notes box (John 2026-07-28). Deliberately a
     // SEPARATE top-level key, not a 14th entry in `fields`: those are numeric dimensions with
     // a unit and a field-map selector, and the map's contract test rejects anything that isn't
-    // a base or multi-header dimension key. `selectors` stays empty until CCSI's Drawing Notes
-    // selector is captured live off the real form — the value travels now, the fill lands later.
+    // a base or multi-header dimension key. Its selector WAS captured live on 2026-08-05
+    // (`#DrawingNotes`), so the fill now lands as well as travels.
     drawing_notes: ccsiDrawingNotes(uiState),
     fields,
   };
@@ -2087,14 +2087,24 @@ function ccsiDrawingNotes(uiState) {
     value,
     status: value ? field.status || "review_required" : "blocked",
     type: "text",
-    // No CCSI #id has been captured off the live form for this field, so the resolver falls
-    // back to its label-text strategy. That is an INFERENCE, not a Phase-0 capture: it may
-    // resolve to nothing (the filler then does nothing) or, in principle, to a different
-    // input whose label contains the same words. Hence selector_verified:false — the panel
-    // shows what it resolved to and John confirms before any write. Replace this with the
-    // real "#id" (first position) once the live form is captured, same as the 13 dimensions.
-    selectors: [{ strategy: "labelText", text: "Drawing Notes" }],
-    selector_verified: false,
+    // Captured live off coil.ccsi.ie/Coils/Edit on 2026-08-05: a single `<input type=text>`
+    // with id/name `DrawingNotes`, unique and editable.
+    //
+    // The old labelText fallback resolved to NOTHING, and the reason is worth keeping:
+    // CCSI's own markup associates the label wrongly — `<label for="Drawing_Notes">` names
+    // an id that does not exist on the page, while the input is `DrawingNotes` (no
+    // underscore). So `label.control` is null and the strategy had no element to return.
+    // The notes push has therefore been silently doing nothing, which is exactly the
+    // failure `selector_verified: false` existed to advertise.
+    //
+    // The labelText entry is kept as a SECOND choice, not deleted: if CCSI ever repairs
+    // the `for` attribute the id may move with it, and a fallback that only works after
+    // the markup is fixed costs nothing today.
+    selectors: [
+      { strategy: "css", selector: "#DrawingNotes" },
+      { strategy: "labelText", text: "Drawing Notes" },
+    ],
+    selector_verified: true,
     blocked_reason: value ? null : "No drawing notes assembled for this coil.",
   };
 }

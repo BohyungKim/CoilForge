@@ -393,7 +393,10 @@
     // input's readOnly and makes CCSI accept the value — then write + read-back verify.
     enableFieldForUpdate(target);
     if (target.readOnly) { markRow(field, "readonly"); return; }
-    setNativeValue(target, field.value);
+    // Write the SAME normalization verify() will compare against (see forTarget): writing
+    // the raw multi-line value and comparing the collapsed one would report a mismatch on
+    // every successful notes fill.
+    setNativeValue(target, forTarget(target, field.value));
     ["input", "change", "blur"].forEach((type) => target.dispatchEvent(new Event(type, { bubbles: true })));
     markRow(field, verify(target, field) ? "ok" : "mismatch");
   }
@@ -438,9 +441,21 @@
     }
   }
 
+  // A single-line <input> silently drops newlines, so a multi-line value can never read
+  // back as it was written. CCSI's Drawing Notes is exactly that (`#DrawingNotes` is an
+  // <input type=text>, captured live 2026-08-05) and CoilForge assembles its notes one per
+  // line. Collapse newlines to "; " for such a target -- and apply the SAME collapse to
+  // BOTH sides in verify(), or the fill succeeds and still reports a mismatch forever.
+  // A <textarea> keeps the original text untouched.
+  function forTarget(target, value) {
+    const text = String(value);
+    if (target instanceof HTMLTextAreaElement) return text;
+    return text.replace(/\s*\n+\s*/g, "; ").trim();
+  }
+
   function verify(target, field) {
     const got = String(target.value).trim();
-    if (got === String(field.value).trim()) return true;
+    if (got === forTarget(target, field.value).trim()) return true;
     const a = Number(got), b = Number(field.value);
     return Number.isFinite(a) && Number.isFinite(b) && a === b;
   }

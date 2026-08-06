@@ -42,11 +42,27 @@ Hard rules:
        status:has?'review_required':'blocked', type:e.type||'number',
        selectors:Array.isArray(e.selectors)?e.selectors:[], blocked_reason:has?null:'No value derived; review required.'};
    });
+   // Drawing Notes is a SEPARATE top-level key, never a 14th `fields` entry — the field map's
+   // contract test rejects any non-dimension key, and the filler's entriesOf() adapter is what
+   // merges it back in. Selector captured live 2026-08-05: `#DrawingNotes`.
+   const notesField = (document.querySelector('#dc-field-drawing-notes')
+     || [...document.querySelectorAll('[data-direct-coil-label]')]
+          .find(e=>e.dataset.directCoilLabel==='Drawing Notes'));
+   const notesValue = notesField ? (notesField.value || notesField.textContent || '').trim() : '';
+   const drawing_notes = {ccsi_label:'Drawing Notes', value:notesValue||null,
+     status:notesValue?'review_required':'blocked', type:'text',
+     selectors:[{strategy:'css', selector:'#DrawingNotes'},{strategy:'labelText', text:'Drawing Notes'}],
+     selector_verified:true, blocked_reason:notesValue?null:'No drawing notes assembled for this coil.'};
    ({schema:'coilforge.ccsi.autofill/1', generated_at:new Date().toISOString(),
      coil_tag:(document.querySelector('#edit-coil-name')||{}).value||null, review_aid_only:true,
-     export_allowed:false, form:map.form||'CCSI Online Direct Coil — DX', field_map_version:map.version||'unknown', fields})
+     export_allowed:false, form:map.form||'CCSI Online Direct Coil — DX', field_map_version:map.version||'unknown',
+     hot_gas_bypass:false, drawing_notes, fields})
    ```
    If every `value` is null, stop and tell John to analyze a coil in CoilForge first.
+
+   ⚠️ This inline builder is a MIRROR of `web/app.js`'s own payload builder. They drifted
+   once — this one iterated `map.fields` only, so the skill path pushed 25 dimensions and
+   **no notes**, while the app path pushed both. If you change one, change the other.
 
 4. **Inject the filler onto the CCSI tab.** Read `web/ccsi/ccsi_autofill.user.js` and run its
    full source via `javascript_tool` on the CCSI `tabId`. (The `@grant`/`GM_*` lines are inert
