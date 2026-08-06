@@ -987,7 +987,22 @@
 - [ ] **7단계 Commercial Intelligence** — `outcome` seam만 유지, 비워둠 (John 확정). 착수 시
   `raw_private_data_returned:False` 철학 재검토 필요
 
-- [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
+- [ ] **[도면 통합 후속] main 병합에서 의도적으로 버린 도면 기능 2건 재적용 판단** — `9e120fc`에서 main의
+  Phase 2.6–4b 도면 계보를 채택하면서 이쪽 고유 기능 2개가 빠졌다. **근거 있는 채택이었다**(추측 아님):
+  ⓐ**airflow** — 우리는 스케일되는 선+마커, main은 고정 크기 블록 화살표 + `AIRFLOW` 라벨 + `data-direction`.
+  CLAUDE.md의 "주석은 스케일하지 않는다"를 **우리 쪽이 위반**하고 있었다. ⓑ**분배기 확장/방향** — 우리는
+  `slot.DIST_EXT`/`slot.DIST_ORIENTATION`을 슬롯 레이어에서 **게이트 없이** 읽었고, main의 Phase 4a는
+  `slot.DistExtension{id}`를 분배기별로 R-033에서 소싱해 `GatedSlot` 3버킷(HIGH만 방출)으로 낸다 —
+  **같은 문제에 confidence gate를 적용한 버전**. 우리 것은 게이트 이전 판.
+  **빠진 것 2건**: ①**numbers-only 치수 콜아웃**(우리는 값만, main은 `"12.00 FH"` — Direct Coil 발주용
+  표시 결정) ②**`slot.S1`/`slot.R2` 깊이 치수**(main에 대응물 없음). 병합 커밋에서 **재적용하지 않았다** —
+  둘 다 main이 371줄 재구조화한 레이아웃 기준으로 쓰였고, **컴파일되고 테스트도 초록인데 잘못 그리는 도면**이
+  이 프로젝트가 낼 수 있는 최악의 결과다. 자체 eyeball 게이트를 가진 도면 작업으로 처리할 것.
+- [x] ~~PR #3 리뷰·머지 (claude/ccsi-autofill → main)~~ — **PR #4가 완전 대체**(#3의 모든 커밋 포함 + 80).
+  2026-08-05 통합 완료: 충돌 7건을 **귀속 분석**으로 해소(기계적 3 / main 채택 4 / 수작업 1)하고
+  `9e120fc`로 병합, **1391 green·실패 0**(main의 `cc2a039`가 이 브랜치가 몇 주간 달고 다니던
+  `test_phase2c_*` 4 red를 해소 — 이 브랜치 최초의 완전 초록). #3은 닫으면 된다.
+- [ ] (구) PR #3 원문 기록 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
 - [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향.
   **프리플라이트 드라이런 (2026-07-15, /ccsi-preflight, mutation 0건)**: CoilForge측 GREEN — 서버 up·
   정적 맵 25셀렉터(13 base+12 멀티헤더)·브릿지 전역 3개(`coilforgeCoils`/`coilforgeCcsiCompare`/
