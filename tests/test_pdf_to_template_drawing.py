@@ -84,8 +84,8 @@ def test_panel_mirrors_template_drawing_slots() -> None:
         assert params[key].value == float(slots[slot]), f"{key} != {slot}"
     # Distributor HD (HDx1) is distinct from the return header HD and is shown.
     assert params["HDx1"].value == 4.5 and params["HD"].value != params["HDx1"].value
-    # ZD has no slot -> stays unmapped (as before).
-    assert params["ZD"].value is None and params["ZD"].mode == "unmapped"
+    # ZD is the owner-fixed constant 4.5 (review-required like every panel value).
+    assert params["ZD"].value == 4.5 and params["ZD"].status == "review_required"
 
 
 def test_panel_reads_review_required_before_engine_runs() -> None:
@@ -220,12 +220,42 @@ def test_multi_header_positions_are_logic_derived() -> None:
     assert sv["slot.I3"] == sv["slot.I1"] and sv["slot.HDx3"] == sv["slot.HDx1"]
     assert sv["slot.O4"] == sv["slot.O2"] and sv["slot.HD4"] == sv["slot.HD2"]
     assert sv["slot.SL4"] == sv["slot.SL2"]
-    # S = k*CD/(circuits+1); CD=5.5 -> S1=1.8333, S3=3.6667.
-    assert abs(float(sv["slot.S1"]) - 5.5 / 3) < 0.01
-    assert abs(float(sv["slot.S3"]) - 2 * 5.5 / 3) < 0.01
+    # S = ROUND(k*CD/(circuits+1)*8,0)/8 (CHK DX!C46:C49); CD=5.5 -> 1.8333/3.6667
+    # snap to S1=1.875, S3=3.625 -- the exact values John read off the checklist.
+    assert float(sv["slot.S1"]) == 1.875
+    assert float(sv["slot.S3"]) == 3.625
     # R = return_spacing R-022 list: D=1.125 -> R2=1.125, R4=2D+1.5=3.75.
     assert abs(float(sv["slot.R2"]) - 1.125) < 0.01
     assert abs(float(sv["slot.R4"]) - 3.75) < 0.01
+
+
+def test_panel_surfaces_logical_header2_for_two_circuit_dx() -> None:
+    """The Drawing Parameters panel exposes the second header assembly with LOGICAL
+    keys (I2/S2/O2/R2/HD2/ZD2), translated from the engine's parity slots (I3/O4...).
+    Parity ids never leak to the panel; values stay review-aid only."""
+    from coilforge.services.drawing_param_resolver import (
+        parameter_set_from_template_drawing,
+    )
+
+    out = pdf_text_to_template_drawing(DX2_LH_CONN_TEXT, cover_text=DX2_LH_COVER)
+    pset = parameter_set_from_template_drawing(out, circuits=out["extracted"]["circuits"])
+    params = pset.parameters
+
+    sv = out["slot_values"]
+    # logical header-2 keys present; parity ids absent from the panel.
+    for key in ("I2", "S2", "O2", "R2", "HD2", "ZD2"):
+        assert key in params, key
+        assert params[key].status == "review_required"
+    assert "I3" not in params and "O4" not in params
+    # header-2 values mirror the parity slots (circuit 2 = slot ids 3/4).
+    assert params["I2"].value == float(sv["slot.I3"])
+    assert params["S2"].value == float(sv["slot.S3"])
+    assert params["O2"].value == float(sv["slot.O4"])
+    assert params["R2"].value == float(sv["slot.R4"])
+    assert params["HD2"].value == float(sv["slot.HD4"])
+    # ZD constant on both header assemblies; safety flag preserved.
+    assert params["ZD"].value == 4.5 and params["ZD2"].value == 4.5
+    assert pset.export_allowed is False
 
 
 # --- Real-submittal path: a submittal has no embedded as-built CoilMaster
@@ -356,9 +386,13 @@ def test_product_size_options_lists_the_four_product_lines() -> None:
     options = product_size_options()
     assert set(options) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
     assert "A16" in options["NOVA"]
-    # Terra is split into orientation categories sharing the zero-padded size set.
-    assert options["TERRA H"] == options["TERRA V"]
+    # Terra H and Terra V have DIFFERENT size sets (John 2026-06-29): Terra V adds
+    # 060/072/084/100 on top of the shared 9; Terra H stays at 9.
+    assert len(options["TERRA H"]) == 9
+    assert len(options["TERRA V"]) == 13
+    assert set(options["TERRA H"]).issubset(set(options["TERRA V"]))
     assert "009" in options["TERRA H"]
+    assert "060" in options["TERRA V"] and "060" not in options["TERRA H"]
     # Zero-padded 3-digit tokens, never the bare integers (John 2026-06-15).
     assert "9" not in options["TERRA H"]
 
@@ -366,17 +400,19 @@ def test_product_size_options_lists_the_four_product_lines() -> None:
 def test_terra_picker_labels_resolve_to_product_family_and_variant() -> None:
     from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 
-    # "TERRA H" -> resolved Terra H C; "TERRA V" -> Terra V; others unchanged.
-    assert resolve_product_line("TERRA H") == ("TERRA", "TERRA_H_C")
-    assert resolve_product_line("TERRA V") == ("TERRA", "TERRA_V")
-    assert resolve_product_line("TERRA") == ("TERRA", "TERRA_H_C")
+    # Terra split phase 2: the family is now the first-class TERRA_H / TERRA_V; the
+    # terra_variant still carries the H-C sub-variant. "TERRA V" -> Terra V; others unchanged.
+    assert resolve_product_line("TERRA H") == ("TERRA_H", "TERRA_H_C")
+    assert resolve_product_line("TERRA V") == ("TERRA_V", "TERRA_V")
+    assert resolve_product_line("TERRA") == ("TERRA_H", "TERRA_H_C")
     assert resolve_product_line("NOVA") == ("NOVA", None)
     assert resolve_product_line(None) == (None, None)
 
 
 def test_terra_v_picker_selection_drives_engine_variant() -> None:
-    """Picking TERRA V drives terra_variant=TERRA_V so the Terra-V-only HGRH
-    rule (R-046) fires; TERRA H (resolved H C) leaves those fields untouched."""
+    """Picking TERRA V drives terra_variant=TERRA_V so the Terra-V-only HGRH rule
+    (R-046) fires with its SOP values (supply I/O=2.75, supply SL=5, return SL=12);
+    TERRA H (resolved H C) keeps the generic Terra values. John 2026-06-28."""
     from coilforge.schemas.header_prepopulate import ProductFamily, TerraVariant
     from coilforge.services.direct_coil_drawing_pipeline import build_header_request
     from coilforge.services.header_prepopulate_engine import prepopulate
@@ -384,17 +420,21 @@ def test_terra_v_picker_selection_drives_engine_variant() -> None:
     req_v = build_header_request(
         coil_type="HGRH", product_type="TERRA V", unit_size="024", feeds=2, circuits=2
     )
-    assert req_v.product_type == ProductFamily.TERRA
+    assert req_v.product_type == ProductFamily.TERRA_V  # phase 2: first-class family
     assert req_v.terra_variant == TerraVariant.TERRA_V
-    blocked_v = prepopulate(req_v).blocked
-    assert {"supply_io", "supply_sl", "return_sl"} <= set(blocked_v)  # R-046
+    values_v = prepopulate(req_v).values
+    assert values_v["supply_io"].value == 2.75  # R-046 (SOP, HIGH)
+    assert values_v["supply_sl"].value == 5
+    assert values_v["return_sl"].value == 12
 
     req_h = build_header_request(
         coil_type="HGRH", product_type="TERRA H", unit_size="024", feeds=2, circuits=2
     )
+    assert req_h.product_type == ProductFamily.TERRA_H  # phase 2: first-class family
     assert req_h.terra_variant == TerraVariant.TERRA_H_C
-    blocked_h = prepopulate(req_h).blocked
-    assert not ({"supply_io", "supply_sl", "return_sl"} & set(blocked_h))
+    values_h = prepopulate(req_h).values
+    assert values_h["supply_io"].value == 2  # R-040b (Terra H/H C, unchanged)
+    assert values_h["return_sl"].value == 10  # R-045b (Terra H/H C, unchanged)
 
 
 # --- Right-side specification panel: submittal-stated materials / fins / weight /
@@ -407,7 +447,9 @@ def test_submittal_panel_values_map_review_required() -> None:
         cover_text="Unit Type: Terra Horizontal (Ceiling Hung) Model: TR_C_009",
         header_context={
             "coil_category": "DX",
-            "coil_hand": "RH",
+            # LH = the seeded DX Header-1 template. (RH is the mirror pair, whose
+            # generation is now disabled, so it would not render an SVG to assert on.)
+            "coil_hand": "LH",
             "circuits": 1,
             "tag": "CDXC-1",
             "panel": {

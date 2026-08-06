@@ -46,6 +46,11 @@ _DOCUMENTED_REVIEW_SLOTS = {
     "slot.TUBE_MATERIAL_2", "slot.FIN_MATERIAL_2", "slot.FIN_MATERIAL_3",
     "slot.CASING_MATERIAL_2", "slot.CIRCUITING_2", "slot.CIRCUITING_3",
     "slot.DISTRIBUTORS_2", "slot.RETURN_CONN_SIZE_2",
+    # slot.X (tube-projection callout) was redacted from the HG_1_LH reference
+    # (2026-06-23) so the drawing no longer hardcodes it. Its engine rule is not
+    # yet defined, so it intentionally renders REVIEW REQUIRED (fail-closed, never
+    # invented) until John/engineering specify what derives X.
+    "slot.X",
 }
 
 

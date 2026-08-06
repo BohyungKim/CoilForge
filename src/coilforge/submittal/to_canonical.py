@@ -41,7 +41,11 @@ def map_submittal_candidate_to_canonical_result(
     candidate: SubmittalCoilCandidate,
     *,
     record_id: str | None = None,
+    engine_dims: dict[str, Any] | None = None,
+    engine_notes: str | None = None,
 ) -> SubmittalToCanonicalResult:
+    connections = dict(candidate.connections)
+    _ensure_return_connection_size(connections)
     canonical = CanonicalCoilRecord(
         record_id=record_id or f"CCR-{candidate.candidate_id}",
         project={},
@@ -53,9 +57,11 @@ def map_submittal_candidate_to_canonical_result(
         airside_conditions=dict(candidate.airside_conditions),
         refrigerant_conditions=dict(candidate.refrigerant_conditions),
         materials_construction=dict(candidate.materials_construction),
-        connections=dict(candidate.connections),
-        manufacturing_options=dict(candidate.manufacturing_options),
-        drawing_parameters=dict(candidate.drawing_parameters),
+        connections=connections,
+        manufacturing_options=_manufacturing_options_with_engine_notes(
+            candidate, engine_notes
+        ),
+        drawing_parameters=_drawing_parameters_with_engine_dims(candidate, engine_dims),
         performance=dict(candidate.performance),
         source_evidence=_collect_source_evidence(candidate),
         unmapped_fields=list(candidate.unmapped_fields),
@@ -74,6 +80,128 @@ def map_submittal_candidate_to_canonical_result(
             unmapped_field_count=len(validated.unmapped_fields),
         ),
     )
+
+
+# Logical drawing-dimension keys that have a Direct Coil "DRAWING / DIMENSION"
+# review field (validation.canonical_rules.CANONICAL_DIRECT_COIL_FIELD_MAP →
+# drawing_parameters.<KEY>). The header-2..N logical keys (I2/S2/O2/...) have no
+# paste-ready draft_field_key, so they stay out of scope.
+_REVIEWABLE_DRAWING_DIMS = frozenset(
+    {"CD", "BF", "TF", "CH", "RF", "HF", "SL", "I", "S", "O", "R", "HD", "ZD"}
+)
+
+
+def _drawing_parameters_with_engine_dims(
+    candidate: SubmittalCoilCandidate,
+    engine_dims: dict[str, Any] | None,
+) -> dict[str, FieldValue]:
+    """Surface engine-derived drawing dimensions in the canonical record.
+
+    The rule engine already computes these dimensions and renders them on the SVG
+    (they live in the template drawing's ``slot_values``), but they were never
+    written back into ``drawing_parameters``, so the paste-ready "DRAWING /
+    DIMENSION" review fields read blank. Wire the SAME values through the canonical
+    record so the review table mirrors the drawing. Every value stays
+    ``review_required`` (never auto-confirmed) and carries engine source evidence;
+    a submittal-stated value, if any, is never overridden. Only dimensions the
+    engine actually produced are added — Bucket-B dims stay review-required/empty.
+    """
+    drawing_parameters = dict(candidate.drawing_parameters)
+    if not engine_dims:
+        return drawing_parameters
+    for key, value in engine_dims.items():
+        if key not in _REVIEWABLE_DRAWING_DIMS or value in (None, ""):
+            continue
+        if drawing_parameters.get(key) is not None:
+            continue
+        drawing_parameters[key] = FieldValue(
+            value=value,
+            unit="in",
+            confidence="inferred",
+            status="review_required",
+            review_required=True,
+            source_evidence=[
+                SourceEvidence(
+                    evidence_id=f"EV-ENGINE-DIM-{key}",
+                    source_type="engine_rule",
+                    source_id="coil-header-prepopulate-engine",
+                    source_location="template drawing slot_values",
+                    source_key=key,
+                    source_value=value,
+                    normalized_value=value,
+                    unit="in",
+                )
+            ],
+        )
+    return drawing_parameters
+
+
+def _manufacturing_options_with_engine_notes(
+    candidate: SubmittalCoilCandidate,
+    engine_notes: str | None,
+) -> dict[str, FieldValue]:
+    """Surface the engine-assembled drawing notes in the canonical record.
+
+    The rule engine assembles the drawing notes (copper straps / coating / distributor
+    extension — R-007/008/080/081/035) and renders them on the SVG, but they were never
+    written back into ``manufacturing_options``, so the paste-ready "Drawing Notes" field
+    (which reads ``distributor_notes`` — the codebase's legacy name for this field) read
+    blank. Wire the SAME string through the CANONICAL record so the review surface mirrors
+    the drawing. Value stays ``review_required`` (never auto-confirmed) with engine source
+    evidence; a submittal-stated value, if any, is never overridden.
+
+    Safe re: the drawing's distributor callout: both drawing renderers read
+    ``slot.DISTRIBUTORS`` from the RAW candidate (``pdf_to_template_drawing`` via the
+    candidate panel) or not at all (the parametric preview uses typed draft fields, never
+    ``distributor_notes``). This injection touches only the CANONICAL copy, which feeds the
+    paste-ready review surface — so the notes reach the review field without ever reaching
+    a rendered distributor callout.
+    """
+    manufacturing_options = dict(candidate.manufacturing_options)
+    if not engine_notes:
+        return manufacturing_options
+    if manufacturing_options.get("distributor_notes") is not None:
+        return manufacturing_options
+    manufacturing_options["distributor_notes"] = FieldValue(
+        value=engine_notes,
+        confidence="inferred",
+        status="review_required",
+        review_required=True,
+        source_evidence=[
+            SourceEvidence(
+                evidence_id="EV-ENGINE-NOTES",
+                source_type="engine_rule",
+                source_id="coil-header-prepopulate-engine",
+                source_location="header prepopulate engine notes assembly",
+                source_key="distributor_notes",
+                source_value=engine_notes,
+                normalized_value=engine_notes,
+            )
+        ],
+    )
+    return manufacturing_options
+
+
+def _ensure_return_connection_size(connections: dict[str, FieldValue]) -> None:
+    """Water coils (CWC/HWC/PHWC) state Inlet/Outlet connection sizes and carry no
+    "Suction/Return" label, so the canonical ``return_connection_size`` — which the
+    Direct Coil "Return Connection Size" field reads — is left empty and the field
+    blocks, even though the drawing slot is filled (it already falls back to
+    inlet/outlet via ``submittal_to_drawing._candidate_connection_size``). Mirror
+    that fallback at the canonical layer so the paste-ready surface agrees with the
+    drawing: derive it from the stated outlet (the return side), then inlet,
+    reusing that field's real source evidence so nothing is invented. Surfaced
+    review-required."""
+    existing = connections.get("return_connection_size")
+    if existing is not None and existing.value not in (None, ""):
+        return
+    for key in ("outlet_connection_size", "inlet_connection_size"):
+        source = connections.get(key)
+        if source is not None and source.value not in (None, ""):
+            connections["return_connection_size"] = source.model_copy(
+                update={"status": "review_required", "review_required": True}
+            )
+            return
 
 
 def _build_coil_identity(candidate: SubmittalCoilCandidate) -> dict[str, FieldValue]:

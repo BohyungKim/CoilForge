@@ -300,6 +300,16 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.SL1",
+      "label": "SL1",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Supply reheat-stub SL; redacted from the hardcoded 4.13 residue (John 2026-07-03)."
+    },
+    {
       "slot_id": "slot.SUPPLY_CONN_SIZE",
       "label": "SUPPLY_CONN_SIZE",
       "required_for_preview": false,

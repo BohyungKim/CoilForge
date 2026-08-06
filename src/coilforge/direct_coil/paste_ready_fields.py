@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -14,7 +15,13 @@ PasteReadyFieldStatus = Literal[
     "blocked",
     "unmapped",
     "calculated_read_only",
+    "not_applicable",
 ]
+
+# Logical second-header columns. They exist only for multi-header (2HD+) DX/HGRH
+# coils; on a single-header (1HD) coil — which includes every CWC/HWC — there is
+# no second header, so these read "N/A" rather than "source needed".
+_SECONDARY_HEADER_KEYS = frozenset({"i2", "s2", "o2", "r2", "hd2", "zd2"})
 
 PasteReadyFieldKind = Literal[
     "text",
@@ -248,10 +255,24 @@ DIRECT_COIL_PASTE_FIELD_ORDER: tuple[_PasteFieldSpec, ...] = (
 )
 
 
+def _header_count(draft: DirectCoilInputDraft) -> int | None:
+    """Header count from the draft's ``header_type`` ("Header 1" -> 1). ``None``
+    when it is absent, so applicability is left unchanged (fail-open)."""
+    field = draft.fields.get("header_type")
+    if field is None or field.value in (None, ""):
+        return None
+    match = re.search(r"\d+", str(field.value))
+    return int(match.group()) if match else None
+
+
 def build_direct_coil_paste_ready_surface(
     draft: DirectCoilInputDraft,
 ) -> DirectCoilPasteReadySurface:
-    fields = [_build_paste_field(spec, draft) for spec in DIRECT_COIL_PASTE_FIELD_ORDER]
+    header_count = _header_count(draft)
+    fields = [
+        _build_paste_field(spec, draft, header_count)
+        for spec in DIRECT_COIL_PASTE_FIELD_ORDER
+    ]
     return DirectCoilPasteReadySurface(
         draft_id=draft.draft_id,
         source_canonical_record_id=draft.source_canonical_record_id,
@@ -264,6 +285,7 @@ def build_direct_coil_paste_ready_surface(
 def _build_paste_field(
     spec: _PasteFieldSpec,
     draft: DirectCoilInputDraft,
+    header_count: int | None = None,
 ) -> DirectCoilPasteField:
     draft_field = (
         draft.fields.get(spec.draft_field_key)
@@ -273,6 +295,14 @@ def _build_paste_field(
     if draft_field is None and spec.draft_field_key == "coil_quantity":
         draft_field = draft.coil_quantity
     status = _paste_status(spec, draft_field)
+    # A single-header (1HD) coil has no second header, so its 2nd-header columns
+    # are not applicable — flag them rather than reading as "source needed".
+    if (
+        header_count is not None
+        and header_count <= 1
+        and spec.normalized_key in _SECONDARY_HEADER_KEYS
+    ):
+        status = "not_applicable"
     value = None if draft_field is None else draft_field.value
     return DirectCoilPasteField(
         section=spec.section,
@@ -305,6 +335,8 @@ def _paste_status(
 
 
 def _display_value(status: PasteReadyFieldStatus, value: Any) -> str:
+    if status == "not_applicable":
+        return "N/A - SINGLE HEADER (1HD)"
     if value not in (None, ""):
         return str(value)
     if status == "blocked":
@@ -335,6 +367,8 @@ def _notes(
         notes.append("UNMAPPED - SOURCE NEEDED.")
     elif status == "calculated_read_only":
         notes.append("Calculated/result field in Direct Coil; not a primary paste input.")
+    elif status == "not_applicable":
+        notes.append("Not applicable - a single-header (1HD) coil has no 2nd header.")
     if draft_field is not None and draft_field.manual_override:
         notes.append("Manual override metadata must remain review-only.")
     return " ".join(notes)
@@ -353,6 +387,7 @@ def _summarize(fields: list[DirectCoilPasteField]) -> dict[str, int]:
         "blocked": 0,
         "unmapped": 0,
         "calculated_read_only": 0,
+        "not_applicable": 0,
     }
     for field in fields:
         counts[field.status] += 1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Literal
 
 
@@ -11,7 +12,8 @@ TemplateStatus = Literal[
     "active_review_aid",
 ]
 
-TEMPLATE_BUCKET_COUNT = 22
+# The shared, product-agnostic buckets (Nova/Terra/Ventum H/Ventum+ all reuse these).
+_SHARED_BUCKET_COUNT = 22
 
 _GENERATION_ALLOWED_STATUSES = {"active_review_aid"}
 _HAND_ALIASES = {
@@ -29,30 +31,92 @@ _HAND_ALIASES = {
 
 
 # Templates seeded from the provided EZ drawing PDFs (real CoilMaster format,
-# values redacted to slots) + their opposite-hand mirrors. Each is an active
-# review-aid template. value = (category_dir, source_case_id, reference_status).
+# values redacted to slots). Each is an active review-aid template.
+# value = (category_dir, source_case_id, reference_status).
+#
+# Mirror-derived RH/LH pairs are DISABLED (John, 2026-06-17): the horizontal
+# mirror flips the dimension callouts' bounding boxes, so the cleaned numbers no
+# longer sit on their leader lines (a char-width re-center heuristic could not
+# reliably repair it). Each hand must be seeded from its own provided PDF. The
+# `_MIRROR` entries are intentionally absent here; their buckets fall through to
+# `needs_pair` (generation_allowed=False -> "template not registered") until a
+# real seed arrives. The `mirror.py` helper is retained for possible future use
+# but no longer activates a template.
 _SEEDED = "seeded_from_provided_pdf_review_required"
-_MIRROR = "mirrored_from_seeded_pair_review_required"
 ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_dx_lh_header1": ("dx", "EZC-0001", _SEEDED),
-    "coilmaster_dx_rh_header1": ("dx", "EZC-0001", _MIRROR),
     "coilmaster_dx_rh_header2": ("dx", "EZC-0011", _SEEDED),
-    "coilmaster_dx_lh_header2": ("dx", "EZC-0011", _MIRROR),
     "coilmaster_dx_lh_header3": ("dx", "EZC-0007", _SEEDED),
-    "coilmaster_dx_rh_header3": ("dx", "EZC-0007", _MIRROR),
-    "coilmaster_hgrh_lh_header1": ("hgrh", "EZC-0002", _SEEDED),
+    "coilmaster_hgrh_lh_header1": ("hgrh", "FEED-HG_1_LH-2572-BOWIE", _SEEDED),
     "coilmaster_hgrh_rh_header1": ("hgrh", "EZC-0012", _SEEDED),
     "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
-    "coilmaster_hgrh_rh_header2": ("hgrh", "EZC-0008", _MIRROR),
     "coilmaster_hgrh_rh_header3": ("hgrh", "EZC-0016", _SEEDED),
-    "coilmaster_hgrh_lh_header3": ("hgrh", "EZC-0016", _MIRROR),
     "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
-    "coilmaster_dx_rh_hgbp": ("dx", "EZC-0013", _MIRROR),
     "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
-    "coilmaster_cwc_rh": ("cwc", "EZC-0014", _MIRROR),
     "coilmaster_hwc_lh": ("hwc", "EZC-0005", _SEEDED),
-    "coilmaster_hwc_rh": ("hwc", "EZC-0005", _MIRROR),
+    # 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now seeded
+    # from real per-hand EZ drawing PDFs (Case/feed/), so every bucket is active.
+    # Mirroring is retired; source_case_id is a provenance token (FEED-*) until
+    # real EZC IDs are supplied. Catalog is now 22/22 active review aids.
+    "coilmaster_dx_rh_header1": ("dx", "FEED-DX_1_RH", _SEEDED),
+    "coilmaster_dx_lh_header2": ("dx", "FEED-DX_2_LH", _SEEDED),
+    "coilmaster_dx_rh_header3": ("dx", "FEED-DX_3_RH", _SEEDED),
+    "coilmaster_dx_rh_hgbp": ("dx", "FEED-DX_HB_RH", _SEEDED),
+    "coilmaster_hgrh_rh_header2": ("hgrh", "FEED-HG_2_RH", _SEEDED),
+    "coilmaster_hgrh_lh_header3": ("hgrh", "FEED-HG_3_LH", _SEEDED),
+    "coilmaster_cwc_rh": ("cwc", "FEED-CW_RH", _SEEDED),
+    "coilmaster_hwc_rh": ("hwc", "FEED-HW_RH", _SEEDED),
+    "coilmaster_dx_lh_header4": ("dx", "FEED-DX_4_LH", _SEEDED),
+    "coilmaster_dx_rh_header4": ("dx", "FEED-DX_4_RH", _SEEDED),
+    "coilmaster_hgrh_lh_header4": ("hgrh", "FEED-HG_4_LH", _SEEDED),
+    "coilmaster_hgrh_rh_header4": ("hgrh", "FEED-HG_4_RH", _SEEDED),
 }
+
+
+# Dedicated per-product-family templates: selected ONLY for a coil of the matching
+# product_family, otherwise every coil (family None) keeps hitting the shared buckets
+# above (see the two-pass match in select_drawing_template). This is the (formerly
+# retired) "Ventum+ fork" — now implemented DX-first because Ventum+ DX distributors
+# mount ConnectionUP (R-032) which the shared ConnectionDOWN-seeded templates cannot
+# show. Each entry is seeded from a REAL Ventum+ CoilMaster selection drawing (no
+# surrogate/mirror), so the UP geometry is captured from the reference itself.
+#   value = (category_dir, coil_category, coil_hand, header_type, special_feature,
+#            source_case_id, reference_status)
+# Populated as buckets are seeded (scripts/seed_templates_from_pdf.py); empty = the
+# fork is scaffolded but no dedicated template is active yet -> pure shared fallback.
+VENTUM_PLUS_FAMILY = "VENTUM_PLUS"
+VENTUM_PLUS_TEMPLATES: dict[
+    str, tuple[str, str, str, str | None, str | None, str | None, str]
+] = {
+    # Seeded 2026-07-06 from REAL Ventum+ CoilMaster selection drawings (per-page,
+    # from the Ventum+ Coil selection folders) — each captures its own distributor
+    # geometry (DX = ConnectionUP, R-032) from the reference itself. Review aid only;
+    # John's eyeball gate pending. source_case_id = VPLUS-<project> provenance token.
+    "coilmaster_vplus_dx_rh_header1": (
+        "dx", "DX", "RH", "Header 1", None, "VPLUS-2798-CENTRA-RENO", _SEEDED),
+    "coilmaster_vplus_dx_lh_header1": (
+        "dx", "DX", "LH", "Header 1", None, "VPLUS-2760-REVERE", _SEEDED),
+    "coilmaster_vplus_dx_lh_header2": (
+        "dx", "DX", "LH", "Header 2", None, "VPLUS-2760-REVERE", _SEEDED),
+    "coilmaster_vplus_dx_lh_header3": (
+        "dx", "DX", "LH", "Header 3", None, "VPLUS-1929-HOFFMAN", _SEEDED),
+    "coilmaster_vplus_dx_rh_header2": (
+        "dx", "DX", "RH", "Header 2", None, "VPLUS-2619-CONGRESS", _SEEDED),
+    "coilmaster_vplus_hgrh_lh_header1": (
+        "hgrh", "HGRH", "LH", "Header 1", None, "VPLUS-2760-REVERE", _SEEDED),
+    "coilmaster_vplus_hgrh_rh_header1": (
+        "hgrh", "HGRH", "RH", "Header 1", None, "VPLUS-2619-CONGRESS", _SEEDED),
+    "coilmaster_vplus_hgrh_rh_header2": (
+        "hgrh", "HGRH", "RH", "Header 2", None, "VPLUS-2839-FAIRMOUNT", _SEEDED),
+    "coilmaster_vplus_hwc_lh": (
+        "hwc", "HWC", "LH", "Header 1", None, "VPLUS-2802-MANCHESTER", _SEEDED),
+    "coilmaster_vplus_hwc_rh": (
+        "hwc", "HWC", "RH", "Header 1", None, "VPLUS-2523-WCALGARY", _SEEDED),
+    "coilmaster_vplus_cwc_lh": (
+        "cwc", "CWC", "LH", "Header 1", None, "VPLUS-2773-PAIZA", _SEEDED),
+}
+
+TEMPLATE_BUCKET_COUNT = _SHARED_BUCKET_COUNT + len(VENTUM_PLUS_TEMPLATES)
 
 
 def _active_entry(
@@ -97,6 +161,8 @@ class DrawingTemplateEntry:
     source_case_id: str | None = None
     reference_status: str = "review_required"
     blocked_reason: str | None = None
+    # None = shared/product-agnostic bucket; a family string = dedicated to that family.
+    product_family: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +184,9 @@ class TemplateSelectionRequest:
     header_type: str | None = None
     special_feature: str | None = None
     source_case_id: str | None = None
+    # Optional: when set (e.g. "VENTUM_PLUS"), a dedicated template for that family is
+    # preferred, falling back to the shared bucket when none is seeded. None = shared.
+    product_family: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +199,10 @@ class TemplateSelectionResult:
     entry: DrawingTemplateEntry | None = None
 
 
+# P2-A: the 33-entry catalog is a static asset independent of coil inputs, yet it was
+# rebuilt 2-4x per coil (select_drawing_template + every populate_template_slots).
+# Cache it once per process; every caller iterates the immutable `.entries` tuple.
+@lru_cache(maxsize=1)
 def load_drawing_template_catalog() -> DrawingTemplateCatalog:
     entries = tuple(_build_catalog_entries())
     if len(entries) != TEMPLATE_BUCKET_COUNT:
@@ -174,8 +247,9 @@ def select_drawing_template(
     hand = _normalize_hand(request.coil_hand)
     header = _normalize_header_type(request.header_type)
     special = _normalize_special_feature(request.special_feature)
+    family = _normalize_product_family(request.product_family)
 
-    matches = [
+    base_matches = [
         entry
         for entry in load_drawing_template_catalog().entries
         if entry.supplier == supplier
@@ -184,6 +258,14 @@ def select_drawing_template(
         and entry.special_feature == special
         and _header_matches(entry.header_type, header, special)
     ]
+    # Two-pass: prefer a dedicated template for the requested family; fall back to the
+    # shared (product_family is None) bucket when none is seeded. A request with no
+    # family only ever matches shared buckets, so non-Ventum+ coils are unaffected.
+    if family:
+        dedicated = [e for e in base_matches if e.product_family == family]
+        matches = dedicated or [e for e in base_matches if e.product_family is None]
+    else:
+        matches = [e for e in base_matches if e.product_family is None]
     if not matches:
         return TemplateSelectionResult(
             found=False,
@@ -229,6 +311,35 @@ def _build_catalog_entries() -> list[DrawingTemplateEntry]:
     for category in ("cwc", "hwc"):
         for hand in ("LH", "RH"):
             entries.append(_entry_for_water_category(category, hand))
+    entries.extend(_build_ventum_plus_entries())
+    return entries
+
+
+def _build_ventum_plus_entries() -> list[DrawingTemplateEntry]:
+    """Dedicated Ventum+ buckets (product_family=VENTUM_PLUS), one per seeded id in
+    VENTUM_PLUS_TEMPLATES. Empty until a real Ventum+ reference is seeded."""
+    entries: list[DrawingTemplateEntry] = []
+    for template_id, spec in VENTUM_PLUS_TEMPLATES.items():
+        cat_dir, coil_category, hand, header_type, special_feature, source, ref_status = spec
+        folder = f"templates/drawing/coilmaster/{cat_dir}/{template_id}"
+        entries.append(
+            DrawingTemplateEntry(
+                template_id=template_id,
+                supplier="coilmaster",
+                coil_category=coil_category,
+                coil_hand=hand,
+                header_type=header_type,
+                special_feature=special_feature,
+                status="active_review_aid",
+                generation_allowed=True,
+                template_path=f"{folder}/template.svg",
+                slot_map_path=f"{folder}/slot_map.json",
+                metadata_path=f"{folder}/template_metadata.json",
+                source_case_id=source,
+                reference_status=ref_status,
+                product_family=VENTUM_PLUS_FAMILY,
+            )
+        )
     return entries
 
 
@@ -331,6 +442,12 @@ def _known_source_case(category: str, header_number: int, hand: str) -> str | No
     if category == "hgrh" and header_number == 2 and hand == "LH":
         return "EZC-0008"
     return None
+
+
+def _normalize_product_family(value: str | None) -> str | None:
+    """Uppercased family string, or None when unset/blank (= shared, no dedicated pref)."""
+    text = str(value or "").strip().upper()
+    return text or None
 
 
 def _normalize_supplier(value: str) -> str:

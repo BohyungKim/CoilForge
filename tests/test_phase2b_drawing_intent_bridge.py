@@ -150,6 +150,26 @@ def test_unsupported_header_type_blocks_preview() -> None:
     assert preview.svg == ""
 
 
+def test_unparseable_numeric_field_gates_preview_without_crashing() -> None:
+    """A submittal cell PDF text extraction concatenated into a numeric field
+    ("24 WB (F) 75 DB (F): 55") must gate the preview as review-required, not
+    crash the whole PDF analysis with a float() ValueError."""
+    bad = "24 WB (F) 75 DB (F): 55"
+    draft = _build_draft_from_payload(
+        geometry_updates={
+            "finned_height": {"value": bad, "source_value": bad, "normalized_value": bad}
+        }
+    )
+    parameter_set = resolve_drawing_parameters(draft, default_preview_values=_preview_defaults())
+
+    # Must not raise.
+    preview = render_direct_coil_svg_preview(draft, parameter_set)
+
+    assert preview.intent.preview_allowed is False
+    assert "finned_height" in preview.intent.blocked_reasons
+    assert preview.svg == ""
+
+
 def test_drawing_follows_parameters_not_title_block() -> None:
     """The Drawing Parameters set is the single source of truth: when title_block
     carries different positional/header dims, the rendered state must use the

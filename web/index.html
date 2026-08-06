@@ -17,7 +17,7 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=phase2g-darkmode-20260615-001" />
+    <link rel="stylesheet" href="/static/style.css?v=deliverable-finalize-20260706-001" />
   </head>
   <body>
     <div class="legacy-test-labels" aria-hidden="true">
@@ -52,6 +52,10 @@
           <div>
             <div id="breadcrumb" class="breadcrumb">CoilForge / Sanitized Demo / DX Header 1</div>
             <h2 id="page-title">Direct Coil Draft</h2>
+          </div>
+          <div class="supplier-switch" role="group" aria-label="Coil supplier">
+            <button class="supplier-btn active" data-supplier="direct_coil" type="button">Direct Coil</button>
+            <button class="supplier-btn" data-supplier="ambient" type="button">Ambient (Quick-Ship)</button>
           </div>
           <div class="topbar-actions">
             <span id="saved-status" class="saved-status">Draft saved locally</span>
@@ -106,163 +110,322 @@
             <input id="pdf-cover-page-input" type="number" min="1" inputmode="numeric" placeholder="Page #" />
           </label>
           <button id="analyze-pdf" type="button">Analyze PDF</button>
+          <div id="brain-case-banner" class="brain-case-banner" hidden></div>
           <div id="pdf-intake-summary" class="pdf-intake-summary">No PDF analyzed.</div>
         </section>
 
-        <section class="direct-coil-workbench" data-view="checklist" aria-label="Direct Coil software screen mirror">
+        <!-- Per-coil review: one continuous scroll for the active coil — spec/
+             performance, then drawing parameters, then the drawing inline, then
+             "next coil". Paste-ready fields + source evidence collapse to the bottom. -->
+        <section class="direct-coil-workbench review-flow" data-view="checklist" aria-label="Coil spec / performance">
           <div class="section-heading">
-            <h3>Direct Coil Screen Mirror &mdash; Review Aid Only</h3>
-            <span class="subtle-label">Formatted for field-by-field paste review</span>
+            <h3>Spec / Performance &mdash; Review Aid Only</h3>
+            <span id="draft-id" class="subtle-label">Loading draft</span>
           </div>
           <p class="review-warning">
             Review aid only. Not for manufacturing. Not a final Direct Coil export.
           </p>
+          <section class="driver-editor" aria-label="Drawing drivers">
+            <label>
+              <span>Coil name</span>
+              <input id="edit-coil-name" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>Finned height</span>
+              <input id="edit-finned-height" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              <span>Finned length</span>
+              <input id="edit-finned-length" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              <span>Airflow</span>
+              <select id="edit-airflow-direction">
+                <option value="left_to_right">left_to_right</option>
+                <option value="right_to_left">right_to_left</option>
+              </select>
+            </label>
+            <label class="manual-toggle">
+              <input id="manual-drawing-mode" type="checkbox" />
+              <span>Manual drawing parameters</span>
+            </label>
+          </section>
           <div id="direct-coil-screen-mirror" class="direct-coil-screen-mirror"></div>
         </section>
 
-        <section class="content-grid">
-          <div class="input-column" data-view="checklist">
-            <div class="section-heading">
-              <h3>Direct Coil Input Groups</h3>
-              <span id="draft-id" class="subtle-label">Loading draft</span>
-            </div>
-            <section class="driver-editor" aria-label="Drawing drivers">
-              <label>
-                <span>Coil name</span>
-                <input id="edit-coil-name" type="text" autocomplete="off" />
-              </label>
-              <label>
-                <span>Finned height</span>
-                <input id="edit-finned-height" type="number" min="0" step="0.01" />
-              </label>
-              <label>
-                <span>Finned length</span>
-                <input id="edit-finned-length" type="number" min="0" step="0.01" />
-              </label>
-              <label>
-                <span>Airflow</span>
-                <select id="edit-airflow-direction">
-                  <option value="left_to_right">left_to_right</option>
-                  <option value="right_to_left">right_to_left</option>
-                </select>
-              </label>
-              <label class="manual-toggle">
-                <input id="manual-drawing-mode" type="checkbox" />
-                <span>Manual drawing parameters</span>
-              </label>
-            </section>
-            <section class="paste-ready-panel" aria-label="Paste-ready Direct Coil fields">
-              <div class="section-heading">
-                <h3>Paste-ready Direct Coil Fields &mdash; Review Aid Only</h3>
-                <span id="paste-ready-count" class="subtle-label">Loading fields</span>
-              </div>
-              <p class="review-warning">
-                Review aid only. Not for manufacturing. Not a final Direct Coil export.
-              </p>
-              <div class="paste-ready-actions" aria-label="Paste-ready copy actions">
-                <button id="copy-visible-tsv" class="secondary-action" type="button">Copy visible TSV</button>
-              </div>
-              <div class="paste-ready-table-wrap">
-                <table class="paste-ready-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">#</th>
-                      <th scope="col">Direct Coil Section</th>
-                      <th scope="col">Direct Coil Field</th>
-                      <th scope="col">Value to Copy</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Notes / Evidence</th>
-                      <th scope="col">Copy</th>
-                    </tr>
-                  </thead>
-                  <tbody id="paste-ready-fields"></tbody>
-                </table>
-              </div>
-            </section>
-            <details class="raw-fields-disclosure">
-              <summary>Show all draft fields (raw key / status)</summary>
-              <div id="direct-coil-groups" class="field-groups"></div>
-            </details>
+        <section id="drawing-section" class="inspector-card drawing-card review-flow" data-view="checklist drawing">
+          <div class="card-title-row">
+            <h3>Drawing Parameters &amp; Drawing</h3>
+            <span id="preview-status" class="status-chip">Review</span>
           </div>
+          <div id="drawing-template-status" class="drawing-template-status">Loading template status</div>
+          <div id="ccsi-compare-banner" class="ccsi-compare-banner" hidden></div>
+          <div id="drawing-parameters" class="parameter-grid"></div>
+          <div id="manual-param-actions" class="manual-param-actions" hidden>
+            <input id="manual-param-reason" type="text" class="manual-param-reason" placeholder="Reason for the change (logged as a correction)" />
+            <button id="manual-param-apply" class="manual-fill-apply" type="button">Update drawing</button>
+            <span class="subtle-label">Edits reflect into the drawing and are logged (review aid only &mdash; never approved).</span>
+          </div>
+          <div class="ccsi-autofill-actions" aria-label="CCSI autofill actions">
+            <button id="copy-ccsi-payload" class="ccsi-copy-action" type="button">
+              <span aria-hidden="true">&#128203;</span> Copy CCSI autofill payload
+            </button>
+            <span id="ccsi-autofill-status" class="subtle-label">Review aid only &mdash; copies the 13 drawing parameters for the CCSI filler to apply (you confirm each on the form).</span>
+          </div>
+          <details class="ccsi-autofill-setup">
+            <summary>CCSI filler &mdash; one-time setup</summary>
+            <p class="subtle-label">
+              The filler runs on the CCSI page (different site), so it installs once in your browser.
+              Pick either option, then use <strong>Copy CCSI autofill payload</strong> above and trigger the filler on the CCSI form.
+            </p>
+            <ol class="ccsi-setup-steps">
+              <li>
+                <strong>No extension &mdash; bookmarklet (recommended):</strong>
+                drag this link to your bookmarks bar once &rarr;
+                <a id="ccsi-bookmarklet" class="ccsi-bookmarklet" href="#" draggable="true" title="Drag me to your bookmarks bar">CCSI&nbsp;autofill</a>.
+                Then on the CCSI Direct Coil form, click that bookmark to open the filler.
+              </li>
+              <li>
+                <strong>Userscript manager (Tampermonkey/Violentmonkey):</strong>
+                <a href="/static/ccsi/ccsi_autofill.user.js" target="_blank" rel="noopener">install ccsi_autofill.user.js</a>,
+                then trigger it from the userscript menu on the CCSI form.
+              </li>
+            </ol>
+            <span id="ccsi-bookmarklet-status" class="subtle-label">Preparing bookmarklet&hellip;</span>
+          </details>
+          <div id="drawing-preview" class="drawing-preview">Loading preview</div>
+        </section>
 
-          <aside class="inspector-column" aria-label="Review panels">
-            <section class="inspector-card" data-view="checklist">
-              <div class="card-title-row">
-                <h3>Import Summary / Source Evidence</h3>
-                <span id="candidate-status" class="status-chip">Loading</span>
-              </div>
-              <div id="import-summary" class="summary-list"></div>
-              <details class="evidence-disclosure">
-                <summary>Show source evidence</summary>
-                <div id="source-evidence" class="evidence-list"></div>
-              </details>
-            </section>
+        <section id="mechanical-fit-section" class="inspector-card mechanical-fit-card review-flow" data-view="checklist drawing" aria-label="Mechanical fit / stability" hidden>
+          <div class="section-heading">
+            <h2>Mechanical Fit / Stability</h2>
+            <span class="section-subtitle">Review aid — casing &amp; drain-pan fit. Not an approval.</span>
+          </div>
+          <div id="mechanical-fit-body" class="mechanical-fit-body">No coil analyzed.</div>
+        </section>
 
-            <section id="drawing-section" class="inspector-card drawing-card" data-view="drawing">
-              <div class="card-title-row">
-                <h3>Drawing Preview</h3>
-                <span id="preview-status" class="status-chip">Review</span>
-              </div>
-              <div id="drawing-template-status" class="drawing-template-status">Loading template status</div>
-            </section>
+        <section id="coil-review-nav" class="coil-review-nav review-flow" data-view="checklist" aria-label="Coil review navigation"></section>
 
-            <section class="inspector-card" data-view="drawing">
-              <h3>Drawing Parameters</h3>
-              <div id="drawing-parameters" class="parameter-grid"></div>
-              <div id="drawing-preview" class="drawing-preview">Loading preview</div>
-            </section>
+        <details class="review-collapse review-flow" data-view="checklist">
+          <summary>Paste-ready Direct Coil fields &amp; source evidence</summary>
+          <section class="paste-ready-panel" aria-label="Paste-ready Direct Coil fields">
+            <div class="section-heading">
+              <h3>Paste-ready Direct Coil Fields &mdash; Review Aid Only</h3>
+              <span id="paste-ready-count" class="subtle-label">Loading fields</span>
+            </div>
+            <p class="review-warning">
+              Review aid only. Not for manufacturing. Not a final Direct Coil export.
+            </p>
+            <div class="paste-ready-actions" aria-label="Paste-ready copy actions">
+              <button id="copy-visible-tsv" class="secondary-action" type="button">Copy visible TSV</button>
+            </div>
+            <div class="paste-ready-table-wrap">
+              <table class="paste-ready-table">
+                <thead>
+                  <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Direct Coil Section</th>
+                    <th scope="col">Direct Coil Field</th>
+                    <th scope="col">Value to Copy</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Notes / Evidence</th>
+                    <th scope="col">Copy</th>
+                  </tr>
+                </thead>
+                <tbody id="paste-ready-fields"></tbody>
+              </table>
+            </div>
+          </section>
+          <details class="raw-fields-disclosure">
+            <summary>Show all draft fields (raw key / status)</summary>
+            <div id="direct-coil-groups" class="field-groups"></div>
+          </details>
+          <section class="inspector-card">
+            <div class="card-title-row">
+              <h3>Import Summary / Source Evidence</h3>
+              <span id="candidate-status" class="status-chip">Loading</span>
+            </div>
+            <div id="import-summary" class="summary-list"></div>
+            <details class="evidence-disclosure">
+              <summary>Show source evidence</summary>
+              <div id="source-evidence" class="evidence-list"></div>
+            </details>
+          </section>
+        </details>
 
-            <section id="compatibility-section" class="inspector-card compatibility-card" data-view="compatibility">
-              <div class="card-title-row">
-                <h3>Compatibility Review</h3>
-                <span id="compatibility-status" class="status-chip">Loading</span>
-              </div>
-              <div id="compatibility-summary" class="compatibility-summary"></div>
-              <div class="compatibility-filter" role="group" aria-label="Compatibility field filters">
-                <button class="compat-filter active" data-compat-filter="all" type="button">All</button>
-                <button class="compat-filter" data-compat-filter="exact_match" type="button">Exact</button>
-                <button class="compat-filter" data-compat-filter="source_only" type="button">Source only</button>
-                <button class="compat-filter" data-compat-filter="mismatch" type="button">Mismatch</button>
-                <button class="compat-filter" data-compat-filter="blocked" type="button">Blocked</button>
-                <button class="compat-filter" data-compat-filter="matched" type="button">Matched</button>
-                <button class="compat-filter" data-compat-filter="held" type="button">Held</button>
-                <button class="compat-filter" data-compat-filter="unmapped" type="button">Unmapped</button>
-              </div>
-              <div id="compatibility-decisions" class="compatibility-decisions"></div>
-            </section>
+        <!-- Final step: after every coil is reviewed, drop the quote PDF here and build
+             the whole package once. Dedicated quote-PDF input (separate from the top
+             submittal drop). Gated until all coils reviewed AND a quote PDF is chosen. -->
+        <!-- The "Project Review — Exceptions First" section lived here until 2026-07-28, when
+             John removed it to keep the review flow to a minimum set of buttons. The backend
+             (POST /api/review/project) and review/project_gate.py are intentionally KEPT —
+             capture/record.py re-derives the gate independently. -->
+        <section id="quote-package-section" class="quote-package-section review-flow" data-view="checklist" aria-label="Build quote package">
+          <div class="section-heading">
+            <h3>Build Quote Package &mdash; Review Aid Only</h3>
+            <span class="subtle-label">Final step</span>
+          </div>
+          <p class="review-warning">
+            Drop the Direct Coil quote+drawing PDF; our drawing is inserted after each coil
+            plus a copper-strap price note. Watermarked review aid &mdash; never exported.
+          </p>
+          <label id="quote-pdf-drop-zone" class="pdf-drop-zone" for="quote-pdf-file">
+            <input id="quote-pdf-file" type="file" accept="application/pdf,.pdf" />
+            <span class="pdf-drop-title">Drop quote PDF</span>
+            <span id="quote-pdf-file-name" class="pdf-file-name">No file selected</span>
+            <span class="pdf-browse-action">Browse PDF</span>
+          </label>
+          <div class="quote-package">
+            <button id="build-quote-package" type="button">Build quote package</button>
+            <button id="finalize-deliverable" class="secondary-action" type="button" hidden title="Files the original + revised quote + checklist into the project's DirectCoil folder and opens a pre-filled Outlook draft (revised PDF attached). Nothing is sent.">Finalize deliverable</button>
+            <span class="quote-package-hint">Review every coil above, then drop the quote PDF to build.</span>
+            <div id="quote-package-summary" class="quote-package-summary"></div>
+          </div>
+        </section>
 
-            <section id="review-section" class="inspector-card decision-capture-card" data-view="review">
-              <div class="card-title-row">
-                <h3>John Decision Capture</h3>
-                <span class="status-chip">Disabled</span>
-              </div>
-              <p class="review-warning">
-                Proposed decisions are not applied to Direct Coil draft readiness, drawing approval,
-                PDF export, or final export.
-              </p>
-              <div id="decision-capture-summary" class="compatibility-summary"></div>
-              <div id="decision-capture-items" class="decision-capture-list"></div>
-            </section>
+        <section id="checklist-fill-section" class="quote-package-section review-flow" data-view="checklist" aria-label="Auto-fill Coil Checklist">
+          <div class="section-heading">
+            <h3>Coil Checklist Auto-Fill &mdash; Review Aid Only</h3>
+            <label class="checklist-auto-toggle">
+              <input id="checklist-auto-toggle" type="checkbox" checked />
+              Auto-fill on analyze
+            </label>
+          </div>
+          <p class="review-warning">
+            Runs automatically after you analyze a submittal PDF above. It fills a COPY of the
+            Coil Checklist template in your Downloads folder (the original is never touched) and
+            compares the sheet's own formula dimensions against CoilForge's engine values. Uncheck
+            the toggle to skip it; re-check to fill the current submittal now.
+          </p>
+          <div class="quote-package">
+            <div id="checklist-fill-summary" class="quote-package-summary"></div>
+          </div>
+          <div id="checklist-fill-results" class="checklist-fill-results"></div>
+        </section>
 
-            <section id="performance-section" class="inspector-card" data-view="performance">
-              <h3>Performance Summary</h3>
-              <div id="performance-summary" class="summary-list"></div>
-            </section>
+        <!-- The "Audit CCSI Export" section lived here until 2026-07-28 (same minimum-buttons
+             pass as Project Review above). POST /api/ccsi/audit-export and ccsi/export_audit.py
+             are intentionally KEPT — project_gate.py still accepts audit_reports=. This is
+             distinct from the LIVE /api/ccsi-compare, which is untouched. -->
+        <section id="ambient-section" class="quote-package-section review-flow ambient-section" data-view="checklist" aria-label="Ambient Dynamics quote comparison">
+          <div class="section-heading">
+            <h3>Ambient Dynamics &mdash; Quote Comparison &mdash; Review Aid Only</h3>
+            <span class="subtle-label">Quick-ship supplier</span>
+          </div>
+          <div class="ambient-mode-switch" role="group" aria-label="Ambient mode">
+            <button type="button" class="ambient-mode-btn active" data-ambient-mode="compare">Compare two files</button>
+            <button type="button" class="ambient-mode-btn" data-ambient-mode="package">Generate package from submittal</button>
+          </div>
+          <p class="review-warning ambient-compare-only">
+            Quick-ship path. Drop the <strong>baseline submittal PDF</strong> and Ambient's returned
+            <strong>Performance PDF</strong>. CoilForge parses both, compares each coil's construction
+            and performance, and checks Ambient's capacity / coil-volume against the Coil Utilities
+            acceptance band (EKEXVA kit &rarr; tonnage). Green (match) / red (differ) / grey (cannot
+            evaluate). Review aid; nothing is exported.
+          </p>
+          <div class="ambient-drops ambient-compare-only">
+            <label id="ambient-baseline-drop" class="pdf-drop-zone" for="ambient-baseline-file">
+              <input id="ambient-baseline-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">1 &middot; Baseline submittal PDF</span>
+              <span id="ambient-baseline-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+            <label id="ambient-return-drop" class="pdf-drop-zone" for="ambient-return-file">
+              <input id="ambient-return-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">2 &middot; Ambient Performance PDF</span>
+              <span id="ambient-return-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+          </div>
+          <div class="quote-package ambient-compare-only">
+            <span id="ambient-summary" class="quote-package-summary"></span>
+          </div>
+          <div class="ambient-excel-action ambient-compare-only">
+            <button id="ambient-excel-fill" type="button" disabled>Fill comparison Excel (C = ours, D = Ambient) &rarr; Downloads</button>
+            <span id="ambient-excel-status" class="ambient-note"></span>
+          </div>
+          <div id="ambient-results" class="ambient-results ambient-compare-only"></div>
 
-            <section class="inspector-card" data-view="review">
-              <h3>Validation</h3>
-              <div id="validation-summary" class="validation-list"></div>
-            </section>
+          <p id="ambient-package-warning" class="review-warning ambient-package-only">
+            Drop a <strong>submittal PDF</strong> — CoilForge builds the Ambient-version
+            <strong>performance page</strong> (transcribed from the submittal) plus a
+            <strong>drawing</strong> to hand to Ambient. No EZ Coil selection needed. Optionally
+            attach an EZ Coil drawing to use in place of the generated one. Review aid; every value
+            is review-required; nothing is exported.
+          </p>
+          <div class="ambient-drops ambient-package-drops ambient-package-only">
+            <label id="ambient-submittal-drop" class="pdf-drop-zone" for="ambient-submittal-file">
+              <input id="ambient-submittal-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">1 &middot; Submittal PDF (required)</span>
+              <span id="ambient-submittal-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+            <label id="ambient-ez-drop" class="pdf-drop-zone" for="ambient-ez-file">
+              <input id="ambient-ez-file" type="file" accept="application/pdf,.pdf" />
+              <span class="pdf-drop-title">2 &middot; EZ Coil drawing (optional)</span>
+              <span id="ambient-ez-name" class="pdf-file-name">No file selected</span>
+              <span class="pdf-browse-action">Browse PDF</span>
+            </label>
+          </div>
+          <div class="quote-package ambient-package-summary ambient-package-only">
+            <span id="ambient-package-summary" class="quote-package-summary"></span>
+          </div>
+          <div id="ambient-quote-request-action" class="ambient-excel-action ambient-package-only">
+            <button id="ambient-quote-request-pdf" type="button" disabled>Export quote request PDF &rarr; Downloads</button>
+            <span id="ambient-quote-request-status" class="ambient-note"></span>
+          </div>
+          <div id="ambient-package-results" class="ambient-results ambient-package-only"></div>
+        </section>
 
-            <section class="inspector-card" data-view="review">
-              <h3>Blocked Fields</h3>
-              <div id="blocked-fields" class="blocked-list"></div>
-            </section>
-          </aside>
+        <section id="compatibility-section" class="inspector-card compatibility-card" data-view="compatibility">
+          <div class="card-title-row">
+            <h3>Compatibility Review</h3>
+            <span id="compatibility-status" class="status-chip">Loading</span>
+          </div>
+          <div id="compatibility-summary" class="compatibility-summary"></div>
+          <div class="compatibility-filter" role="group" aria-label="Compatibility field filters">
+            <button class="compat-filter active" data-compat-filter="all" type="button">All</button>
+            <button class="compat-filter" data-compat-filter="exact_match" type="button">Exact</button>
+            <button class="compat-filter" data-compat-filter="source_only" type="button">Source only</button>
+            <button class="compat-filter" data-compat-filter="mismatch" type="button">Mismatch</button>
+            <button class="compat-filter" data-compat-filter="blocked" type="button">Blocked</button>
+            <button class="compat-filter" data-compat-filter="matched" type="button">Matched</button>
+            <button class="compat-filter" data-compat-filter="held" type="button">Held</button>
+            <button class="compat-filter" data-compat-filter="unmapped" type="button">Unmapped</button>
+          </div>
+          <div id="compatibility-decisions" class="compatibility-decisions"></div>
+        </section>
+
+        <section id="review-section" class="inspector-card decision-capture-card" data-view="review">
+          <div class="card-title-row">
+            <h3>John Decision Capture</h3>
+            <span class="status-chip">Disabled</span>
+          </div>
+          <p class="review-warning">
+            Proposed decisions are not applied to Direct Coil draft readiness, drawing approval,
+            PDF export, or final export.
+          </p>
+          <div id="decision-capture-summary" class="compatibility-summary"></div>
+          <div id="decision-capture-items" class="decision-capture-list"></div>
+        </section>
+
+        <section id="performance-section" class="inspector-card" data-view="performance">
+          <h3>Performance Summary</h3>
+          <div id="performance-summary" class="summary-list"></div>
+        </section>
+
+        <section class="inspector-card" data-view="review">
+          <h3>Validation</h3>
+          <div id="validation-summary" class="validation-list"></div>
+        </section>
+
+        <section class="inspector-card" data-view="review">
+          <h3>Blocked Fields</h3>
+          <div id="blocked-fields" class="blocked-list"></div>
         </section>
       </main>
     </div>
 
-    <script src="/static/app.js?v=phase2g-darkmode-20260615-001" type="module"></script>
+    <script src="/static/app.js?v=deliverable-finalize-20260706-001" type="module"></script>
   </body>
 </html>

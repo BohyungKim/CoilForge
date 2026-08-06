@@ -1,0 +1,65 @@
+{
+  "form": "CCSI Online — project / revision / coil navigation (DX)",
+  "version": "2026-07-04",
+  "captured_from": "Live on coil.ccsi.ie 2026-07-04: projects list /UserProjects and project FullDetails/351437 (project 2803, revision 537707). Handlers are parameterized by ids READ FROM THE DOM, never hardcoded — the ids below are examples only.",
+  "url_scheme": {
+    "projects_list": "/UserProjects",
+    "project_details": "/UserProjects/FullDetails/{projectId}",
+    "revision_details": "/Revisions/RevisionDetails/{revisionId}",
+    "quick_quote": "/Revisions/QuickQuote",
+    "coil_editor": "/Coils/Edit/{coilId}"
+  },
+  "actions": {
+    "open_project": {
+      "step": "open project number",
+      "how": "navigate to /UserProjects/FullDetails/{projectId}. Find {projectId} from the projects list row link (href UserProjects/FullDetails/<id>). The list is date-filtered — widen From/To or use the project search box (a read-only filter) if the target project isn't shown.",
+      "mutating": false
+    },
+    "duplicate_quote": {
+      "step": "duplicate quote",
+      "handler": "CopyRevision('RevisionsListDiv', {projectId}, {revisionId})",
+      "control": "Project Revisions row action, title 'Copy Revision', icon 'fa fa-copy'",
+      "mutating": true,
+      "confirm_before": true
+    },
+    "rename_revision_note_rfo": {
+      "step": "rename as RFO",
+      "handler": "RevisionNoteUpdate('RevisionsListDiv', {projectId}, {revisionId}, '{currentNote}')",
+      "control": "the 'note' link in a Project Revisions row; opens a note editor — set it to RFO",
+      "mutating": true,
+      "confirm_before": true
+    },
+    "load_revision_coils": {
+      "step": "list the revision's coils",
+      "handler": "RetrieveProductsForRevision('productsListDiv', {revisionId}, true)",
+      "control": "the gear/'Details' icon on a Project Revisions row (fa fa-gear); fills the 'Products In Revision' table",
+      "mutating": false
+    },
+    "open_coil": {
+      "step": "open each coil",
+      "handler": "editProduct({coilId}, 'DXCoil')",
+      "alt_url": "/Coils/Edit/{coilId}",
+      "control": "the Unit Name link in a Products In Revision row; the row's 'Tag #' cell is the match key (CDXC-1, ...)",
+      "mutating": false
+    },
+    "export_report": {
+      "step": "export the CCSI report",
+      "handler": "retrieveReport({revisionId}, {projectId})",
+      "control": "Project Revisions row action, title 'Latest Report', icon 'fa fa-list'",
+      "mutating": true,
+      "confirm_before": true,
+      "produces": "the revision's report (view/download) — John's exported file, fed into CoilForge's quote package"
+    },
+    "coil_techspec_report": { "step": "per-coil TechSpec", "handler": "submitCoilDataForReport({coilId})", "mutating": false },
+    "coil_drawing": { "step": "per-coil drawing", "handler": "submitCoilDataForDrawing({coilId}, 'Manufacturing')", "mutating": false }
+  },
+  "dom_reads": {
+    "project_row": "In /UserProjects: table rows; project link href = UserProjects/FullDetails/{projectId}; row action icons include fa-newspaper-o (details), fa-edit (/UserProjects/Edit/{id}), fa-times (DeleteProjectDialog).",
+    "revision_row": "In FullDetails: 'Project Revisions' table; the note cell text is the current revision note; action icons carry CopyRevision / retrieveReport / RetrieveProductsForRevision / DeleteRevision with the real {projectId},{revisionId}.",
+    "product_row": "'Products In Revision' table: 'Tag #' cell = coil tag (match key); Unit Name link = editProduct({coilId},'DXCoil').",
+    "coil_tag_field": "#Tag on /Coils/Edit/{coilId} (the value drawing-param fill/compare run against)."
+  },
+  "safety": "Every action with mutating:true (duplicate_quote, rename_revision_note_rfo, export_report) is confirm_before:true — Claude drives up to the click, shows John exactly the handler + ids, and STOPS for his per-action go-ahead. Login is John's (credentials never entered). Ids are always read from the live DOM, never invented. review_aid_only; never auto-saves a coil.",
+  "review_aid_only": true,
+  "export_allowed": false
+}

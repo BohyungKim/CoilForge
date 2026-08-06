@@ -27,13 +27,24 @@ import fitz  # PyMuPDF
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Dimension callout labels (longest first so HDx1 wins over HD).
+# Dimension callout labels (longest first so HDx1 wins over HD). The regex sorts
+# by length, so list order here is not significant.
+# "X" (uppercase, single char) is the tube-projection callout; it is case-
+# sensitive so it never matches the lowercase "x" in tube specs (e.g.
+# "0.375 x 0.016"). Added 2026-06-23 (John) so "1.13 X" redacts to {{slot.X}}.
 _DIM_LABELS = [
     "HDx1", "HDx3", "HDx5", "HD2", "HD4", "HD6", "SL2", "SL4", "SL6", "OAL",
     "CH", "CL", "CD", "FH", "FL", "HF", "RF", "TF", "BF", "RB",
     "I1", "I3", "I5", "I7", "S1", "S3", "S5", "S7",
     "O2", "O4", "O6", "O8", "R2", "R4", "R6", "R8",
+    # Bare header letters: water-coil (and some) drawing-area callouts label the
+    # first-header offsets "I/O/S/R" instead of the parity-numbered "I1/O2/S1/R2"
+    # the title block uses. Mapped to the numbered first-header slot below.
+    "I", "O", "S", "R",
+    "X",
 ]
+# Bare drawing-area callout label -> the parity-numbered first-header slot it means.
+_BARE_CALLOUT_SLOT = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2"}
 _CALLOUT_RE = re.compile(
     r"^([\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
 )
@@ -131,8 +142,11 @@ def _pick_drawing_page(doc: "fitz.Document") -> "fitz.Page":
     return best
 
 
-def seed_pdf(pdf_path: Path) -> SeedResult:
-    page = _pick_drawing_page(fitz.open(pdf_path))
+def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
+    doc = fitz.open(pdf_path)
+    # Multi-coil project PDFs hold many drawing pages, so a specific page must be named;
+    # single-coil EZ exports omit it and fall back to the callout-density auto-pick.
+    page = doc[page_index] if page_index is not None else _pick_drawing_page(doc)
     svg = page.get_svg_image(text_as_path=False)
     used: set[str] = set()
 
@@ -154,10 +168,15 @@ def seed_pdf(pdf_path: Path) -> SeedResult:
         # 1) Drawing-area dimension callout: "VALUE LABEL".
         cm = _CALLOUT_RE.match(content)
         if cm:
-            slot = f"slot.{cm.group(2)}"
+            label = cm.group(2)
+            if label == "X":
+                # X is a fixed (non-variable) dimension no parameter drives; drop
+                # the callout rather than slot it (would render blank). John 2026-06-27.
+                return ""
+            slot = _BARE_CALLOUT_SLOT.get(label, f"slot.{label}")
             used.add(slot)
             ref[slot] = cm.group(1)
-            return single(f"{{{{{slot}}}}} {cm.group(2)}")
+            return single(f"{{{{{slot}}}}} {label}")
 
         # 2) Title-block summary row (headers + glued values in two tspans).
         if _looks_like_title_block(content) and tb_tokens:
@@ -497,8 +516,12 @@ BUCKETS = [
      "Case/#2/EZC-0011 - DX_2_RH/CDXC-2.pdf", "EZC-0011"),
     ("coilmaster_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
      "Case/#2/EZC-0007 - DX_3_LH/CDXC-1.pdf", "EZC-0007"),
+    # 2026-06-24: re-seeded from the correct LH 1-header reference (John). The prior
+    # HG_1_LH.pdf was the wrong coil's drawing (wrongly imported geometry); the Bowie
+    # State 2572 drawing (tag RHHGRC-2, 1-header HGRH LH) is the right reference and
+    # carries the header/stubout callouts (I1/S1/O2/R2/HD2/SL2) for clean slotting.
     ("coilmaster_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
-     "Case/#2/EZC-0002 - HG_1_LH/RHHGRC-1.pdf", "EZC-0002"),
+     "Case/feed/HG_1_LH/Coils_2572_Bowie_state.pdf", "FEED-HG_1_LH-2572-BOWIE"),
     ("coilmaster_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
      "Case/#2/EZC-0012 - HG_1_RH/RHHGRC-2.pdf", "EZC-0012"),
     ("coilmaster_hgrh_lh_header2", "hgrh", "HGRH", "LH", "Header 2", None,
@@ -511,18 +534,70 @@ BUCKETS = [
      "Case/#2/EZC-0005 - HW_LH/PHWC-1.pdf", "EZC-0005"),
     ("coilmaster_dx_lh_hgbp", "dx", "DX", "LH", None, "HGBP",
      "Case/#2/EZC-0013 - DX_HB_LH/CDXC-1.pdf", "EZC-0013"),
+    # --- 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now
+    # seeded from real per-hand EZ drawing PDFs provided in Case/feed/. Mirroring
+    # is retired (it smeared callouts); MIRRORS is now empty. source_case_id is a
+    # provenance token until real EZC IDs are supplied.
+    ("coilmaster_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
+     "Case/feed/DX_1_RH/DX_1_RH.pdf", "FEED-DX_1_RH"),
+    ("coilmaster_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
+     "Case/feed/DX_2_LH/DX_2_LH.pdf", "FEED-DX_2_LH"),
+    ("coilmaster_dx_rh_header3", "dx", "DX", "RH", "Header 3", None,
+     "Case/feed/DX_3_RH/DX_3_RH.pdf", "FEED-DX_3_RH"),
+    ("coilmaster_dx_rh_hgbp", "dx", "DX", "RH", None, "HGBP",
+     "Case/feed/DX_HB_RH/DX_HB_RH.pdf", "FEED-DX_HB_RH"),
+    ("coilmaster_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,
+     "Case/feed/HG_2_RH/HG_2_RH.pdf", "FEED-HG_2_RH"),
+    ("coilmaster_hgrh_lh_header3", "hgrh", "HGRH", "LH", "Header 3", None,
+     "Case/feed/HG_3_LH/HG_3_LH.pdf", "FEED-HG_3_LH"),
+    ("coilmaster_cwc_rh", "cwc", "CWC", "RH", "Header 1", None,
+     "Case/feed/CW_RH/CW_RH.pdf", "FEED-CW_RH"),
+    ("coilmaster_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
+     "Case/feed/HW_RH/HW_RH.pdf", "FEED-HW_RH"),
+    ("coilmaster_dx_lh_header4", "dx", "DX", "LH", "Header 4", None,
+     "Case/feed/DX_4_LH/DX_4_LH.pdf", "FEED-DX_4_LH"),
+    ("coilmaster_dx_rh_header4", "dx", "DX", "RH", "Header 4", None,
+     "Case/feed/DX_4_RH/DX_4_RH.pdf", "FEED-DX_4_RH"),
+    ("coilmaster_hgrh_lh_header4", "hgrh", "HGRH", "LH", "Header 4", None,
+     "Case/feed/HG_4_LH/HG_4_LH.pdf", "FEED-HG_4_LH"),
+    ("coilmaster_hgrh_rh_header4", "hgrh", "HGRH", "RH", "Header 4", None,
+     "Case/feed/HG_4_RH/HG_4_RH.pdf", "FEED-HG_4_RH"),
 ]
-MIRRORS = [
-    # rh/opposite template_id, category_dir, mirror_of (already-seeded id)
-    ("coilmaster_dx_rh_header1", "dx", "coilmaster_dx_lh_header1"),
-    ("coilmaster_dx_lh_header2", "dx", "coilmaster_dx_rh_header2"),
-    ("coilmaster_dx_rh_header3", "dx", "coilmaster_dx_lh_header3"),
-    ("coilmaster_hgrh_rh_header2", "hgrh", "coilmaster_hgrh_lh_header2"),
-    # RH seeded from EZC-0016 -> LH is the mirror (create_mirror handles RH->LH).
-    ("coilmaster_hgrh_lh_header3", "hgrh", "coilmaster_hgrh_rh_header3"),
-    ("coilmaster_cwc_rh", "cwc", "coilmaster_cwc_lh"),
-    ("coilmaster_hwc_rh", "hwc", "coilmaster_hwc_lh"),
-    ("coilmaster_dx_rh_hgbp", "dx", "coilmaster_dx_lh_hgbp"),
+# Mirroring retired (John, 2026-06-17/2026-06-21): every hand is now seeded from
+# its own real PDF. The mirror.py helper is retained for possible future use but
+# activates no template.
+MIRRORS: list[tuple[str, str, str]] = []
+
+# Dedicated Ventum+ buckets (the product_family fork). Seeded from REAL Ventum+
+# CoilMaster selection drawings so the ConnectionUP distributor (R-032) is captured
+# from the reference itself. These are per-PROJECT multi-coil PDFs, so each carries an
+# explicit page index (9th element). Sources are staged under Case/feed/vplus_* (which
+# is gitignored, like all of Case/). Bucket -> (pdf, page) comes from the Phase-0
+# inventory manifest (scripts/inventory_ventum_selection.py), confirmed by John.
+#   template_id, category_dir, coil_category, hand, header_type, special, src, case_id, page_index
+VPLUS_BUCKETS: list[tuple] = [
+    ("coilmaster_vplus_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
+     "Case/feed/vplus_dx_rh_header1/2798_Centra_Reno.pdf", "VPLUS-2798-CENTRA-RENO", 1),
+    ("coilmaster_vplus_dx_lh_header1", "dx", "DX", "LH", "Header 1", None,
+     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 2),
+    ("coilmaster_vplus_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
+     "Case/feed/vplus_dx_lh_header2/2760_Revere.pdf", "VPLUS-2760-REVERE", 3),
+    ("coilmaster_vplus_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
+     "Case/feed/vplus_dx_lh_header3/1929_Hoffman.pdf", "VPLUS-1929-HOFFMAN", 1),
+    ("coilmaster_vplus_dx_rh_header2", "dx", "DX", "RH", "Header 2", None,
+     "Case/feed/vplus_dx_rh_header2/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 1),
+    ("coilmaster_vplus_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
+     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 6),
+    ("coilmaster_vplus_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
+     "Case/feed/vplus_hgrh_rh_header1/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 2),
+    ("coilmaster_vplus_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,
+     "Case/feed/vplus_hgrh_rh_header2/2839_Fairmount.pdf", "VPLUS-2839-FAIRMOUNT", 2),
+    ("coilmaster_vplus_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
+     "Case/feed/vplus_hwc_lh/2802_Manchester.pdf", "VPLUS-2802-MANCHESTER", 2),
+    ("coilmaster_vplus_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
+     "Case/feed/vplus_hwc_rh/2523_WestCalgary.pdf", "VPLUS-2523-WCALGARY", 1),
+    ("coilmaster_vplus_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
+     "Case/feed/vplus_cwc_lh/2773_Paiza.pdf", "VPLUS-2773-PAIZA", 1),
 ]
 
 
@@ -550,10 +625,12 @@ def _slot_map(template_id: str, slot_ids: set[str]) -> dict:
 
 
 def build_bucket(spec: tuple) -> set[str]:
-    template_id, cat_dir, coil_cat, hand, header_type, special, src, case_id = spec
+    template_id, cat_dir, coil_cat, hand, header_type, special, src, case_id = spec[:8]
+    # Optional 9th element = explicit page index for multi-coil project PDFs (Ventum+).
+    page_index = spec[8] if len(spec) > 8 else None
     out_dir = REPO_ROOT / "templates" / "drawing" / "coilmaster" / cat_dir / template_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    res = seed_pdf(REPO_ROOT / src)
+    res = seed_pdf(REPO_ROOT / src, page_index)
     (out_dir / "template.svg").write_text(finalize(res.svg, template_id), encoding="utf-8")
     src_folder = str(Path(src).parent).replace("\\", "/")
     page_count = fitz.open(REPO_ROOT / src).page_count
@@ -631,6 +708,18 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "build-all":
         sys.path.insert(0, str(REPO_ROOT / "src"))
         build_all()
+        raise SystemExit(0)
+
+    # Re-seed a single bucket into its template folder (surgical; avoids re-seeding
+    # the other 21 templates). Usage: build-one <template_id>
+    if len(sys.argv) > 2 and sys.argv[1] == "build-one":
+        sys.path.insert(0, str(REPO_ROOT / "src"))
+        target = sys.argv[2]
+        spec = next((s for s in (*BUCKETS, *VPLUS_BUCKETS) if s[0] == target), None)
+        if spec is None:
+            raise SystemExit(f"unknown template_id: {target}")
+        ids = build_bucket(spec)
+        print(f"seeded {target:32} slots={len(ids)}")
         raise SystemExit(0)
 
     src = sys.argv[1] if len(sys.argv) > 1 else "Case/#2/EZC-0001 - DX_1_LH/CDXC-1.pdf"

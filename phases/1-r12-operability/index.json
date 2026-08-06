@@ -1,0 +1,24 @@
+{
+  "project": "CoilForge",
+  "phase": "1-r12-operability",
+  "steps": [
+    {
+      "step": 0,
+      "name": "prefill-sha1-cache",
+      "status": "completed",
+      "started_at": "2026-07-11T17:17:47-0400",
+      "summary": "run_pdf_to_drawing_workflow now bounded-memoized (LRU maxsize=32) on a cache key of sha1(pdf_bytes)+sha256 of all meta args; hits return a deepcopy so callers cannot poison the store. Completed the pre-existing test's missing _embedded_source_id helper; 4 cache tests + full suite (806) green.",
+      "completed_at": "2026-07-11T17:20:47-0400"
+    },
+    {
+      "step": 1,
+      "name": "identity-header",
+      "status": "completed",
+      "started_at": "2026-07-11T17:20:48-0400",
+      "summary": "X-CoilForge-Identity request header (initiator, R12c) now read via _identity_from_request (mirrors the x-coilforge-* pattern, degrades to None when absent) and threaded additively into _journal_milestone as value.request_identity — kept distinct from the event's project identity (brain_case.case_identity). Wired into all 6 journaling endpoints (ccsi-export-audit, pdf-to-direct-draft, pdf-to-drawing, checklist-fill, project-review, case-to-drawing). 2 new tests + full suite (808) green.",
+      "completed_at": "2026-07-11T17:26:24-0400"
+    }
+  ],
+  "created_at": "2026-07-11T16:40:08-0400",
+  "completed_at": "2026-07-11T17:26:24-0400"
+}

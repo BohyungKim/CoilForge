@@ -51,8 +51,8 @@ rules:
     field: lifting_lugs
     value: false
     kind: constant
-    confidence: MEDIUM
-    review_required: true
+    confidence: HIGH
+    review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §GEN"]
 
@@ -79,22 +79,22 @@ rules:
   - rule_id: R-005
     applies_to: { coil_type: [DX, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_bend
-    value: 1.75
+    value: 1.5
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "SOP §HGRH-TNVH", "CHK DX!C29", "CHK HGRH!C32"]
+    evidence_refs: ["John 2026-06-25: RB default 1.5 for direct-coil selection across all product lines (was 1.75 per SOP §DX/HGRH-TNVH; OAL = FL+3+RB drops 0.25)"]
 
   - rule_id: R-006
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_bend
-    value: 2.25
+    value: 1.875
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["SOP §CWC/HWC", "CHK CWC!C26", "CHK HWC!C30"]
+    evidence_refs: ["John 2026-06-29: Direct-Coil RB rule-of-thumb max 1 7/8 = 1.875 for CWC/HWC (was 2.25 per SOP §CWC/HWC; OAL = FL+RB+HD)", "CHK CWC!C26", "CHK HWC!C30"]
 
   - rule_id: R-007
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -139,16 +139,34 @@ rules:
 
   # R-012/R-013/R-014: TF/BF conflicts resolved in favor of the checklist
   # values (John, 2026-06-11: "checklist is typically the most accurate").
-  # The Terra asymmetry (TF=1.625, BF=0.375) is intentional per the checklist.
+  # The Terra asymmetry (TF=1.625, BF) is intentional per the checklist.
+  # terra_variant: null = "Terra defaults to Terra H C" (engine has no variant gate
+  # for null); John 2026-06-25 set the Terra H C bottom flange to 0.5. Terra V uses
+  # its own symmetric TF=BF=0.625 via the R-012v exception below (last-writer-wins by
+  # file order).
   - rule_id: R-012
     applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: null, size_pattern: null }
     field: [top_flange, bottom_flange]
-    field_values: { top_flange: 1.625, bottom_flange: 0.375 }
+    field_values: { top_flange: 1.625, bottom_flange: 0.5 }
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["CHK TERRA TF=1.625", "CHK TERRA BF=0.375", "John confirmation 2026-06-11 (checklist wins)"]
+    evidence_refs: ["CHK TERRA TF=1.625", "John 2026-06-25: Terra H C BF=0.5 (was 0.375)"]
+
+  # R-012v: Terra V flanges are symmetric TF=BF=0.625. Must follow R-012 — the generic
+  # emitter writes both flanges last-writer-wins in file order, so for a Terra V request
+  # R-012 sets TF=1.625/BF=0.5 and this overwrites BOTH to 0.625. (Terra H/H C keep
+  # R-012's 1.625/0.5 — this rule is gated to TERRA_V.)
+  - rule_id: R-012v
+    applies_to: { coil_type: [DX, HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: [top_flange, bottom_flange]
+    field_values: { top_flange: 0.625, bottom_flange: 0.625 }
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-30: Terra V TF=BF=0.625 (corrected from TF=1.625/BF=0.375; supersedes CHK TERRA BF=0.375)"]
 
   - rule_id: R-013
     applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
@@ -163,12 +181,24 @@ rules:
   - rule_id: R-014
     applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: null, size_pattern: null }
     field: [top_flange, bottom_flange]
-    field_values: { top_flange: 1.625, bottom_flange: 0.375 }
+    field_values: { top_flange: 1.625, bottom_flange: 0.5 }
     kind: constant
     confidence: HIGH
     review_required: false
     blocked_reason: null
-    evidence_refs: ["CHK TERRA TF=1.625", "CHK TERRA BF=0.375", "John confirmation 2026-06-11 (checklist wins)"]
+    evidence_refs: ["CHK TERRA TF=1.625", "John 2026-06-25: Terra H C BF=0.5 (was 0.375)"]
+
+  # R-014v: Terra V flanges are symmetric TF=BF=0.625 for water coils (mirrors R-012v;
+  # must follow R-014 so last-writer-wins overwrites R-014's 1.625/0.5 for Terra V only).
+  - rule_id: R-014v
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: [top_flange, bottom_flange]
+    field_values: { top_flange: 0.625, bottom_flange: 0.625 }
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-30: Terra V TF=BF=0.625 (corrected from TF=1.625/BF=0.375; supersedes CHK TERRA BF=0.375)"]
 
   # --- 2.3 Connection / stubout geometry --------------------------------------
   - rule_id: R-020
@@ -193,6 +223,18 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK DX TERRA I/O=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V DX I/O = 2.75 (SOP special case). Placed after R-021 so the generic
+  # emitter's last-writer-wins overrides the 3.25 (Terra H/H C) for Terra V only.
+  - rule_id: R-021v
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: suction_io
+    value: 2.75
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH SPECIAL CASE: For Terra V, update all I/Os to 2.75", "John 2026-06-28 (SOP-confirmed)"]
+
   - rule_id: R-022
     applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_spacing
@@ -205,17 +247,21 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §DX-TNVH", "SOP §DX-VP", "CHK DX!C34:C37"]
 
+  # Terra V DX return spacing: Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 (D=suction_conn_size).
+  # R1=0.5D+0.75, R2=1.5D+2.25, R3=2.5D+3.75, R4=3.5D+5.25. SOP-confirmed by John
+  # 2026-06-28; promoted LOW->HIGH. Emitted by the engine return_spacing block, which
+  # excludes Terra V from the generic R-022 and uses this formula instead.
   - rule_id: R-023
     applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: return_spacing
     value: null
-    formula: "Terra V variant spacing (SOP single-source)"
+    formula: "Terra V: Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 (D=suction_conn_size, n=1..circuits)"
     kind: formula_return_spacing_terra_v
     requires_inputs: [suction_conn_size, circuits]
-    confidence: LOW
-    review_required: true
-    blocked_reason: "R-023 LOW: Terra V return spacing is SOP-only (single source), absent from CHK."
-    evidence_refs: ["SOP §DX-TNVH SPECIAL CASE Terra V"]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH SPECIAL CASE Terra V (Return 1: 0.5D+0.75; Return 2: 1.5D+2.25; Return 3: 2.5D+3.75; Return 4: 3.5D+5.25)", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-024
     applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -237,6 +283,18 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §DX-TNVH", "CHK DX!C42:C45"]
 
+  # Size-specific override: Ventum H H05/H10 use SL=17 (even-slot clearance). Placed after
+  # R-025 so the generic emitter's last-writer-wins (place(), YAML order) overrides the 8.
+  - rule_id: R-025b
+    applies_to: { coil_type: [DX], product_family: [VENTUM_H], terra_variant: null, size_pattern: [H05, H10] }
+    field: suction_sl
+    value: 17
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-26: DX Ventum H H05/H10 SL = 17 (overrides R-025 default 8; even-slot SL2/4/6/8 clearance)"]
+
   - rule_id: R-026
     applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
     field: suction_sl
@@ -256,6 +314,17 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["CHK DX TERRA SL=10", "SOP §DX-TNVH Terra H=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  # Terra V DX SL = 12 (SOP). After R-027 so last-writer-wins overrides Terra H=10.
+  - rule_id: R-027v
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: suction_sl
+    value: 12
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH: Change all SL values to ... 12 for Terra V", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-028
     applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H, TERRA], terra_variant: null, size_pattern: null }
@@ -346,13 +415,27 @@ rules:
     applies_to: { coil_type: [DX], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: dist_s
     value: null
-    formula: "ROUND(k * CD / (circuits+1)) for k in 1..circuits  [checklist even-spacing]"
+    formula: "ROUND(k * CD / (circuits+1) * 8, 0) / 8 for k in 1..circuits  [checklist even-spacing, nearest 1/8]"
     kind: formula_dist_s
     requires_inputs: [rows, circuits]
     confidence: HIGH
     review_required: false
     blocked_reason: null
     evidence_refs: ["CHK DX!C46:C49 even spacing", "John 2026-06-11 (checklist style)"]
+
+  # Terra V DX distributor S = CD - Rn (the Terra V return spacing, R-023). Emitted by the
+  # engine dist_s block, which branches on Terra V; the slot layer mirrors it for the drawing.
+  - rule_id: R-034v
+    applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: dist_s
+    value: null
+    formula: "Terra V: Sn = CD - Rn (Rn = R-023 Terra V return spacing, n=1..circuits)"
+    kind: formula_dist_s_terra_v
+    requires_inputs: [rows, circuits, suction_conn_size]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §DX-TNVH SPECIAL CASE Terra V: S1=CD-R1, S3=CD-R2, S5=CD-R3, S7=CD-R4", "John 2026-06-28 (SOP-confirmed)"]
 
   # --- 2.4 HGRH-specific ------------------------------------------------------
   - rule_id: R-040
@@ -364,6 +447,20 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH!C33"]
+
+  # TERRA H / Terra H C supply I/O. R-040 covers NOVA/VENTUM; R-046 covers Terra V
+  # (LOW/blocked). Terra H had no supply_io rule, so the drawing's "I" was always
+  # blank for it. Scoped to [TERRA_H, TERRA_H_C] so it never collides with R-046
+  # (Terra V stays review-required). Counterpart to R-042 (TERRA return_io=3.25).
+  - rule_id: R-040b
+    applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: [TERRA_H, TERRA_H_C], size_pattern: null }
+    field: supply_io
+    value: 2
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-23: TERRA H / Terra H C HGRH supply I/O = 2 (same as NOVA/VENTUM)"]
 
   - rule_id: R-041
     applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
@@ -384,6 +481,18 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["CHK HGRH TERRA I/O=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  # Terra V HGRH Return I/O = 2.75 (SOP). After R-042 so last-writer-wins overrides
+  # Terra H/H C=3.25 for Terra V only. (Supply 1 I/O is set by R-046.)
+  - rule_id: R-042v
+    applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: return_io
+    value: 2.75
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §HGRH-TNVH SPECIAL CASE for Terra V: Update Return I/Os ... to 2.75", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-043
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -410,8 +519,8 @@ rules:
     field: supply_sl
     value: 6
     kind: constant
-    confidence: MEDIUM
-    review_required: true
+    confidence: HIGH
+    review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-VP supply SL=6", "John engineering confirmation 2026-06-11 (golden T09)"]
 
@@ -424,6 +533,18 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH return SL=8", "CHK HGRH!C59"]
+
+  # Size-specific override: Ventum H H05/H10 use return SL=17 (even-slot clearance). Placed
+  # after R-044b so last-writer-wins overrides the 8.
+  - rule_id: R-044d
+    applies_to: { coil_type: [HGRH], product_family: [VENTUM_H], terra_variant: null, size_pattern: [H05, H10] }
+    field: return_sl
+    value: 17
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-06-26: HGRH Ventum H H05/H10 return SL = 17 (overrides R-044b default 8; even-slot SL2/4/6/8 clearance)"]
 
   - rule_id: R-045a
     applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
@@ -445,15 +566,20 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK HGRH TERRA SL=10", "SOP §HGRH-TNVH Terra-as-Terra-H=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V HGRH: Supply 1 I/O = 2.75, all Supply SL = 5, all Return SL = 12 (SOP).
+  # Promoted LOW->HIGH (John 2026-06-28, SOP-confirmed). Placed after R-040b/R-044a/
+  # R-045b so last-writer-wins overrides their Terra/Nova values for Terra V.
+  # NOTE: Supply 2/3/4 I/O ("round software-default to int") is NOT derivable here and
+  # stays review-required downstream; only Supply 1 I/O = 2.75 is asserted.
   - rule_id: R-046
     applies_to: { coil_type: [HGRH], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: [supply_io, supply_sl, return_sl]
-    value: null
+    field_values: { supply_io: 2.75, supply_sl: 5, return_sl: 12 }
     kind: constant
-    confidence: LOW
-    review_required: true
-    blocked_reason: "R-046 LOW: Terra V HGRH I/O=2.75, supply SL=5, return SL=12 are SOP-only (single source), absent from CHK."
-    evidence_refs: ["SOP §HGRH-TNVH Terra V special cases"]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §HGRH-TNVH SPECIAL CASE for Terra V: Supply 1 I/O=2.75; Set all Supply SL to 5 and all Return SL to 12", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-047
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -472,8 +598,12 @@ rules:
     formula: "Return X = X*D + (X-1)*1.5 ; Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5]"
     kind: formula_hgrh_positions
     requires_inputs: [circuits, conn_size, rows]
-    confidence: MEDIUM
-    review_required: true
+    # confidence promoted MEDIUM->HIGH (John 2026-07-07). The engine emits these
+    # positions at HIGH from its special helper (header_prepopulate_engine.py
+    # ~R-048 block); this field is kept in sync only for documentation — the
+    # engine reads confidence from that helper, not from this key.
+    confidence: HIGH
+    review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH position formulas", "CHK HGRH!C42:C49"]
 
@@ -520,6 +650,28 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §HGRH-TNVH", "SOP §HGRH-VP", "CHK HGRH DX FH/FL equality warning"]
 
+  # R-052: HGRH return-stubout spacing R. Keyed on conn_size (the HGRH "Suction
+  # Size"; HGRH has no separate suction conn). Product-branched (John 2026-06-25,
+  # CHK HGRH): VENTUM+ -> every R = conn_size (scalar); TERRA / NOVA / VENTUM_H ->
+  # running-edge formula Rn = n*D + (n-1)*1.5 (n = 1..qty_conn_per_header). At n=1
+  # both branches give D, so a single-connection header is identical either way.
+  # MEDIUM / review_required: SOP general formula vs CHK per-platform branch are
+  # mixed (same basis as R-048). The count gates R4/R6/R8 (qty_conn_per_header).
+  - rule_id: R-052
+    applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: return_spacing
+    value: null
+    formula: "TERRA/NOVA/VENTUM_H: Rn = n*D + (n-1)*1.5; VENTUM+: Rn = D (D=conn_size, n=1..qty_conn_per_header)"
+    kind: formula_return_spacing_hgrh
+    requires_inputs: [conn_size, qty_conn_per_header]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs:
+      - "John 2026-06-25: product-branched HGRH R (VENTUM+ scalar conn_size vs general running-edge)"
+      - "CHK HGRH!C42:C49"
+      - "docs/rules/coil_header_rule_extraction.md R-048 (Return X = X*D + (X-1)*1.5)"
+
   # --- 2.5 CWC / HWC-specific -------------------------------------------------
   - rule_id: R-060
     applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
@@ -540,6 +692,22 @@ rules:
     review_required: false
     blocked_reason: null
     evidence_refs: ["CHK CWC/HWC TERRA=3.25", "John 2026-06-11 (Terra H C; checklist reliable)"]
+
+  # Terra V CWC/HWC I/O = 2.75 (SOP), supply AND return alike — the drawing's stubout
+  # callout takes the same dimension on both headers (7/7 seeded water references read
+  # O == I). The SOP's "return CH-2.75" is that same position measured from the opposite
+  # datum; the slot layer used to write it into the callout and printed 34.5 where 2.75
+  # belongs, so that special was removed (John 2026-07-29).
+  # Emitted by _emit_cwc_io_hd_sl's Terra V branch.
+  - rule_id: R-061v
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: io
+    value: 2.75
+    kind: special_cwc_io
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §CWC/HWC SPECIAL CASE FOR TERRA V: All Supply I/O=2.75", "John 2026-06-28 (SOP-confirmed)", "John 2026-07-29 (return I/O prints 2.75 too — the SOP's CH-2.75 is the opposite-datum form, not the callout value; 7/7 seeds read O==I)"]
 
   - rule_id: R-062
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -618,25 +786,38 @@ rules:
     blocked_reason: null
     evidence_refs: ["CHK CWC/HWC TERRA SL=10", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
+  # Terra V CWC/HWC SL = 12 (SOP). Emitted by _emit_cwc_io_hd_sl's Terra V branch.
+  - rule_id: R-065v
+    applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
+    field: sl
+    value: 12
+    kind: special_cwc_sl
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §CWC/HWC: Change all SL values to ... Terra V: 12", "John 2026-06-28 (SOP-confirmed)"]
+
   - rule_id: R-066
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: vent_drain
     value: "Connections"
     kind: constant
-    confidence: MEDIUM
-    review_required: true
+    confidence: HIGH
+    review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §CWC/HWC Supply 1 & Return 1 = Connections"]
 
+  # Terra V CWC/HWC vent/drain = HDR ENDS (SOP). Promoted LOW->HIGH (John 2026-06-28).
+  # After R-066 (="Connections") so last-writer-wins overrides it for Terra V.
   - rule_id: R-067
     applies_to: { coil_type: [CWC, HWC], product_family: [TERRA], terra_variant: [TERRA_V], size_pattern: null }
     field: vent_drain
-    value: null
+    value: "HDR ENDS"
     kind: constant
-    confidence: LOW
-    review_required: true
-    blocked_reason: "R-067 LOW: Terra V vent/drain='HDR ENDS' is SOP-only (single source, Rev I addition)."
-    evidence_refs: ["SOP §CWC/HWC SPECIAL CASE Terra V"]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP 2024018 §CWC/HWC SPECIAL CASE: for Terra V, Set Supply 1 and Return 1 to HDR ENDS", "John 2026-06-28 (SOP-confirmed)"]
 
   - rule_id: R-068
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
@@ -780,6 +961,24 @@ rules:
       "TERRA|INTEGRATED|032": { casing_width: 54, casing_height: 30 }
       "TERRA|INTEGRATED|040": { casing_width: 62, casing_height: 30 }
       "TERRA|INTEGRATED|048": { casing_width: 72, casing_height: 30 }
+      # Terra V (vertical) has its OWN overall dimensions — far taller than Terra H —
+      # so it gets dedicated TERRA_V|... rows (the engine keys Terra V off TERRA_V).
+      # Transcribed from the Terra Vertical "Overall Dimensions" sheet (John 2026-06-30):
+      # Unit Width [in] -> casing_width, Unit Height [in] -> casing_height. Sizes are
+      # grouped 3-per row in the sheet (006/009/012 share, etc.); 13 Terra V sizes.
+      "TERRA_V|INTEGRATED|006": { casing_width: 30, casing_height: 51 }
+      "TERRA_V|INTEGRATED|009": { casing_width: 30, casing_height: 51 }
+      "TERRA_V|INTEGRATED|012": { casing_width: 30, casing_height: 51 }
+      "TERRA_V|INTEGRATED|015": { casing_width: 44, casing_height: 62 }
+      "TERRA_V|INTEGRATED|018": { casing_width: 44, casing_height: 62 }
+      "TERRA_V|INTEGRATED|024": { casing_width: 44, casing_height: 62 }
+      "TERRA_V|INTEGRATED|032": { casing_width: 48, casing_height: 78 }
+      "TERRA_V|INTEGRATED|040": { casing_width: 48, casing_height: 78 }
+      "TERRA_V|INTEGRATED|048": { casing_width: 48, casing_height: 78 }
+      "TERRA_V|INTEGRATED|060": { casing_width: 69, casing_height: 78 }
+      "TERRA_V|INTEGRATED|072": { casing_width: 69, casing_height: 78 }
+      "TERRA_V|INTEGRATED|084": { casing_width: 69, casing_height: 78 }
+      "TERRA_V|INTEGRATED|100": { casing_width: 77, casing_height: 80 }
       "VENTUM_H|CPLD EXT|H05": { casing_width: 29, casing_height: 18 }
       "VENTUM_H|CPLD EXT|H10": { casing_width: 36, casing_height: 18 }
       "VENTUM_H|CPLD EXT|H15": { casing_width: 37, casing_height: 21 }
@@ -828,28 +1027,132 @@ rules:
     enumerations:
       NOVA: [A16, A18, B20, B22, C20, C22, C24, C26, C30, C32, C40, C48, C58, C70]
       # Terra unit sizes are zero-padded to 3 digits (009 / 006 / 012 …) so the
-      # picker tokens match the submittal callouts (John 2026-06-15). Terra is
-      # split into TERRA H / TERRA V in the picker (see product_size_options);
-      # both orientations share this size set.
+      # picker tokens match the submittal callouts (John 2026-06-15). Terra H and
+      # Terra V have DIFFERENT size sets (John 2026-06-29): Terra V adds 060/072/
+      # 084/100. product_size_options() maps TERRA -> "TERRA H" and TERRA_V ->
+      # "TERRA V"; the engine size gate picks TERRA_V when terra_variant is TERRA_V.
       TERRA: ["006", "009", "012", "015", "018", "024", "032", "040", "048"]
+      TERRA_V: ["006", "009", "012", "015", "018", "024", "032", "040", "048", "060", "072", "084", "100"]
       VENTUM_H: [H05, H10, H15, H20, H25, H30]
       VENTUM_PLUS: [V20, V25, V30, V40, V50, V60, V80, V100, V120, V150]
 
+  # R-077: drain-pan / install width lookup. Data-only (consumed by
+  # compatibility/mechanical_fit.py for the INSTALL FIT pair check
+  # (this_CD + partner_CD < width); NOT emitted as an engine field). Transcribed
+  # from the "Install | Drain Pan Width" sheet (Coil Checklist Template.xlsx) on
+  # 2026-06-30. Key is "<product_family>|<unit_size>" (or "TERRA|<option>" for
+  # Terra H C, which the sheet keys by drain-pan option D1/D2/D3, NOT unit size).
+  # Nova/Ventum H expose two columns (Coil Module Only / w-Access) — both surfaced
+  # per John. Ventum+ exposes Install width + Drain Pan width (the INSTALL FIT
+  # compares against install_width for VENTUM+). Nova size pairs (A16/A18 …) share
+  # one sheet row, expanded here to per-size keys. Single source (CHK) -> MEDIUM.
+  # GAPS: Terra V drain pan is "TBD" in the sheet. Its keys are deliberately ABSENT
+  # rather than present-and-empty: mechanical_fit._drain_pan_row tests `row is None`,
+  # and an empty dict is not None — it would fall through to `_basis_columns -> []` and
+  # report "no width column available", which describes a table shape rather than the
+  # actual reason. No key at all takes the None path, which states the real one.
+  # (The Terra D1/D2/D3 rows below are Terra **H** widths; `_drain_pan_row` refuses to
+  # lend them to TERRA_V.) The option itself is now read from the unit model code
+  # (submittal/model_code.py) rather than being an uncaptured input.
   - rule_id: R-077
-    applies_to: { coil_type: [HWC, HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
-    field: drain_pan_check
-    value: "review drain-pan / install width"
-    kind: constant
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: drain_pan_width
+    value: null
+    kind: lookup_drain_pan_width
     only_when: installed_on_drain_pan
     requires_inputs: [installed_on_drain_pan]
     confidence: MEDIUM
     review_required: true
     blocked_reason: null
-    evidence_refs: ["CHK HWC rows 20-23 INSTALL FIT", "CHK Install sheet", "SOP drain-pan special cases"]
+    evidence_refs: ["CHK Install sheet", "CHK HWC!C38 / HGRH!C70 INSTALL FIT", "SOP drain-pan special cases"]
+    lookup:
+      "NOVA|A16": { coil_module_only: 19.375, with_access: 14.875 }
+      "NOVA|A18": { coil_module_only: 19.375, with_access: 14.875 }
+      "NOVA|B20": { coil_module_only: 19.375, with_access: 16.375 }
+      "NOVA|B22": { coil_module_only: 19.375, with_access: 16.375 }
+      "NOVA|C20": { coil_module_only: 19.375, with_access: 17.875 }
+      "NOVA|C22": { coil_module_only: 19.375, with_access: 17.875 }
+      "NOVA|C24": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C26": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C30": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C32": { coil_module_only: 19.375, with_access: 19.375 }
+      "NOVA|C40": { coil_module_only: 19.375, with_access: 21.375 }
+      "NOVA|C48": { coil_module_only: 19.375, with_access: 23.875 }
+      "NOVA|C58": { coil_module_only: 19.375, with_access: 25.875 }
+      "NOVA|C70": { coil_module_only: 19.375, with_access: 27.875 }
+      "VENTUM_H|H05": { coil_module_only: 19.375, with_access: 14.875 }
+      "VENTUM_H|H10": { coil_module_only: 19.375, with_access: 14.875 }
+      "VENTUM_H|H15": { coil_module_only: 19.375, with_access: 16.375 }
+      "VENTUM_H|H20": { coil_module_only: 19.375, with_access: 16.375 }
+      "VENTUM_H|H25": { coil_module_only: 19.375, with_access: 21.875 }
+      "VENTUM_H|H30": { coil_module_only: 19.375, with_access: 21.875 }
+      "VENTUM_PLUS|V20": { install_width: 17, drain_pan_width: 21.875 }
+      "VENTUM_PLUS|V25": { install_width: 17, drain_pan_width: 23.875 }
+      "VENTUM_PLUS|V30": { install_width: 17, drain_pan_width: 24.875 }
+      "VENTUM_PLUS|V40": { install_width: 17, drain_pan_width: 25.875 }
+      "VENTUM_PLUS|V50": { install_width: 17, drain_pan_width: 27.875 }
+      "VENTUM_PLUS|V60": { install_width: 17, drain_pan_width: 31.875 }
+      "VENTUM_PLUS|V80": { install_width: 17, drain_pan_width: 33.875 }
+      "VENTUM_PLUS|V100": { install_width: 17, drain_pan_width: 33.875 }
+      "VENTUM_PLUS|V120": { install_width: 22, drain_pan_width: 39.875 }
+      "VENTUM_PLUS|V150": { install_width: 22, drain_pan_width: 43.875 }
+      "TERRA|D1": { drain_pan_width: 14.5 }
+      "TERRA|D2": { drain_pan_width: 20.5 }
+      "TERRA|D3": { drain_pan_width: 23.5 }
+
+  # R-078: mechanical WIDTH/HEIGHT FIT clearances. Data-only table consumed by
+  # compatibility/mechanical_fit.py (NOT emitted as an engine field). Transcribed
+  # from the four CHK FIT formulas (Coil Checklist Template.xlsx) on 2026-06-30:
+  #   DX!C64/C65, HGRH!C68/C69, HWC!C36/C37, CWC!C32/C33.
+  # Judgement per direction: available = casing_dim/(2 if h_half) - <sub>, and the
+  # coil fits when available >= the basis value (FL/OAL for width, FH/CH for
+  # height). Key is "<coil_type>|<class>"; <class> = the R-075 NOVA size_class for
+  # NOVA, else the product_family. DX/HGRH w_sub bakes in the -8 header/distributor
+  # allowance. VENTUM_PLUS uses casing_height/2 (stacked construction). Single
+  # source (CHK only) -> every fit verdict is review-required (MEDIUM at best).
+  - rule_id: R-078
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: fit_clearance
+    value: null
+    kind: lookup_fit_clearance
+    requires_inputs: [casing_width, casing_height]
+    confidence: MEDIUM
+    review_required: true
+    blocked_reason: null
+    evidence_refs: ["CHK DX!C64:C65 WIDTH/HEIGHT FIT", "CHK HGRH!C68:C69", "CHK HWC!C36:C37", "CHK CWC!C32:C33"]
+    lookup:
+      "DX|NOVA_1IN":     { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: FH, h_half: false }
+      "DX|NOVA_2IN":     { w_sub: 12,   w_basis: FL, h_sub: 6,     h_basis: FH, h_half: false }
+      "DX|VENTUM_H":     { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: FH, h_half: false }
+      "DX|TERRA":        { w_sub: 12,   w_basis: FL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "DX|VENTUM_PLUS":  { w_sub: 12,   w_basis: FL, h_sub: 8.25,  h_basis: FH, h_half: true }
+      "HGRH|NOVA_1IN":    { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: CH, h_half: false }
+      "HGRH|NOVA_2IN":    { w_sub: 12,   w_basis: FL, h_sub: 6,     h_basis: CH, h_half: false }
+      "HGRH|VENTUM_H":    { w_sub: 10.5, w_basis: FL, h_sub: 4.5,   h_basis: CH, h_half: false }
+      "HGRH|TERRA":       { w_sub: 12,   w_basis: FL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "HGRH|VENTUM_PLUS": { w_sub: 12,   w_basis: FL, h_sub: 8.25,  h_basis: CH, h_half: true }
+      "HWC|NOVA_1IN":     { w_sub: 2.5,  w_basis: OAL, h_sub: 2.5,   h_basis: CH, h_half: false }
+      "HWC|NOVA_2IN":     { w_sub: 4,    w_basis: OAL, h_sub: 4,     h_basis: CH, h_half: false }
+      "HWC|VENTUM_H":     { w_sub: 2.5,  w_basis: OAL, h_sub: 2.5,   h_basis: CH, h_half: false }
+      "HWC|TERRA":        { w_sub: 4,    w_basis: OAL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "HWC|VENTUM_PLUS":  { w_sub: 6.5,  w_basis: OAL, h_sub: 8.25,  h_basis: CH, h_half: true }
+      "CWC|NOVA_1IN":     { w_sub: 2.5,  w_basis: OAL, h_sub: 5,     h_basis: CH, h_half: false }
+      "CWC|NOVA_2IN":     { w_sub: 4,    w_basis: OAL, h_sub: 6,     h_basis: CH, h_half: false }
+      "CWC|VENTUM_H":     { w_sub: 2.5,  w_basis: OAL, h_sub: 5,     h_basis: CH, h_half: false }
+      "CWC|TERRA":        { w_sub: 4,    w_basis: OAL, h_sub: 3.875, h_basis: CH, h_half: false }
+      "CWC|VENTUM_PLUS":  { w_sub: 6.5,  w_basis: OAL, h_sub: 8.25,  h_basis: CH, h_half: true }
 
   # --- 2.7 Notes / special-case conflicts ------------------------------------
-  # R-080/R-081: Direct Coil selection has no coating trigger field, so the
-  # coating note is always appended to the drawing notes (John, 2026-06-11).
+  # R-080/R-081: the coating note fires ONLY when a custom coating is actually
+  # required (John, 2026-07-15) -- a "do not coat the last 5-6 inches" instruction is
+  # meaningless on a coil nobody is coating. `only_when: coating_set` = coating is
+  # stated and is not NONE; every non-NONE value in the checklist vocabulary
+  # (FINKOTE*/HERESITE*/ELECTROFIN*/BLYGOLD*/BLACK POLY) is a custom coating, so
+  # "set" and "custom" coincide. Coating UNKNOWN -> no note (fail-closed; never
+  # invent a coating process the source did not state).
+  # SUPERSEDES John 2026-06-11 ("Direct Coil has no coating trigger field, so the
+  # note is always appended") -- the trigger now flows from the submittal's
+  # `manufacturing_options.coil_coating` via _engine_drawing_notes.
   # SOP Rev H wording wins (authored by John Kim) -> conflict resolved -> HIGH.
   # CHK still carries the older wording and should be updated to match.
   # NOTE: coating notes apply to DX and HGRH only. CWC/HWC intentionally have
@@ -860,6 +1163,8 @@ rules:
     field: notes
     value: "Do Not Coat Last 5-6 inches of Distributor Extensions."
     kind: notes_append
+    only_when: coating_set
+    requires_inputs: [coating]
     confidence: HIGH
     review_required: false
     blocked_reason: null
@@ -870,10 +1175,55 @@ rules:
     field: notes
     value: "Do Not Coat Last 5-6 inches of Supply Stubouts."
     kind: notes_append
+    only_when: coating_set
+    requires_inputs: [coating]
     confidence: HIGH
     review_required: false
     blocked_reason: null
     evidence_refs: ["SOP Rev H (authored by John Kim, Dec 2025)", "John direction 2026-06-11", "CHK HGRH coating note (older/incorrect wording, to update)"]
+
+  # Distributor extension note (DX only). Orientation branches on product line exactly
+  # like R-031 (DOWN) / R-032 (UP): Ventum+ mounts the distributor ConnectionUP, every
+  # other DX line mounts down. The 6" length is R-033 (dist_extension). Mutually
+  # exclusive rules over the ProductFamily enum -> exactly one note per DX, never two.
+  # R-035c carries the hot-gas-bypass wording and DISPLACES R-035b (which is gated
+  # not_hot_gas_bypass) rather than adding to it -- hence the mutual exclusion holds.
+  - rule_id: R-035a
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Distributor 6\" Extension Upwards"
+    kind: notes_append
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-VP", "R-032 dist_orientation UP", "R-033 dist_extension 6", "CHK DX!C58:C59"]
+
+  - rule_id: R-035b
+    applies_to: { coil_type: [DX], product_family: [NOVA, TERRA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Distributor 6\" Extension Downwards"
+    kind: notes_append
+    only_when: not_hot_gas_bypass
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["SOP §DX-TNVH", "R-031 dist_orientation DOWN", "R-033 dist_extension 6", "CHK DX!C58:C59"]
+
+  # Hot gas bypass restates the distributor note in one combined line (John 2026-07-15).
+  # Nova/Ventum H only -- the two lines that can select the option; a Terra DX carrying
+  # hot_gas_bypass is an impossible combo (its drawing is omitted at the submittal gate)
+  # so it yields NO distributor note rather than a wrong one.
+  - rule_id: R-035c
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H], terra_variant: null, size_pattern: null }
+    field: notes
+    value: "Distributor Down w/ ASC & 6\" Extension"
+    kind: notes_append
+    only_when: hot_gas_bypass
+    requires_inputs: [hot_gas_bypass]
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John direction 2026-07-15", "R-031 dist_orientation DOWN", "R-033 dist_extension 6", "R-083 asc selected"]
 
   - rule_id: R-082
     applies_to: { coil_type: [DX], product_family: [TERRA], terra_variant: null, size_pattern: null }
@@ -923,8 +1273,8 @@ rules:
     kind: constant
     only_when: back_to_back
     requires_inputs: [back_to_back]
-    confidence: MEDIUM
-    review_required: true
+    confidence: HIGH
+    review_required: false
     blocked_reason: null
     evidence_refs: ["SOP §GEN SPECIAL CASE back-to-back"]
 
@@ -940,3 +1290,21 @@ rules:
     blocked_reason: null
     feature_flag: coil_style
     evidence_refs: ["SOP §GEN coil style from qty valves"]
+
+  # R-090: copper straps required = header_count * strap-per-header multiplier.
+  # John, 2026-06-23: DX needs ONE copper strap per header; HG (HGRH) needs TWO
+  # per header. CWC/HWC have no confirmed multiplier, so the special handler
+  # routes them to LOW/blocked (never invented). Quote-prep markup only.
+  - rule_id: R-090
+    applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
+    field: copper_straps_required
+    value: null
+    kind: special_copper_straps
+    requires_inputs: [header_count]
+    strap_multiplier: { DX: 1, HGRH: 2 }
+    # Effective confidence is set per coil_type in copper_strap_requirement():
+    # HIGH for DX/HGRH, LOW/blocked for CWC/HWC. This field is the DX/HGRH case.
+    confidence: HIGH
+    review_required: false
+    blocked_reason: "R-090 LOW: copper-strap-per-header multiplier is confirmed only for DX (1) and HGRH (2); CWC/HWC unconfirmed — engineering to confirm before quoting straps."
+    evidence_refs: ["John 2026-06-23: DX = 1 strap/header, HGRH = 2 straps/header"]

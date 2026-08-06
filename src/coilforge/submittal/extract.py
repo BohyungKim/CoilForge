@@ -142,6 +142,20 @@ def _coerce_structured_lines(
     return lines
 
 
+def circuits_count_or_none(text: str | None) -> int | None:
+    """The circuit COUNT stated by a 'Circuits' cell, or None when the cell states
+    circuiting prose instead.
+
+    Some submittals put a circuiting descriptor in the Circuits cell rather than a
+    count -- e.g. "3 Feeds/26 Passes/2DT" (Junction City WWTP CDXC-1). That is not a
+    count and is never guessed into one.
+    """
+    if text is None:
+        return None
+    value, _ = _normalize_value(text)
+    return value if isinstance(value, int) else None
+
+
 def _build_field_value(
     line: SanitizedSubmittalLine,
     rule: SubmittalFieldRule,
@@ -149,22 +163,53 @@ def _build_field_value(
 ) -> FieldValue:
     value, observed_unit = _normalize_value(line.source_value)
     unit = rule.unit or observed_unit
+    confidence = rule.confidence
+    status = "review_required"
+    blocked_reason = None
+    if rule.source_key == "HEADER_WALL_SCHEDULE":
+        # Resolve the per-value confidence tier and block unknowns. The review gate stays
+        # hardcoded (review_required=True). Function-local import: pdf_intake imports this
+        # module, so a top-level import would be circular.
+        from coilforge.submittal.pdf_intake import (
+            _normalize_header_wall_schedule,
+            header_wall_schedule_confidence,
+        )
+
+        canonical = _normalize_header_wall_schedule(line.source_value)
+        confidence = header_wall_schedule_confidence(line.source_value)
+        if canonical is None:
+            value = None
+            status = "blocked"
+            blocked_reason = "Unrecognized header wall schedule source; no approved (L)/(K) mapping."
+        else:
+            value = canonical
+    elif rule.source_key == "CIRCUITS" and circuits_count_or_none(line.source_value) is None:
+        # The cell states circuiting prose, not a count (e.g. "3 Feeds/26 Passes/2DT").
+        # Block it rather than pass the string on: `circuits` is typed int downstream
+        # (HeaderPrepopulateRequest / checklist mapping), and the raw descriptor stays
+        # readable in source_evidence.
+        value = None
+        status = "blocked"
+        blocked_reason = (
+            f"Circuits cell {line.source_value!r} states circuiting, not a circuit "
+            "count; no count is stated in the source."
+        )
     evidence = _build_source_evidence(
         line,
         source_id,
         normalized_value=value,
         unit=unit,
-        confidence=rule.confidence,
+        confidence=confidence,
         notes=[rule.review_note],
     )
     return FieldValue(
         value=value,
         unit=unit,
         source_evidence=[evidence],
-        confidence=rule.confidence,
-        status="review_required",
+        confidence=confidence,
+        status=status,
         review_required=True,
-        blocked_reason=None,
+        blocked_reason=blocked_reason,
         manual_override=False,
         notes=[rule.review_note],
     )

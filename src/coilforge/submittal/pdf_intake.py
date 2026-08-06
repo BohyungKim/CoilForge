@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import io
 import base64
+import hashlib
 import os
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from coilforge.submittal.candidate import SubmittalCoilCandidate
 from coilforge.submittal.extract import (
     SanitizedSubmittalLine,
+    circuits_count_or_none,
     extract_submittal_candidate_from_structured,
 )
 from coilforge.submittal.rules import SUBMITTAL_FIELD_RULES, SubmittalFieldRule, normalize_source_key
@@ -52,6 +55,11 @@ class PdfCoverRowSummary(BaseModel):
     handing: str = ""
     product_type: str = "DX"
     coil_format: str = "dx"
+    # CoilForge product line + unit size derived from the cover product/model code
+    # (e.g. "TR_C_040" -> "TERRA H" / "040") via the R-076-validated rule. Review-aid;
+    # blank when the code is unrecognised. product_type above stays the coil family.
+    product_line: str = ""
+    unit_size: str = ""
 
 
 class PdfCoilIntakeSummary(BaseModel):
@@ -91,12 +99,29 @@ class PdfCoilIntakeSummary(BaseModel):
     cover_page_ocr_required: bool = False
     cover_page_user_input_required: bool = False
     cover_page_review_note: str | None = None
+    # Project-level hot-gas-bypass (HGBP/ASC) option, stated as a cover line item
+    # ("HGBP VALVE - DANFOSS AXV-H and hot-gas bypass stub-out on coils adder"). The
+    # pages are surfaced as evidence because the flag is applied package-wide to DX
+    # coils -- see _package_hgbp_pages.
+    cover_page_hgbp_detected: bool = False
+    cover_page_hgbp_pages: list[int] = Field(default_factory=list)
     ocr_attempted: bool = False
     ocr_status: str = "not_requested"
     ocr_provider: str | None = None
     ocr_model: str | None = None
     ocr_page_number: int | None = None
     ocr_error: str | None = None
+    # Pages whose embedded fonts extract as machine-unreadable text (broken ToUnicode
+    # CMap -> "(cid:NN)" glyph soup or an ASCII-shifted cipher). Surfaced so the UI can
+    # explain the condition instead of silently reporting "no coils".
+    text_extraction_degraded: bool = False
+    degraded_page_numbers: list[int] = Field(default_factory=list)
+    ocr_pages: list[int] = Field(default_factory=list)
+    # Loud alert when OCR was needed (degraded pages) but could not run/complete -- most
+    # importantly OpenAI token/quota exhausted, also missing/expired key, rate-limit, or a
+    # token-truncated response. Surfaced as a red banner so recovery never fails silently.
+    ocr_blocked: bool = False
+    ocr_alert: str | None = None
 
 
 class PdfCoilIntakeResult(BaseModel):
@@ -143,6 +168,54 @@ class _CoverPageDetection:
     review_note: str | None = None
 
 
+# Hot gas bypass is quoted as a project-level cover line item, never as a coil row --
+# "660024-001 HGBP VALVE - DANFOSS AXV-H and hot-gas bypass stub-out on coils adder".
+# That row is (correctly) discarded by _is_cover_coil_row as an accessory, so the flag
+# is read from PAGE TEXT rather than from parsed rows.
+#
+# Deliberately NARROWER than workflows.submittal_to_drawing._detect_hgbp: this scan spans
+# many pages, so it must match only an EXPLICIT statement of the option. Two readings of
+# the same words are NOT the option and must not match:
+#   * the EZ coil drawing states hot gas bypass as an ASC count --
+#     "(1)501-2-3/16-1.5(1 ASC)" -- so ASC is excluded entirely; matching it would let
+#     one HGBP coil's drawing page blanket every DX coil in the package;
+#   * a consulting engineer's spec narrative names the field refrigerant PIPE --
+#     "...liquid line, insulated hot gas bypass line, insulated hot gas line..."
+#     (2968 HTS Houston / College of the Mainland p.12) -- which tagged every DX coil in
+#     that package HGBP and got their drawings withheld by the Nova/Ventum-H product-line
+#     gate. "<token> line/pipe/piping" is the piping-run form, never the line item; the
+#     quoted option reads "HGBP VALVE ... hot-gas bypass stub-out on coils adder".
+_PACKAGE_HGBP_RE = re.compile(
+    r"(?:\bHGBP\b|\bHOT[\s\-]*GAS[\s\-]*BY[\s\-]?PASS\b)"
+    r"(?![\s\-]*(?:line|pipe|piping)\b)",
+    re.IGNORECASE,
+)
+
+
+def _package_hgbp_pages(
+    pages: list[_TextPage], *, cover_page: int | None = None
+) -> tuple[int, ...]:
+    """Page numbers explicitly stating the hot-gas-bypass (HGBP) option, ascending.
+
+    Empty when the option is absent. Callers treat a non-empty result as a
+    PROJECT-level fact applied to the package's DX coils (never water/reheat coils --
+    no HGBP template bucket exists for those).
+
+    ``cover_page`` (when the cover schedule was located) starts the scan window: the
+    option is a cover LINE ITEM, so pages BEFORE the cover -- the consulting engineer's
+    spec sections -- cannot state it and are skipped. The window has no upper bound
+    because the adder can sit on a cover continuation page that yields no coil rows;
+    :data:`_PACKAGE_HGBP_RE` carries the rest. Without a cover page the whole document
+    is scanned (previous behavior).
+    """
+    return tuple(
+        page.page_number
+        for page in sorted(pages, key=lambda p: p.page_number)
+        if (cover_page is None or page.page_number >= cover_page)
+        and _PACKAGE_HGBP_RE.search(page.text or "")
+    )
+
+
 @dataclass(frozen=True)
 class _DetailSectionBlock:
     coil_format: str
@@ -172,6 +245,10 @@ _COIL_TYPE_BY_PREFIX = {
     "CDXC": "DX COIL",
     "RHHGRC": "HGRH COIL",
     "HGRC": "HGRH COIL",
+    # RHHGRH/HGRH: alternate hot-gas-reheat tag spelling seen in Oxygen8 submittals
+    # (e.g. 2766 Olympic-Broadway uses RHHGRH-1/-2); same HGRH category as RHHGRC.
+    "RHHGRH": "HGRH COIL",
+    "HGRH": "HGRH COIL",
     "HHWC": "Hot Water Coil",
     "PHWC": "Hot Water Coil",
     "CCWC": "Chilled Water Coil",
@@ -180,6 +257,8 @@ _PRODUCT_TYPE_BY_PREFIX = {
     "CDXC": "DX",
     "RHHGRC": "HGRC",
     "HGRC": "HGRC",
+    "RHHGRH": "HGRC",
+    "HGRH": "HGRC",
     "HHWC": "HW",
     "PHWC": "HW",
     "CCWC": "CHW",
@@ -188,11 +267,99 @@ _COIL_FORMAT_BY_PREFIX = {
     "CDXC": "dx",
     "RHHGRC": "condensing",
     "HGRC": "condensing",
+    "RHHGRH": "condensing",
+    "HGRH": "condensing",
     "HHWC": "heating_hot_water",
     "PHWC": "preheat_hot_water",
     "CCWC": "cooling_chilled_water",
 }
 _COIL_TAG_PREFIXES = tuple(_COIL_TYPE_BY_PREFIX)
+
+
+# Tag-prefix spelling variants: prefixes that are the SAME coil written differently.
+# Only hot-gas-reheat appears under multiple spellings in the wild (Oxygen8 writes both
+# ``RHHGRC`` and ``RHHGRH``). HHWC vs PHWC are DISTINCT coils (heating vs preheat), NOT
+# spelling variants — they must never be grouped here, or a package could match the
+# wrong source drawing page.
+_COIL_TAG_SPELLING_VARIANTS: tuple[tuple[str, ...], ...] = (
+    ("RHHGRC", "HGRC", "RHHGRH", "HGRH"),
+)
+
+
+def coil_tag_aliases(tag: str) -> tuple[str, ...]:
+    """All equivalent spellings of a coil tag across known tag-spelling variants.
+
+    Some coils are written more than one way (e.g. Oxygen8 writes hot-gas-reheat as
+    both ``RHHGRC-1`` and ``RHHGRH-1``). This returns every spelling that names the
+    *same* coil, so a tag can be matched against source text that uses a different
+    spelling. The original tag is always included; a prefix with no known variant
+    yields just ``(tag,)`` — never invents a match.
+    """
+    match = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-(?P<seq>\d+)\s*$", tag or "")
+    if not match:
+        return (tag,)
+    prefix = match.group("prefix").upper()
+    seq = match.group("seq")
+    for group in _COIL_TAG_SPELLING_VARIANTS:
+        if prefix in group:
+            aliases = [f"{variant}-{seq}" for variant in group]
+            if tag not in aliases:
+                aliases.insert(0, tag)
+            return tuple(aliases)
+    return (tag,)
+
+
+# Coils that share one drain pan, paired for the INSTALL FIT mechanical check:
+# a DX cooling coil with its HGRH reheat coil, and a chilled-water coil with its
+# hot-water coil. Both members of a pair sit in the same unit (same casing) and
+# carry the same tag sequence number (e.g. CDXC-1 <-> RHHGRH-1, CCWC-2 <-> HHWC-2).
+_DRAIN_PAN_PARTNER_CATEGORY = {
+    "DX COIL": "HGRH COIL",
+    "HGRH COIL": "DX COIL",
+    "Chilled Water Coil": "Hot Water Coil",
+    "Hot Water Coil": "Chilled Water Coil",
+}
+
+
+def coil_category_of_tag(tag: str) -> str | None:
+    """Coil category for a tag (``CDXC-1`` -> ``DX COIL``), or ``None`` if unknown."""
+    match = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-\d+\s*$", tag or "")
+    if not match:
+        return None
+    return _COIL_TYPE_BY_PREFIX.get(match.group("prefix").upper())
+
+
+def drain_pan_partner_tag(tag: str, candidate_tags: list[str]) -> str | None:
+    """The drain-pan-sharing partner tag for ``tag`` among ``candidate_tags``.
+
+    Matches the partner CATEGORY (DX<->HGRH, CWC<->HWC) at the SAME tag sequence
+    number. Returns the first such candidate, or ``None`` when no partner exists
+    (a standalone coil — normal, never invented). Never pairs HHWC with PHWC
+    (both Hot Water, but each other's category is Chilled Water, not Hot Water).
+    """
+    match = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-(?P<seq>\d+)\s*$", tag or "")
+    if not match:
+        return None
+    category = _COIL_TYPE_BY_PREFIX.get(match.group("prefix").upper())
+    partner_category = _DRAIN_PAN_PARTNER_CATEGORY.get(category or "")
+    if partner_category is None:
+        return None
+    seq = match.group("seq")
+    for cand in candidate_tags:
+        cm = re.match(r"^\s*(?P<prefix>[A-Za-z]+)-(?P<seq>\d+)\s*$", cand or "")
+        if not cm or cm.group("seq") != seq:
+            continue
+        if _COIL_TYPE_BY_PREFIX.get(cm.group("prefix").upper()) == partner_category:
+            return cand
+    return None
+
+
+# Accessory line items that must never be detected as coils, even when their
+# description mentions a coil keyword (e.g. an electronic expansion valve kit
+# tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"). Tag-prefix signal +
+# item-token signal; both are checked before the coil-keyword fallthrough.
+_NON_COIL_TAG_PREFIXES = {"EKEXV", "EEV", "EXV"}
+_NON_COIL_ITEM_TOKENS = ("valve", "ekexv", "eev", "expansionvalve")
 _UNIT_PREFIXES = (
     r"(?:ERV|DOAS|AHU|RTU|MAU|FCU|WSHP|TV|TH|NV|NH|VH|VV|PU|"
     + "|".join(_COIL_TAG_PREFIXES)
@@ -211,7 +378,8 @@ _RE_QTY_TAG_ROW = re.compile(
     re.IGNORECASE,
 )
 _RE_COMPONENT_COIL = re.compile(
-    r"\b(?P<qty>\d+)\s+(?P<tag>CDXC-\d+|RHHGRC-\d+|HGRC-\d+|PHWC-\d+|HHWC-\d+|CCWC-\d+)\b",
+    r"\b(?P<qty>\d+)\s+(?P<tag>CDXC-\d+|RHHGRC-\d+|RHHGRH-\d+|HGRC-\d+|HGRH-\d+"
+    r"|PHWC-\d+|HHWC-\d+|CCWC-\d+)\b",
     re.IGNORECASE,
 )
 _RE_EZ_DX_MODEL_NUMBER = re.compile(
@@ -251,6 +419,7 @@ _FIELD_PATTERNS: tuple[_FieldPattern, ...] = (
     _FieldPattern("ENTERING_WET_BULB_F", ("Entering Wet Bulb(°F)", "Entering Wet Bulb", "EWB"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
     _FieldPattern("ENTERING_RELATIVE_HUMIDITY", ("Entering Relative Humidity(%)", "Relative Humidity", "RH"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*%)?"),
     _FieldPattern("LEAVING_DRY_BULB_F", ("Leaving Dry Bulb(°F)", "Leaving Dry Bulb", "LDB"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
+    _FieldPattern("LEAVING_WET_BULB_F", ("Leaving Wet Bulb(°F)", "Leaving Wet Bulb", "LWB"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
     _FieldPattern("TOTAL_CAPACITY_MBH", ("Total Capacity(MBH)(Per Coil)", "Total Capacity", "Capacity"), r"(?P<value>\d+(?:\.\d+)?)(?:\s*mbh)?"),
     _FieldPattern("REFRIGERANT", ("Refrigerant",), r"(?P<value>R[-\s]?\d+[A-Z]?|R\d+[A-Z]?|CO2|Ammonia)"),
     _FieldPattern("EVAPORATING_TEMPERATURE_F", ("Evaporating Temperature(°F)", "Evaporating Temperature", "SST"), r"(?P<value>-?\d+(?:\.\d+)?)(?:\s*(?:degF|°F|F))?"),
@@ -261,6 +430,7 @@ _FIELD_PATTERNS: tuple[_FieldPattern, ...] = (
     _FieldPattern("FIN_MATERIAL", ("Fin Material",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("FIN_SURFACE", ("Fin Surface",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("HEADER_MATERIAL", ("Header Material",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
+    _FieldPattern("HEADER_WALL_SCHEDULE", ("Header Wall Schedule", "Wall Schedule"), r"(?P<value>[A-Za-z0-9 ().\"/-]+)"),
     _FieldPattern("CONNECTION_MATERIAL", ("Connection Material",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("CONNECTION_TYPE", ("Connection Type",), r"(?P<value>[A-Za-z0-9 .\"/-]+)"),
     _FieldPattern("RETURN_CONNECTION_SIZE", ("Return Connection Size",), r"(?P<value>\d+\s*/\s*\d+|\d+(?:\.\d+)?)"),
@@ -299,6 +469,13 @@ PDF_INTAKE_FIELD_RULES: dict[str, SubmittalFieldRule] = {
     "NUMBER_OF_FEEDS": SubmittalFieldRule("NUMBER_OF_FEEDS", "geometry", "number_of_feeds", "feeds"),
     "NUMBER_OF_FEEDS_TOTAL": SubmittalFieldRule("NUMBER_OF_FEEDS_TOTAL", "geometry", "number_of_feeds", "feeds"),
     "CIRCUITS": SubmittalFieldRule("CIRCUITS", "geometry", "circuits"),
+    "CIRCUITS_FROM_STYLE": SubmittalFieldRule(
+        "CIRCUITS_FROM_STYLE",
+        "geometry",
+        "circuits",
+        confidence="inferred",
+        review_note="Circuit count derived from 'Coil Style' description; confirm before use.",
+    ),
     "FACE_AREA_SQFT": SubmittalFieldRule("FACE_AREA_SQFT", "geometry", "face_area_sqft", "sqft"),
     "FIN_THICKNESS_IN": SubmittalFieldRule("FIN_THICKNESS_IN", "geometry", "fin_thickness_in", "in"),
     "COIL_DEPTH_IN": SubmittalFieldRule("COIL_DEPTH_IN", "geometry", "coil_depth_in", "in"),
@@ -308,6 +485,7 @@ PDF_INTAKE_FIELD_RULES: dict[str, SubmittalFieldRule] = {
     "ENTERING_WET_BULB_F": SubmittalFieldRule("ENTERING_WET_BULB_F", "airside_conditions", "entering_wet_bulb_f", "degF"),
     "ENTERING_RELATIVE_HUMIDITY": SubmittalFieldRule("ENTERING_RELATIVE_HUMIDITY", "airside_conditions", "relative_humidity_pct", "pct"),
     "LEAVING_DRY_BULB_F": SubmittalFieldRule("LEAVING_DRY_BULB_F", "airside_conditions", "leaving_dry_bulb_f", "degF"),
+    "LEAVING_WET_BULB_F": SubmittalFieldRule("LEAVING_WET_BULB_F", "airside_conditions", "leaving_wet_bulb_f", "degF"),
     "FACE_VELOCITY_FPM": SubmittalFieldRule("FACE_VELOCITY_FPM", "airside_conditions", "face_velocity_fpm", "fpm"),
     "FLUID_TYPE": SubmittalFieldRule("FLUID_TYPE", "airside_conditions", "fluid_type"),
     "FLUID_PERCENT": SubmittalFieldRule("FLUID_PERCENT", "airside_conditions", "fluid_percent", "pct"),
@@ -345,8 +523,24 @@ PDF_INTAKE_FIELD_RULES: dict[str, SubmittalFieldRule] = {
     ),
     "TUBE_MATERIAL": SubmittalFieldRule("TUBE_MATERIAL", "materials_construction", "tube_material"),
     "FIN_MATERIAL": SubmittalFieldRule("FIN_MATERIAL", "materials_construction", "fin_material"),
-    "FIN_SURFACE": SubmittalFieldRule("FIN_SURFACE", "materials_construction", "fin_surface"),
+    "FIN_SURFACE": SubmittalFieldRule(
+        "FIN_SURFACE",
+        "materials_construction",
+        "fin_surface",
+        confidence="inferred",
+        review_note="Fin surface normalized to Direct Coil candidate; confirm before use.",
+    ),
     "HEADER_MATERIAL": SubmittalFieldRule("HEADER_MATERIAL", "materials_construction", "header_material"),
+    # The fixed confidence here is only a fallback; the real per-value tier
+    # (confirmed for explicit L/K, inferred for the default, ambiguous + blocked for
+    # unknown) is resolved in extract._build_field_value.
+    "HEADER_WALL_SCHEDULE": SubmittalFieldRule(
+        "HEADER_WALL_SCHEDULE",
+        "materials_construction",
+        "header_wall_schedule",
+        confidence="inferred",
+        review_note="Header wall schedule normalized to Direct Coil (L)/(K) candidate; confirm before use.",
+    ),
     "TUBE_SURFACE": SubmittalFieldRule("TUBE_SURFACE", "materials_construction", "tube_surface"),
     "CASING_MATERIAL": SubmittalFieldRule("CASING_MATERIAL", "materials_construction", "casing_material"),
     "CASING_STYLE": SubmittalFieldRule("CASING_STYLE", "materials_construction", "casing_style"),
@@ -405,6 +599,22 @@ def extract_coil_candidate_from_pdf_bytes(
     cover_page_hint: int | None = None,
 ) -> PdfCoilIntakeResult:
     pages, engine = extract_text_pages_from_pdf_bytes(pdf_bytes)
+    # Detect pages whose fonts extracted as unreadable glyph soup / shifted cipher and,
+    # if any, auto-OCR them (no manual page hint needed) so both the cover schedule and
+    # the coil-detail dimensions are recovered before the normal pipeline runs.
+    degraded_page_numbers = _degraded_page_numbers(pages)
+    auto_ocr_results: list[_OcrPageResult] = []
+    auto_ocr_pages: list[int] = []
+    auto_ocr_truncated = len(degraded_page_numbers) > _MAX_AUTO_OCR_PAGES
+    if degraded_page_numbers:
+        replacements, auto_ocr_results = _auto_ocr_degraded_pages(
+            pdf_bytes,
+            degraded_pages=degraded_page_numbers,
+        )
+        if replacements:
+            pages = _pages_with_replaced_text(pages, replacements)
+            auto_ocr_pages = sorted(replacements)
+            engine = f"{engine}+auto_llm_ocr"
     project_context = _extract_project_context(
         pages,
         source_filename=source_filename,
@@ -438,18 +648,27 @@ def extract_coil_candidate_from_pdf_bytes(
         source_id=source_id,
         field_rules=PDF_INTAKE_FIELD_RULES,
     )
+    intake_notes = [
+        *candidate.notes,
+        "Created by Phase 2E PDF intake adapter using deterministic POs-style parsing rules.",
+        "Raw PDF text is not returned to the UI response.",
+    ]
+    if auto_ocr_truncated:
+        intake_notes.append(
+            f"Auto-OCR was capped at {_MAX_AUTO_OCR_PAGES} of {len(degraded_page_numbers)} "
+            "unreadable pages; the remaining pages were not OCR'd and may miss values (review required)."
+        )
     candidate = candidate.model_copy(
         update={
             "candidate_id": f"SCC-{source_id}",
-            "notes": [
-                *candidate.notes,
-                "Created by Phase 2E PDF intake adapter using deterministic POs-style parsing rules.",
-                "Raw PDF text is not returned to the UI response.",
-            ],
+            "notes": intake_notes,
         }
     )
     cover_shared_lines = _shared_unit_lines_for_cover_candidates(pages)
     cover_detail_lines = _detail_lines_by_cover_row(pages, cover_detection)
+    # Read after both OCR passes have rebuilt `pages`, so the scan covers every cover
+    # detection tier -- including the two that never look at page text themselves.
+    hgbp_pages = _package_hgbp_pages(pages, cover_page=cover_detection.page_number)
     cover_candidates = [
         _candidate_from_cover_row(
             row,
@@ -459,9 +678,26 @@ def extract_coil_candidate_from_pdf_bytes(
                 *cover_shared_lines,
                 *cover_detail_lines.get(row.tag, ()),
             ),
+            package_hgbp_pages=hgbp_pages,
         )
         for index, row in enumerate(cover_detection.rows, start=1)
     ]
+    # Report the hint-based OCR result when it actually ran; otherwise reflect auto-OCR so
+    # the existing ocr_* UI indicators light up for the auto path too.
+    if ocr_result.status != "not_requested":
+        effective_ocr = ocr_result
+    else:
+        auto_status, auto_error = _combined_auto_ocr_status(auto_ocr_results)
+        effective_ocr = _OcrPageResult(
+            page_number=(auto_ocr_pages[0] if auto_ocr_pages else 1),
+            model=(auto_ocr_results[0].model if auto_ocr_results else None),
+            status=auto_status,
+            error=auto_error,
+        )
+    ocr_blocked, ocr_alert = _ocr_blocked_alert(
+        degraded=bool(degraded_page_numbers),
+        auto_ocr_results=auto_ocr_results,
+    )
     summary = PdfCoilIntakeSummary(
         source_id=source_id,
         source_filename=source_filename,
@@ -476,13 +712,18 @@ def extract_coil_candidate_from_pdf_bytes(
         selected_tag=None if candidate.tag is None else candidate.tag.value,
         selected_quantity=None if candidate.quantity is None else candidate.quantity.value,
         selected_handing=_field_value(candidate.connections, "coil_hand"),
-        ocr_enabled=ocr_result.status == "completed",
-        ocr_attempted=ocr_result.status != "not_requested",
-        ocr_status=ocr_result.status,
-        ocr_provider=ocr_result.provider if ocr_result.status != "not_requested" else None,
-        ocr_model=ocr_result.model,
-        ocr_page_number=ocr_result.page_number if ocr_result.status != "not_requested" else None,
-        ocr_error=ocr_result.error,
+        ocr_enabled=effective_ocr.status == "completed",
+        ocr_attempted=effective_ocr.status != "not_requested",
+        ocr_status=effective_ocr.status,
+        ocr_provider=effective_ocr.provider if effective_ocr.status != "not_requested" else None,
+        ocr_model=effective_ocr.model,
+        ocr_page_number=effective_ocr.page_number if effective_ocr.status != "not_requested" else None,
+        ocr_error=effective_ocr.error,
+        text_extraction_degraded=bool(degraded_page_numbers),
+        degraded_page_numbers=list(degraded_page_numbers),
+        ocr_pages=list(auto_ocr_pages),
+        ocr_blocked=ocr_blocked,
+        ocr_alert=ocr_alert,
         cover_page_detected=cover_detection.detected,
         cover_page_number=cover_detection.page_number,
         cover_page_detection_method=cover_detection.detection_method,
@@ -492,12 +733,14 @@ def extract_coil_candidate_from_pdf_bytes(
         cover_page_ocr_required=cover_detection.ocr_required,
         cover_page_user_input_required=cover_detection.user_page_input_required,
         cover_page_review_note=cover_detection.review_note,
+        cover_page_hgbp_detected=bool(hgbp_pages),
+        cover_page_hgbp_pages=list(hgbp_pages),
         reused_rule_sources=[
-            "PO Release Engineering Workflow/pdf_extractor: cover-page Qty/Tag table structure",
-            "PO Release Engineering Workflow/pdf_extractor: deterministic line regex style",
-            "PO Release Engineering Workflow/pdf_extractor: Unit Tag anchor rule",
-            "PO Release Engineering Workflow/pdf_extractor: Qty/Tag table-row rule",
-            "PO Release Engineering Workflow/pdf_extractor: .env-backed OpenAI vision fallback pattern",
+            "PO_Release_Engineering_Workflow/pdf_extractor: cover-page Qty/Tag table structure",
+            "PO_Release_Engineering_Workflow/pdf_extractor: deterministic line regex style",
+            "PO_Release_Engineering_Workflow/pdf_extractor: Unit Tag anchor rule",
+            "PO_Release_Engineering_Workflow/pdf_extractor: Qty/Tag table-row rule",
+            "PO_Release_Engineering_Workflow/pdf_extractor: .env-backed OpenAI vision fallback pattern",
         ],
     )
     return PdfCoilIntakeResult(
@@ -600,7 +843,58 @@ def _clean_project_context_value(value: str | None) -> str | None:
     return cleaned[:120] or None
 
 
+# --- P0-A: memoize the two identity-free heavy sub-operations ----------------
+# analyze and the checklist auto-fill push the SAME pdf_bytes through intake twice
+# (different source_id -> _WORKFLOW_CACHE miss), re-paying the dominant cost: the
+# pdfplumber page extraction and the per-page gpt-4o OCR. Both are PURE functions of
+# the bytes (and page/model), so we memoize them HERE -- below candidate assembly.
+# Control flow is untouched: project-context, cover detection and per-source_id
+# stamping still run identically, so output stays byte-identical and source_filename
+# never enters a cache key. Caches are small, bounded LRUs (single-user local tool).
+_INTAKE_CACHE_MAXSIZE = 16
+_PAGES_CACHE: "OrderedDict[str, tuple[list[_TextPage], str]]" = OrderedDict()
+_OCR_PAGE_CACHE: "OrderedDict[tuple[str, int, str], _OcrPageResult]" = OrderedDict()
+
+
+def _pdf_bytes_sha1(pdf_bytes: bytes) -> str:
+    return hashlib.sha1(pdf_bytes).hexdigest()
+
+
+def _bound_intake_cache(cache: "OrderedDict[Any, Any]") -> None:
+    while len(cache) > _INTAKE_CACHE_MAXSIZE:
+        cache.popitem(last=False)
+
+
+def clear_pdf_intake_caches() -> None:
+    """Drop the page-extraction and per-page OCR memo caches (test hygiene / manual
+    invalidation). The intake control flow is unchanged by these caches."""
+    _PAGES_CACHE.clear()
+    _OCR_PAGE_CACHE.clear()
+
+
 def extract_text_pages_from_pdf_bytes(pdf_bytes: bytes) -> tuple[list[_TextPage], str]:
+    """Extract per-page text (pdfplumber, PyPDF2 fallback), memoized on the PDF bytes.
+
+    ``_TextPage`` is frozen, so a cache hit returns a FRESH list wrapping the shared
+    immutable pages -- a caller that rebuilds its page list never mutates the cached one.
+    Only successful extraction is cached (the uncached impl raises on total failure).
+    """
+    key = _pdf_bytes_sha1(pdf_bytes)
+    cached = _PAGES_CACHE.get(key)
+    if cached is not None:
+        _PAGES_CACHE.move_to_end(key)
+        pages, engine = cached
+        return list(pages), engine
+    pages, engine = _extract_text_pages_from_pdf_bytes_uncached(pdf_bytes)
+    _PAGES_CACHE[key] = (list(pages), engine)
+    _PAGES_CACHE.move_to_end(key)
+    _bound_intake_cache(_PAGES_CACHE)
+    return pages, engine
+
+
+def _extract_text_pages_from_pdf_bytes_uncached(
+    pdf_bytes: bytes,
+) -> tuple[list[_TextPage], str]:
     try:
         import pdfplumber  # type: ignore
 
@@ -656,7 +950,55 @@ def _maybe_run_llm_ocr(
     return _extract_page_text_with_llm_ocr(pdf_bytes, cover_page_hint)
 
 
+def _classify_openai_ocr_error(exc: Exception) -> tuple[str, str]:
+    """Map an OpenAI OCR exception to a distinct status + human message.
+
+    Attribute-based (not ``isinstance``) so it never NameErrors when ``openai`` failed to
+    import, and so it is trivially testable with lightweight fake exceptions. The
+    token/quota case (``insufficient_quota``) is the one John most needs surfaced.
+    """
+    name = type(exc).__name__
+    status_code = getattr(exc, "status_code", None)
+    code = str(getattr(exc, "code", "") or "")
+    message = str(getattr(exc, "message", "") or "") or str(exc)
+    haystack = f"{code} {message}".lower()
+    if status_code == 429 or name == "RateLimitError" or "rate limit" in haystack:
+        if "insufficient_quota" in haystack or "quota" in haystack or "billing" in haystack:
+            return (
+                "blocked_openai_quota_exhausted",
+                "OpenAI token/quota exhausted (insufficient_quota).",
+            )
+        return ("blocked_openai_rate_limited", f"OpenAI rate limit hit: {message}")
+    if name in ("AuthenticationError", "PermissionDeniedError") or status_code in (401, 403):
+        return ("blocked_openai_auth", f"OpenAI key rejected: {message}")
+    return ("failed_openai_request", str(exc))
+
+
 def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrPageResult:
+    """gpt-4o page OCR, memoized on (bytes, page, model).
+
+    Only a SUCCESSFUL result (non-empty text) is cached -- a transient failure (rate
+    limit, network, missing key, empty render) has empty text and is NOT cached, so a
+    later re-analyze can still recover the page. ``_OcrPageResult`` is frozen, so the
+    cached instance is safe to hand back directly.
+    """
+    model = os.environ.get("COILFORGE_OCR_MODEL", "gpt-4o")
+    key = (_pdf_bytes_sha1(pdf_bytes), page_number, model)
+    cached = _OCR_PAGE_CACHE.get(key)
+    if cached is not None:
+        _OCR_PAGE_CACHE.move_to_end(key)
+        return cached
+    result = _extract_page_text_with_llm_ocr_uncached(pdf_bytes, page_number)
+    if result.text:  # cache only the expensive success path
+        _OCR_PAGE_CACHE[key] = result
+        _OCR_PAGE_CACHE.move_to_end(key)
+        _bound_intake_cache(_OCR_PAGE_CACHE)
+    return result
+
+
+def _extract_page_text_with_llm_ocr_uncached(
+    pdf_bytes: bytes, page_number: int
+) -> _OcrPageResult:
     _load_dotenv_if_available()
     model = os.environ.get("COILFORGE_OCR_MODEL", "gpt-4o")
     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -692,7 +1034,13 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
                     "content": (
                         "You perform OCR for HVAC coil submittal pages. Return only visible text. "
                         "Preserve line breaks, table row order, labels, units, and tag/quantity values. "
-                        "Do not infer missing engineering values and do not add commentary."
+                        "Do not infer missing engineering values and do not add commentary. "
+                        "Never wrap output in markdown code fences. "
+                        "If a Qty/Tag schedule (cover) table is present, emit its header on ONE single "
+                        "line using exactly these column names in this order: "
+                        "'Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing' "
+                        "(never split 'Controls Preference' across two lines), then one coil row per line "
+                        "with the same column order, single spaces between columns."
                     ),
                 },
                 {
@@ -701,8 +1049,9 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
                         {
                             "type": "text",
                             "text": (
-                                "OCR this PDF page for CoilForge review intake. Return plain text only. "
-                                "If a cover table is visible, preserve columns in row order."
+                                "OCR this PDF page for CoilForge review intake. Return plain text only, "
+                                "no markdown fences. If a cover schedule table is visible, put the full "
+                                "header on one line and one coil row per line, columns in order."
                             ),
                         },
                         {
@@ -715,13 +1064,24 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
                 },
             ],
         )
-        text = (response.choices[0].message.content or "").strip()
+        choice = response.choices[0]
+        text = _strip_markdown_code_fences((choice.message.content or "").strip())
         if not text:
             return _OcrPageResult(
                 page_number=page_number,
                 model=model,
                 status="completed_empty",
                 error="OpenAI OCR returned no text.",
+            )
+        if getattr(choice, "finish_reason", None) == "length":
+            # Output hit the max_tokens ceiling: the text is real but likely cut off, so
+            # trailing coil rows may be missing. Keep the text, flag as a blocking status.
+            return _OcrPageResult(
+                page_number=page_number,
+                text=text,
+                model=model,
+                status="completed_truncated",
+                error="OCR output hit the token limit and may be truncated.",
             )
         return _OcrPageResult(
             page_number=page_number,
@@ -730,12 +1090,27 @@ def _extract_page_text_with_llm_ocr(pdf_bytes: bytes, page_number: int) -> _OcrP
             status="completed",
         )
     except Exception as exc:
+        status, message = _classify_openai_ocr_error(exc)
         return _OcrPageResult(
             page_number=page_number,
             model=model,
-            status="failed_openai_request",
-            error=str(exc),
+            status=status,
+            error=message,
         )
+
+
+def _strip_markdown_code_fences(text: str) -> str:
+    """Remove ```-fenced wrapping that vision OCR often adds around table output.
+
+    The downstream cover/detail parsers expect plain text lines; a leading/trailing
+    ``` fence (optionally language-tagged) would otherwise pollute the first/last row.
+    """
+    lines = text.splitlines()
+    if lines and lines[0].lstrip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
 
 
 def _load_dotenv_if_available() -> None:
@@ -796,6 +1171,139 @@ def _pages_with_ocr_text(
     return sorted(merged, key=lambda page: page.page_number)
 
 
+# --- Un-extractable-font detection + auto OCR ------------------------------------------
+# Some Oxygen8 submittal exports embed subset fonts with a missing/broken ToUnicode CMap.
+# The pages render fine on screen but extract as machine-unreadable text: pdfplumber emits
+# one "(cid:NN)" token per unmapped glyph, and PyPDF2 falls back to the font's built-in
+# encoding, which on these files is ASCII shifted by a fixed offset (e.g. "Project" ->
+# "3URMHFW"). Either way the tag-prefix scan and cover-header signature match nothing, so
+# detection must route these pages through visual OCR instead of reporting "no coils".
+_CID_TOKEN_RE = re.compile(r"\(cid:\d+\)")
+# Extremely common words that any readable submittal content page carries. A text-heavy
+# page with NONE of them didn't decode to real words -- the PyPDF2 fixed-offset-cipher
+# fallback turns "the coil" into "WKH FRLO", erasing every one of these.
+_READABLE_WORD_RE = re.compile(
+    r"\b(?:the|and|coil|air|tag|model|size|unit|water|flow|total|type)\b",
+    re.IGNORECASE,
+)
+_DEGRADED_MIN_CHARS = 200
+_MAX_AUTO_OCR_PAGES = 12
+
+
+def _page_text_is_degraded(text: str) -> bool:
+    """True when a text-heavy page extracted as unreadable glyph soup / shifted cipher."""
+    stripped = (text or "").strip()
+    if len(stripped) < _DEGRADED_MIN_CHARS:
+        # Too little text to judge; genuinely empty pages route through the normal
+        # not-detected / OCR-hint path, not this one.
+        return False
+    cid_tokens = _CID_TOKEN_RE.findall(stripped)
+    if cid_tokens:
+        # pdfplumber emits one "(cid:N)" per unmapped glyph; a page dominated by them is
+        # unreadable. A handful can be legit, so require a large share.
+        cid_char_span = sum(len(token) for token in cid_tokens)
+        if cid_char_span / max(len(stripped), 1) > 0.30:
+            return True
+    # Secondary signal for the PyPDF2 fixed-offset-cipher fallback: substantial text with
+    # not one recognizable common English word.
+    return _READABLE_WORD_RE.search(stripped) is None
+
+
+def _degraded_page_numbers(pages: list[_TextPage]) -> list[int]:
+    return [page.page_number for page in pages if _page_text_is_degraded(page.text)]
+
+
+def _pages_with_replaced_text(
+    pages: list[_TextPage],
+    replacements: dict[int, str],
+) -> list[_TextPage]:
+    """Return pages with the given page numbers' text FULLY replaced (garbage dropped).
+
+    Unlike ``_pages_with_ocr_text`` (which appends OCR text to the existing text), this
+    discards the unreadable original text and its garbage tables so downstream table-first
+    parsing does not consume cid-soup cells.
+    """
+    merged: list[_TextPage] = []
+    for page in pages:
+        new_text = replacements.get(page.page_number)
+        if new_text is None:
+            merged.append(page)
+        else:
+            merged.append(_TextPage(page_number=page.page_number, text=new_text, tables=()))
+    return merged
+
+
+def _auto_ocr_degraded_pages(
+    pdf_bytes: bytes,
+    *,
+    degraded_pages: list[int],
+) -> tuple[dict[int, str], list[_OcrPageResult]]:
+    """OCR each degraded page (bounded) so cover + detail text are both recovered."""
+    replacements: dict[int, str] = {}
+    results: list[_OcrPageResult] = []
+    for page_number in degraded_pages[:_MAX_AUTO_OCR_PAGES]:
+        result = _extract_page_text_with_llm_ocr(pdf_bytes, page_number)
+        results.append(result)
+        if result.text:
+            replacements[page_number] = result.text
+    return replacements, results
+
+
+def _combined_auto_ocr_status(results: list[_OcrPageResult]) -> tuple[str, str | None]:
+    """Aggregate per-page auto-OCR outcomes into one (status, error) for the summary."""
+    if not results:
+        return "not_requested", None
+    if any(result.status == "completed" for result in results):
+        return "completed", None
+    first = results[0]
+    return first.status, first.error
+
+
+# Blocking OCR statuses -> the alert shown when recovery of a degraded PDF could not
+# complete. Dict order is priority: the first status any page hit is the one surfaced.
+_OCR_ALERT_MESSAGES: dict[str, str] = {
+    "blocked_openai_quota_exhausted": (
+        "OCR blocked: OpenAI token/quota exhausted — top up billing or set a new key; "
+        "coil pages could not be read."
+    ),
+    "blocked_openai_auth": (
+        "OCR blocked: OpenAI key rejected (expired/invalid) — set a valid OPENAI_API_KEY."
+    ),
+    "skipped_missing_openai_api_key": (
+        "OCR needed but OPENAI_API_KEY is not set — coil pages could not be read."
+    ),
+    "blocked_openai_rate_limited": (
+        "OCR rate-limited by OpenAI — re-analyze shortly; coil pages could not be fully read."
+    ),
+    "failed_openai_request": (
+        "OCR request to OpenAI failed — coil pages could not be read."
+    ),
+    "failed_render_pdf_page": (
+        "OCR could not render a page image — coil pages could not be read."
+    ),
+    "completed_truncated": (
+        "OCR output hit the token limit and was truncated — some coil rows may be missing."
+    ),
+    "completed_empty": (
+        "OCR returned no text for an unreadable page — coil pages could not be read."
+    ),
+}
+
+
+def _ocr_blocked_alert(
+    *,
+    degraded: bool,
+    auto_ocr_results: list[_OcrPageResult],
+) -> tuple[bool, str | None]:
+    """Alert when OCR was needed (degraded pages) but a page ended in a blocking status."""
+    if not degraded:
+        return False, None
+    for status, message in _OCR_ALERT_MESSAGES.items():
+        if any(result.status == status for result in auto_ocr_results):
+            return True, message
+    return False, None
+
+
 def detect_cover_page_from_pdf_pages(
     pages: list[_TextPage],
     *,
@@ -810,6 +1318,11 @@ def detect_cover_page_from_pdf_pages(
         text_detection = _detect_cover_page_from_text(page)
         if text_detection.detected:
             return _with_continuation_cover_rows(pages, text_detection)
+
+    for page in pages:
+        dc_quote_detection = _detect_cover_page_from_direct_coil_quote(page)
+        if dc_quote_detection.detected:
+            return _with_continuation_cover_rows(pages, dc_quote_detection)
 
     if cover_page_hint is not None:
         return _CoverPageDetection(
@@ -914,6 +1427,14 @@ def extract_coil_lines_from_pdf_text(
             order,
             "Default current CoilForge Header 1 workflow candidate",
         )
+    if "HEADER_WALL_SCHEDULE" not in extracted:
+        order = _add_default_line(
+            extracted,
+            "HEADER_WALL_SCHEDULE",
+            "",
+            order,
+            "Direct Coil software default header wall schedule (L)",
+        )
 
     return list(extracted.values())
 
@@ -965,6 +1486,87 @@ def _detect_cover_page_from_text(page: _TextPage) -> _CoverPageDetection:
         detected_headers=COVER_PAGE_REQUIRED_HEADERS,
         rows=rows,
         review_note="Cover page detected by required header signature in extracted page text.",
+    )
+
+
+# Item marker: "1." alone (fitz layout) or "1. <model> ..." inline (pdfplumber layout).
+_RE_DC_QUOTE_ITEM_NO = re.compile(r"^\s*(\d+)\.(?:\s+(.+))?$")
+
+
+def _dc_quote_value_after_label(lines: list[str], label: str, start: int, end: int) -> str:
+    """Value for a ``label:`` field within ``lines[start:end]``.
+
+    Handles both Direct Coil quote layouts: ``Tagged: CDXC-1`` inline on one line
+    (pdfplumber) and ``Tagged:`` followed by ``CDXC-1`` on the next line (fitz)."""
+    want = label.strip().rstrip(":").upper()
+    inline = re.compile(rf"^\s*{re.escape(want)}\s*:\s*(\S.*)$", re.IGNORECASE)
+    for k in range(start, end):
+        cleaned = _clean_line(lines[k])
+        if (match := inline.match(cleaned)) is not None:
+            return match.group(1).strip()
+        if cleaned.rstrip(":").strip().upper() == want:
+            for j in range(k + 1, end):
+                value = _clean_line(lines[j])
+                if value:
+                    return value
+            return ""
+    return ""
+
+
+def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDetection:
+    """Direct Coil ``COIL QUOTE`` format: a numbered item list where each item carries a
+    ``Tagged:`` coil code, a model/description line, handing and quantity.
+
+    Additive — tried only after the table/text cover detectors fail (the Oxygen8
+    submittal path returns ``detected=False`` for this layout), so existing detection
+    is untouched. No values are invented: each row is built straight from the quote
+    text and stays review-required downstream."""
+    if "COIL QUOTE" not in (page.text or "").upper():
+        return _CoverPageDetection(detected=False)
+    lines = page.text.splitlines()
+    item_starts = [i for i, ln in enumerate(lines) if _RE_DC_QUOTE_ITEM_NO.match(ln)]
+    if not item_starts:
+        return _CoverPageDetection(detected=False)
+    rows: list[_CoverRow] = []
+    for idx, start in enumerate(item_starts):
+        end = item_starts[idx + 1] if idx + 1 < len(item_starts) else len(lines)
+        tag = _normalize_tag(_dc_quote_value_after_label(lines, "Tagged", start, end))
+        if not tag:
+            continue
+        # Model/description: inline on the "N. <model>" marker (pdfplumber) or the
+        # first non-empty line after a bare "N." marker (fitz).
+        marker = _RE_DC_QUOTE_ITEM_NO.match(lines[start])
+        model_line = (marker.group(2) or "").strip()
+        if not model_line:
+            for j in range(start + 1, end):
+                model_line = _clean_line(lines[j])
+                if model_line:
+                    break
+        if not _is_cover_coil_row(tag, model_line):
+            continue
+        rows.extend(
+            _expand_cover_row(
+                page_number=page.page_number,
+                row_number=int(marker.group(1)),
+                qty=_extract_qty(_dc_quote_value_after_label(lines, "Quantity", start, end)),
+                tag=tag,
+                item=model_line,
+                model=model_line,
+                handing=_normalize_handing(
+                    _dc_quote_value_after_label(lines, "Handing", start, end)
+                ),
+            )
+        )
+    if not rows:
+        return _CoverPageDetection(detected=False)
+    return _CoverPageDetection(
+        detected=True,
+        page_number=page.page_number,
+        detection_method="direct_coil_quote_numbered_items",
+        rows=tuple(rows),
+        review_note=(
+            "Cover page detected as a Direct Coil quote (numbered 'Tagged:' coil items)."
+        ),
     )
 
 
@@ -1069,7 +1671,20 @@ def _with_continuation_cover_rows(
     for page in sorted(pages, key=lambda item: item.page_number):
         if page.page_number <= detection.page_number:
             continue
-        continuation_rows = tuple(_extract_cover_rows_from_text(page))
+        # Table-first, mirroring the primary cover page: continuation pages rarely
+        # repeat the header row, but `_detect_cover_page_from_tables` falls back to
+        # the header-less positional parser (`_find_cover_coil_table`), which reads
+        # every column INCLUDING `model`. The text-line parser
+        # (`_cover_row_from_text_line`) never captures `model`, so a coil whose row
+        # spilled onto page 2+ used to lose its product/model code and could not
+        # resolve its product line + unit size. Fall back to text only when no
+        # cover table is found on the page.
+        page_detection = _detect_cover_page_from_tables(page)
+        continuation_rows = (
+            page_detection.rows
+            if page_detection.detected
+            else tuple(_extract_cover_rows_from_text(page))
+        )
         if not continuation_rows:
             break
         for row in continuation_rows:
@@ -1093,6 +1708,25 @@ def _with_continuation_cover_rows(
             f"{detection.review_note} Continuation cover rows were detected on following page(s)."
         ),
     )
+
+
+def _model_code_from_row_text(text: str) -> str:
+    """The unit model code embedded in a cover row's free text (e.g. ``TR_C_015``).
+
+    The text-path row parser splits columns positionally, which drops the model on
+    short / OCR-recovered rows (``1 CDXC-1 DXC Cooling TR_C_015 LH``). Recover it by
+    returning the first whitespace token the product/size detector recognizes as a
+    product line -- reusing ``detect_product_and_size`` so this can never drift from
+    detection (matches ``TR_C_015`` and Nova/Ventum size codes alike). Returns ``""``
+    when no product code is present (voltage/handing/item tokens never match).
+    """
+    from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+
+    for token in text.split():
+        token = token.strip(",;")
+        if token and detect_product_and_size(token)[0]:
+            return token
+    return ""
 
 
 def _cover_row_from_text_line(
@@ -1119,6 +1753,7 @@ def _cover_row_from_text_line(
         qty=_extract_qty(match.group("qty")),
         tag=tag,
         item=item,
+        model=_model_code_from_row_text(rest),
         handing="" if handing_match is None else handing_match.group("handing"),
     )
 
@@ -1161,16 +1796,73 @@ def _add_cover_row_lines(
     return order
 
 
+# Circuit count is sometimes stated only inside the "Coil Style" prose, e.g.
+# "Interlaced 2 Circuits" or "Dual Circuit", with no discrete "Circuits:" cell. Parse
+# the count out so multi-circuit coils resolve their second/Nth header instead of
+# silently defaulting to 1. A bare "Intertwined"/"Interlaced" with no number is NOT
+# counted -- we never guess a count that the source does not state.
+_COIL_STYLE_CIRCUIT_NUM_RE = re.compile(r"(\d+)\s*[- ]?\s*Circuit", re.IGNORECASE)
+_COIL_STYLE_CIRCUIT_WORDS: dict[str, int] = {
+    "single": 1, "dual": 2, "double": 2, "triple": 3, "quad": 4,
+}
+
+
+def _circuits_from_coil_style(text: str | None) -> int | None:
+    """Circuit count embedded in a 'Coil Style' value.
+
+    'Interlaced 2 Circuits' / '2-Circuit' -> 2; 'Dual Circuit' -> 2; 'Single Circuit'
+    -> 1. Returns None when no count is stated (a bare 'Intertwined'/'Interlaced' is
+    never assumed to be 2).
+    """
+    s = str(text or "")
+    if (match := _COIL_STYLE_CIRCUIT_NUM_RE.search(s)):
+        n = int(match.group(1))
+        return n if 1 <= n <= 8 else None
+    if re.search(r"circuit", s, re.IGNORECASE):
+        for word, n in _COIL_STYLE_CIRCUIT_WORDS.items():
+            if re.search(rf"\b{word}\b", s, re.IGNORECASE):
+                return n
+    return None
+
+
+def _circuits_cell_count(
+    extracted: dict[str, SanitizedSubmittalLine],
+) -> int | None:
+    """The circuit count stated by an extracted CIRCUITS line, or None when the line
+    is absent or holds circuiting prose instead of a count."""
+    line = extracted.get("CIRCUITS")
+    return circuits_count_or_none(line.source_value) if line else None
+
+
 def _candidate_from_cover_row(
     row: _CoverRow,
     *,
     source_id: str,
     index: int,
     detail_lines: tuple[SanitizedSubmittalLine, ...] = (),
+    package_hgbp_pages: tuple[int, ...] = (),
 ) -> SubmittalCoilCandidate:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = _add_cover_row_lines(extracted, row, 1)
     order = _append_detail_lines(extracted, detail_lines, order)
+    # Derive the circuit count from the "Coil Style" prose when no discrete "Circuits"
+    # cell was extracted (e.g. "Coil Style: Interlaced 2 Circuits"). Inferred ->
+    # review-required; the explicit CIRCUITS label, when present, wins -- but only when
+    # it states a COUNT. A Circuits cell holding circuiting prose ("3 Feeds/26 Passes/
+    # 2DT") is blocked in extract.py, so it must not suppress the Coil Style rescue.
+    if _circuits_cell_count(extracted) is None and "COIL_STYLE" in extracted:
+        style_line = extracted["COIL_STYLE"]
+        circuits_from_style = _circuits_from_coil_style(style_line.source_value)
+        if circuits_from_style is not None:
+            order = _add_line(
+                extracted,
+                "CIRCUITS_FROM_STYLE",
+                str(circuits_from_style),
+                order,
+                _TextPage(page_number=style_line.source_page or 0, text=""),
+                style_line.line_number,
+                f"Circuit count derived from Coil Style '{style_line.source_value}'",
+            )
     order = _add_default_line(
         extracted,
         "HEADER_TYPE",
@@ -1187,17 +1879,48 @@ def _candidate_from_cover_row(
             "Cover-page product type fallback",
         )
     if "COIL_TYPE" not in extracted:
-        _add_default_line(
+        order = _add_default_line(
             extracted,
             "COIL_TYPE",
             _derive_coil_type(row.tag, row.item) or "DX_HEADER1_WORKFLOW_CANDIDATE",
             order,
             "Cover-page coil type fallback",
         )
+    if "HEADER_WALL_SCHEDULE" not in extracted:
+        order = _add_default_line(
+            extracted,
+            "HEADER_WALL_SCHEDULE",
+            "",
+            order,
+            "Direct Coil software default header wall schedule (L)",
+        )
     candidate = extract_submittal_candidate_from_structured(
         list(extracted.values()),
         source_id=f"{source_id}-{_candidate_slug(row.tag, index)}",
         field_rules=PDF_INTAKE_FIELD_RULES,
+    )
+    # Carry the cover-page product/model code forward so the drawing context can
+    # derive the CoilForge product line + unit size from it (e.g. "TR_C_040" ->
+    # Terra H / 040) and run the rule engine. Review-aid; overridable in the picker.
+    model_notes = (
+        [f"Cover product/model code: {row.model}"] if row.model else []
+    )
+    # Hot gas bypass is quoted once for the whole project, so carry the package-level
+    # fact onto each DX coil -- DX ONLY. _entry_for_dx_hgbp is the sole producer of HGBP
+    # template buckets and it is DX-only, so tagging an HGRH/CWC/HWC coil HGBP would find
+    # no bucket and blank its drawing silently. Leaving water/reheat coils alone routes
+    # them to their normal Header N bucket, unchanged.
+    #
+    # The note is the transport: workflows.submittal_to_drawing._detect_hgbp reads the
+    # joined candidate notes and matches the literal "HGBP" token below. Keep both sides
+    # in step -- rewording this string without that regex silently drops the routing.
+    hgbp_notes = (
+        [
+            "Cover option: hot-gas bypass (HGBP) adder stated on cover page "
+            + ", ".join(str(p) for p in package_hgbp_pages)
+        ]
+        if package_hgbp_pages and _is_dx_cover_row(row)
+        else []
     )
     return candidate.model_copy(
         update={
@@ -1205,6 +1928,8 @@ def _candidate_from_cover_row(
             "notes": [
                 *candidate.notes,
                 "Created from one cover-page coil row for separate review page generation.",
+                *model_notes,
+                *hgbp_notes,
             ],
         }
     )
@@ -1256,7 +1981,11 @@ def _detail_lines_by_cover_row(
         if not matching_blocks:
             continue
         page, block = matching_blocks.pop(0)
-        detail_lines[row.tag].extend(_extract_detail_lines_from_block(page, block.lines))
+        detail_lines[row.tag].extend(
+            _extract_detail_lines_from_block(
+                page, block.lines, coil_format=block.coil_format
+            )
+        )
 
     return {tag: tuple(lines) for tag, lines in detail_lines.items()}
 
@@ -1359,12 +2088,40 @@ def _extract_detail_lines_from_page(page: _TextPage) -> tuple[SanitizedSubmittal
     return _extract_detail_lines_from_block(page, block)
 
 
+# The submittal states a custom coil coating as an ASTERISK-DELIMITED annotation inside the
+# coil detail block -- "*Finkote2 Epoxy Coil Coating*" -- either standalone (2968 HTS Houston
+# / College of the Mainland p.26, Cooling DX) or trailing another label/value line ("Coil
+# Weight (lbs) 32.94 *Finkote2 Epoxy Coil Coating*", p.27, Reheat HGRH). It is NOT a
+# "Coil Coating: <value>" label line, so the COIL_COATING _FieldPattern never matched it:
+# every coated coil read as the "Plain" Direct Coil default AND lost the R-080/R-081
+# "Do Not Coat Last 5-6 inches..." drawing note, which fires `only_when: coating_set`
+# (John 2026-07-31).
+#
+# BOTH asterisks are required. The same blocks carry UNTERMINATED footnote markers --
+# "*Separate electrical connection required for heater" (p.27, inside the condensing block,
+# whose boundary runs on into the Backup Heating section) -- so the closing "*" plus the
+# literal "coating" token is what keeps those out.
+_DETAIL_COATING_ANNOTATION_RE = re.compile(
+    r"\*\s*(?P<value>[^*]*\bcoating\b[^*]*?)\s*\*", re.IGNORECASE
+)
+
+
 def _extract_detail_lines_from_block(
     page: _TextPage,
     block: tuple[tuple[int, str], ...],
+    *,
+    coil_format: str | None = None,
 ) -> tuple[SanitizedSubmittalLine, ...]:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = 1
+    # Tables-first: pdfplumber preserves the submittal's side-by-side label/value
+    # columns, so reading the structured cells maps each value to the right field
+    # (e.g. Fin Height -> 12, Entering DB/WB -> 95/80) instead of letting the
+    # flattened text line bleed columns together. `_add_line` is first-wins, so the
+    # text-line parser below only fills source_keys the tables did not supply.
+    order = _seed_detail_lines_from_tables(
+        extracted, order, page, coil_format=coil_format
+    )
     contexts: tuple[str, ...] = ()
     for line_number, normalized_line in block:
         if not normalized_line:
@@ -1386,6 +2143,20 @@ def _extract_detail_lines_from_block(
             )
         if trailing_contexts:
             contexts = trailing_contexts
+        # Read off `normalized_line`, not `value_line`: the annotation is not a label/value
+        # pair, and this must not consume the line -- p.27 carries the coating annotation
+        # and a Coil Weight reading on the SAME line, and both are wanted.
+        coating_match = _DETAIL_COATING_ANNOTATION_RE.search(normalized_line)
+        if coating_match:
+            order = _add_line(
+                extracted,
+                "COIL_COATING",
+                _clean_line(coating_match.group("value")),
+                order,
+                page,
+                line_number,
+                "detail page coating annotation",
+            )
         for field_pattern in _FIELD_PATTERNS:
             if field_pattern.source_key in {"COIL_TAG", "COIL_QUANTITY"}:
                 continue
@@ -1404,6 +2175,171 @@ def _extract_detail_lines_from_block(
                 "detail page label match",
             )
     return tuple(extracted.values())
+
+
+# --------------------------------------------------------------------------- #
+# Structured-table detail extraction
+# --------------------------------------------------------------------------- #
+# pdfplumber already returns the submittal's detail grid as structured cells
+# (`_TextPage.tables`). The detail grid lays sections out side by side in
+# columns -- e.g. col0/1 = "Coil" (Fin Height, Fin Length, FPI, Rows...),
+# col4/5 = "Entering" (Airflow, DB (F), WB (F), Refrigerant...), col7/8 =
+# "Coil Operating Setpoint" / "Max Coil Performance". Reading the cells maps each
+# value to the right field; the flattened text line cannot (it concatenates the
+# columns, so a greedy label capture swallows the neighbouring section's text).
+# These helpers reuse the existing context detection and label maps; only the
+# read mechanism differs.
+
+
+def _table_coil_format(table: tuple[tuple[str, ...], ...]) -> str | None:
+    """Identify which coil_format a detail table describes from its title cells,
+    mirroring `_detail_section_format` (the text-block path) so table fields
+    attach to the same coil on multi-coil pages."""
+    for row in table[:4]:
+        for cell in row:
+            fmt = _detail_section_format(_clean_cell(cell))
+            if fmt is not None:
+                return fmt
+    return None
+
+
+def _detail_table_section_columns(
+    table: tuple[tuple[str, ...], ...],
+) -> tuple[tuple[int, tuple[tuple[int, str], ...]], ...]:
+    """Per section column, the ordered ``(row_index, context)`` switches in it.
+
+    The COLUMN LAYOUT still comes from the first row carrying any section token
+    (e.g. col0/col4/col7), because those columns are also the value-range
+    boundaries. What changed (John 2026-07-28) is that a column may hold SEVERAL
+    sections stacked vertically -- the Oxygen8 detail grid puts "Coil Operating
+    Setpoint" and "Max Coil Performance" one above the other in the same column
+    (p8 col7 r2/r7 on DX, p9 col7 r2/r5 on HWC). Returning one context per column
+    matched every later row against the FIRST section's label map, so the whole
+    "Max Coil Performance" block (Capacity / Air Vel / Fluid Flow Rate / Fluid PD
+    / leaving DB) was silently dropped. On DX the text-line parser happened to
+    rescue those rows because they sat on otherwise-empty lines; on a water coil
+    the denser "Coil" column collides with them, so nothing rescued them.
+
+    Falls back to a single label column at col0 with the 'coil' context for plain
+    label/value tables with no section header."""
+    layout: list[int] = []
+    for row in table:
+        layout = [
+            col
+            for col, cell in enumerate(row)
+            if _detail_subsection_contexts(_clean_cell(cell))
+        ]
+        if layout:
+            break
+    if not layout:
+        return ((0, ((0, "coil"),)),)
+
+    sections: list[tuple[int, tuple[tuple[int, str], ...]]] = []
+    for col in layout:
+        switches: list[tuple[int, str]] = []
+        for row_index, row in enumerate(table):
+            if col >= len(row):
+                continue
+            contexts = _detail_subsection_contexts(_clean_cell(row[col]))
+            if contexts:
+                switches.append((row_index, contexts[0]))
+        if switches:
+            sections.append((col, tuple(switches)))
+    return tuple(sections)
+
+
+def _context_at_row(switches: tuple[tuple[int, str], ...], row_index: int) -> str:
+    """The section context in force at ``row_index`` -- the last switch at or above
+    it. Rows ABOVE the column's first section header keep that first context, which
+    is exactly what the old one-context-per-column code did for them, so only the
+    stacked-section rows change behaviour."""
+    context = switches[0][1]
+    for switch_row, switch_context in switches:
+        if switch_row > row_index:
+            break
+        context = switch_context
+    return context
+
+
+def _match_detail_label(label_cell: str, context: str) -> str | None:
+    """Resolve a label cell to a source_key within a context (longest label first),
+    reusing `_CONTEXTUAL_DETAIL_LABELS`. Exact (normalized) match only -- the value
+    lives in a separate cell, so there is no greedy remainder to guess at."""
+    norm = _clean_cell(label_cell).rstrip(":").strip().lower()
+    if not norm:
+        return None
+    candidates = sorted(
+        _CONTEXTUAL_DETAIL_LABELS.get(context, ()),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    for label, source_key in candidates:
+        if norm == label.rstrip(":").strip().lower():
+            return source_key
+    return None
+
+
+def _detail_table_field_pairs(
+    table: tuple[tuple[str, ...], ...],
+) -> tuple[tuple[str, str, int, int], ...]:
+    """Extract (source_key, value, row_index, col_index) from a structured detail
+    table: per section column, the label cell maps to the first non-empty cell to
+    its right (up to the next section column), so spacer columns and 2-column
+    label/value tables are handled uniformly. The label map used for a cell is the
+    section in force at THAT ROW of THAT COLUMN, so a column stacking several
+    sections (Coil Operating Setpoint above Max Coil Performance) reads each block
+    against its own labels."""
+    sections = _detail_table_section_columns(table)
+    cols = [col for col, _ in sections]
+    pairs: list[tuple[str, str, int, int]] = []
+    for row_index, row in enumerate(table):
+        for section_index, (col, switches) in enumerate(sections):
+            if col >= len(row):
+                continue
+            label_cell = _clean_cell(row[col])
+            if not label_cell:
+                continue
+            source_key = _match_detail_label(
+                label_cell, _context_at_row(switches, row_index)
+            )
+            if source_key is None:
+                continue
+            next_col = cols[section_index + 1] if section_index + 1 < len(cols) else len(row)
+            value = ""
+            for value_col in range(col + 1, min(next_col, len(row))):
+                cell = _clean_cell(row[value_col])
+                if cell:
+                    value = cell
+                    break
+            if value:
+                pairs.append((source_key, value, row_index, col))
+    return tuple(pairs)
+
+
+def _seed_detail_lines_from_tables(
+    extracted: dict[str, SanitizedSubmittalLine],
+    order: int,
+    page: _TextPage,
+    *,
+    coil_format: str | None,
+) -> int:
+    """Seed `extracted` from the page's structured tables before the text-line
+    parser runs. When a coil_format is known (multi-coil pages), only tables whose
+    own title matches that format are consumed, preventing cross-coil bleed."""
+    for table_index, table in enumerate(page.tables):
+        if coil_format is not None and _table_coil_format(table) != coil_format:
+            continue
+        for source_key, value, row_index, col_index in _detail_table_field_pairs(table):
+            order = _add_line(
+                extracted,
+                source_key,
+                value,
+                order,
+                page,
+                row_index + 1,
+                f"detail table[{table_index}] r{row_index} c{col_index} cell match",
+            )
+    return order
 
 
 _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -1427,7 +2363,20 @@ _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
         # match the typo (and the unit-less form) so the connection size is read.
         ("Sunction Size (in)", "RETURN_CONNECTION_SIZE"),
         ("Sunction Size", "RETURN_CONNECTION_SIZE"),
+        # "Suntion" is a further mis-spelling seen on the HGRH reheat coil tables
+        # (John 2026-06-25); without it the connection size (and thus drawing "R")
+        # is dropped because the label match is exact.
+        ("Suntion Size (in)", "RETURN_CONNECTION_SIZE"),
+        ("Suntion Size", "RETURN_CONNECTION_SIZE"),
         ("Suction Size", "RETURN_CONNECTION_SIZE"),
+        # The HGRH (Reheat Hot Gas Reheat) coil block labels its single connection
+        # plainly "Connection Size (in)" — not "Suction/Suntion Size" — so without
+        # this the connection size (and thus drawing "R" via R-052) is dropped
+        # (2766 Olympic RHHGRH-2; John 2026-06-27). Exact-match only (see
+        # `_match_contextual_detail_label`), so it cannot swallow
+        # "Supply/Return Connection Size".
+        ("Connection Size (in)", "RETURN_CONNECTION_SIZE"),
+        ("Connection Size", "RETURN_CONNECTION_SIZE"),
         ("Inlet Conn. Size (in)", "INLET_CONNECTION_SIZE"),
         ("Inlet Conn. Size", "INLET_CONNECTION_SIZE"),
         ("Outlet Conn. Size (in)", "OUTLET_CONNECTION_SIZE"),
@@ -1462,8 +2411,11 @@ _CONTEXTUAL_DETAIL_LABELS: dict[str, tuple[tuple[str, str], ...]] = {
     "max_performance": (
         ("Capacity Sensible (MBH)", "SENSIBLE_CAPACITY_MBH"),
         ("Capacity (MBH)", "TOTAL_CAPACITY_MBH"),
-        ("DB (F)", "MAX_DRY_BULB_F"),
-        ("WB (F)", "MAX_WET_BULB_F"),
+        # "Max Coil Performance" DB/WB is the coil's LEAVING air (John 2026-07-22): the coil
+        # output at max load. Mapped to airside leaving_* so it surfaces as Leaving Dry/Wet
+        # Bulb, not the vestigial performance.max_*_bulb_f (which nothing consumed downstream).
+        ("DB (F)", "LEAVING_DRY_BULB_F"),
+        ("WB (F)", "LEAVING_WET_BULB_F"),
         ("Air Vel (FPM)", "FACE_VELOCITY_FPM"),
         ("Air PD (IWG)", "AIR_PRESSURE_DROP_IWG"),
         ("Air PD (inWG)", "AIR_PRESSURE_DROP_IWG"),
@@ -1607,6 +2559,7 @@ def _append_detail_lines(
 
 
 def _cover_row_summary(row: _CoverRow) -> PdfCoverRowSummary:
+    product_line, unit_size = _derive_product_line_and_size(row.model, row.tag, row.item)
     return PdfCoverRowSummary(
         page_number=row.page_number,
         row_number=row.row_number,
@@ -1621,6 +2574,8 @@ def _cover_row_summary(row: _CoverRow) -> PdfCoverRowSummary:
         handing=_normalize_handing(row.handing) if row.handing else "",
         product_type=_derive_product_type(row.tag, row.item),
         coil_format=_derive_coil_format(row.tag, row.item),
+        product_line=product_line,
+        unit_size=unit_size,
     )
 
 
@@ -1679,9 +2634,15 @@ def _extract_qty(raw: Any) -> int | None:
 def _is_cover_coil_row(tag: str, item: str) -> bool:
     normalized_tag = _normalize_tag(tag)
     tag_prefix = normalized_tag.split("-", 1)[0]
+    normalized_item = _normalize_header_token(item)
+    # Reject valves / EEV kits / accessories before the coil-keyword fallthrough so a
+    # description like "EKEXV Valve (DX Coil)" can't sneak through on the "dxcoil" token.
+    if tag_prefix in _NON_COIL_TAG_PREFIXES:
+        return False
+    if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
+        return False
     if tag_prefix in _COIL_TAG_PREFIXES:
         return True
-    normalized_item = _normalize_header_token(item)
     return any(
         token in normalized_item
         for token in (
@@ -1771,6 +2732,17 @@ def _cover_item_from_text(value: str) -> str:
     return ""
 
 
+def _derive_product_line_and_size(*texts: str) -> tuple[str, str]:
+    """Derive the CoilForge product line + unit size from the cover product/model
+    code using the existing R-076-validated rule (e.g. "TR_C_040" -> ("TERRA H",
+    "040")). Returns ("", "") when no code in `texts` validates. Review-aid only."""
+    from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+
+    blob = " ".join(t for t in texts if t)
+    line, size = detect_product_and_size(blob)
+    return line or "", size or ""
+
+
 def _derive_product_type(tag: str, item: str) -> str:
     tag_prefix = _normalize_tag(tag).split("-", 1)[0]
     if tag_prefix in _PRODUCT_TYPE_BY_PREFIX:
@@ -1821,6 +2793,13 @@ def _derive_coil_type(tag: str, item: str) -> str:
     return _clean_value(item)
 
 
+def _is_dx_cover_row(row: _CoverRow) -> bool:
+    """True when a cover row is a DX coil -- the only category with an HGBP bucket.
+    Reuses _derive_coil_type so "is DX" has one definition and inherits its tag-alias
+    fixes."""
+    return _derive_coil_type(row.tag, row.item) == "DX COIL"
+
+
 def _match_field_value(line: str, field_pattern: _FieldPattern) -> str | None:
     for label in field_pattern.labels:
         label_pattern = re.escape(label).replace(r"\ ", r"\s+")
@@ -1833,7 +2812,16 @@ def _match_field_value(line: str, field_pattern: _FieldPattern) -> str | None:
             continue
         value = _clean_value(match.group("value"))
         if value:
-            return _normalize_handing(value) if field_pattern.source_key in {"HANDING", "HAND", "COIL_HAND"} else value
+            if field_pattern.source_key in {"HANDING", "HAND", "COIL_HAND"}:
+                return _normalize_handing(value)
+            if field_pattern.source_key == "FIN_SURFACE":
+                return _normalize_fin_surface(value)
+            if field_pattern.source_key == "HEADER_WALL_SCHEDULE":
+                # Recognized source -> "(L)"/"(K)"; unknown returns the raw value (kept
+                # non-empty so the guard below doesn't drop it) and is blocked downstream
+                # in extract._build_field_value.
+                return _normalize_header_wall_schedule(value) or value
+            return value
     return None
 
 
@@ -1921,6 +2909,54 @@ def _normalize_handing(value: str) -> str:
     if normalized in {"R", "RH", "RIGHT HAND", "RIGHT HANDING"}:
         return "Right"
     return value.strip().title()
+
+
+# Submittal fin-surface terms -> Direct Coil dropdown candidate. Case-insensitive
+# keyword match so compound source values ("Sine Wave") resolve; unknown surfaces
+# fail closed to a review flag rather than being guessed.
+_FIN_SURFACE_KEYWORD_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("sine", "wavy", "wave", "sinusoidal", "corrugat"), "Corrugated"),
+    (("lanced", "louver"), "Lanced"),
+    (("flat", "plain"), "Flat"),
+)
+
+
+def _normalize_fin_surface(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        return value
+    for keywords, mapped in _FIN_SURFACE_KEYWORD_MAP:
+        if any(keyword in normalized for keyword in keywords):
+            return mapped
+    return "Manual Review Required"
+
+
+# Submittal header-wall-schedule terms -> Direct Coil dropdown candidate. Source rarely
+# states this field, so the blank case (the dominant path) yields the company default "(L)".
+# An unrecognized value returns None so the caller can block it rather than guess.
+_HW_SCHEDULE_L_TERMS = frozenset({"l", "type l", "copper type l", "(l)"})
+_HW_SCHEDULE_K_TERMS = frozenset({"k", "type k", "copper type k", "heavy wall", "(k)"})
+_HW_SCHEDULE_DEFAULT = "(L)"
+
+
+def _normalize_header_wall_schedule(value: str | None) -> str | None:
+    normalized = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    if not normalized:
+        return _HW_SCHEDULE_DEFAULT
+    if normalized in _HW_SCHEDULE_L_TERMS:
+        return "(L)"
+    if normalized in _HW_SCHEDULE_K_TERMS:
+        return "(K)"
+    return None  # unknown -> caller blocks
+
+
+def header_wall_schedule_confidence(value: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    if not normalized:
+        return "inferred"
+    if normalized in _HW_SCHEDULE_L_TERMS or normalized in _HW_SCHEDULE_K_TERMS:
+        return "confirmed"
+    return "ambiguous"
 
 
 def _clean_line(value: Any) -> str:

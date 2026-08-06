@@ -11,7 +11,9 @@ Operates on extracted PDF *text* (CI-safe; no PDF binary needed here).
 
 from __future__ import annotations
 
+import copy
 import re
+from functools import lru_cache
 from typing import Any
 
 from coilforge.services.header_prepopulate_engine import load_rule_table
@@ -100,8 +102,26 @@ def extract_feeds_circuits(text: str, rb: float | None = None) -> dict[str, Any]
     return out
 
 
+# P1-A: a multi-coil submittal re-scans the SAME whole-document text once per coil
+# (extract_coilmaster_drawing + detect_product_and_size are called per candidate on
+# identical text -- pdf_to_template_drawing.py:366/386). Both are pure functions of the
+# text, so we memoize them here. detect_product_and_size returns an immutable tuple and
+# is cached directly; extract_coilmaster_drawing returns a fresh MUTABLE nested dict, so
+# the public function deep-copies the cached value -- no caller can ever poison the cache.
 def extract_coilmaster_drawing(text: str) -> dict[str, Any]:
-    """Full mechanical extraction from a CoilMaster drawing PDF's text."""
+    """Full mechanical extraction from a CoilMaster drawing PDF's text (memoized).
+
+    Returns a fresh deep copy each call so callers may mutate their result freely.
+    """
+    return copy.deepcopy(_extract_coilmaster_drawing_cached(text))
+
+
+@lru_cache(maxsize=16)
+def _extract_coilmaster_drawing_cached(text: str) -> dict[str, Any]:
+    return _extract_coilmaster_drawing_uncached(text)
+
+
+def _extract_coilmaster_drawing_uncached(text: str) -> dict[str, Any]:
     out: dict[str, Any] = {"dimensions": extract_drawing_dimensions(text)}
     out.update(parse_model_number(text))
     if (m := _MODEL_RE.search(text)):
@@ -132,7 +152,9 @@ def product_for_unit_size(unit_size: str | None) -> str | None:
         return None
     for product, sizes in _r076_enumerations().items():
         if unit_size in sizes:
-            return product
+            # TERRA_V is a variant-scoped size key, not a product family; callers
+            # expect the family. Normalize it (and TERRA) back to "TERRA".
+            return "TERRA" if product.startswith("TERRA") else product
     return None
 
 
@@ -144,10 +166,17 @@ TERRA_V_LABEL = "TERRA V"
 
 # Picker label -> (engine product_family, terra_variant or None). Only Terra is
 # special-cased; every other product line maps to itself with no variant.
+# Terra split phase 2 (John 2026-07-14): the engine product_family is now the split
+# TERRA_H / TERRA_V (first-class families), not the coarse TERRA. terra_variant still
+# carries the H-C sub-variant. The engine folds TERRA_H/TERRA_V back to TERRA + variant
+# internally (phase 1), so every [TERRA] rule keeps working. Underscore enum-value forms
+# are accepted too so a re-resolution of an already-split value stays correct.
 _PRODUCT_LINE_RESOLUTION: dict[str, tuple[str, str | None]] = {
-    TERRA_H_LABEL: ("TERRA", "TERRA_H_C"),
-    TERRA_V_LABEL: ("TERRA", "TERRA_V"),
-    "TERRA": ("TERRA", "TERRA_H_C"),  # bare Terra defaults to the resolved H C set
+    TERRA_H_LABEL: ("TERRA_H", "TERRA_H_C"),
+    TERRA_V_LABEL: ("TERRA_V", "TERRA_V"),
+    "TERRA": ("TERRA_H", "TERRA_H_C"),  # bare Terra defaults to the resolved H C set
+    "TERRA_H": ("TERRA_H", "TERRA_H_C"),
+    "TERRA_V": ("TERRA_V", "TERRA_V"),
 }
 
 
@@ -166,12 +195,14 @@ def product_size_options() -> dict[str, list[str]]:
     """{product_line: [unit sizes]} from R-076 — the valid choices an engineer
     can pick to unlock the rule-engine dimensions for a submittal coil.
 
-    TERRA is presented as two orientation categories (TERRA H / TERRA V); both
-    share the R-076 Terra size set (zero-padded, e.g. 009)."""
+    TERRA is presented as two orientation categories (TERRA H / TERRA V) with
+    DIFFERENT size sets — Terra V adds 060/072/084/100 (R-076 TERRA vs TERRA_V).
+    Sizes are zero-padded (e.g. 009)."""
     options: dict[str, list[str]] = {}
     for product, sizes in _r076_enumerations().items():
         if product == "TERRA":
             options[TERRA_H_LABEL] = list(sizes)
+        elif product == "TERRA_V":
             options[TERRA_V_LABEL] = list(sizes)
         else:
             options[product] = list(sizes)
@@ -181,7 +212,27 @@ def product_size_options() -> dict[str, list[str]]:
 # Terra model code on a submittal schedule, e.g. "TR_C_009" / "TR-C-009" / "TR C 9".
 # The C/V token carries the orientation (C -> TERRA H, V -> TERRA V); the trailing
 # digits are the (zero-padded) Terra unit size.
-_TERRA_MODEL_RE = re.compile(r"\bTR[_\- ]?([CV])[_\- ]?0*(\d{1,3})\b", re.IGNORECASE)
+#
+# The size ends with `(?![0-9])`, NOT `\b`. What we mean is "no further size digit", and
+# on the underscore-joined FULL model code those two differ: `\b` fails after "012" in
+# `TR_C_012_I_R_1_H11_21_...` because "_" is a word character, so the whole code matched
+# nothing and detection fell through to the loose non-Terra size scan below. What
+# happened there depended on the code's INNER size token, so the two Terra formats failed
+# DIFFERENTLY: Terra V's inner "H10" is a valid Ventum H size -> ('VENTUM_H','H10'),
+# confidently wrong; Terra H's "H11" is not -> (None, None), unresolved. Real submittals
+# were rescued only because the cover schedule also prints the short code, which is found
+# first. Fixed 2026-08-05; the R-076 size validation below still gates every match, so
+# the looser boundary cannot introduce a size that is not real.
+_TERRA_MODEL_RE = re.compile(r"\bTR[_\- ]?([CV])[_\- ]?0*(\d{1,3})(?![0-9])", re.IGNORECASE)
+
+# Terra Vertical model code, e.g. "TV_B_084" (unit schedule) / "TV084" (filter table).
+# Always Terra V; the optional middle token ("B" = Base-mounted) is a mount/config code
+# and is skipped. (John 2026-06-29 confirmed both the TV_B_### and TV### forms.)
+# Same `(?![0-9])` boundary and the same reason as _TERRA_MODEL_RE above — this is the
+# format that produced the confidently-wrong ('VENTUM_H','H10').
+_TERRA_V_MODEL_RE = re.compile(
+    r"\bTV[_\- ]?(?:[A-Z][_\- ]?)?0*(\d{1,3})(?![0-9])", re.IGNORECASE
+)
 
 
 def _non_terra_size_tokens() -> list[str]:
@@ -190,12 +241,13 @@ def _non_terra_size_tokens() -> list[str]:
     search). Longest first so e.g. 'V100' wins over a hypothetical 'V10'."""
     tokens: list[str] = []
     for product, sizes in _r076_enumerations().items():
-        if product == "TERRA":
+        if product.startswith("TERRA"):  # TERRA and TERRA_V — model-code only
             continue
         tokens.extend(sizes)
     return sorted(set(tokens), key=len, reverse=True)
 
 
+@lru_cache(maxsize=32)
 def detect_product_and_size(text: str | None) -> tuple[str | None, str | None]:
     """Deterministically detect (picker product-line label, R-076 unit size) from a
     submittal's model code — without needing the brand word.
@@ -222,10 +274,41 @@ def detect_product_and_size(text: str | None) -> tuple[str | None, str | None]:
         if size in set(product_size_options().get(label, [])):
             return label, size
 
-    # 2. NOVA / VENTUM: any enumerated non-Terra size token as a whole word.
+    # 1b. Terra Vertical "TV" model code (TV_B_084 schedule / TV084 filter forms).
+    #     Matched before the loose NOVA/VENTUM fallback (pass 2) so a real Terra V
+    #     unit is never mis-read as VENTUM_PLUS from a stray "V###" filter-appendix
+    #     token — the TV_B_### naming has no C/V orientation token, so the TR regex
+    #     above misses it and detection would otherwise fall through to pass B.
+    tv = _TERRA_V_MODEL_RE.search(upper)
+    if tv:
+        size = f"{int(tv.group(1)):03d}"
+        if size in set(product_size_options().get(TERRA_V_LABEL, [])):
+            return TERRA_V_LABEL, size
+
+    # 2. NOVA / VENTUM size token. Two passes so a token from the unit's real
+    #    model code wins over a loose token that only appears in a generic
+    #    filter/spec appendix table enumerating every catalog model.
+    #
+    #    Oxygen8 unit model codes are UNDERSCORE-joined ("H30_I_ERV",
+    #    "TR_C_015_I_L_1_..."), whereas appendix rows are space/slash/hyphen
+    #    delimited ("V150 1 16 x 20", "C20/C22-BP"). A stray "V150" filter row
+    #    must not outrank the real "H30" model code (the old whole-word search,
+    #    longest-first, picked V150 -> VENTUM_PLUS -> hard-blocked). The "\b"
+    #    search also never matched "H30_I_ERV" at all, since "_" is a word char.
+    #
+    #    Pass A: token in a model-code context (immediately adjacent to "_").
+    for token in _non_terra_size_tokens():
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(token)}(?=_)", upper) or re.search(
+            rf"(?<=_){re.escape(token)}(?![A-Za-z0-9])", upper
+        ):
+            product = product_for_unit_size(token)
+            if product:  # NOVA / VENTUM_H / VENTUM_PLUS
+                return product, token
+    #    Pass B: any enumerated non-Terra size token as a whole word (fallback
+    #    for sources without an underscore-joined model code).
     for token in _non_terra_size_tokens():
         if re.search(rf"\b{re.escape(token)}\b", upper):
             product = product_for_unit_size(token)
-            if product:  # NOVA / VENTUM_H / VENTUM_PLUS
+            if product:
                 return product, token
     return None, None

@@ -34,10 +34,19 @@ class ProductFamily(str, Enum):
 
     distinguishes Terra H / Terra H C / Terra V and W-Ctrl vs D-Ctrl, which is
     why Terra-variant-dependent rules are gated behind ``terra_variant``.
+
+    Terra split (phased, John 2026-07-14): ``TERRA_H`` and ``TERRA_V`` are the
+    first-class target families. Phase 1 accepts them as valid ``product_type``
+    inputs and normalizes them onto ``TERRA`` + ``terra_variant`` at the engine
+    entry (``prepopulate``), so every ``[TERRA]``-scoped rule and ``terra_variant``
+    branch keeps working unchanged. Later phases relink rules to key on
+    ``TERRA_H`` / ``TERRA_V`` natively and retire the coarse ``TERRA``.
     """
 
     NOVA = "NOVA"
     TERRA = "TERRA"
+    TERRA_H = "TERRA_H"
+    TERRA_V = "TERRA_V"
     VENTUM_H = "VENTUM_H"
     VENTUM_PLUS = "VENTUM_PLUS"
 
@@ -87,6 +96,7 @@ class HeaderPrepopulateRequest(BaseModel):
     application: str | None = None
     rows: int | None = None
     feeds: int | None = None
+    header_count: int | None = None  # drawing header count (1HD-4HD); drives R-090
     qty_conn_per_header: int | None = None
     circuits: int | None = None
     suction_conn_size: float | None = None
@@ -115,6 +125,11 @@ class FieldResult(BaseModel):
     review_required_reason: str | None = None
     missing_inputs: list[str] = Field(default_factory=list)
     blocked_reason: str | None = None
+    # Provenance (1c): the primary rule id that produced this result. Captured into the
+    # rule_firing ledger; NEVER part of the drawing/engine payload. exclude=True keeps
+    # every serialization byte-identical, and default=None keeps the unmerged phase5
+    # worktree's rule_id-less constructors merge-compatible (additive-only, on the model too).
+    rule_id: str | None = Field(default=None, exclude=True)
 
 
 class HeaderPrepopulateResponse(BaseModel):

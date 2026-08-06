@@ -214,6 +214,11 @@ button:disabled,
   flex-direction: column;
   gap: 18px;
   padding: 20px 16px 92px;
+  position: sticky;
+  top: 0;
+  align-self: start;      /* don't stretch — required for sticky to release */
+  max-height: 100vh;
+  overflow-y: auto;       /* a tall tree/nav scrolls inside the sticky panel */
 }
 
 .brand-block {
@@ -316,6 +321,22 @@ button:disabled,
   scroll-margin-top: 14px;
 }
 
+/* Slide-in when the review flow advances to the next coil (see advanceToCoil in app.js). */
+@keyframes coilSlideIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.drawing-card.coil-slide-in {
+  animation: coilSlideIn 0.35s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawing-card.coil-slide-in {
+    animation: none;
+  }
+}
+
 .topbar {
   align-items: center;
   background: var(--bg-surface);
@@ -332,6 +353,17 @@ button:disabled,
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
+}
+
+.checklist-auto-toggle {
+  align-items: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .topbar h2 {
@@ -525,13 +557,146 @@ body[data-active-view]:not([data-active-view="checklist"]) .content-grid {
 
 body.is-init-stage .tab-strip,
 body.is-init-stage .status-ribbon,
-body.is-init-stage .direct-coil-workbench,
-body.is-init-stage .content-grid,
+body.is-init-stage .review-flow,
 body.is-init-stage .side-nav,
 body.is-init-stage .project-tree,
 body.is-init-stage .search-label,
 body.is-init-stage .project-search {
   display: none;
+}
+
+/* Per-coil review scroll: a clear "next coil" footer + a quiet bottom collapse
+   for the paste-ready fields and source evidence (review aids, not the focus). */
+.coil-review-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.coil-review-nav .coil-review-progress {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  margin-right: auto;
+}
+
+.coil-review-nav button {
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.coil-review-nav .is-reviewed {
+  color: var(--status-ready, #1a7f4b);
+}
+
+/* Final step: dedicated quote-PDF input + build, at the very bottom of the scroll. */
+.quote-package-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px;
+}
+
+/* --- Coil Checklist auto-fill review --- */
+.checklist-fill-results { display: grid; gap: 16px; }
+.checklist-warnings {
+  background: rgba(220, 160, 0, 0.12);
+  border: 1px solid rgba(220, 160, 0, 0.4);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.checklist-sheet h4 { margin: 0 0 6px; }
+.checklist-tables {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) { .checklist-tables { grid-template-columns: 1fr; } }
+.checklist-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+.checklist-table caption {
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-bottom: 4px;
+  text-align: left;
+}
+.checklist-table th,
+.checklist-table td {
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+  text-align: left;
+}
+.checklist-table th { background: var(--bg-elevated, rgba(127,127,127,0.1)); }
+.checklist-src { color: var(--text-muted); font-size: 11px; }
+.checklist-verdict { font-weight: 700; text-align: center; }
+.checklist-blank td { color: var(--text-muted); font-style: italic; }
+.checklist-mismatch { background: rgba(220, 60, 60, 0.16); }
+.checklist-missing_one { background: rgba(220, 160, 0, 0.14); }
+.checklist-match .checklist-verdict { color: #2e9e4f; }
+.checklist-mismatch .checklist-verdict { color: #d83c3c; }
+/* Manually overridden by the engineer — neither a match nor a mismatch, so it gets its
+   own (theme-neutral rgba, like the rows above) tint rather than borrowing either. */
+.checklist-overridden { background: rgba(120, 110, 220, 0.18); }
+.checklist-overridden .checklist-verdict { color: #7b6fdc; }
+.checklist-override-badge { color: #7b6fdc; cursor: help; }
+
+.quote-package-section .quote-package {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.quote-package-section #build-quote-package:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.review-collapse {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.review-collapse > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  list-style: none;
+  user-select: none;
+}
+
+.review-collapse > summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-collapse > summary::before {
+  content: "▸ ";
+  color: var(--text-muted);
+}
+
+.review-collapse[open] > summary::before {
+  content: "▾ ";
+}
+
+.review-collapse > * + * {
+  margin-top: 12px;
 }
 
 body.is-init-stage .workspace {
@@ -662,6 +827,444 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
+/* Leaving DB/WB = the "Max Coil Performance" duty point John checks the application
+   engineer's selection against. Accent + weight so the eye lands on it without hunting
+   (John 2026-07-28). Placed after the status rules so it overrides their calm left edge;
+   deliberately NOT red/green — it must not read as blocked, empty, or a CCSI compare
+   verdict. renderDcInputRow only applies this when the row has a value, so a reheat coil's
+   absent leaving WB stays plain unmapped. */
+.dc-control.dc-control--duty {
+  border-left-color: var(--accent);
+  border-left-width: 4px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+/* Empty drawing parameter = warning. Red on all edges (not just the status edge,
+   and never the calm amber) so a blank that couldn't be derived is impossible to
+   miss; the reason is shown inline + on hover (John 2026-06-27). Placed after the
+   status rules so it overrides their left-edge/fill for empties. */
+.dc-control.dc-control--empty {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  border-left-color: var(--status-blocked);
+  color: var(--danger-text);
+}
+
+.dc-dimension-reason {
+  color: var(--status-blocked);
+  font-size: 10.5px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+}
+
+/* CCSI compare (Phase 3): green edge when the field matches the CCSI form's current
+   value, red edge + inline both-values when it diverges, so a wrong number can't slip
+   through before John saves the CCSI record. */
+.dc-control.dc-control--match {
+  border-left-color: var(--status-ready);
+  border-color: var(--ok-border, var(--status-ready));
+}
+
+.dc-control.dc-control--mismatch {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  border-left-color: var(--status-blocked);
+  color: var(--danger-text);
+}
+
+.dc-dimension-row .dc-dimension-mismatch {
+  color: var(--status-blocked);
+  font-size: 10.5px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Coil Checklist divergence: the sheet's own formula disagrees with the engine on THIS
+   dimension. Styled like the CCSI mismatch on purpose — both mean "two sources disagree,
+   look before you act" — but it is a separate class because it outranks CCSI in the
+   border-precedence chain (a checklist mismatch says CoilForge itself may be wrong). */
+.dc-control.dc-control--divergence {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  border-left-color: var(--status-blocked);
+  color: var(--danger-text);
+}
+
+/* ADJUDICATED divergence — John has already ruled on this exact (category, family,
+   variant, size-scope, slot) and said the sheet is the wrong side. Amber, not red: the
+   disagreement is real and still visible, but it is a settled question, so it must not
+   compete for attention with one nobody has looked at yet.
+
+   Only `known_gap` lands here. A ruling of "CoilForge is wrong" (`known_defect`) keeps
+   the red `--divergence` styling on purpose — an open defect of ours is exactly what
+   should not be dimmed. See review/divergence.py::_SEVERITY_BY_VERDICT. */
+.dc-control.dc-control--adjudicated {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  border-left-color: var(--status-review);
+  color: var(--warn-text);
+}
+
+.dc-dimension-row .dc-dimension-adjudicated {
+  color: var(--warn-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neutral, informational badge: no counterpart on the sheet, a value only one side has,
+   an override John already made, a re-fill in flight. Deliberately NOT red — spending
+   red on these would train the eye to skip the ones that matter. */
+.dc-dimension-row .dc-dimension-note {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ccsi-compare-banner {
+  border: 1px solid var(--ok-border, var(--status-ready));
+  background: var(--ok-bg, rgba(64, 197, 140, 0.08));
+  color: var(--ok-text, var(--status-ready));
+  border-radius: 8px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 4px 0 2px;
+}
+
+.ccsi-compare-banner.has-mismatch {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+/* Per-coil green/red table. Seeded by the offline CCSI-export audit (removed from the UI
+   2026-07-28) and now used SOLELY by the Ambient panel, which reuses .ccsi-audit-coil /
+   -badge / -note / -table for its compare and package cards — do not delete these as
+   dead CCSI styling. Reuses the ok/danger theme tokens (defined for light + dark). */
+.ccsi-audit-coil {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ccsi-audit-coil h4 {
+  margin: 0 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-heading);
+}
+
+.ccsi-audit-badge {
+  font-size: 0.8rem;
+  border-radius: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--ok-border);
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.ccsi-audit-badge.has-mismatch {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.ccsi-audit-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.ccsi-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ccsi-audit-table th,
+.ccsi-audit-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ccsi-audit-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.ccsi-audit-table td {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.ccsi-audit-table tr.dc-control--match td {
+  background: var(--ok-bg);
+}
+
+.ccsi-audit-table tr.dc-control--mismatch td {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* Supplier selector + Ambient Dynamics quote comparison (review aid). */
+/* Direct Coil is the default; the Ambient panel is gated on the body  */
+/* data-supplier flag so Direct Coil mode is byte-identical to today.  */
+/* ------------------------------------------------------------------ */
+.supplier-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-inset);
+}
+.supplier-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.supplier-btn.active {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+/* Ambient panel visibility: hidden unless the Ambient supplier is selected. In Ambient
+   mode the two Direct-Coil-specific review panels step aside to keep the flow focused. */
+.ambient-section {
+  display: none;
+}
+body[data-supplier="ambient"] .ambient-section {
+  display: block;
+}
+body[data-supplier="ambient"] #checklist-fill-section {
+  display: none;
+}
+
+/* Ambient mode toggle: "Compare two files" (default) vs "Generate package from submittal".
+   Package-only elements are hidden unless data-ambient-mode="package"; compare elements are
+   hidden only WHEN package mode is active. So an absent attribute (pre-JS / empty storage)
+   leaves the compare flow visible and byte-identical — no FOUC. */
+.ambient-mode-switch {
+  display: none;
+  gap: 2px;
+  padding: 3px;
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-inset);
+  width: fit-content;
+}
+body[data-supplier="ambient"] .ambient-mode-switch {
+  display: inline-flex;
+}
+.ambient-mode-btn {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.ambient-mode-btn.active {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+.ambient-package-only {
+  display: none;
+}
+/* The package drops also carry .ambient-drops (display:flex, defined earlier and equal
+   specificity), which would otherwise win the tie and show them in compare mode. Bump
+   specificity so the default hide wins; the package-mode rule below (higher still) shows. */
+.ambient-drops.ambient-package-only {
+  display: none;
+}
+/* Same tie, same fix, for the quote-request export button: it carries .ambient-excel-action
+   (display:flex, defined later at equal specificity), which would otherwise show it in
+   COMPARE mode where there is no package to export. */
+.ambient-excel-action.ambient-package-only {
+  display: none;
+}
+body[data-ambient-mode="package"] #ambient-quote-request-action {
+  display: flex;
+}
+body[data-ambient-mode="package"] .ambient-package-drops {
+  display: flex;
+}
+body[data-ambient-mode="package"] #ambient-package-warning,
+body[data-ambient-mode="package"] .ambient-package-summary,
+body[data-ambient-mode="package"] #ambient-package-results {
+  display: block;
+}
+body[data-ambient-mode="package"] .ambient-compare-only {
+  display: none;
+}
+/* In the Ambient package flow the top Direct-Coil intake is redundant (the package has
+   its own submittal drop) and confusing — hide it. Scoped to BOTH ambient supplier AND
+   package mode so a persisted data-ambient-mode never hides the intake in Direct Coil. */
+body[data-supplier="ambient"][data-ambient-mode="package"] #checklist-section {
+  display: none;
+}
+
+.ambient-drops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ambient-drops .pdf-drop-zone {
+  flex: 1 1 240px;
+}
+
+.ambient-table tr.row-cannot td {
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+.ambient-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.ambient-not-compared {
+  font-size: 0.82rem;
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  margin: 6px 0 0;
+}
+.ambient-warns {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  color: var(--warn-text);
+}
+
+/* Ambient package (submittal -> performance page + drawing). Reuses the compare card
+   shell (ccsi-audit-coil / ambient-table); a few extras for the band, missing-field
+   callout, and drawing preview. Defined theme tokens only (no bare --surface/--text). */
+.ambient-band {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin: 4px 0;
+}
+.ambient-missing {
+  margin: 6px 0 0;
+  padding: 6px 9px;
+  font-size: 0.76rem;
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 6px;
+}
+.ambient-drawing-preview {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  overflow-x: auto;
+  background: var(--bg-inset);
+  cursor: zoom-in;
+}
+/* Draw on white "paper" in BOTH themes (defined --drawing-paper) so the dark template
+   strokes/dimension text stay legible in dark mode; non-scaling-stroke keeps the 0.1-unit
+   CoilMaster hairlines crisp — same treatment as .template-drawing-canvas. */
+.ambient-drawing-preview svg {
+  background: var(--drawing-paper);
+  border-radius: 4px;
+  max-width: 100%;
+  min-width: 560px;
+  height: auto;
+}
+.ambient-drawing-preview svg path {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1px;
+}
+.ambient-drawing-hint {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+/* Click-to-enlarge overlay: the same SVG at up to 95vw on white paper, scrollable. */
+.ambient-drawing-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.72);
+  cursor: zoom-out;
+  padding: 24px;
+  overflow: auto;
+}
+.ambient-drawing-modal.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ambient-drawing-modal-inner {
+  background: var(--drawing-paper);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 96vw;
+  overflow: auto;
+}
+.ambient-drawing-modal-inner svg {
+  background: var(--drawing-paper);
+  width: min(92vw, 1600px);
+  height: auto;
+}
+.ambient-drawing-modal-inner svg path {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1px;
+}
+.ambient-drawing-omitted {
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.ambient-package-hand {
+  margin: 6px 0 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.ambient-excel-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.ambient-excel-action button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+#ambient-excel-status {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
 .dc-inline-controls {
   display: grid;
   gap: 3px;
@@ -691,6 +1294,24 @@ body.is-init-stage .primary-intake-panel {
   color: var(--text-heading);
   font-size: 12px;
   font-weight: 500;
+}
+
+/* Leaving DB/WB duty point on the CALCULATED side. Deliberately the SAME language as the
+   input rows' .dc-control--duty -- accent left rule + bold, no background -- so the two halves
+   of the mirror read as one highlight and both stay theme-driven (a literal tint here would
+   need an --accent-soft token that does not exist, and a hardcoded rgba is the light/dark bug
+   CLAUDE.md warns about). Placed after the base rules so it overrides their weight/colour.
+   Applied only when a real value exists: an "unmapped" duty point must never look filled. */
+.dc-calculated-row--duty {
+  border-left: 4px solid var(--accent);
+  margin-left: -8px;
+  padding-left: 8px;
+}
+
+.dc-calculated-row--duty span,
+.dc-calculated-row--duty strong {
+  color: var(--text-heading);
+  font-weight: 700;
 }
 
 .dc-ahri-note {
@@ -1003,37 +1624,48 @@ h4 {
 }
 
 .pdf-loading-indicator {
-  align-items: center;
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-border);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--warn-text);
+  color: var(--text-secondary);
   display: grid;
-  gap: 4px 10px;
-  grid-template-columns: 22px 1fr;
-  min-height: 54px;
+  gap: 8px;
   padding: 10px 12px;
 }
 
-.pdf-loading-indicator strong,
-.pdf-loading-indicator span:last-child {
-  grid-column: 2;
+.pdf-loading-head {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
 }
 
-.pdf-loading-spinner {
-  animation: pdf-loading-spin 780ms linear infinite;
-  border: 3px solid rgba(194, 139, 27, 0.22);
-  border-left-color: var(--accent-link);
-  border-radius: 50%;
-  grid-row: 1 / span 2;
-  height: 18px;
-  width: 18px;
+.pdf-loading-head strong {
+  color: var(--text-heading);
 }
 
-@keyframes pdf-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.pdf-loading-pct {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.pdf-progress {
+  background: var(--border-subtle);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.pdf-progress-fill {
+  background: var(--status-ready);
+  border-radius: inherit;
+  height: 100%;
+  transition: width 320ms ease;
+}
+
+.pdf-loading-step {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .pdf-review-pages {
@@ -1155,6 +1787,69 @@ h4 {
 .paste-ready-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.ccsi-autofill-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+/* The CCSI payload copy is pressed on every coil, so it is the panel's hero action —
+   not a .secondary-action ghost that reads as the card behind it. Brand gold is the
+   one fill defined identically in both themes (--brand-gold / --text-on-gold), so it
+   stays high-contrast in dark mode without a [data-theme] override. */
+.ccsi-copy-action {
+  background: var(--brand-gold);
+  color: var(--text-on-gold);
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px rgba(212, 166, 74, 0.3);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  min-height: 42px;
+  padding: 10px 18px;
+}
+
+.ccsi-copy-action:hover {
+  background: var(--brand-gold);
+  filter: brightness(1.08);
+}
+
+.ccsi-copy-action:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.ccsi-autofill-setup {
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+
+.ccsi-autofill-setup summary {
+  cursor: pointer;
+  color: var(--text-heading);
+}
+
+.ccsi-setup-steps {
+  margin: 6px 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.ccsi-bookmarklet {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-heading);
+  cursor: grab;
+  text-decoration: none;
+  font-weight: 600;
 }
 
 .paste-ready-table-wrap {
@@ -1411,6 +2106,77 @@ h4 {
   font-size: 12px;
 }
 
+/* Loud review-required banner: the drawn distributor orientation is not
+   representative (Ventum+ DX draws ConnectionDown; R-032 requires ConnectionUp). */
+.drawing-orientation-warning {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-left: 4px solid var(--status-blocked);
+  border-radius: 6px;
+  color: var(--danger-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 8px 0;
+  padding: 8px 10px;
+}
+
+/* OCR-blocked alert (token/quota exhausted, missing/expired key, rate-limit, truncated).
+   Reuses the danger tokens (defined light + dark) so it tracks the theme. */
+/* PO Release board case-prefill banner (?case= deep link): expected coils
+   from the Brain's submittal scan cross-checked against this analysis. */
+.brain-case-banner {
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
+  border-left: 4px solid var(--status-ready);
+  border-radius: 6px;
+  color: var(--ok-text);
+  display: grid;
+  font-size: 12.5px;
+  gap: 4px;
+  grid-column: 1 / -1;
+  line-height: 1.4;
+  margin: 0 0 4px;
+  padding: 9px 11px;
+}
+
+/* Honor the `hidden` attribute: `display: grid` above otherwise overrides the UA
+   `[hidden] { display: none }`, leaving an empty green strip rendered when no case
+   is loaded (the stray bar above the loading card). The JS already sets/clears
+   `hidden` correctly — this just lets it take effect. */
+.brain-case-banner[hidden] {
+  display: none;
+}
+
+.brain-case-banner.has-mismatch {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  border-left-color: var(--status-review);
+  color: var(--warn-text);
+}
+
+.brain-case-banner ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.brain-case-banner li.is-missing {
+  font-weight: 700;
+}
+
+.ocr-alert-banner {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-left: 4px solid var(--status-blocked);
+  border-radius: 6px;
+  color: var(--danger-text);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0 0 10px;
+  padding: 9px 11px;
+}
+
 .template-not-registered {
   align-items: center;
   background: var(--danger-bg);
@@ -1482,6 +2248,58 @@ h4 {
   overflow: auto;
 }
 
+.package-assembler {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.package-assembler.is-locked {
+  opacity: 0.75;
+}
+
+.package-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.package-drop {
+  align-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  padding: 10px 12px;
+}
+
+.package-drop:hover {
+  border-color: var(--text-muted);
+}
+
+.package-file-name {
+  color: var(--text-heading);
+  font-size: 12px;
+}
+
+.package-result {
+  display: grid;
+  gap: 6px;
+}
+
+.package-strap {
+  border-radius: 6px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.package-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .template-drawing-canvas svg {
   background: var(--drawing-paper);
   max-width: 100%;
@@ -1498,6 +2316,38 @@ h4 {
 .dc-coil-drawing-canvas svg path {
   vector-effect: non-scaling-stroke;
   stroke-width: 1px;
+}
+
+/* Parametric geometry+dimensions drawing (direct-coil ordering): front + header/side
+   views, numbers-only, no sheet chrome. Responsive; fills the canvas width. */
+.parametric-drawing {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  width: 100%;
+}
+
+.parametric-view {
+  flex: 1 1 380px;
+  min-width: 0;
+}
+
+.parametric-view svg {
+  background: var(--drawing-paper);
+  border-radius: 6px;
+  display: block;
+  height: auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.parametric-omitted {
+  color: var(--warn-text, #92400e);
+  font-size: 12px;
+  margin: 8px 0 0;
+  padding-left: 18px;
 }
 
 .template-drawing-pending {
@@ -1558,6 +2408,295 @@ h4 {
   width: 100%;
 }
 
+/* Human-in-the-loop "fill these to complete the drawing" panel. */
+.manual-fill-panel {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.manual-fill-panel.is-withheld {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
+.manual-fill-title {
+  color: var(--text-heading);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.manual-fill-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.manual-fill-row {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 140px 120px 1fr;
+  gap: 10px;
+}
+
+.manual-fill-key {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.manual-fill-row input,
+.manual-fill-row select {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  width: 100%;
+}
+
+.manual-fill-reason {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.manual-fill-errors {
+  color: var(--danger-text);
+  display: flex;
+  flex-direction: column;
+  font-size: 0.78rem;
+  gap: 2px;
+}
+
+.manual-fill-apply {
+  align-self: flex-start;
+  background: var(--accent);
+  border: none;
+  border-radius: 5px;
+  color: var(--text-inverse);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+}
+
+.manual-fill-apply:hover {
+  background: var(--accent-hover);
+}
+
+.manual-param-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.manual-param-actions[hidden] {
+  display: none;
+}
+
+.manual-param-reason {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  flex: 1 1 240px;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+}
+
+/* Phase 2 — per-field spec lock/unlock */
+.spec-edit-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 8px 0;
+  padding: 4px 10px 8px;
+}
+
+.spec-edit-panel > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.spec-edit-row {
+  align-items: center;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.spec-edit-label {
+  color: var(--text-secondary);
+  flex: 0 0 96px;
+  font-size: 0.8rem;
+}
+
+.spec-edit-value {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.spec-edit-input {
+  flex: 0 0 120px;
+}
+
+.spec-edit-reason {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  flex: 1 1 180px;
+  font-size: 0.82rem;
+  padding: 5px 9px;
+}
+
+.spec-edit-lock {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 2px 6px;
+}
+
+/* Phase 2b — three-way review table */
+.three-way-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 10px 0 4px;
+  padding: 4px 10px 8px;
+}
+
+.three-way-panel > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.three-way-scroll {
+  overflow-x: auto;
+}
+
+.three-way-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.three-way-table th,
+.three-way-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.three-way-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.three-way-table .tw-field {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.three-way-table .tw-match {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.three-way-table .tw-mismatch {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+/* Phase 2.1 — past-corrections (case neighbors) panel. Same tokens as three-way. */
+.case-neighbors-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 6px 0 4px;
+  padding: 4px 10px 8px;
+}
+
+.case-neighbors-panel > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px 0;
+}
+
+.cn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cn-neighbor {
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+
+.cn-neighbor-empty {
+  opacity: 0.55;
+}
+
+.cn-neighbor-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.cn-tag {
+  font-weight: 600;
+}
+
+.cn-chip {
+  background: var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  padding: 1px 6px;
+}
+
+.cn-corrections {
+  font-size: 0.8rem;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.cn-corrections li {
+  padding: 1px 0;
+}
+
+.cn-corrections .cn-field {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.cn-corrections .cn-arrow {
+  color: var(--text-secondary);
+}
+
+.cn-corrections .cn-after {
+  background: var(--ok-bg);
+  border-radius: 3px;
+  color: var(--ok-text);
+  padding: 0 4px;
+}
+
 .coil-drawing-picker.is-derived {
   background: var(--ok-bg);
   border-color: var(--ok-border);
@@ -1596,10 +2735,18 @@ h4 {
   color: var(--text-muted);
 }
 
+/* Direct-Coil two-column dimension layout (left = casing/fin, right =
+   supply/return/header). Children are .dc-drawing-column blocks of
+   .dc-dimension-row rows, reusing the .dc-* styling shared with the
+   paste-ready mirror. */
 .parameter-grid {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  /* One column per .dc-drawing-column child (casing | Header 1 | Header 2 | ...),
+     so the panel mirrors the CCSI Direct Coil form and adapts to the header count. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(120px, 1fr);
+  align-items: start;
   margin-top: 12px;
 }
 
@@ -1855,6 +3002,9 @@ h4 {
 
   .sidebar {
     padding-bottom: 18px;
+    position: static;     /* one-column layout: stop sticking, flow normally */
+    max-height: none;
+    overflow-y: visible;
   }
 
   .action-bar {
@@ -1949,7 +3099,10 @@ h4 {
   }
 
   .parameter-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Narrow screens: stack the casing/header columns vertically (no h-scroll). */
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .compatibility-summary {
@@ -1961,3 +3114,176 @@ h4 {
     width: 100%;
   }
 }
+
+/* Multi-coil quote package control (PDF intake panel). */
+.quote-package {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.quote-package-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.quote-package-summary {
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.quote-package-coil {
+  color: var(--text-muted);
+}
+
+.quote-package-warning {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+/* Read-and-alert: Direct Coil entry verifier (PDF intake panel). */
+.dc-verify {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.dc-verify-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dc-verify textarea,
+.dc-verify input {
+  background: var(--bg-field);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.dc-verify-summary {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.dc-verify-counts {
+  color: var(--text-primary);
+}
+
+.dc-verify-banner {
+  border-radius: 4px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.dc-verify-banner-warn {
+  background: color-mix(in srgb, var(--status-blocked) 18%, transparent);
+  border: 1px solid var(--status-blocked);
+  color: var(--text-primary);
+}
+
+.dc-verify-row {
+  border-left: 3px solid var(--border);
+  border-radius: 3px;
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+}
+
+.dc-verify-row .dc-verify-field span {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.dc-verify-note {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dc-verify-high {
+  border-left-color: var(--status-blocked);
+  background: color-mix(in srgb, var(--status-blocked) 10%, transparent);
+}
+
+.dc-verify-medium {
+  border-left-color: var(--status-review);
+  background: color-mix(in srgb, var(--status-review) 10%, transparent);
+}
+
+.dc-verify-info {
+  border-left-color: var(--status-unmapped);
+}
+
+.dc-verify-ok {
+  border-left-color: var(--status-ready);
+  color: var(--text-muted);
+}
+
+/* Mechanical fit / Stability report (review aid) */
+.mechanical-fit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.fit-coil {
+  border: 1px solid var(--border, #d8dde6);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-elevated);
+}
+.fit-coil-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+.fit-coil-head em {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.fit-line {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  flex-wrap: wrap;
+}
+.fit-line span {
+  font-weight: 600;
+  min-width: 3.2rem;
+}
+.fit-note {
+  color: var(--warn-text);
+  font-size: 0.82rem;
+  margin: 0;
+}
+.fit-footer {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin: 0.2rem 0 0;
+}
+.fit-chip {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  color: #fff;
+}
+.fit-chip.fit-pass { background: #1f9d57; }
+.fit-chip.fit-fail { background: #c62828; }
+.fit-chip.fit-review { background: #c08a00; }
+.fit-chip.fit-na { background: #8a93a3; }

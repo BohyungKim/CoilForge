@@ -22,6 +22,14 @@ outputs/**/rendered_pages/
 *.jpg
 *.jpeg
 
+# Divergence adjudication working files. The HTTP route writes here and NOWHERE tracked:
+# a concurrent session auto-commits this tree, so a browser action that touched a tracked
+# path could sneak an un-reviewed ruling into a commit. Promote with
+# scripts/promote_divergences.py -> src/coilforge/rules/known_divergences.yaml, which John
+# then commits (that commit is the approval step).
+outputs/divergence_staging.yaml
+outputs/rule_proposals/
+
 # Local/cache/build artifacts
 build/
 __pycache__/
@@ -33,8 +41,23 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Capture ledger (defence in depth — it lives outside the repo by default and
+# capture/db.py refuses any path inside a git working tree, but the ledger holds
+# every project it has ever seen in ONE file, so losing it is categorically worse
+# than losing a day's journal).
+*.sqlite
+*.sqlite3
+# SQLite names the WAL/SHM sidecars "<db filename>-wal", i.e. coilforge.sqlite3-wal
+# -- NOT *.db-wal. Match what it actually writes.
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
 # Temporary files
 tmp/
 temp/
 *.log
+
+.claude/agent-memory/
 .claude/settings.local.json

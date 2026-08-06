@@ -1,0 +1,72 @@
+"""Copper-strap price adder: $25/strap over the R-090 strap count.
+
+DX = 1 strap/header -> $25/header; HGRH = 2 straps/header -> $50/header.
+CWC/HWC are not_applicable (no copper-strap note at all); unknown header count
+routes to review-required. Mirrors the confidence gate end to end.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from coilforge.package.copper_strap_pricing import (  # noqa: E402
+    COPPER_STRAP_UNIT_PRICE,
+    copper_strap_price,
+)
+from coilforge.schemas.header_prepopulate import CoilType  # noqa: E402
+
+
+def test_dx_one_header_is_25() -> None:
+    price = copper_strap_price(CoilType.DX, 1)
+    assert price["status"] == "required"
+    assert price["strap_count"] == 1
+    assert price["total"] == 25.0
+    # The stamped note stays terse; the breakdown lives in ``detail``.
+    assert price["note"] == "Copper Strap Adder CAD$25.00"
+    assert "DX" in price["detail"] and "1 header" in price["detail"]
+
+
+def test_hgrh_one_header_is_50() -> None:
+    price = copper_strap_price(CoilType.HGRH, 1)
+    assert price["status"] == "required"
+    assert price["strap_count"] == 2  # 2 straps/header
+    assert price["total"] == 50.0
+    assert price["note"] == "Copper Strap Adder CAD$50.00"
+
+
+def test_two_header_hgrh_is_100() -> None:
+    # John's worked example: 2 headers x 2 straps/header x $25 = $100.
+    price = copper_strap_price(CoilType.HGRH, 2)
+    assert price["strap_count"] == 4
+    assert price["total"] == 100.0
+    assert price["note"] == "Copper Strap Adder CAD$100.00"
+
+
+def test_price_scales_with_header_count() -> None:
+    assert copper_strap_price(CoilType.DX, 2)["total"] == 50.0  # 2 straps x $25
+    assert copper_strap_price(CoilType.HGRH, 2)["total"] == 100.0  # 4 straps x $25
+
+
+def test_water_coils_have_no_strap_note() -> None:
+    # Copper straps apply only to DX / HGRH headers, so water coils get no note
+    # at all (not a "review required" banner) and are never priced.
+    for coil in (CoilType.CWC, CoilType.HWC):
+        price = copper_strap_price(coil, 1)
+        assert price["status"] == "not_applicable"
+        assert price["note"] is None
+        assert price["total"] is None
+        assert price["strap_count"] is None
+
+
+def test_unknown_header_count_is_review_required() -> None:
+    price = copper_strap_price(CoilType.DX, None)
+    assert price["status"] == "review_required"
+    assert price["total"] is None
+
+
+def test_unit_price_constant() -> None:
+    assert COPPER_STRAP_UNIT_PRICE == 25.00
+    assert copper_strap_price(CoilType.DX, 1)["currency"] == "CAD"

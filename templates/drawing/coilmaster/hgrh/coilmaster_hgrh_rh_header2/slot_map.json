@@ -30,6 +30,16 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.CASING_MATERIAL_2",
+      "label": "CASING_MATERIAL_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.CD",
       "label": "CD",
       "required_for_preview": true,
@@ -60,6 +70,26 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.CIRCUITING_2",
+      "label": "CIRCUITING_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.CIRCUITING_3",
+      "label": "CIRCUITING_3",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.CL",
       "label": "CL",
       "required_for_preview": true,
@@ -80,6 +110,26 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.DRY_WEIGHT",
+      "label": "DRY_WEIGHT",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.FASTENER_TYPE",
+      "label": "FASTENER_TYPE",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.FH",
       "label": "FH",
       "required_for_preview": true,
@@ -92,6 +142,26 @@
     {
       "slot_id": "slot.FIN_MATERIAL",
       "label": "FIN_MATERIAL",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_2",
+      "label": "FIN_MATERIAL_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.FIN_MATERIAL_3",
+      "label": "FIN_MATERIAL_3",
       "required_for_preview": false,
       "review_status": "review_required",
       "source_candidates": [
@@ -160,6 +230,16 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.MODEL_NUMBER",
+      "label": "MODEL_NUMBER",
+      "required_for_preview": true,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.O2",
       "label": "O2",
       "required_for_preview": false,
@@ -220,16 +300,6 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
-      "slot_id": "slot.RETURN_CONN_SIZE",
-      "label": "RETURN_CONN_SIZE",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
       "slot_id": "slot.RF",
       "label": "RF",
       "required_for_preview": false,
@@ -260,6 +330,26 @@
       "notes": "Seeded from the provided EZ drawing PDF; review required."
     },
     {
+      "slot_id": "slot.SUPPLY_CONN_SIZE",
+      "label": "SUPPLY_CONN_SIZE",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
+      "label": "SUPPLY_CONN_SIZE_2",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
       "slot_id": "slot.TAG",
       "label": "TAG",
       "required_for_preview": true,
@@ -282,96 +372,6 @@
     {
       "slot_id": "slot.TUBE_MATERIAL",
       "label": "TUBE_MATERIAL",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.CASING_MATERIAL_2",
-      "label": "CASING_MATERIAL_2",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.CIRCUITING_2",
-      "label": "CIRCUITING_2",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.CIRCUITING_3",
-      "label": "CIRCUITING_3",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.DRY_WEIGHT",
-      "label": "DRY_WEIGHT",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.FASTENER_TYPE",
-      "label": "FASTENER_TYPE",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.FIN_MATERIAL_2",
-      "label": "FIN_MATERIAL_2",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.FIN_MATERIAL_3",
-      "label": "FIN_MATERIAL_3",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.SUPPLY_CONN_SIZE",
-      "label": "SUPPLY_CONN_SIZE",
-      "required_for_preview": false,
-      "review_status": "review_required",
-      "source_candidates": [
-        "pdf_drawing_value_redacted_to_slot"
-      ],
-      "notes": "Seeded from the provided EZ drawing PDF; review required."
-    },
-    {
-      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
-      "label": "SUPPLY_CONN_SIZE_2",
       "required_for_preview": false,
       "review_status": "review_required",
       "source_candidates": [

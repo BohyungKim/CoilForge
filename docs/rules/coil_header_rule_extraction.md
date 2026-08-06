@@ -43,7 +43,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-002 | * | * | * | stacking_flanges = FALSE | SOP §GEN "Deselect Stacking Flanges and Lifting Lugs"; CHK all sheets (SELECTION=TRUE means EZ Coil default is on; SUBMITTAL=FALSE) | High | No | Lifting Lugs deselect is SOP-only (CHK has no row) → Medium sub-rule R-002b |
 | R-003 | * | * | * | header_flange (HF) = 1.5 | SOP all sections "Leave Header Flange… default 1.5"; CHK *!HF `=1.5` | High | No | |
 | R-004 | * | * | * | return_flange (RF) = 1.5 | Same as R-003 | High | No | |
-| R-005 | DX, HGRH | * | * | return_bend (RB) = 1.75 (min 1.5 if fit issue) | SOP §DX-TNVH/§DX-VP/§HGRH-* ; CHK DX!C29, HGRH!C32 | High | No | "Reduce if fit issue" is a manual escape hatch, not a prepopulation rule |
+| R-005 | DX, HGRH | * | * | return_bend (RB) = 1.5 (default; John 2026-06-25, was 1.75) | John 2026-06-25 (prior: SOP §DX-TNVH/§DX-VP/§HGRH-* ; CHK DX!C29, HGRH!C32) | High | No | 1.5 is now the direct-coil default across all product lines (drops OAL=FL+3+RB by 0.25); the old 1.75 with a "reduce to 1.5 if fit issue" escape hatch is superseded |
 | R-006 | CWC, HWC | * | * | return_bend (RB) = 2.25 (min 1.875 if fit issue) | SOP §CWC/HWC; CHK CWC!C26, HWC!C30 | High | No | |
 | R-007 | CWC, HWC | * | * | notes += "Vent & Drain installed <= 3\" from MPT connection. Only 1 Supply and 1 Return connection required. Do not bend connection to meet dimensional requirements." | SOP §GEN; CHK CWC!C20, HWC!C24 — strings match verbatim | High | No | |
 | R-008 | DX, HGRH | * | * | notes += "Copper Straps Required." | SOP §GEN; CHK DX!C23, HGRH!C26 | High | No | |
@@ -54,9 +54,9 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 |---|---|---|---|---|---|---|---|---|
 | R-010 | DX, HGRH | NOVA, VENTUM H | * | TF = 0.625, BF = 0.625 | SOP §DX-TNVH "Nova, Ventum H: 0.625"; §HGRH-TNVH "0.625"; CHK DX!C27:C28, HGRH!C30:C31 | High | No | |
 | R-011 | * (all 4) | VENTUM+ | * | TF = 1, BF = 1 | SOP §DX-VP, §HGRH-VP, §CWC/HWC "values to 1"; CHK *!TF/BF `IF(C3="VENTUM+",1,…)` | High | No | |
-| R-012 | DX, HGRH | TERRA | * | TF/BF | SOP §DX-TNVH "Terra: 0.625" and §HGRH-TNVH 0.625 vs CHK `TERRA→TF=1.625, BF=0.375` | **Conflict** | Yes | Sum differs (1.25 vs 2.0). CHK asymmetry may encode drain-pan offset; not documented. **Do not prepopulate.** |
+| R-012 / R-012v | DX, HGRH | TERRA | H C / V | TF = 1.625; BF = 0.5 (Terra H C, the default) or 0.375 (Terra V) | CHK `TERRA→TF=1.625`; John 2026-06-11 (checklist wins) then John 2026-06-25 (Terra H C BF 0.375→0.5; Terra V stays 0.375 via R-012v override) | High | Resolved | R-012 (terra_variant null) = Terra H C default 0.5; R-012v (terra_variant [TERRA_V]) overrides BF back to 0.375 (last-writer-wins by file order). |
 | R-013 | CWC, HWC | NOVA, VENTUM H | * | TF/BF | SOP §CWC/HWC "Update TF and BF values to 1″" vs CHK `NOVA/VENTUM H→0.625` | **Conflict** | Yes | Direct numeric conflict between docs. **Do not prepopulate.** |
-| R-014 | CWC, HWC | TERRA | * | TF/BF | SOP §CWC/HWC "For all Terra Units set to 0.625″" vs CHK `TERRA→1.625/0.375` | **Conflict** | Yes | Same pattern as R-012 |
+| R-014 / R-014v | CWC, HWC | TERRA | H C / V | TF = 1.625; BF = 0.5 (Terra H C) or 0.375 (Terra V) | CHK `TERRA→TF=1.625`; John 2026-06-25 (Terra H C BF 0.375→0.5; Terra V stays 0.375 via R-014v) | High | Resolved | Same pattern as R-012/R-012v for water coils |
 
 ### 2.3 Connection / stubout geometry
 
@@ -68,6 +68,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-023 | DX | TERRA (V) | * | return spacing: Rn = (n−0.5)·D + 0.75(n−1)·… (SOP Terra V variant) | SOP §DX-TNVH SPECIAL CASE Terra V only; absent from CHK | Low | Yes | Single-source, requires Terra variant input |
 | R-024 | DX | * | * | suction header HD (HD2/4/6/8) = 3.5 | SOP both DX sections; CHK DX!C38–C41 | High | No | |
 | R-025 | DX | NOVA, VENTUM H | * | SL (suction, SL2/4/6/8) = 8 | SOP §DX-TNVH "8″ for Nova & Ventum H"; CHK DX!C42–C45 | High | No | |
+| R-025b | DX | VENTUM H | H05, H10 | SL (suction, even SL2/4/6/8) = 17 (overrides R-025) | John 2026-06-26 | High | No | First rule to use `applies_to.size_pattern` (matching now active in `_applies`); even-slot clearance only |
 | R-026 | DX | VENTUM+ | * | SL = 10 | SOP §DX-VP; CHK (`TERRA or VENTUM+ → 10`) | High | No | |
 | R-027 | DX | TERRA | * | SL | SOP: 10 for **Terra H**, 12 for **Terra V**; CHK: `TERRA→10` | Medium | Yes | CHK matches Terra H only. Needs variant input. |
 | R-028 | DX | NOVA, VENTUM H, TERRA | * | distributor I (I1/3/5/7) = 3 | SOP §DX-TNVH "Change all I values to 3″"; CHK DX!C50–C53 | High | No | |
@@ -87,6 +88,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-042 | HGRH | TERRA | * | return I/O | CHK `TERRA→3.25` vs SOP base text "2″" | **Conflict** | Yes | Same Terra-granularity issue (3.25 = Terra H C per SOP single-feed note) |
 | R-043 | HGRH | * | * | HD (all) = 3.5 | SOP both HGRH sections; CHK HGRH!C50–C57 | High | No | |
 | R-044 | HGRH | NOVA, VENTUM H | * | supply SL = 6, return SL = 8 | SOP §HGRH-TNVH; CHK HGRH!C59 return (8); supply SL1 CHK is computed `6 + D/2 − S1` | High (return) / Medium (supply) | Supply: Yes | CHK supply SL is geometric compensation for negative S; nominal 6 matches SOP. Suggest 6, flag formula. |
+| R-044d | HGRH | VENTUM H | H05, H10 | return SL (even SL2/4/6/8) = 17 (overrides R-044b) | John 2026-06-26 | High | No | size_pattern-scoped; even-slot clearance only; supply SL1 unchanged (still geometric/Medium 6) |
 | R-045 | HGRH | TERRA, VENTUM+ | * | return SL = 10 | SOP §HGRH-VP (10) + §HGRH-TNVH Terra-as-Terra-H; CHK `TERRA/VENTUM+→10` | High (VENTUM+) / Medium (TERRA) | Terra: Yes | Terra V = 12 per SOP only |
 | R-046 | HGRH | TERRA (V) | * | I/O = 2.75, supply SL = 5, return SL = 12 | SOP §HGRH-TNVH Terra V special cases only | Low | Yes | Single-source (SOP Rev I), absent from CHK |
 | R-047 | HGRH | * | * | supply conn_angle = LAS | SOP both HGRH sections "Change Conn Angle for all supply connections to LAS"; CHK single-feed note strings embed `SupConnAngle=LAS` | High | No | |
@@ -224,19 +226,19 @@ All expected values trace to Rule IDs above. Confidence shown is the dominant pe
 
 **T01 — DX / NOVA / B20 (happy path, 1″ class)**
 Given: DX, NOVA, B20
-Expected: rb=1.75 (R-005), tf=0.625, bf=0.625 (R-010), suction hd=3.5 (R-024), sl=8 (R-025), dist i=3 (R-028), dist_orientation=DOWN (R-031), dist_extension=6 (R-033), io_suction=2 (R-020), collared_holes=TRUE (R-001), stacking_flanges=FALSE (R-002), notes=["Copper Straps Required."] (R-008), size_class=NOVA_1IN (R-075); dist_hd → blocked CONFLICT (R-030); Confidence=High on listed fields; Review Required=false except dist_hd; Evidence: SOP §DX-TNVH + CHK DX sheet.
+Expected: rb=1.5 (R-005), tf=0.625, bf=0.625 (R-010), suction hd=3.5 (R-024), sl=8 (R-025), dist i=3 (R-028), dist_orientation=DOWN (R-031), dist_extension=6 (R-033), io_suction=2 (R-020), collared_holes=TRUE (R-001), stacking_flanges=FALSE (R-002), notes=["Copper Straps Required."] (R-008), size_class=NOVA_1IN (R-075); dist_hd → blocked CONFLICT (R-030); Confidence=High on listed fields; Review Required=false except dist_hd; Evidence: SOP §DX-TNVH + CHK DX sheet.
 
 **T02 — DX / NOVA / A18 (2″ class)**
 Same as T01 except size_class=NOVA_2IN (R-075). Evidence: CHK fit formulas + SOP "2″ Nova" rules.
 
 **T03 — DX / VENTUM+ / V40**
-Expected: tf=1, bf=1 (R-011), sl=10 (R-026), dist i=12 (R-029), dist_orientation=UP (R-032), rb=1.75, hd_suction=3.5, dist_extension=6, io=2 (R-020); dist_hd: SOP §DX-VP says 4.5 and CHK says 4.5 → for VENTUM+ specifically both agree → value 4.5, Confidence=High (R-030 conflict applies only to Nova/VH/W-Ctrl Terra); Review=false. Evidence: SOP §DX-VP + CHK.
+Expected: tf=1, bf=1 (R-011), sl=10 (R-026), dist i=12 (R-029), dist_orientation=UP (R-032), rb=1.5, hd_suction=3.5, dist_extension=6, io=2 (R-020); dist_hd: SOP §DX-VP says 4.5 and CHK says 4.5 → for VENTUM+ specifically both agree → value 4.5, Confidence=High (R-030 conflict applies only to Nova/VH/W-Ctrl Terra); Review=false. Evidence: SOP §DX-VP + CHK.
 
 **T04 — DX / VENTUM H / H15**
 Expected: tf/bf=0.625, sl=8, dist i=3, orientation=DOWN, io=2; dist_hd blocked (CONFLICT R-030: SOP=0 vs CHK=4.5). Review on dist_hd=true. Evidence: SOP §DX-TNVH vs CHK DX!C54.
 
 **T05 — DX / TERRA / 24 (Terra gate)**
-Expected: hf/rf=1.5, rb=1.75, hd_suction=3.5, dist i=3, orientation=DOWN, dist_ext=6, notes copper straps → High (Terra-invariant). io_suction → blocked CONFLICT (R-021: SOP 2 vs CHK 3.25). sl → suggestion 10, review_required=true (R-027). tf/bf → blocked CONFLICT (R-012). Global: review_required=true, blocked_reason includes "terra_variant_unresolved". Evidence: SOP §DX-TNVH vs CHK DX.
+Expected: hf/rf=1.5, rb=1.5, hd_suction=3.5, dist i=3, orientation=DOWN, dist_ext=6, notes copper straps → High (Terra-invariant). io_suction → blocked CONFLICT (R-021: SOP 2 vs CHK 3.25). sl → suggestion 10, review_required=true (R-027). tf/bf → blocked CONFLICT (R-012). Global: review_required=true, blocked_reason includes "terra_variant_unresolved". Evidence: SOP §DX-TNVH vs CHK DX.
 
 **T06 — DX / NOVA / B20 with rows=4, circuits=1, suction_conn=0.875**
 Expected: cd = max(5.5, 2×0.875) = 5.5 (R-070 table row 4 + R-072), Confidence=High, Evidence=SOP-OLE1 + CHK DX!C24.
@@ -245,13 +247,13 @@ Expected: cd = max(5.5, 2×0.875) = 5.5 (R-070 table row 4 + R-072), Confidence=
 Expected: cd = max(5.5, (3+1)×1.625 + 2×1.5) = max(5.5, 9.5) = 9.5 (R-072 DX-only equation). r1=1.625, r2=4.75, r3=7.875 (R-022). Confidence=High.
 
 **T08 — HGRH / NOVA / C20**
-Expected: i1=2 (R-040), o=2 (R-041), hd=3.5 (R-043), supply_sl=6 (suggestion, Medium R-044), return_sl=8 (High R-044), conn_angle=LAS (R-047), tf/bf=0.625 (R-010), rb=1.75, notes copper straps. Evidence: SOP §HGRH-TNVH + CHK HGRH.
+Expected: i1=2 (R-040), o=2 (R-041), hd=3.5 (R-043), supply_sl=6 (suggestion, Medium R-044), return_sl=8 (High R-044), conn_angle=LAS (R-047), tf/bf=0.625 (R-010), rb=1.5, notes copper straps. Evidence: SOP §HGRH-TNVH + CHK HGRH.
 
 **T09 — HGRH / VENTUM+ / V20**
 Expected: tf/bf=1 (R-011), return_sl=10 (R-045 High), supply_sl=6 (Medium suggestion), hd=3.5, i1=2. Evidence: SOP §HGRH-VP + CHK.
 
 **T10 — HGRH / TERRA / 12**
-Expected: hd=3.5, conn_angle=LAS, rb=1.75 High; o → blocked CONFLICT (R-042); return_sl → suggestion 10 review=true (R-045); tf/bf blocked (R-012); terra_variant_unresolved. Evidence: SOP vs CHK HGRH.
+Expected: hd=3.5, conn_angle=LAS, rb=1.5 High; o → blocked CONFLICT (R-042); return_sl → suggestion 10 review=true (R-045); tf/bf blocked (R-012); terra_variant_unresolved. Evidence: SOP vs CHK HGRH.
 
 **T11 — HGRH / NOVA / C20 with feeds=1**
 Expected: single-feed note suggestion containing "Add Headers & Stubouts… O2=2… SL2=8" pattern, review_required=true (R-049 Medium); single_feed_ext=3 suggestion (R-050 Medium). Evidence: SOP §GEN single-feed note (Nova variant) + CHK HGRH!C26.

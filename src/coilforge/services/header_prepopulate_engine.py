@@ -29,21 +29,23 @@ from coilforge.schemas.header_prepopulate import (
     HeaderPrepopulateRequest,
     HeaderPrepopulateResponse,
     ProductFamily,
+    TerraVariant,
 )
 
 _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules.yaml"
 
 # Rule IDs handled by dedicated phases rather than the generic constant emitter.
 _NOTES_BASE_IDS = {"R-007", "R-008"}
-_NOTES_APPEND_IDS = {"R-080", "R-081"}
+_NOTES_APPEND_IDS = {"R-080", "R-081", "R-035a", "R-035b", "R-035c"}
 _CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
-_RETURN_SPACING_IDS = {"R-022", "R-023"}
+_RETURN_SPACING_IDS = {"R-022", "R-023", "R-052"}
 _CWC_IO_HD_SL_IDS = {
-    "R-060", "R-061", "R-062", "R-063a", "R-063b",
-    "R-064-sl", "R-064-io", "R-064-hd", "R-065",
+    "R-060", "R-061", "R-061v", "R-062", "R-063a", "R-063b",
+    "R-064-sl", "R-064-io", "R-064-hd", "R-065", "R-065v",
 }
 _OTHER_SPECIAL_IDS = {
     "R-034",  # DX distributor S placement (formula)
+    "R-034v",  # DX distributor S, Terra V (Sn = CD - Rn)
     "R-048",  # HGRH S/R positions (formula)
     "R-049",  # HGRH single-feed note — suppressed (treated as standard one-header)
     "R-051",  # cross-coil validation (no value rule)
@@ -51,6 +53,14 @@ _OTHER_SPECIAL_IDS = {
     "R-074",  # casing dims lookup
     "R-075",  # size_class
     "R-076",  # unit-size validation
+    "R-090",  # copper straps required (header_count * per-header multiplier)
+}
+# Data-only rules: lookup tables consumed by compatibility/mechanical_fit.py, NOT
+# emitted as engine fields. Listed here so the generic emitter skips them (they
+# carry value=null and would otherwise place a spurious None suggestion).
+_FIT_DATA_IDS = {
+    "R-077",  # drain-pan / install width lookup
+    "R-078",  # WIDTH/HEIGHT fit clearances
 }
 _SPECIAL_IDS = (
     _NOTES_BASE_IDS
@@ -59,6 +69,7 @@ _SPECIAL_IDS = (
     | _RETURN_SPACING_IDS
     | _CWC_IO_HD_SL_IDS
     | _OTHER_SPECIAL_IDS
+    | _FIT_DATA_IDS
 )
 
 # Feature flags. R-086 (coil_style) is intentionally disabled by default.
@@ -76,6 +87,10 @@ def load_rule_table() -> list[dict[str, Any]]:
     return list(doc["rules"])
 
 
+# P2-A: rebuilt 4-6x per prepopulate() from the already-cached rule table. The rule
+# table is process-cached and every caller only reads index[...], so cache the derived
+# index once too.
+@lru_cache(maxsize=1)
 def _rule_index() -> dict[str, dict[str, Any]]:
     return {rule["rule_id"]: rule for rule in load_rule_table()}
 
@@ -100,6 +115,15 @@ def roundup_eighth(value: float) -> float:
     return eighths / 8
 
 
+def round_eighth(value: float) -> float:
+    """Round ``value`` to the NEAREST eighth, Excel-style (half away from zero).
+
+    The checklist writes this as ``ROUND(x*8,0)/8`` (e.g. DX!C46:C49). Python's
+    built-in ``round`` is banker's rounding, so it would send an exact half the
+    other way on even eighths -- use ``_excel_round`` to match the sheet."""
+    return _excel_round(round(value * 8, 6)) / 8
+
+
 def cd_dx_hgrh(rows: int) -> float:
     """DX/HGRH casing depth: ROUNDUP(rows * 0.866 to 1/8) + 2 (SOP-OLE1..4)."""
     return roundup_eighth(rows * 0.866) + 2
@@ -113,6 +137,29 @@ def cd_cwc_hwc(rows: int) -> float:
 def _return_spacing(suction_conn_size: float, circuits: int) -> list[float]:
     """R-022: Rn = n*D + (n-1)*1.5 for n in 1..circuits."""
     return [n * suction_conn_size + (n - 1) * 1.5 for n in range(1, circuits + 1)]
+
+
+def _terra_v_return_spacing(suction_conn_size: float, circuits: int) -> list[float]:
+    """R-023 Terra V: Rn = (n-0.5)*D + (n-1)*1.5 + 0.75 for n in 1..circuits.
+    (R1=0.5D+0.75, R2=1.5D+2.25, R3=2.5D+3.75, R4=3.5D+5.25.)"""
+    return [
+        (n - 0.5) * suction_conn_size + (n - 1) * 1.5 + 0.75
+        for n in range(1, circuits + 1)
+    ]
+
+
+def _hgrh_return_spacing(
+    conn_size: float, n_conn: int, product: ProductFamily
+) -> list[float]:
+    """R-052: HGRH return spacing for n_conn connections per header.
+
+    VENTUM+ uses the connection size as a flat location for every R (CHK branch);
+    all other families use the running-edge formula Rn = n*D + (n-1)*1.5. At n=1
+    both reduce to D, so a single-connection header is identical either way.
+    """
+    if product == ProductFamily.VENTUM_PLUS:
+        return [conn_size for _ in range(1, n_conn + 1)]
+    return [n * conn_size + (n - 1) * 1.5 for n in range(1, n_conn + 1)]
 
 
 def _excel_round(value: float) -> int:
@@ -132,6 +179,38 @@ def _dx_cd_value(request: HeaderPrepopulateRequest) -> float:
             multi = (c + 1) * d + (c - 1) * 1.5
         return max(base, multi)
     return base
+
+
+def copper_strap_requirement(
+    coil_type: CoilType, header_count: int | None
+) -> FieldResult | None:
+    """R-090: copper straps required = ``header_count * multiplier(coil_type)``.
+
+    DX -> 1 strap/header, HGRH -> 2 straps/header (John, 2026-06-23). Coil types
+    with no confirmed multiplier (CWC/HWC) return a LOW/blocked ``FieldResult``
+    rather than a guess. ``header_count`` absent returns ``None`` so the caller
+    can report it as a missing input. Single source of the R-090 logic shared by
+    the full engine and the drawing-package route.
+    """
+    rule = _rule_index()["R-090"]
+    multiplier = rule.get("strap_multiplier", {}).get(coil_type.value)
+    if multiplier is None:
+        return FieldResult(
+            value=None,
+            confidence=Confidence.LOW,
+            evidence_refs=rule["evidence_refs"],
+            rule_id=rule["rule_id"],
+            review_required=True,
+            blocked_reason=rule["blocked_reason"],
+        )
+    if header_count is None:
+        return None
+    return FieldResult(
+        value=header_count * multiplier,
+        confidence=Confidence.HIGH,
+        evidence_refs=rule["evidence_refs"],
+        rule_id=rule["rule_id"],
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -162,6 +241,11 @@ def _applies(rule: dict[str, Any], req: HeaderPrepopulateRequest) -> bool:
         return False
     if not _matches_list(req.product_type.value, applies_to.get("product_family")):
         return False
+    # size_pattern scopes a rule to specific unit sizes (e.g. [H05, H10]). Declared on every
+    # rule but null by default; _matches_list(token, None) -> True, so null keeps matching all
+    # sizes (backward-compatible). Activated 2026-06-26 for the Ventum H H05/H10 SL override.
+    if not _matches_list(req.unit_size, applies_to.get("size_pattern")):
+        return False
     variant = applies_to.get("terra_variant")
     if variant is not None:
         if req.terra_variant is None or req.terra_variant.value not in variant:
@@ -182,6 +266,8 @@ def _condition_met(only_when: str, req: HeaderPrepopulateRequest) -> bool:
         return _coating_set(req)
     if only_when == "hot_gas_bypass":
         return bool(req.hot_gas_bypass)
+    if only_when == "not_hot_gas_bypass":
+        return not bool(req.hot_gas_bypass)
     if only_when == "with_hgrh":
         return bool(req.with_hgrh)
     if only_when == "back_to_back":
@@ -199,12 +285,32 @@ def _condition_met(only_when: str, req: HeaderPrepopulateRequest) -> bool:
 def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     rules = load_rule_table()
     index = _rule_index()
+    # Terra split (phased): TERRA_H / TERRA_V are first-class product families that
+    # normalize onto the coarse TERRA family + terra_variant here at the engine entry.
+    # Every downstream rule (product_family: [TERRA]) and terra_variant branch then
+    # works unchanged. terra_variant, if already supplied, is never overridden.
+    if request.product_type in (ProductFamily.TERRA_H, ProductFamily.TERRA_V):
+        request = request.model_copy(
+            update={
+                "product_type": ProductFamily.TERRA,
+                "terra_variant": request.terra_variant
+                or (
+                    TerraVariant.TERRA_V
+                    if request.product_type == ProductFamily.TERRA_V
+                    else TerraVariant.TERRA_H
+                ),
+            }
+        )
     product = request.product_type
     coil = request.type_of_coil
 
     # --- R-076: unit-size validation (global gate) ---
+    # Terra H and Terra V resolve to the same product_family (TERRA) but have
+    # different size sets (Terra V adds 060/072/084/100), so the gate selects the
+    # variant-scoped enumeration for Terra V. Casing (R-074) still keys on TERRA.
     enumerations = index["R-076"]["enumerations"]
-    valid_sizes = enumerations.get(product.value, [])
+    size_key = "TERRA_V" if request.terra_variant == TerraVariant.TERRA_V else product.value
+    valid_sizes = enumerations.get(size_key, [])
     if request.unit_size not in valid_sizes:
         return HeaderPrepopulateResponse(blocked_reason="unknown_unit_size")
 
@@ -265,6 +371,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=None,
                         confidence=confidence,
                         evidence_refs=rule["evidence_refs"],
+                        rule_id=rid,
                         review_required=True,
                         review_required_reason=review_reason,
                         blocked_reason=rule.get("blocked_reason"),
@@ -280,6 +387,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     value=field_value,
                     confidence=confidence,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rid,
                     review_required=review_required,
                     review_required_reason=review_reason if review_required else None,
                 ),
@@ -288,11 +396,17 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     # --- Notes assembly: base (R-007/R-008) then coating append (R-080/R-081) ---
     # Direct Coil selection has no coating trigger field, so the coating note is
     # always appended to the drawing notes (per John, 2026-06-11).
+    # `only_when` is honoured here as well as in the generic emitter: the distributor
+    # note rules branch on hot_gas_bypass (R-035b vs R-035c), and without this a gated
+    # rule's condition would be inert and BOTH notes would append.
     note_lines: list[str] = []
     note_refs: list[str] = []
-    for rid in ("R-007", "R-008", "R-080", "R-081"):
+    for rid in ("R-007", "R-008", "R-080", "R-081", "R-035a", "R-035b", "R-035c"):
         rule = index[rid]
-        if _applies(rule, request):
+        only_when = rule.get("only_when")
+        if _applies(rule, request) and (
+            only_when is None or _condition_met(only_when, request)
+        ):
             note_lines.append(rule["value"])
             for ref in rule["evidence_refs"]:
                 if ref not in note_refs:
@@ -304,6 +418,8 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                 value=note_lines,
                 confidence=Confidence.HIGH,
                 evidence_refs=note_refs,
+                # multi-rule (R-007/008 + R-080/081/035x); primary = the base notes rule.
+                rule_id="R-007",
             ),
         )
 
@@ -322,6 +438,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                     value=size_class,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
 
@@ -329,37 +446,74 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     _emit_casing_depth(request, place, add_missing)
 
     # --- return_spacing (R-022 / R-023) ---
+    # R-022 (product_family ["*"]) applies to every DX family EXCEPT Terra V, which uses
+    # its own SOP formula R-023 (Rn = (n-0.5)*D + (n-1)*1.5 + 0.75). Terra H/Terra H C
+    # keep the generic R-022. (R-023 was promoted LOW->HIGH, John 2026-06-28, SOP-confirmed.)
     if coil == CoilType.DX:
-        rule = index["R-022"]
-        if _applies(rule, request) and request.product_type != ProductFamily.TERRA:
+        is_terra_v = request.terra_variant == TerraVariant.TERRA_V
+        if is_terra_v and _applies(index["R-023"], request):
             if request.suction_conn_size is not None and request.circuits is not None:
                 place(
                     "return_spacing",
                     FieldResult(
-                        value=_return_spacing(
+                        value=_terra_v_return_spacing(
                             request.suction_conn_size, request.circuits
                         ),
                         confidence=Confidence.HIGH,
-                        evidence_refs=rule["evidence_refs"],
+                        evidence_refs=index["R-023"]["evidence_refs"],
+                        rule_id="R-023",
                     ),
                 )
             else:
                 add_missing(["suction_conn_size", "circuits"])
+        else:
+            rule = index["R-022"]
+            if _applies(rule, request):
+                if request.suction_conn_size is not None and request.circuits is not None:
+                    place(
+                        "return_spacing",
+                        FieldResult(
+                            value=_return_spacing(
+                                request.suction_conn_size, request.circuits
+                            ),
+                            confidence=Confidence.HIGH,
+                            evidence_refs=rule["evidence_refs"],
+                            rule_id=rule["rule_id"],
+                        ),
+                    )
+                else:
+                    add_missing(["suction_conn_size", "circuits"])
 
-    # --- DX distributor S placement (R-034, checklist even-spacing) ---
+    # --- DX distributor S placement (R-034 even-spacing; R-034v Terra V = CD - Rn) ---
     if coil == CoilType.DX:
-        rule = index["R-034"]
         if request.rows is not None and request.circuits is not None:
             cd = _dx_cd_value(request)
             c = request.circuits
-            place(
-                "dist_s",
-                FieldResult(
-                    value=[_excel_round(k * cd / (c + 1)) for k in range(1, c + 1)],
-                    confidence=Confidence.HIGH,
-                    evidence_refs=rule["evidence_refs"],
-                ),
-            )
+            is_terra_v = request.terra_variant == TerraVariant.TERRA_V
+            if is_terra_v and request.suction_conn_size is not None:
+                # Terra V: Sn = CD - Rn (Rn = R-023 Terra V return spacing). SOP-confirmed.
+                r = _terra_v_return_spacing(request.suction_conn_size, c)
+                place(
+                    "dist_s",
+                    FieldResult(
+                        value=[round(cd - r[k - 1], 4) for k in range(1, c + 1)],
+                        confidence=Confidence.HIGH,
+                        evidence_refs=index["R-034v"]["evidence_refs"],
+                        rule_id="R-034v",
+                    ),
+                )
+            else:
+                place(
+                    "dist_s",
+                    FieldResult(
+                        # CHK DX!C46:C49 rounds to the nearest 1/8, not to a whole
+                        # inch -- CD=5.5, c=2 gives 1.875 / 3.625, not 2 / 4.
+                        value=[round_eighth(k * cd / (c + 1)) for k in range(1, c + 1)],
+                        confidence=Confidence.HIGH,
+                        evidence_refs=index["R-034"]["evidence_refs"],
+                        rule_id="R-034",
+                    ),
+                )
         else:
             add_missing(["rows", "circuits"])
 
@@ -372,7 +526,15 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     if request.application is None:
         add_missing(["application"])
     else:
-        key = f"{product.value}|{request.application}|{request.unit_size}"
+        # Terra V has its own casing table (vertical units are far taller than
+        # Terra H), so key off TERRA_V and never borrow Terra H's TERRA|... rows.
+        # Mirrors the R-076 size-set gate above.
+        casing_fam = (
+            "TERRA_V"
+            if request.terra_variant == TerraVariant.TERRA_V
+            else product.value
+        )
+        key = f"{casing_fam}|{request.application}|{request.unit_size}"
         entry = rule.get("lookup", {}).get(key)
         if entry is not None:
             for field, val in entry.items():
@@ -382,6 +544,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                         value=val,
                         confidence=Confidence.MEDIUM,
                         evidence_refs=rule["evidence_refs"],
+                        rule_id=rule["rule_id"],
                         review_required=True,
                     ),
                 )
@@ -400,22 +563,76 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
             and request.conn_size is not None
             and request.rows is not None
         ):
-            positions = [
-                x * request.conn_size + (x - 1) * 1.5
-                for x in range(1, request.circuits + 1)
+            d = request.conn_size
+            # Return X = X*D + (X-1)*1.5, per connection X=1..circuits (from one edge).
+            return_positions = [
+                x * d + (x - 1) * 1.5 for x in range(1, request.circuits + 1)
             ]
-            for field in ("supply_position", "return_position"):
+            place(
+                "return_position",
+                FieldResult(
+                    value=return_positions,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
+                ),
+            )
+            # Supply = CD - [(Xmax+2)*D + (Xmax-1)*1.5] (John 2026-07-15: corrected —
+            # the supply header references the OPPOSITE edge, so it is NOT the return
+            # list; the prior "supply == return" was a defect). Xmax = circuits. Needs
+            # casing_depth (CD), already emitted above.
+            # Emitted MEDIUM (review-required), NEVER HIGH: this SOP formula is still
+            # unverified against real cases and can produce out-of-range values (e.g.
+            # a negative position when CD is smaller than the connection run), so it
+            # must never auto-draw as confirmed. return_position stays HIGH (verified).
+            # Formula verification stays open in docs/wiki/open-questions.md. If CD is
+            # unavailable, supply is omitted, never guessed.
+            cd_result = values.get("casing_depth") or suggestions.get("casing_depth")
+            if cd_result is not None and isinstance(cd_result.value, (int, float)):
+                x_max = request.circuits
+                supply = round(
+                    cd_result.value - ((x_max + 2) * d + (x_max - 1) * 1.5), 4
+                )
                 place(
-                    field,
+                    "supply_position",
                     FieldResult(
-                        value=positions,
+                        value=supply,
                         confidence=Confidence.MEDIUM,
                         evidence_refs=rule["evidence_refs"],
+                        rule_id=rule["rule_id"],
                         review_required=True,
                     ),
                 )
+            else:
+                add_missing(["casing_depth"])
         else:
             add_missing(["circuits", "conn_size", "rows"])
+
+    # --- HGRH return spacing R (R-052) ---
+    # Product-branched per John 2026-06-25 / CHK HGRH. MEDIUM -> suggestions, so
+    # the confidence gate is preserved (the review-aid drawing reads it as a
+    # review-required value; it is never auto-promoted to a HIGH `values` entry).
+    # The per-header connection count gates how many R slots fill; absent it we
+    # fall back to `circuits` so a single emission still occurs.
+    if coil == CoilType.HGRH:
+        rule = index["R-052"]
+        n_conn = request.qty_conn_per_header or request.circuits
+        if request.conn_size is not None and n_conn is not None:
+            place(
+                "return_spacing",
+                FieldResult(
+                    value=_hgrh_return_spacing(request.conn_size, n_conn, product),
+                    confidence=Confidence.MEDIUM,
+                    evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
+                    review_required=True,
+                ),
+            )
+        else:
+            add_missing(["conn_size", "qty_conn_per_header"])
+
+    # --- copper straps required (R-090) ---
+    _emit_copper_straps(request, place, add_missing)
 
     review_required = bool(suggestions) or bool(blocked)
 
@@ -429,9 +646,64 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     )
 
 
+def assemble_drawing_notes(request: HeaderPrepopulateRequest) -> list[str]:
+    """Return the engine-assembled drawing notes for a coil, or ``[]``.
+
+    Wraps :func:`prepopulate` so callers (the paste-ready "Drawing Notes" field and
+    the SVG title block) share ONE source with the drawing. The ``notes`` field is only
+    placed when at least one note rule fires (R-007/008/080/081/035a/035b/035c), so read
+    it with ``.get`` — an unknown product line yields no distributor note (never
+    invented). The distributor note needs ``request.hot_gas_bypass`` to pick between
+    R-035b and R-035c — a caller that omits it always gets the non-HGBP wording.
+    """
+    result = prepopulate(request).values.get("notes")
+    return [str(v) for v in result.value] if result else []
+
+
 # --------------------------------------------------------------------------- #
 # Phase helpers
 # --------------------------------------------------------------------------- #
+def _emit_copper_straps(request, place, add_missing) -> None:  # type: ignore[no-untyped-def]
+    """R-090: copper straps = header_count * per-header multiplier.
+
+    DX -> 1 strap/header, HGRH -> 2 straps/header (John, 2026-06-23). CWC/HWC
+    have no confirmed multiplier, so they route to the blocked bucket rather
+    than guessing. ``header_count`` absent -> reported as a missing input.
+
+    Confidence here is HIGH for the deterministic DX/HGRH case; if the upstream
+    coil_type / header_count were themselves inferred, the contract layer that
+    wraps this output re-gates it to review_required (same pattern as the rest
+    of the engine — the pure function only sees confirmed enum inputs).
+    """
+    result = copper_strap_requirement(request.type_of_coil, request.header_count)
+    if result is None:
+        add_missing(["header_count"])
+    else:
+        place("copper_straps_required", result)
+
+
+def _hgrh_cd_multi(request) -> float | None:  # type: ignore[no-untyped-def]
+    """Checklist HGRH!C27 multi-header casing-depth term (family-branched), or None
+    when it cannot apply. The caller takes ``max(base, this)`` — the checklist's MAX
+    form — so this only ever RAISES CD above the rows-based base, never blanks or
+    lowers it (the failure mode that got R-073 disabled).
+
+    Terra V is excluded: its CD stays rows-based (SOP), which its S = CD - Rn depends
+    on. ``n`` follows the R-052 idiom (qty_conn_per_header, else circuits); ``conn`` is
+    the HGRH connection size (``conn_size``)."""
+    if request.terra_variant == TerraVariant.TERRA_V:
+        return None
+    conn = request.conn_size
+    n = request.qty_conn_per_header or request.circuits
+    if conn is None or n is None:
+        return None
+    if request.product_type == ProductFamily.VENTUM_PLUS:
+        return 3 * conn                                       # CHK HGRH!C27 VENTUM+
+    if request.terra_variant in (TerraVariant.TERRA_H, TerraVariant.TERRA_H_C):
+        return (n + 2) * conn + (n - 1) * 1.5 + 0.5           # CHK HGRH!C27 TERRA H
+    return (n + 1) * conn + (n - 1) * 1.5                     # CHK HGRH!C27 NOVA / VENTUM H
+
+
 def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-untyped-def]
     coil = request.type_of_coil
     index = _rule_index()
@@ -455,31 +727,31 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                         if multi_circuit
                         else index["R-070"]["evidence_refs"]
                     ),
+                    rule_id="R-070",  # multi-rule (base R-070 + multi-circuit R-072); primary
                 ),
             )
         else:  # HGRH
-            if request.circuits is not None and request.conn_size is not None:
-                d = request.conn_size
-                c = request.circuits
-                multi = (c + 1) * d + (c - 1) * 1.5
-                place(
-                    "casing_depth",
-                    FieldResult(
-                        value=multi,
-                        confidence=Confidence.MEDIUM,
-                        evidence_refs=index["R-073"]["evidence_refs"],
-                        review_required=True,
+            # Casing depth = MAX(rows-based base R-070, family multi-header term R-073),
+            # matching the Coil Checklist HGRH!C27 formula (David 2026-07-16, the source
+            # of truth for CD/S/SL). The MAX form is the fix for the earlier R-073 bug:
+            # the old code REPLACED base with the multi term, which for a single circuit
+            # was a non-physical 1.0"/1.25" that blanked slot.CD and corrupted Terra V's
+            # S = CD - Rn. As a floor-preserving MAX it can only raise CD above base, and
+            # ``_hgrh_cd_multi`` returns None for Terra V, so Terra V CD stays rows-based.
+            multi = _hgrh_cd_multi(request)
+            place(
+                "casing_depth",
+                FieldResult(
+                    value=base if multi is None else max(base, multi),
+                    confidence=Confidence.HIGH,
+                    evidence_refs=(
+                        _refs("R-070", "R-073")
+                        if multi is not None
+                        else index["R-070"]["evidence_refs"]
                     ),
-                )
-            else:
-                place(
-                    "casing_depth",
-                    FieldResult(
-                        value=base,
-                        confidence=Confidence.HIGH,
-                        evidence_refs=index["R-070"]["evidence_refs"],
-                    ),
-                )
+                    rule_id="R-070",  # multi-rule (base R-070 + family multi R-073); primary
+                ),
+            )
     else:  # CWC / HWC
         if request.rows is None:
             add_missing(["rows"])
@@ -490,6 +762,7 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
                 value=cd_cwc_hwc(request.rows),
                 confidence=Confidence.HIGH,
                 evidence_refs=index["R-071"]["evidence_refs"],
+                rule_id="R-071",
             ),
         )
 
@@ -501,21 +774,27 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
     feeds  > 1   -> R-060 io=2.3125 HIGH, R-062 hd=4 HIGH, R-063 sl HIGH
     feeds absent -> io/hd MEDIUM suggestions (missing feeds); sl HIGH default
     TERRA        -> io=3.25 HIGH (R-061), sl=10 HIGH (R-065) [checklist, John 2026-06-11]
+    TERRA V      -> io=2.75 HIGH (R-061v), sl=12 HIGH (R-065v) [SOP, John 2026-06-28]
+                    (supply AND return alike — the SOP's "return CH-2.75" is the same
+                     position from the opposite datum, not the callout value; the slot
+                     layer's CH-2.75 special was removed 2026-07-29)
     """
     index = _rule_index()
     product = request.product_type
+    is_terra_v = request.terra_variant == TerraVariant.TERRA_V
     feeds_one = request.feeds == 1
     feeds_multi = request.feeds is not None and request.feeds > 1
 
     # --- io ---
     if product == ProductFamily.TERRA:
-        rule = index["R-061"]
+        rule = index["R-061v"] if is_terra_v else index["R-061"]
         place(
             "io",
             FieldResult(
                 value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
     elif feeds_one:
@@ -526,6 +805,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value="TBD",
                 confidence=Confidence.MEDIUM,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
                 review_required=True,
             ),
         )
@@ -538,6 +818,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=2.3125,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
         else:  # feeds absent
@@ -547,6 +828,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=2.3125,
                     confidence=Confidence.MEDIUM,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                     review_required=True,
                     missing_inputs=["feeds"],
                 ),
@@ -561,6 +843,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value="N/A",
                 confidence=Confidence.MEDIUM,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
                 review_required=True,
             ),
         )
@@ -573,6 +856,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=4,
                     confidence=Confidence.HIGH,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                 ),
             )
         else:  # feeds absent
@@ -582,6 +866,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     value=4,
                     confidence=Confidence.MEDIUM,
                     evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
                     review_required=True,
                     missing_inputs=["feeds"],
                 ),
@@ -589,13 +874,14 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
 
     # --- sl ---
     if product == ProductFamily.TERRA:
-        rule = index["R-065"]
+        rule = index["R-065v"] if is_terra_v else index["R-065"]
         place(
             "sl",
             FieldResult(
-                value=10,
+                value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
     elif feeds_one:
@@ -607,6 +893,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value=value,
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
     else:
@@ -618,6 +905,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 value=rule["value"],
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
             ),
         )
 
