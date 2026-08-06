@@ -35,6 +35,12 @@ _MATERIAL_TITLE_SLOTS = {
     "slot.TUBE_MATERIAL", "slot.FIN_MATERIAL", "slot.CASING_MATERIAL",
     "slot.HEADER_MATERIAL", "slot.RETURN_CONN_SIZE", "slot.CIRCUITING",
     "slot.DISTRIBUTORS", "slot.COIL_TUBE_FACE", "slot.MODEL_NUMBER", "slot.TAG",
+    # The coil's own coating instruction ("HERESITE COATING REQUIRED"). Sourced from the
+    # submittal's manufacturing_options.coil_coating, not the rule engine, and filled by
+    # workflows.submittal_to_drawing._apply_coating_note_to_drawing on both the analyze and
+    # the derive path. Uncoated coils render it as empty rather than REVIEW REQUIRED --
+    # "no coating" is a known state, not a pending decision.
+    "slot.COATING_NOTE",
 }
 
 # Genuinely NOT derivable from the rule engine -> intentionally REVIEW REQUIRED.

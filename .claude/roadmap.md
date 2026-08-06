@@ -1,6 +1,66 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-05 (**[검토 수렴 트랙] Phase D 종료 — D-2 커밋 `67586f4`**: 판정 원장 +
+> 마지막 갱신: 2026-08-06 (**[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
+> John의 요청("불일치·결측을 DB에 쌓아 로직을 고치게")을 조사해보니 **DB는 이미 있고 이미 쌓이고 있었다**
+> — 체크리스트 불일치 500 match/4 mismatch, 결측 `blocked_reason` 945행, 교정 36행. 진짜 공백은 하나였다:
+> **`rule_firing` 0행**. 마이그레이션 3이 만든 표가 392 run 동안 비어 있었던 건 `_attach_engine_provenance`가
+> **Tier-A 수동 채움에만** 붙었기 때문이고(frozen path는 엔진 응답을 버린다), 그래서 "O가 아홉 번 틀렸다"는
+> 알아도 **"R-061v가 틀렸다"로 번역할 수가 없었다** — 즉 병목은 "John이 교정을 안 한다"만이 아니라 **캡처**였다.
+> ①**병합(94209c8)**: 불일치 캡처·판정 원장·규칙 제안 엔진이 `claude/review-convergence`에만 있는데 **두 브랜치가
+> 같은 ledger에 쓰고 있어** DB의 checklist 행은 전부 저쪽 code_version이었다. 텍스트 충돌은 roadmap.md 1건뿐
+> (양쪽 서술 union, 어느 쪽도 버리지 않음). `param_key_for_slot`이 저쪽에만 있어 병합이 선행조건.
+> ②**귀속 복구(e31a92d)**: `_attach_recomputed_engine_provenance`가 caller-side에서 엔진을 **관측 목적으로만**
+> 재실행 — frozen 무수정, 그 모듈 자신의 입력 에코로 호출을 재구성, frozen이 안 넘긴 인자는 안 넘김.
+> **재구성은 주장이므로 검증한다**: 재계산 슬롯 전부를 실제로 그려진 slot_values와 대조해 어긋나면
+> `fidelity='drifted'` + 어긋난 키를 **기록**(지우면 신뢰 불가 신호 자체가 사라진다), 리더는 비율에서 제외.
+> `source`는 블록 레벨이라 한 (run,coil)에 두 출처가 섞이는 게 **표현 불가능**. 순서가 양방향으로 load-bearing —
+> analyze는 `_apply_hgrh_pairing_cd` **뒤**(페어링이 CD를 5.625→5.75로 바꾸므로 frozen 호출을 재현하면 오히려
+> drift), derive는 Tier-B 반영 **앞**(뒤면 엔지니어의 입력을 엔진 drift로 오보). 코일당 0.19ms. 마이그레이션 6은
+> additive-only, NULL source는 1c seam이므로 `COALESCE(...,'live')`. ③**Observatory(75fe368)**: 규칙별 불일치
+> 측정. **`accuracy` 필드를 만들지 않는 것**이 설계의 핵심 — 로드맵이 4단계 최대 위험으로 적어둔 표본 편향
+> ("안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다")에 대한 답은 경고문이 아니라 구조다. 모든 비율의 분모는
+> `fired`가 아니라 `second_opinion`(100발화/4관측/2불일치 = 0.5이지 0.02가 아니다), coverage 0은
+> `disagreement_rate: None`, `blind_spots`를 `rules`와 **나란히** 내고 CLI는 그걸 **먼저** 찍는다.
+> 어휘 브리지가 난제였다(엔진필드 `suction_io` ↔ 패널키 `O2` ↔ 시트슬롯 `slot.O4`) — 기존 맵 합성으로 만들되
+> **실제 derive를 돌려서** 두 누락을 발견: `record._compare_rows`가 `param_key_for_slot(slot) or label`로
+> 파일링하므로 라벨 반쪽도 따라가야 하고(안 그러면 **R-033 DIST EXTENTION**이 미귀속으로 샌다 — 이 도구가 가장
+> 귀속하고 싶은 바로 그 행), `return_spacing`은 per-circuit **리스트**라 role 표를 우회해 `slot.R{even}`을 직접
+> 쓴다(빠지면 DX return-spacing 규칙이 조용히 미측정). 검증: 임시 원장에 **실제 derive 12건 → rule_firing 124행
+> / 고유 규칙 40개 / 전부 recomputed·verified / (field,rule) 44쌍 중 30쌍 측정가능**. 라이브 원장에는 아직
+> `insufficient` — 1c'는 **새 실행부터** 적용되므로 정직한 0이다. **1493 green**(1237→1440 병합→1459→1493),
+> frozen 무접촉, 도면 값 불변(스냅샷 비교로 고정). 범위 밖으로 남긴 것: 판정 UI, 제안서 자동 생성.
+> 이전: **[코팅·검토표면 트랙] 브라우저 교정이 산출물에 도달하지 못하던 결함 2건 — b44fdd0**:
+> 성격이 같은 두 결함을 함께 닫았다 — **엔지니어가 브라우저에서 고친 값이 정작 넘겨주는 산출물에 반영되지 않던**
+> 문제. ①**TR-9**: analyze는 `_engine_drawing_notes`+`_engine_drawing_dims`를 정본 기록에 태워 붙여넣기 52필드
+> 표면에 올리는데 `/derive`는 그 후처리를 통째로 안 했다(**228d731 CD 회귀와 동일 계열** — analyze에만 배선된
+> 후처리, 이 리포에서 두 번째). 조사해보니 **자물쇠가 둘**이었다: 백엔드는 표면을 아예 반환하지 않고
+> (29키 중 부재), 프런트도 derive 응답으로 붙여넣기 표를 다시 그리지 않았다(코일 전환해도 analyze 시점 값을
+> 재판독). 한쪽만 고쳤으면 **테스트는 초록인데 화면은 그대로**였을 것. 재생성엔 원본 후보가 필요한데 derive는
+> 그걸 안 받으므로 **브라우저가 왕복 전달**(기존 `panel`/`sibling_coils`와 같은 관례) — 다만 John의 요구대로
+> **신원은 서버가 강제**한다: 후보와 도면은 **서로 다른 경로로 도착**하므로 엉뚱한 코일 페이지에서 집어온 카드는
+> tag가 어긋나 폐기된다(3단 fail-closed: 일치/불일치/tag없음, **모든 스킵이 사유를 표시** — 조용히 안 갱신된
+> 패널은 "제출물에 없음"으로 읽히는데 그게 바로 이 수정이 없애려는 실패다). 후보 없으면 종전과 byte-identical.
+> **plan-review 1R이 BLOCKER로 잡은 것**: derive의 `parameter_set`엔 **Tier-B 수동 override가 이미 반영**돼 있어
+> 그대로 치수를 뽑으면 사람이 타이핑한 값이 `EV-ENGINE-DIM-*`/`source_type="engine_rule"`로 **엔진 산출물로 위장**
+> 저장된다(analyze는 override가 없어 그 헬퍼가 사람 값을 만난 적이 없었음) → override된 키만 제외. 2R APPROVED.
+> ②**코팅**: 템플릿 3장이 **코팅된 참조 도면에서 시드**돼 그 참조의 코팅명이 아트워크에 박혀 있었다 — 무코팅
+> 코일에 `ELECTROFIN COATING REQUIRED`가 찍히고 HERESITE 코일엔 엉뚱한 코팅이 지시됐다. `slot.COATING_NOTE`로
+> 슬롯화(+`slot_map` 등록, 안 하면 플레이스홀더가 그대로 인쇄) + 글자당 x좌표 목록 제거(ELECTROFIN의 자간으로
+> 다른 코팅을 배치하던 것). **그런데 슬롯화만으론 부족했다** — 그 노트 블록은 `_strip_intruding_chrome`+viewBox
+> 크롭이 이미 제거하고 있어서 **원래 화면에 안 나왔다**(템플릿만 고치고 끝냈으면 테스트 초록·화면 무변화).
+> 코일 태그와 같은 방식으로 **크롭 영역 안에 직접 주입**(15px 굵게 빨강 — 제조 지시이지 메타데이터가 아님) →
+> **22개 버킷 전부**에서 동작. 무코팅은 `REVIEW REQUIRED` 센티넬이 아니라 **완전 공란**(무코팅은 미결정이 아니라
+> 확정 상태). **커버 라인아이템 coating 자동 인식** 신설(HGBP 어더와 동일한 스캔 창·근거 — 커버 앞은 컨설턴트
+> 스펙이라 견적일 수 없음), **회사 어휘 14종에 앵커**(자유 문자열이 코팅명을 만들지 못함), 코일 자신의 상세
+> 블록이 우선. 라이브 실행이 **기존 결함 1건을 드러냄**: `Coil Coating: <값>` 라벨 패턴이 줄 끝까지 삼켜
+> `ELECTROFIN EVAP TEMP COATING REQUIRED`가 나왔다(값이 인쇄된 적 없어 잠자던 것) → 노트 생성 시 어휘로 정규화,
+> 미인식은 버리지 않고 그대로 인쇄. **물코일 coating = John 판정 종결**: 물코일은 절대 코팅되지 않으므로 추출된
+> coating은 이웃 블록에서 번져온 것 → **한 지점에서 제거**(COIL_COATING 리더가 3개라 개별 게이팅은 다음 리더가
+> 구멍을 다시 엶). **수동 입력은 의도적으로 허용**(추론을 거절하는 것과 엔지니어의 명시적 결정을 거부하는 것은
+> 다름 — 테스트로 고정해 다음 세션이 뒤집지 못하게). **1237 green**(+49), frozen 무접촉, 실 제출물 라이브 검증
+> (EZC-0009 자동 인식·2870 무코팅 공란·2857 물코일 공란·수동 HERESITE 반영/해제·tag 가드 4분기),
+> **John 브라우저 A/B 탭 눈확인 완료**. 커밋·푸시 `18ef71a..b44fdd0`(`.agents`/`.codex`/settings 격리).
+> 이전: **[검토 수렴 트랙] Phase D 종료 — D-2 커밋 `67586f4`**: 판정 원장 +
 > 알려진 갭 레지스트리 + 규칙 제안서가 붙어 **Phase D가 닫혔다**. D-1이 체크리스트 불일치를 원장 *신호*로
 > 만들었다면 D-2는 그것을 *판정 가능한* 대상으로 만든다 — John이 한 번 판정하면 그 정체성이 재등장하는 모든
 > 곳에서 빨강이 앰버 + 근거로 바뀐다. **판정이 하지 *않는* 것이 설계의 핵심**: 값·confidence 무변경이고
@@ -871,6 +931,12 @@
   `/api/checklist/fill`을 타 Downloads에 .xlsx를 쓰고 journal 3줄을 남김(클릭은 "Analyze PDF" 하나뿐) →
   승인 후 전량 삭제. ⚠️ John의 :8011은 `--reload` 없음 → **재시작해야 반영**. 🆕 이번 세션
 
+- [x] **[코팅·검토표면 트랙] 브라우저 교정이 산출물에 도달하지 못하던 결함 2건 (b44fdd0, 2026-08-06)** —
+  TR-9(derive가 붙여넣기 52필드 표면을 재생성 안 함) + 템플릿에 박혀 있던 코팅명. 상세는 상단 갱신 노트 참조.
+  신규 3테스트 파일 **1237 green**(+49), frozen 무접촉, plan-review 2R(1R: BLOCKER 1·MAJOR 4·MINOR 5 전건 반영 →
+  2R APPROVED), 실 제출물 라이브 검증 + **John A/B 탭 눈확인 통과**. 부수 성과: 코팅 노트가 슬롯이 아니라
+  **크롭 영역 주입**으로 구현돼 3장이 아니라 **22개 버킷 전부**에서 동작한다.
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -937,7 +1003,15 @@
   finalize가 오버라이드본을 파일링). 재검증 후 1178 green. 폰 확인 페이지(1차 실행 근거):
   `claude.ai/code/artifact/976a22c8-3438-4c5f-bb14-7e91d2f4e2cc`
 
-- [ ] **[TR-9] derive가 Drawing Notes·엔진 치수를 재계산하지 않음 (2026-07-30 전수조사 발견, 수정 보류)** —
+- [x] **[TR-9] derive가 Drawing Notes·엔진 치수를 재계산하지 않음 — ✅ 해소·John 눈확인 통과 (b44fdd0, 2026-08-06)** —
+  조사 결과 **자물쇠가 둘**이었다: 백엔드가 붙여넣기 표면을 아예 반환하지 않았고(derive 29키 중 부재), 프런트도
+  derive 응답으로 그 표를 다시 그리지 않았다(코일 전환 시에도 `page.workflow`의 analyze 시점 값을 재판독). 한쪽만
+  고쳤으면 테스트는 초록인데 화면은 그대로였을 것 — 직전 세션의 "죽은 코드" 사건과 대칭. 재생성에 필요한 원본
+  후보를 브라우저가 왕복 전달하되 **신원은 서버가 tag로 강제**(후보와 도면이 서로 다른 경로로 도착하므로 교차
+  오염이 잡힌다; 3단 fail-closed + 모든 스킵에 사유 표시). plan-review 1R BLOCKER = **Tier-B override가 엔진
+  출처로 위장 저장**(analyze는 override가 없어 그 헬퍼가 사람 값을 만난 적 없었음) → override 키 제외. 2R
+  APPROVED. 아래 원 기록 보존:
+  **[원 발견 기록 2026-07-30]** —
   228d731의 CD 회귀와 **같은 계열**(analyze에만 배선된 후처리)을 찾으려 analyze
   `_run_candidate_to_drawing_payload` vs `derive_coil_template_drawing` 후처리를 1:1 대조한 결과. 게이트 5종·
   플래그 2종·`_clean_template_svg`·`_attach_parametric_schematic`·`build_manual_fill_plan`은 양쪽 다 있고,
@@ -967,6 +1041,14 @@
   **2026-07-31:** Phase 2.1이 드디어 커밋됨(343b972 · f54d5f1) — 이웃 패널의 질의측 추출과 A5 튜닝 하네스가
   이제 브랜치에 있다. 가중치 **채택은 여전히 미배선**(John eyeball 후 1줄)이고, 착수 조건은 그대로
   **교정 축적**이다. 덤으로 `/derive`가 클린 체크아웃에서 500이던 파손이 이 커밋으로 복구됐다.
+  **2026-08-06 보강:** b44fdd0이 "브라우저에서 고칠 이유"를 한 겹 더 만든다 — 이제 브라우저 edit이 도면·
+  체크리스트뿐 아니라 **붙여넣기 52필드 표면까지** 함께 끌고 가므로, 손으로 고친 값이 산출물 전체에 일관되게
+  반영된다(종전엔 표가 analyze 시점에 얼어 있어 결국 손으로 다시 맞춰야 했고, 그건 교정을 원장에 남길 이유를
+  약하게 만들었다). coating이 새 edit 축으로 열린 것도 같은 방향.
+  ⚠️ **오염 주의(2026-08-06 실측)**: 검증용 실행이 `PO_Release_Case/journal/coil-2026080{5,6}.jsonl`에
+  `intake_drawing`/`checklist_filled`/`coil_manual_fill` 라인을 남긴다(project=None). 8/6 13:58 라인 2개는
+  John의 실 2755 Gumbo 실행이고 그 뒤 7개가 검증분 — **append-only 저널이라 삭제하지 않았다**. 코퍼스 카운트를
+  읽을 때 project=None 검증 실행을 어떻게 다룰지는 미결(Stage 2 착수 시 판단 필요).
 ## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
@@ -977,9 +1059,21 @@
   - [ ] **Phase 3.1 랭킹 (보류)** — 착수 트리거: 교정 더 축적 + **설계결정** — flag된 코일만 랭킹하면 위 disjoint로
     진짜 override 코일을 놓치므로, `corrected_total−corrected`(unflagged 교정) 신호 노출 여부 John 판정 후. 그다음
     `/api/review/project` gate에 deterministic severity 랭킹 + inert weight seam(측정값 배선은 1줄, Stage 2.0 패턴).
-- [ ] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
+- [~] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
   위험** — John은 flag된 코일만 보므로 안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다. 1d 감사샘플이
   유일한 통계적 수단; 모든 수치는 "리뷰 조건부" 라벨
+  - [x] **Phase 4.0a 귀속 링크 복구 (e31a92d)** — `_attach_recomputed_engine_provenance`가 caller-side에서
+    provenance 전용 재실행. 마이그레이션 6(`source`/`fidelity`/`drift_keys_json`, additive-only).
+    도면 값 불변은 스냅샷 비교로 고정, 재구성 신뢰도는 drawn slot 대조로 `verified`/`drifted` 라벨.
+  - [x] **Phase 4.0b Observatory (75fe368)** — `capture/observatory.py` + `GET /api/capture/rule-observatory`
+    + `scripts/rule_observatory.py`. **`accuracy` 필드 없음**(표본 편향 대응은 경고문이 아니라 구조),
+    분모는 `second_opinion`, coverage 0 → `disagreement_rate: None`, `blind_spots`를 나란히 출력.
+  - [ ] **Phase 4.1 실측 대기** — 라이브 원장은 아직 `insufficient`(1c'는 새 실행부터). John이 실제 제출물을
+    몇 건 돌려야 숫자가 나온다. 그때 볼 것: ①`min_second_opinion=5`/`min_identities=10` 임계값이 맞는지
+    ②`join_quality.same_run` vs `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에
+    뭐가 쌓이는지 ④R-033 DIST EXTENTION이 실제로 귀속되는지.
+  - [ ] **감사샘플이 여전히 유일한 통계적 수단** — `audit_sample`은 0행이라 현재 모든 규칙이
+    `review_conditional: True`. 이걸 채우기 전까지 어떤 수치도 "John이 이미 의심한 코일" 조건부다.
 - [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →
   John 승인. **제안 규칙은 MEDIUM 진입** = 기존 confidence gate가 공짜로 안전을 보장(자동으로 안 그려짐)
 - [ ] **6단계 Format-Agnostic Extraction** — **의존성은 1단계뿐, 순서상 6일 뿐** (타사 서밋털 수요 생기면
@@ -1047,7 +1141,16 @@
   맞춤(현재 상수 6, H05/H10=17 누락) + 체크리스트 compare에 CoilForge 값 노출(현재 blank). John: "체크리스트에 6 push".
 - [ ] **[3058 트랙] Phase 4 — 코일별 product/size 오탐지 조사** — CDXC-3=VENTUM_H/H10 등 혼재(일부 전역폴백).
   오탐지면 R-074 casing W/H + 위 C59(17 vs 6) 틀어짐. `detect_product_and_size` per-coil 추적, 실 유닛 대조(John/BOM).
-- [ ] **[물코일 트랙] coating 노트가 물코일에 없음 (John 판정 필요)** — `R-080`은 `coil_type: [DX]`,
+- [x] **[물코일 트랙] coating 노트가 물코일에 없음 — ✅ John 판정 종결 (b44fdd0, 2026-08-06)** —
+  John: **"물코일엔 coating이 절대 안 들어간다"** → R-080(DX)/R-081(HGRH)이 물코일을 제외하는 것은
+  **미해결 공백이 아니라 확정 설계**로 종결. 동작은 그대로이나 **의미가 확정**됐다(그게 도메인 오너 판정의 일).
+  덤으로 한 걸음 더: 물코일에 coating이 **추출되던 경로 자체를 막았다** — 상세 블록은 경계가 서로 번지므로
+  (`_DETAIL_COATING_ANNOTATION_RE` 주석이 기록한 실제 현상) 물코일이 이웃 코일의 coating을 주워올 수 있었다.
+  `COIL_COATING` 리더가 **3개**(테이블 시드·별표 각주·라벨 줄)라 개별 게이팅은 네 번째 리더가 구멍을 다시 여므로
+  **추출 마지막 한 지점**에서 제거. 코일 종류를 모르는 블록은 무접촉(추측으로 데이터를 버리지 않음).
+  **수동 입력은 의도적으로 허용**(John 확인) — 추론을 거절하는 것과 엔지니어의 명시적 결정을 거부하는 것은 다르며,
+  그 비대칭을 나중에 "버그"로 오인해 막지 않도록 테스트로 고정했다. 아래 원 기록 보존:
+  **[원 기록]** — `R-080`은 `coil_type: [DX]`,
   `R-081`은 `[HGRH]` 전용이라 CWC/HWC는 coating을 지정해도 노트가 늘지 않는다(HERESITE 실측 확인).
   20조합 전수조사에서 **유일하게 남은 설계 공백**. 규칙이 없는 것이라 지어내지 않음 — 물코일에도
   coating 제외 노트가 필요한지 John 확인 후 R-080/081 범위 확장 여부 결정.
@@ -1056,4 +1159,12 @@
   있었는데, 이제 CWC/HWC를 포함한 제출물이 coating을 명시하면 **DX/HGRH만 노트가 늘고 물코일은 조용히
   안 는다** = 같은 패키지 안에서 코일 타입에 따라 노트가 갈리는 게 눈에 보이게 된다. 2968은 DX+HGRH만이라
   드러나지 않았음. 물코일이 섞인 코팅 제출물이 들어오기 전에 John 판정을 받는 편이 낫다.
+- [ ] **[코팅 트랙] `Coil Coating: <값>` 라벨 패턴이 줄 끝까지 삼킴 (2026-08-06 라이브가 노출, 상류 미수정)** —
+  EZ 도면은 다음 열 라벨을 값에 바로 붙여 인쇄하므로 `ElectroFin Evap Temp 45` 같은 값이 **정본에 그대로 저장**된다.
+  b44fdd0은 **도면 노트를 만들 때만** 어휘로 정규화했으므로, 붙여넣기 표/체크리스트의 Coil Coating 칸은 여전히
+  오염된 문자열을 보여준다. 근본 수정은 `_FieldPattern("COIL_COATING", ...)`의 탐욕적 캡처를 좁히는 것인데,
+  다른 라벨 패턴과 같은 형태라 회귀 범위 확인이 선행돼야 함(값이 인쇄되지 않던 동안 잠자던 결함).
+- [ ] **[코팅 트랙] 커버 라인아이템 coating 인식이 실 사례로 미검증** — `_package_coating`은 HGBP 어더 패턴을
+  그대로 따랐고 어휘 앵커로 안전하지만, **커버에 coating이 적힌 실 제출물을 아직 못 구했다**(리포의 12개 제출물
+  전수 스캔에서 coating 언급 0건). 그런 파일이 들어오면 스캔 창·우선순위(코일 상세 블록 우선)를 실물로 확인할 것.
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류

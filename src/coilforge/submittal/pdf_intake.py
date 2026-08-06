@@ -192,6 +192,85 @@ _PACKAGE_HGBP_RE = re.compile(
 )
 
 
+# Coating stated as a COVER line item (John 2026-08-05). Until now coating was read only
+# from a coil's detail block, so a package that quotes it once on the cover -- the way the
+# hot-gas-bypass adder is quoted -- read as "no coating" on every coil, which silently
+# dropped the R-080/R-081 note AND left the drawing printing whatever coating its seeded
+# template happened to carry.
+#
+# Vocabulary-anchored, never free-text: the value has to be one of the coating families the
+# company's own Coil Checklist dropdown offers, so a stray sentence cannot invent a coating
+# name. `_COATING_FAMILY_RE` keeps the submittal's own wording (e.g. "Finkote2 Epoxy Coil
+# Coating") rather than snapping it to the dropdown spelling -- normalizing here would
+# assert a specific variant the document may not have stated.
+# Each alternative ends at a KNOWN variant suffix and no further. An open-ended trailing
+# character class over-captures: the EZ drawing writes "Coil Coating: ElectroFin" with the
+# next column's label butted straight up against it, which produced the nonsense
+# instruction "ELECTROFIN EVAP TEMP COATING REQUIRED". Bounded alternatives keep the value
+# inside the company's own vocabulary instead of swallowing whatever follows.
+_COATING_FAMILY_RE = re.compile(
+    r"\b("
+    r"finkote\s*2\s*w/\s*uv\s*topcoat"
+    r"|finkote\s*(?:zx\s*\(?zpex\)?|cc|hp|zx|2)"
+    r"|finkote"
+    r"|heresite\s*(?:hydrophilic|uv)"
+    r"|heresite"
+    r"|electrofin\s*uv"
+    r"|electrofin"
+    r"|blygold\s*anti-?\s*(?:corrosive|microbial)"
+    r"|blygold"
+    r"|black\s+poly(?:\s+coated\s+fin)?"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def coating_family(text: Any) -> str | None:
+    """The coating family named inside ``text``, or None.
+
+    The long-standing ``Coil Coating: <value>`` label pattern captures to end-of-line, and
+    the EZ drawing butts the next column's label straight against the value -- so the
+    stored coating can read "ElectroFin Evap Temp 45". Harmless while nothing printed it;
+    once the drawing carries a coating INSTRUCTION the trailing words become nonsense on a
+    manufacturing note. Callers that render the coating normalize through this.
+
+    Recognition, not invention: it returns a span of the input, never a substituted
+    spelling, and None when no known family is present (the caller then keeps the raw
+    value rather than dropping a coating the document really states).
+    """
+    if text is None:
+        return None
+    match = _COATING_FAMILY_RE.search(str(text))
+    return None if match is None else _clean_line(match.group(1))
+
+
+def _package_coating(
+    pages: list[_TextPage], *, cover_page: int | None = None
+) -> str | None:
+    """The coating quoted once for the whole package, or None.
+
+    Same scan window and reasoning as :func:`_package_hgbp_pages`: the option is a cover
+    LINE ITEM, so pages BEFORE the cover -- the consulting engineer's spec sections, which
+    routinely discuss coatings in the abstract -- cannot be quoting it and are skipped.
+    That exclusion is what makes a document-wide scan safe here; without it a spec
+    paragraph mentioning "epoxy coating" would coat every coil in the package.
+
+    Callers apply it ONLY to coils that stated no coating of their own, and never to water
+    coils (a water coil is never coated -- see `_drop_coating_from_water_coil`).
+    """
+    for page in sorted(pages, key=lambda p: p.page_number):
+        if cover_page is not None and page.page_number < cover_page:
+            continue
+        for raw_line in (page.text or "").splitlines():
+            line = _clean_line(raw_line)
+            if not line or "coat" not in line.lower():
+                continue
+            match = _COATING_FAMILY_RE.search(line)
+            if match:
+                return _clean_line(match.group(1))
+    return None
+
+
 def _package_hgbp_pages(
     pages: list[_TextPage], *, cover_page: int | None = None
 ) -> tuple[int, ...]:
@@ -669,6 +748,7 @@ def extract_coil_candidate_from_pdf_bytes(
     # Read after both OCR passes have rebuilt `pages`, so the scan covers every cover
     # detection tier -- including the two that never look at page text themselves.
     hgbp_pages = _package_hgbp_pages(pages, cover_page=cover_detection.page_number)
+    package_coating = _package_coating(pages, cover_page=cover_detection.page_number)
     cover_candidates = [
         _candidate_from_cover_row(
             row,
@@ -679,6 +759,7 @@ def extract_coil_candidate_from_pdf_bytes(
                 *cover_detail_lines.get(row.tag, ()),
             ),
             package_hgbp_pages=hgbp_pages,
+            package_coating=package_coating,
         )
         for index, row in enumerate(cover_detection.rows, start=1)
     ]
@@ -1841,10 +1922,28 @@ def _candidate_from_cover_row(
     index: int,
     detail_lines: tuple[SanitizedSubmittalLine, ...] = (),
     package_hgbp_pages: tuple[int, ...] = (),
+    package_coating: str | None = None,
 ) -> SubmittalCoilCandidate:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = _add_cover_row_lines(extracted, row, 1)
     order = _append_detail_lines(extracted, detail_lines, order)
+    # Cover-quoted coating, applied ONLY where the coil said nothing itself -- the coil's
+    # own detail block is the more specific statement and must win, which is why this runs
+    # AFTER the detail lines rather than riding in with the shared unit lines (those are
+    # prepended, and would outrank the block). Water coils are excluded outright: a water
+    # coil is never coated, so a package coating simply is not about them.
+    if (
+        package_coating
+        and normalize_source_key("COIL_COATING") not in extracted
+        and _derive_coil_format(row.tag, row.item) not in _WATER_COIL_FORMATS
+    ):
+        order = _add_default_line(
+            extracted,
+            "COIL_COATING",
+            package_coating,
+            order,
+            "Coating quoted as a cover-page line item for the package",
+        )
     # Derive the circuit count from the "Coil Style" prose when no discrete "Circuits"
     # cell was extracted (e.g. "Coil Style: Interlaced 2 Circuits"). Inferred ->
     # review-required; the explicit CIRCUITS label, when present, wins -- but only when
@@ -2174,7 +2273,35 @@ def _extract_detail_lines_from_block(
                 line_number,
                 "detail page label match",
             )
+    _drop_coating_from_water_coil(extracted, coil_format)
     return tuple(extracted.values())
+
+
+# A water coil is NEVER coated (John 2026-08-05). So a coating reading on a CWC/HWC/PHWC
+# block is not that coil's coating -- it belongs to a neighbouring coil. The detail blocks
+# genuinely bleed: `_DETAIL_COATING_ANNOTATION_RE`'s own comment records a condensing block
+# whose boundary "runs on into the Backup Heating section", and the annotation is a free
+# footnote rather than a label/value pair anchored to a coil.
+#
+# Dropped at the END of extraction rather than at each reader, because COIL_COATING has
+# THREE sources here (the structured table seed, the asterisk annotation, and the
+# "Coil Coating: <value>" label pattern) and gating them one by one would leave the next
+# reader to re-open the hole. Un-formatted blocks (coil_format None) are left alone -- we
+# only suppress where the coil is KNOWN to be a water coil.
+#
+# This is a suppression, not a silent data loss: the value would have been wrong, and the
+# Direct Coil "Coil Coating" field falls back to its declared default. R-080/R-081 are
+# already DX/HGRH-only, so no drawing note depended on it.
+_WATER_COIL_FORMATS = frozenset(
+    {"heating_hot_water", "preheat_hot_water", "cooling_chilled_water"}
+)
+
+
+def _drop_coating_from_water_coil(
+    extracted: dict[str, SanitizedSubmittalLine], coil_format: str | None
+) -> None:
+    if coil_format in _WATER_COIL_FORMATS:
+        extracted.pop(normalize_source_key("COIL_COATING"), None)
 
 
 # --------------------------------------------------------------------------- #

@@ -283,6 +283,27 @@ async def capture_override_rate():
     return jsonable_encoder(report)
 
 
+@app.get("/api/capture/rule-observatory")
+async def capture_rule_observatory():
+    """Read-only Stage 4.0 measurement: per-RULE disagreement over the ledger — one level up
+    from override-rate, at the grain a YAML change is actually made at.
+
+    Reports NO accuracy figure, by construction. Every rate divides by ``second_opinion``
+    rather than ``fired``, and a rule nobody has ever checked comes back with
+    ``disagreement_rate: None`` plus a ``no_second_opinion`` flag — because the failure mode
+    this stage is most exposed to is an unexamined rule reading as a perfect one. The
+    ``blind_spots`` list is returned alongside the ranked rules for the same reason.
+
+    Aggregate counts only; redacts on this unauthenticated surface (a per-rule aggregate
+    needs no coil tags or project numbers at all); never creates the DB."""
+    from coilforge.capture.observatory import measure_rule_observatory
+
+    report = measure_rule_observatory(redact=True)
+    report["export_allowed"] = False
+    report["production_drawing_approval_claimed"] = False
+    return jsonable_encoder(report)
+
+
 @app.get("/api/capture/similar")
 async def capture_similar(coil_uid: str, k: int = 5, same_category: bool = True):
     """Read-only case retrieval (Stage 2): the nearest past coils to ``coil_uid`` plus John's
@@ -1626,9 +1647,21 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
     if not _manual_fill_enabled():
         clean.pop("param_overrides", None)
         clean.pop("spec_overrides", None)
+        # The Direct Coil review-surface refresh rides the same feature, so the documented
+        # kill switch has to strip its input too -- otherwise the refresh keeps running
+        # with COILFORGE_MANUAL_FILL=0 and the env var stops being a whole-feature lever.
+        clean.pop("candidate", None)
         for key in ("application", "header_count", "qty_conn_per_header"):
             clean.pop(key, None)
         return clean, errors
+
+    # Source candidate for the Direct Coil review-surface refresh (TR-9). The workflow
+    # validates it and checks its tag against the coil being derived; here we only reject
+    # a non-object so a junk value never reaches model_validate.
+    if "candidate" in clean and clean["candidate"] is not None:
+        if not isinstance(clean["candidate"], dict):
+            errors.append("candidate must be an object")
+            clean.pop("candidate", None)
 
     valid_overrides: list[dict[str, Any]] = []
     for item in spec.get("param_overrides") or []:
@@ -1723,7 +1756,12 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
     if not _manual_fill_enabled():
         result.pop("manual_fill_plan", None)
     if errors:
-        result["manual_fill_errors"] = errors
+        # MERGE, never assign: the workflow puts its own skip reasons here (e.g. the coil
+        # tag could not be verified, so the Direct Coil review fields were not refreshed).
+        # Assigning would drop that reason whenever any unrelated sanitizer error fired --
+        # and an unexplained stale panel is exactly the failure this reporting exists for.
+        existing = result.get("manual_fill_errors")
+        result["manual_fill_errors"] = (list(existing) if existing else []) + errors
     # request_payload=clean carries the coil tag (singular) and the project
     # identity the frontend now sends; derive's result has neither pdf_intake_summary
     # nor pdf_coil_pages, so without this the milestone hits the identity gate and
