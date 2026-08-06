@@ -34,6 +34,13 @@ from coilforge.phase2a.fixtures import load_default_dx_header1_fixture
 from coilforge.phase2a.ui_state import build_phase2b_default_ui_state
 from coilforge.phase2a.renderer import DEFAULT_VIEWBOX, REVIEW_WATERMARK
 from coilforge.review import build_default_review_packet, build_review_packet
+from coilforge.review.adjudicate import AdjudicationError, record_adjudication
+from coilforge.review.divergence import (
+    annotate_known_divergences,
+    divergence_enabled,
+    identities_by_tag,
+    load_registry,
+)
 from coilforge.submittal.po_based_intake import build_po_based_intake
 from coilforge.submittal import SubmittalCoilCandidate, load_submittal_candidate_fixture
 from coilforge.ambient.pdf_intake import parse_ambient_pdf
@@ -60,6 +67,7 @@ from coilforge.checklist.mapping import build_checklist_fill
 from coilforge.checklist.from_workflow import coil_inputs_from_candidates
 from coilforge.checklist.compare import build_review
 from coilforge.checklist.excel_writer import write_checklist
+from coilforge.common.excel_lock import ExcelBusyError
 from coilforge.checklist.overrides import normalize_coil_overrides
 from coilforge.case_journal import record_coil_milestone
 
@@ -718,8 +726,16 @@ async def _run_or_reuse_checklist(
         saved_path = cached.get("saved_path")
         if not saved_path or Path(saved_path).exists():
             _CHECKLIST_CACHE.move_to_end(key)
+            # Annotate the COPY, never the cached original: a ruling John records in the
+            # browser has to change the next render, and this result is memoized by PDF
+            # bytes — baking the annotation into the cache would freeze the review at
+            # first-fill time and the new ruling would appear to do nothing.
             return _ChecklistOutcome(
-                copy.deepcopy(cached["review"]), saved_path, None, None
+                annotate_known_divergences(
+                    copy.deepcopy(cached["review"]),
+                    identities=cached.get("identities"),
+                ),
+                saved_path, None, None,
             )
         # The filled copy was deleted -- drop the stale entry and regenerate.
         del _CHECKLIST_CACHE[key]
@@ -764,6 +780,10 @@ async def _run_or_reuse_checklist(
             write_checklist, fill, dest_name=_checklist_output_name(filename)
         )
         review = build_review(fill, writer_result)
+    except ExcelBusyError as exc:  # another Excel write holds the single-flight guard
+        # BEFORE the RuntimeError clause on purpose: 409 (retryable, someone else is
+        # mid-write) must not be swallowed by the 501 that means "Excel is missing".
+        return _ChecklistOutcome(None, None, str(exc), 409)
     except RuntimeError as exc:  # Excel / pywin32 unavailable
         return _ChecklistOutcome(None, None, str(exc), 501)
     except Exception as exc:  # noqa: BLE001 -- surface COM/fill failures clearly
@@ -781,12 +801,19 @@ async def _run_or_reuse_checklist(
             if k != key and v.get("saved_path") == saved_path
         ]:
             del _CHECKLIST_CACHE[stale]
-    _CHECKLIST_CACHE[key] = {"review": review, "saved_path": saved_path}
+    # The identity map rides along so a later cache hit can annotate without rebuilding
+    # the coils (the workflow is memoized by PDF bytes and would not re-run).
+    _CHECKLIST_CACHE[key] = {
+        "review": review,
+        "saved_path": saved_path,
+        "identities": identities_by_tag(coils),
+    }
     _CHECKLIST_CACHE.move_to_end(key)
     while len(_CHECKLIST_CACHE) > _CHECKLIST_CACHE_MAXSIZE:
         _CHECKLIST_CACHE.popitem(last=False)
     return _ChecklistOutcome(
-        copy.deepcopy(review), saved_path, None, None, workflow_result=result
+        annotate_known_divergences(copy.deepcopy(review), coils),
+        saved_path, None, None, workflow_result=result,
     )
 
 
@@ -835,8 +862,80 @@ async def checklist_fill(request: Request):
             cover_page_hint=_cover_page_hint_from_request(request),
             product=request.headers.get("x-coilforge-product"),
             size=request.headers.get("x-coilforge-size"),
+            # Weak label for review triage: every dimension the sheet and the engine
+            # were compared on, with the coil tag, so a later correction on that tag
+            # can be joined back to the flag that preceded it. Only on a FRESH fill —
+            # a cache reuse re-reports numbers already recorded, and double-counting
+            # them would skew the divergence rate.
+            compare={"comparator": "checklist", "report": outcome.review},
         )
     return jsonable_encoder(outcome.review)
+
+
+# ---------------------------------------------------------------------------
+# Divergence adjudication — John rules on a checklist-vs-engine disagreement.
+#
+# The ruling re-LABELS a review row (red -> amber) and does nothing else: no value
+# changes, no confidence changes, and `review/project_gate.py` is deliberately untouched,
+# so `exceptions_K` keeps one meaning across the whole ledger corpus. A suppression that
+# also lowered the gate would silently redefine every measurement taken before it.
+#
+# The route writes ONLY to the gitignored staging file; promotion into the tracked
+# registry is a script John runs and a commit he makes.
+# ---------------------------------------------------------------------------
+@app.get("/api/divergence/registry")
+async def divergence_registry() -> dict[str, Any]:
+    """The merged registry as the review UI sees it — promoted + staged, with any
+    band-conflict warnings. Read-only."""
+    if not divergence_enabled():
+        return {"enabled": False, "divergences": [], "warnings": []}
+    registry = load_registry()
+    return {
+        "enabled": True,
+        "divergences": [
+            {
+                "id": e.id, "key": e.key, "coil_category": e.coil_category,
+                "product_family": e.product_family, "terra_variant": e.terra_variant,
+                "unit_size_scope": e.unit_size_scope, "slot": e.slot,
+                "verdict": e.verdict, "severity": e.severity, "reason": e.reason,
+                "evidence_refs": list(e.evidence_refs),
+                "delta_band": list(e.delta_band) if e.delta_band else None,
+                "adjudicated_by": e.adjudicated_by, "adjudicated_utc": e.adjudicated_utc,
+                "expires_utc": e.expires_utc, "status": e.status,
+                "rule_proposal": e.rule_proposal, "promoted": e.promoted,
+            }
+            for e in registry.entries
+        ],
+        "warnings": list(registry.warnings),
+        "raw_private_data_returned": False,
+        "export_allowed": False,
+    }
+
+
+@app.post("/api/divergence/adjudicate")
+async def divergence_adjudicate(request: Request) -> dict[str, Any]:
+    """Record one ruling: ``{coil_category, product_family?, terra_variant?,
+    unit_size_scope?, slot, verdict, reason, delta_band?, evidence_refs?, expires_utc?,
+    run_id?, coil_tag?}``.
+
+    ``reason`` is mandatory (400 when blank). The registry's only claim to not being a
+    machine-accumulated suppression list is that every entry carries a human's stated why.
+    """
+    if not divergence_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Divergence adjudication is disabled (COILFORGE_DIVERGENCE=0).",
+        )
+    try:
+        payload = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object.")
+    try:
+        return record_adjudication(payload)
+    except AdjudicationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -1242,6 +1341,11 @@ async def ambient_excel(request: Request):
         raise HTTPException(status_code=500, detail=f"Excel fill mapping failed: {exc}")
     try:
         result = write_ambient_excel(fill)
+    except ExcelBusyError as exc:  # the shared single-flight guard is held elsewhere
+        # Must precede the RuntimeError clause, and must exist at all: without it the
+        # generic `except Exception` below would report a busy guard as a 500
+        # "Excel write failed" — the same misdiagnosis the guard was added to remove.
+        raise HTTPException(status_code=409, detail=str(exc))
     except RuntimeError as exc:  # Excel COM / pywin32 unavailable
         raise HTTPException(status_code=501, detail=str(exc))
     except ValueError as exc:  # no coil sheets (e.g. only water coils)
@@ -1350,6 +1454,19 @@ async def deliverable_finalize(request: Request):
         submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001",
         coil_overrides=payload.get("checklist_overrides"),
     )
+    # A BUSY guard is a hard error here, not a degraded status. Everywhere else a
+    # checklist failure is absorbed into `checklist_status` and the order documents are
+    # filed anyway — which was safe while failures meant "Excel is absent". The
+    # single-flight guard adds a TRANSIENT failure, and absorbing that would file the
+    # DirectCoil folder with no .xlsx purely because a fill was running in the next tab.
+    if checklist_outcome.http_status == 409:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{checklist_outcome.reason} — the Coil Checklist is filed with this "
+                "deliverable, so finalize was stopped rather than filing without it."
+            ),
+        )
     checklist_path = checklist_outcome.saved_path
     checklist_status = "ok" if checklist_outcome.review is not None else (
         checklist_outcome.reason or "unavailable"

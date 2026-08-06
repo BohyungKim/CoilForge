@@ -31,6 +31,248 @@
 > 다름 — 테스트로 고정해 다음 세션이 뒤집지 못하게). **1237 green**(+49), frozen 무접촉, 실 제출물 라이브 검증
 > (EZC-0009 자동 인식·2870 무코팅 공란·2857 물코일 공란·수동 HERESITE 반영/해제·tag 가드 4분기),
 > **John 브라우저 A/B 탭 눈확인 완료**. 커밋·푸시 `18ef71a..b44fdd0`(`.agents`/`.codex`/settings 격리).
+> 이전: **[검토 수렴 트랙] Phase D 종료 — D-2 커밋 `67586f4`**: 판정 원장 +
+> 알려진 갭 레지스트리 + 규칙 제안서가 붙어 **Phase D가 닫혔다**. D-1이 체크리스트 불일치를 원장 *신호*로
+> 만들었다면 D-2는 그것을 *판정 가능한* 대상으로 만든다 — John이 한 번 판정하면 그 정체성이 재등장하는 모든
+> 곳에서 빨강이 앰버 + 근거로 바뀐다. **판정이 하지 *않는* 것이 설계의 핵심**: 값·confidence 무변경이고
+> `project_gate`는 의도적으로 손대지 않았다(원장의 `gate_verdict` 라벨은 코퍼스 전체에서 한 의미를 유지해야
+> 하므로, `exceptions_K`를 낮추는 억제는 그 이전에 측정한 모든 수치를 소급 오염시킨다). 정체성은
+> `(coil_category, product_family, terra_variant, unit_size_scope, slot)` 5축. ⓐ`terra_variant`가 이걸
+> 두 줄짜리 기능이 아니게 만든다 — Terra V 판정이 Terra H를 침묵시키는 것이 이 축이 막으려는 바로 그 실패이고,
+> family 토큰은 `resolve_product_line`이 내주는 **split** `TERRA_H`/`TERRA_V`다(`mechanical_fit`이 R-077/078의
+> `TERRA|…` 키 때문에 coarse `TERRA`로 되접는 것과 **의도적으로 반대**; 이 레지스트리를 키잉하는 건 이
+> 레지스트리뿐이라 더 고운 토큰을 유지 → 나중의 coarsening이 판정 범위를 우발적으로 넓힐 수 없다).
+> ⓑ`unit_size_scope`는 **선언**("*" 또는 특정 사이즈)이지 추론이 아니다 — 관측 1건에서 범위를 기계 추론하는
+> 것이야말로 이 레지스트리가 막으려는 never-invent 위반. ⓒ**수치는 정체성에 없다** — CD는 rows/circuits/conn에
+> 따라 매 코일 달라져 수치 키는 두 번 매칭되지 않는다. 대신 `coilforge - checklist`에 대한 **부호 있는**
+> `delta_band`가 감시하고, 밴드 밖(부호 반대 or 과대)이면 앰버 유지가 아니라 **재escalate**한다(성격이 바뀐
+> 불일치는 새 질문이므로). 밴드는 사람 없이 넓어지지 않는다. 밴드 **없는** 판정은 "미측정"이 아니라 **구조적**
+> 이다 — 시트에 해당 제품라인 분기가 아예 없으면 else-분기가 내는 어떤 수치도 틀렸고 크기가 이를 바꾸지
+> 못한다(주석이 이를 명시하지, 검사를 통과한 척하지 않는다). `coilforge_wrong`은 **빨강 유지** — 앰버는
+> *상대* 구현의 갭 전용이고, 우리 쪽 미해결 결함을 흐리면 가장 고쳐야 할 부류가 가려진다.
+> **저장 분리는 리뷰가 찾아낸 이유 때문**: 라우트는 gitignore된 `outputs/divergence_staging.yaml`에만 쓰고
+> 추적 파일엔 절대 쓰지 않는다(동시 세션이 이 워킹트리를 자동 커밋하므로 브라우저 동작이 추적 경로를 건드리면
+> 미검토 판정이 커밋에 실려 갈 수 있다). 승격은 `scripts/promote_divergences.py` + **John의 커밋이 승인 단계**.
+> 키 충돌 시 작업본이 이기고, 두 파일의 **밴드가 다르면** 조용히 해소하지 않고 주석에 경고를 싣는다(밴드가
+> 억제를 결정하므로 로드 순서에 좌우되는 밴드는 D5의 "억제 부패" 그 자체). 원장은 마이그레이션 5
+> `divergence_adjudication`(append-only, 재판정은 INSERT) — `correction`과 섞지 않은 이유는 `retrieve`/`tuning`이
+> 그 테이블을 *편집의 증거*로 마이닝하기 때문(값을 안 바꾼 판정이 수동 override로 학습된다). `unresolved`는
+> 원장엔 남고 레지스트리엔 **안 들어간다**. 주석은 `_run_or_reuse_checklist`의 **두 반환 경로 모두**에서
+> deepcopy에 붙는다 — 캐시에 구우면 체크리스트가 PDF 바이트로 메모이즈되므로 John이 판정 → 재분석 → 캐시 히트
+> → **자기 결정이 아무것도 안 하는** 것을 보게 된다. 배선 중 발견: 정체성 빌더가 dict 코일을 가정해 그 외
+> 입력에서 fill 전체를 500시켰다 — 이 레이어는 행 라벨만 바꾸므로 John이 정작 쓰러 온 fill이 실패하는 이유가
+> 되어선 안 된다. **규칙 제안서**(`review/rule_proposal.py` → gitignore된 `outputs/rule_proposals/`)는 그려지는
+> 것을 **줄이는 방향만** 표현 가능하다 — `demote_confidence`/`narrow_applies_to`/`new_medium_scope`, 마지막은
+> MEDIUM 강제라 **기존 confidence gate가 집행**하고 생성기를 신뢰할 필요가 없다. 관측에서 추론한 HIGH는 아예
+> 표현 불가. `_SPECIAL_IDS` 타깃은 **INERT**로 표시(헬퍼가 Python에서 MEDIUM 하드코딩 → YAML flip 무효),
+> "지배 규칙 없음"은 조회 실패가 아니라 **결론**으로 렌더(I3 케이스 — 값이 슬롯 레이어에서 나와 YAML로는
+> 못 고친다). `coil_header_rules.yaml`은 읽기 전용이고 sha256을 테스트로 고정. **D4**: Terra V HGRH 5개 dim
+> (CD/S1/S3/O2/O4)을 KD-001~005로 등록 — 원인은 체크리스트 템플릿에 TERRA V 분기가 **통째로 없는** 것이고
+> 지문은 `S = −conn_size`(else-분기가 쓰라고 만들어지지 않은 입력으로 도는 것). 구조적이라 밴드 없음. 6번째
+> 불일치 I3는 **우리 쪽**이었고 9be71fe 계열 `9abe5a7`에서 고쳤으므로 **의도적으로 미등록** — 고친 결함은
+> 알려진 갭이 아니고, 등록하면 재발 시 회귀를 억제해버린다. `docs/rule_proposals/RP-001`이 Excel 쪽 수정안을
+> 담되 **수식 텍스트는 일부러 비웠다**(워크북이 외부라 바깥에서 그 관행을 지어내는 것이야말로 이 서브시스템이
+> 거부하려는 행위). env `COILFORGE_DIVERGENCE=0`로 전체 비활성. 1280 green(`test_phase2c_*` 4건은 알려진
+> 워크트리 cwd 아티팩트 — 같은 코드가 메인 트리 cwd에서 36/36 통과, 이번 세션 재확인).
+> **브라우저 눈확인 완료(2026-08-05, 실 제출물)** — 2901이 로컬에 없어 대신 **2948 Daikin Applied Atlanta /
+> 2121 Crestmoor**(42p)에서 `RHHGRC-1 = HGRH / TERRA V / 006` + `CDXC-1`을 찾아 워크트리 서버에 실업로드.
+> ⓐ**Phase C가 못 했던 *양성* 검증이 여기서 됐다** — 이 코일에 실제 불일치 2건이 있었고 **둘 다** 앰버로 떴다
+> (`S: ◈ KD-002 — checklist 1.875, ours 3.125`, `O: ◈ KD-004 — checklist 2, ours 2.75`). 종전 2770 눈확인은
+> 불일치 0건이라 "빨강이 안 뜬다"만 봤고 "떠야 할 때 뜨는가"는 미확인이었다. ⓑ**격리 확인** — DX 코일
+> `CDXC-1` 활성 시 판정 0건(레지스트리는 HGRH 전용), 이웃 행(CD/BF/TF/RF/HF/CH/I/R) 전부 평상 파랑, 색 번짐
+> 없음. ⓒ**다크테마 토큰 실측** — `bg rgb(44,38,19)`=`--warn-bg`, `border-left rgb(226,187,94)`=`--status-review`,
+> `color rgb(232,203,124)`=`--warn-text` 모두 다크값 정확(Mechanical-Fit 흰 카드 버그 재발 없음).
+> ⓓ**라우트 왕복 + 밴드 재escalate를 라이브로** — KD-002와 **같은 키**에 관측 델타(1.25)를 배제하는 밴드
+> `{0, 0.5}`를 `POST /api/divergence/adjudicate`로 걸자 KD-006이 스테이징에 기록되고(승격본 5개 뒤 번호 이어받음),
+> 재분석 시 **작업본이 승격본을 이겨** 그 행이 빨강으로 되돌아갔다(`⚠ KD-006 no longer covers this — checklist
+> 1.875 ≠ CoilForge 3.125`) — 그 사이 `O` 행은 앰버 유지. 서버 재시작 없이 반영됨(레지스트리는 호출마다 읽음).
+> 테스트 스테이징 항목은 제거했고 **원장 행은 남겼다**(append-only가 설계이고 reason이 "LIVE TEST"라 자기
+> 문서화됨). ⓔ곁가지: 8012를 이전 세션 서버가 잡고 있어 Phase A의 포트 자동 회피가 실제로 발동해 **8013**에
+> 떴다 — 그 기능의 라이브 확인. **미확인 1건**: `미승격` 배지 문구는 KD-006이 스테이징에 있던 순간에만 뜨는데
+> 그때 그 행은 밴드 이탈로 빨강이라 배지 경로가 달랐다 — 승격 안 된 **적용되는** 판정의 표시는 여전히 코드
+> 레벨만 검증됨.
+> **Phase E 완료(`2da1e7d`)** — 드레인팬 D옵션이 유닛 모델 코드에서 읽힌다. 종전엔 R-077이 Terra 폭을
+> D1/D2/D3로 키잉하는데 **그 값을 만드는 곳이 없어** 모든 Terra INSTALL FIT이 평생 `CANNOT_EVALUATE`로
+> 자기 막힘만 설명했다. 위치는 22토큰 언더스코어 코드의 **인덱스 7**(첫 자리 control qty, 둘째 자리 팬 타입),
+> Terra H 확인분. **선행 확인 결과 = 예**: 실 제출물 10건 중 2건에 22토큰 코드가 텍스트로 남고
+> (2755 `TR_C_012_…_H11_21_…`, 2948 `TV_B_006_…_H10_11_…`) 둘 다 인덱스 7이 정확히 2자리 → 파싱 가능.
+> ⓐ**계획서의 오검출 사례가 실제와 반대였다** — 계획서는 Terra H가 `VENTUM_H`로 둔갑한다고 적었으나,
+> 실측은 **Terra V가 오검출**(내부 `H10`이 유효한 Ventum H 사이즈)이고 **Terra H는 미해결**(`H11`은 무효)이다.
+> 원인은 두 Terra 정규식의 후행 `\b`가 `_`로 이어지는 코드에 매칭 실패하는 것. 실패 형태가 **둘로 갈리므로**
+> 회귀 케이스도 둘 다 필요했다(계획서는 하나만 상정). ⚠️ **기존 잠재 결함(미수정, 명시적 기록)**: 실 제출물이
+> 무사한 건 커버 스케줄이 **짧은 코드도** 인쇄해 검출이 그걸 먼저 찾기 때문 — 짧은 형태가 없으면 지금도
+> 오검출된다. 고치려면 템플릿·체크리스트·핏·도면이 다 읽는 lru_cached 함수를 건드려야 해 범위 밖으로 두고,
+> `test_documented_limitation_…`이 **현재 동작을 고정**해 나중에 고치면 시끄럽게 깨지도록 남겼다.
+> ⓑ**귀속은 유닛 사이즈별, 문서 전체가 아니다 — 이건 E2E 실행이 잡아낸 내 설계 결함이다.** 코드는 코일 태그
+> 없이 구성 페이지에 단독으로 있어 문서 전체 스캔이 유일한 경로인데, 그 안전 규칙으로 세운 "distinct 1개 =
+> 단일 유닛"이 **거짓**이었다: 2755는 009·012 두 유닛인데 전체 코드를 **하나만** 인쇄해 규칙이 만족된 것처럼
+> 읽히고 009에 012의 팬을 물려줬다. 유닛마다 팬이 다를 수 있으므로 증상 없는 오답. 코드 자신의 토큰 2(사이즈)로
+> 조인하고, 코드 없는 사이즈는 **빌리지 않고 blocked 유지**. ⓒ**Terra V는 명시적 거부** — 사이즈 키잉이고
+> Install 시트에 행이 없는데 코드는 같은 인덱스에 2자리 토큰을 **갖고 있어서**, 파싱 실패에 기대면 세로형 유닛에
+> Terra H 옵션이 들어간다. 가드는 `_drain_pan_row` **내부** — 두 호출자가 전부 이 함수로 R-077에 닿고, 위험한
+> 쪽은 그 숫자가 **주문과 함께 파일링되는 .xlsx에 기록되는** 체크리스트 경로다. 그 경로의 `_FAMILY_FROM_UNIT`이
+> `"TERRA V" → "TERRA"`로 접고 있었던 게 호출부 가드를 우회하는 통로였고, 옵션 인자가 하드코딩 `None`인
+> 동안만 무해했다 = 이번 커밋 직전까지. R-077에 **빈 `TERRA_V|<size>` 행도 넣지 않았다**(`{}`는 `None`이
+> 아니라 "no width column available"이라는 엉뚱한 사유가 나온다). ⓓ**짝 사이즈 가드**: 한 유닛의 DX+HGRH 짝이
+> 다른 사이즈로 검출되면 width/height **+ drain_pan까지** `CANNOT_EVALUATE`(계획서는 width/height만 적었으나
+> drain_pan이 **같은 사이즈를 같은 조회로** 읽으므로 살려두면 못 믿는 값 위에 PASS가 선다), 노트는 **두 사이즈를
+> 다 적고 고르지 않는다**. 배선 중 발견한 소소한 결함 2건: `fitInputFromSpec`이 `fit_inputs`를 통째로 교체해
+> **수동 수정 때마다 옵션이 증발**했고(브라우저는 재도출 불가), `renderMechanicalFit`이 `note`에서 early-return이라
+> 사이즈 가드가 붙는 순간 **경고의 근거가 되는 수치를 가렸다**. **실 제출물 검증**: 2755(Terra H) →
+> `combined CD 11.875 vs drain_pan_width 14.5 (PASS)` (종전 항상 CANNOT_EVALUATE), 009 유닛은 올바르게 blocked
+> 유지; 2948(Terra V) → 제품라인 유지·사이즈 키잉 사유로 거부·width 판정 무영향. 1314 green.
+> **브라우저 눈확인 — 부분 완료(2026-08-05)**: 2948을 워크트리 서버 :8013에 **실업로드**해 Mechanical Fit
+> 카드 확인 — `CDXC-1 DX / TERRA_V / 006`(제품군 오염 없음), Width/Height **PASS**(무영향),
+> Drain pan **CANNOT_EVALUATE** + 새 사유 *"Terra V drain-pan width is keyed by unit size, and the Install
+> sheet has no Terra V rows yet — blocked pending that data. It deliberately does NOT borrow the Terra H
+> D1/D2/D3 widths"*. 종전 문구("provide the drain-pan option to evaluate")는 Terra V에선 **영원히 따를 수 없는
+> 안내**였으므로 이 교체가 이번 눈확인의 핵심 성과. Terra H **PASS 카드는 같은 서버의 `/api/mechanical-fit`
+> 라이브 호출로만 확인**(`combined CD 11.0 vs drain_pan_width 14.5`) — 실 Terra H 제출물 2755가 **15MB로
+> 브라우저 브리지 한도(10MB) 초과**라 업로드하지 못했다. **미확인 2건**: ①Terra H PASS 카드의 화면 렌더
+> (John이 2755를 직접 드롭하면 즉시 확인됨 — 기능 문제가 아니라 내 업로드 경로의 한계) ②짝 사이즈 충돌 카드
+> (노트 + 강등된 3판정 동시 표시) — **어느 실 제출물도 이 상태를 만들지 않아** 단위 테스트로만 고정됨.
+> **검출 정규식 근본 수정(`86f36b1`)** — Phase E가 *우회*하던 결함을 소스에서 닫았다. 두 Terra 정규식의
+> 후행 `\b`를 **`(?![0-9])`**("사이즈 숫자가 더 안 이어질 것" = 정규식이 원래 의도한 바)로 교체.
+> `\b`는 "단어가 끝날 것"이라 언더스코어 코드에서 둘이 갈라졌고, 그 결과 Terra 분기 전체가 매칭 실패 →
+> loose scan으로 떨어져 **코드 내부 사이즈 토큰**에 따라 형태별로 다르게 실패했다
+> (`TV_B_006_…_H10_…` → `VENTUM_H`/확신에 찬 오답, `TR_C_012_…_H11_…` → 미해결).
+> **검토를 추측이 아니라 실측으로 했다**: 패치 → 전체 스위트 → 실 제출물 E2E → 되돌림 → John 승인 후 재적용.
+> ⓐ**회귀 0건** — 1316 green이고 동작이 바뀐 테스트는 Phase E가 이 결함을 고정하려 쓴 2건뿐(설계대로 깨졌고
+> 이번에 가드로 재작성). ⓑ**실 제출물 출력 완전 동일**(2948·2755, 드레인팬 판정과 009 유닛 귀속 거부까지) —
+> 짧은 코드가 이미 구제하고 있었으므로. **그래서 할 가치가 있었다**: 그 구제는 우리 코드가 아니라 **Oxygen8
+> 페이지 레이아웃의 성질**이고, Phase E는 그게 유지된다는 전제 위에 우회를 막 끝낸 참이었다. ⓒR-076 사이즈
+> 검증이 여전히 모든 매칭을 게이팅(`TR_C_01234` 거부 유지)해 느슨해진 경계가 없는 사이즈를 들이지 못한다.
+> ⓓ**부수 이득(고정됨)**: Terra 분기가 loose scan보다 앞서므로, 실제 Terra 코드 + 떠도는 카탈로그 `V###` 행이
+> 있는 문서가 더는 appendix 때문에 VENTUM_PLUS로 해석되지 않는다(CLAUDE.md가 경고하던 poisoning 형태).
+> ⓔ`model_code.py` docstring과 CLAUDE.md 단락을 **방치하지 않고 정정**했다 — 둘 다 "검출이 오독하므로 격리해야
+> 한다"고 적혀 있었는데 그 이유가 사라졌다. 격리 자체는 유지(`row.model`은 스케줄 코드를 뜻하고 22토큰
+> 문자열은 이를 echo하는 모든 노트에서 노이즈), 다만 **고쳐진 결함을 방어하는 독자는 무엇이 실제로 load-bearing
+> 인지 오판한다**.
+> **Phase E 브라우저 눈확인 완료(2026-08-05, John이 직접 업로드)** — 재시작한 :8013에 2755를 올려
+> Mechanical Fit 카드를 육안 확인. **012 유닛 4개 전부 `PASS Drain pan — partner …: combined CD 12.75 vs
+> drain_pan_width 14.5 (PASS)`**; 이 검사는 종전에 **6개 코일 전부 CANNOT_EVALUATE**였으므로 Phase E의 성과가
+> 화면에 나온 것. **009 유닛 2개는 blocked 유지**(`Terra drain-pan width is keyed by option D1/D2/D3, which was
+> not read from the unit model code`) = 사이즈별 귀속이 의도대로 동작 — 2755는 유닛이 둘인데 전체 모델 코드를
+> 하나만 인쇄하므로 012의 옵션을 009에 빌려주지 않는다. 제품군은 6개 전부 `TERRA_H`(정규식 수정 후 오검출 없음).
+> ⓐ**뜻밖의 독립 검증** — John이 올린 건 내가 헤드리스로 돌린 문서와 **다른 파일**이었다
+> (`Project Gumbo - As built` vs `DOAS VRF Units AAN`, 같은 2755 프로젝트). 그런데 **009 blocked / 012 PASS
+> 패턴이 동일**하게 재현되고 CD만 달랐다(12.75 vs 11.875) → 내 검증 파일에 우연히 맞춘 결과가 아니라는 증거.
+> ⓑ**Phase D 격리 속성이 실데이터로 확인됐다** — 이 제출물의 `RHHGRC-1/2/3`은 **HGRH + TERRA_H**로, KD-001~005의
+> 키(`HGRH|TERRA_V|TERRA_V|*|slot.*`)와 **coil_category까지 같고 variant만 다른 최근접 이웃**이다. 판정 배지
+> 0건 = coarse 키였다면 전부 오발화했을 자리에서 정확히 안 걸렸다는 뜻. ⓒ체크리스트도 6시트 전부
+> **"0 mismatch"** — 배지가 하나도 없는 건 조인 실패가 아니라 설계대로(`match`는 무표시, 슬롯 없는 ZD/ZD2는
+> 침묵)임을 시트 태그·mismatch 카운트로 교차 확인했다. ⚠️ **진단 교훈**: 진행률이 "92% Building drawing"에서
+> 멈춘 것처럼 보여 서버 블록을 의심했으나, `read_network_requests`가 답이었다 — `/api/mechanical-fit`은 이미
+> **200으로 끝났고** `/api/checklist/fill`만 대기 중이었다. **두 요청이 한 진행률 막대 뒤에 숨어 있는 것**이
+> 오해의 원인. **짝 사이즈 충돌 카드도 눈확인 완료(`1984421`)** — 어느 실 제출물도 이 상태를
+> 안 만들지만 **재현 경로가 있었다**: 브라우저의 제품/사이즈 피커로 한쪽 코일의 unit_size를 바꾸고
+> re-derive하면 된다(= 실제 오검출을 엔지니어가 교정하는 바로 그 동선). CDXC-1을 009→012로 바꾸자
+> 짝 RHHGRC-1(009)과 충돌해 **두 코일 모두 width·height·drain_pan 3판정 전부 `CANNOT_EVALUATE`**로
+> 강등되고, 노트가 **두 사이즈를 다 적고 고르지 않는** 것까지 확인. 검증 후 009로 되돌려 원상복구.
+> 🆕 **눈으로만 보이는 결함 1건을 잡아 고쳤다**: 같은 문장이 카드마다 **4번** 반복되고 있었다(배너 1 +
+> 3판정 detail 3). 강등된 판정이 케이싱·CD 수치를 **일부러 유지**하는 이유가 "어느 사이즈가 틀렸는지
+> 판단할 재료"인데, 반복된 장문이 그 수치를 묻어버렸다. 각 줄은 이제
+> `withheld — unit size disputed with <partner> (see note above)`로 자기 줄에만 해당하는 말을 하고
+> 전문은 배너 한 곳에 둔다. **표시 문구만 변경**(판정·강등·노트 무변경), 1320 green.
+> 🔴 **눈확인이 잡아낸 결함(미수정) — 009 카드의 사유가 틀린 곳을 가리킨다.** John이 "CDXC-1이 왜
+> CANNOT_EVALUATE냐, drawing number 미포착이 원인이냐"고 물었고, 그렇게 읽히는 것 자체가 문제다. 카드는
+> `mechanical_fit`의 **일반 문구** *"…which was not read from the unit model code — provide the drain-pan
+> option to evaluate"* 를 띄우는데, 009의 진짜 사정은 **"이 제출물엔 012 유닛의 코드만 인쇄돼 있고, 우리가
+> 일부러 안 빌린다"** 이다. 즉 "옵션을 넣으라"는 안내가 **따를 수 없는 지시**다 — Terra V에서 고쳤던 실패
+> 유형과 **정확히 같은 것**을 다중 유닛 경로에 남겨둔 셈. 정확한 사유는 이미 계산돼
+> `fit_inputs.drain_pan_option_reason`("no unit model code for size 009 appears in this submittal
+> (found: 012) — it deliberately does not borrow another unit's drain-pan option")로 **실려 있으나 화면에
+> 도달하지 않는다**: `evaluate_drain_pan_fit`이 그 문자열을 인자로 받지 않고 자기 일반 문구를 만든다.
+> **수정 완료(`e6d3a80`)**: `drain_pan_option_reason`을 `evaluate_drain_pan_fit`에 스레딩해, 옵션이 없을 때
+> 리더의 사유를 **그대로** 쓰되 키잉("무엇이 없는지")을 앞에 붙인다. 재도출이 아니라 **전달**인 이유 —
+> "옵션 없음"의 원인이 여러 개(코드 부재 / 다른 유닛 코드 / 같은 사이즈 코드 2개 불일치)라 이 모듈이 두 번째
+> 해석을 만들면 첫 번째와 어긋날 수 있다. Terra V는 리더 사유가 와도 **자기 문구를 유지**(구조적 차단이라
+> 어떤 옵션으로도 안 풀림, 테스트로 고정). 실 2755 확인: 009 카드가 이제
+> *"…no unit model code for size 009 appears in this submittal (found: 012) — it deliberately does not borrow
+> another unit's drain-pan option"* 로 뜨고 012 카드는 무변경. 1319 green.
+> 🆕 **John 확인으로 격상된 사실**: 토큰 7의 **둘째 자리가 드레인팬**(`..._H11_21_…` → pan 1)임을 라이브
+> 제출물에서 John이 확인 — 계획서 주장이 아니라 엔지니어 확인 사실이 됐다. docstring에 반영하면서 **이웃한
+> `H11`이 팬 토큰으로 오인되기 쉽다**는 점도 명시(인덱스를 7로 고정하고 "정확히 2자리"를 요구하는 이유).
+> **Phase F 완료(`8d315d2`) — 검토 수렴 트랙 6항목 전부 종료.** 독립 리뷰가 원안을 폐기하고 축소한
+> 그대로("라이브 id 확인 + `selector_verified` 플립"): John이 CCSI에 로그인하고 Custom Dimensions까지 열어준
+> 뒤 `coil.ccsi.ie/Coils/Edit`에서 **`#DrawingNotes`**(단일 `<input type=text>`, 고유·편집가능) 캡처.
+> 🔴 **캡처가 예상보다 큰 걸 밝혀냈다 — 기존 폴백은 계속 *아무것도 안 하고* 있었다.** CCSI 자체 마크업이
+> 라벨을 **존재하지 않는 id**에 연결하고 있다(`<label for="Drawing_Notes">` vs 실제 input `DrawingNotes`,
+> 언더스코어 없음) → `label.control === null` → labelText 전략이 반환할 요소가 없었다. 즉 Notes 푸시는
+> 그동안 조용한 무동작이었고, 이것이 정확히 `selector_verified: false`가 광고하려던 실패다 — **추론 셀렉터가
+> 동작한다고 가정하지 않고 플래그를 달고 다닌 판단이 값을 했다.** 변경 후 라이브 재확인: css 전략 resolve+편집가능,
+> labelText `resolved:false`. labelText는 **삭제하지 않고 2순위로 유지**(CCSI가 `for`를 고치면 id가 함께 옮겨갈
+> 수 있고, 남의 수정 후에야 동작하는 폴백은 지금 비용이 0). **F5 여러 줄 노트도 동시 해결**: 단일행 `<input>`은
+> 개행을 버리는데 CoilForge는 노트를 줄당 하나로 조립하므로, 원문을 쓰고 원문과 비교하면 **성공한 채움마다
+> mismatch**가 뜬다 → `forTarget()`이 textarea가 아니면 개행을 `"; "`로 접고, **쓰기와 verify가 같은 정규화를
+> 쓴다**(`setNativeValue`만 정규화하면 접힌 값 vs 원문을 비교해 여전히 mismatch). 곁가지: 스킬/앱 payload
+> 드리프트 해소 — `.claude/commands/ccsi-fill.md`의 인라인 빌더가 `map.fields`만 순회해 **스킬 경로는 치수 25개만
+> 밀고 노트는 안 실었다**(앱 경로는 둘 다). 이제 양쪽이 `entriesOf()`가 기대하는 top-level `drawing_notes`를
+> 내고, 스킬에 "이건 미러다" 경고를 달았다. 가드 테스트는 **삭제가 아니라 의도적 갱신** — "미검증 유지" assert를
+> 캡처된 id assert로 바꾸되, 유저스크립트의 `selector_verified === false` 분기 검사는 **별도 테스트로 존치**
+> (그 분기는 Notes 전용이 아니라 *앞으로 id 캡처 전에 추가될 모든 필드*를 경고하는 장치). 1322 green.
+> **CCSI엔 아무것도 쓰지 않았다 — 라이브 폼과의 모든 상호작용은 읽기였다.**
+> 이전: **[검토 수렴 트랙] John 요청 6항목 — Phase A~D1 커밋
+> `eca938c`·`9abe5a7`·`c03ac7e`·`2277cc1`, 브랜치 `claude/review-convergence` @ 워크트리**:
+> 요청은 6개(①인라인 체크리스트 불일치 표시 ②교정 로직 ③드레인팬 핏 ④병렬 서버 ⑤Terra V HGRH 트러블슈팅
+> ⑥CCSI Notes 전송)였고, **계획 전에 독립 리뷰 2라운드**를 돌렸다(신선 컨텍스트 2명 → BLOCKER 4/MAJOR 14,
+> 재검토 1명 → MAJOR 6/MINOR 7). 리뷰가 잡아낸 것 중 셋이 계획을 실제로 바꿨다: ⓐ**Phase F 원안이 통째로
+> 틀렸다** — `tests/test_ccsi_field_map.py:88`이 `assert "NOTE" not in key.upper()`로 Notes의 field map 진입을
+> **의도적으로 금지**(2026-07-28 설계)하고 있어, 등록하면 5개 테스트가 깨지고 등록해도 `ccsiFillKeys` 정규식에
+> 걸려 payload에 실리지 않으며 `export_audit`엔 유령 행만 생긴다 → 실제 작업은 "라이브 id 확인 +
+> `selector_verified` 플립"으로 축소. ⓑ**드레인팬 지름길이 회귀 함정** —
+> `detect_product_and_size('TR_C_015_I_L_1_H10_11_…')`이 `('VENTUM_H','H10')`을 반환한다(`_TERRA_MODEL_RE`의
+> 후행 `\b`가 `015_`에 매칭 실패 → Pass A가 내부 `H10`을 집음). 전체 모델 코드를 기존 `row.model`에 담으면
+> 모든 Terra H가 Ventum H로 오검출. ⓒ**네 번째 불일치 축** — 체크리스트의 "CoilForge" 열은
+> `mapping.py:353-357`에서 **체크리스트 자신의 제품 감지**로 계산되어 도면 경로와 영구히 다를 수 있으므로,
+> 원안의 "값 차이 > 0.01 → 노후" 가드는 바로 그 코일에서 배지를 영원히 지운다 → 노후는 명시 플래그로,
+> CF-vs-CF 격차는 독립 배지 등급으로.
+> **Phase A(`eca938c`)** — `run_server{,_dev}.bat`가 포트 인자를 받고 점유 시 상향 스캔으로 자동 회피(실
+> 리스너 상대 검증: 8011 점유→8012, 해제→8011). `common/excel_lock.py`는 프로세스 내부 `threading.Lock`(각
+> 요청이 `asyncio.to_thread`로 별도 스레드라 교착이 아니라 직렬화) + **pid + 프로세스 생성시각** 키 파일 락
+> (Windows는 pid를 재사용하므로 pid만으로는 남남을 산 소유자로 오인해 타임아웃을 다 기다림). `write_checklist`와
+> `write_ambient_excel` **둘 다** 통과. 획득은 **유한 대기 후 실패** — 즉시 실패면 `/api/deliverable/finalize`가
+> 체크리스트 실패를 상태 문자열로 흡수하고 **.xlsx 없이 주문 폴더를 파일링**하므로, finalize는 busy를 하드
+> 에러로 취급. `ExcelBusyError`는 **`RuntimeError` 비상속**이고 절 순서가 그 **앞** — 아니면 501 "Excel 없음"과
+> 500 "write failed"로 강등돼 가드가 고치려던 오진이 재현된다(두 라우트 모두 테스트로 고정). CCSI 스킬 12개
+> 파일이 CoilForge 탭을 **포트 8011로 식별**하고 있어 8012 서버를 못 찾는 문제도 같은 패스에서 포트 무관 규칙으로 교체.
+> **Phase B(`9abe5a7`)** — 이미지 #3의 Terra V HGRH 불일치 6건 중 **5건은 Excel 템플릿 탓**(HGRH 시트에 TERRA V
+> 분기가 없어 NOVA/VENTUM else-분기로 떨어짐; 지문은 `S = −conn_size`), **1건만 CoilForge 탓**이었다.
+> `slot.I{2k-1}`(k≥2)은 R-046이 자기 주석에서 "Supply 2/3/4 I/O는 도출 불가"라고 못박은 값인데 Supply-1 상수를
+> 전 홀수 헤더에 브로드캐스트하고 있었음 → 공백 처리. `slot.S{2k-1}`도 R-052 리스트를 넘어가면 일반 등간격
+> 안전망으로 떨어져 **재열 코일에 DX 분배기 간격**을 찍었음(6회로 Terra V HGRH가 S5=1.6071…S11=3.2143) → 제외.
+> 도면 변화 정량화: header-2 레퍼런스에서 `REVIEW REQUIRED` **18→19**, 늘어난 하나가 I3(전엔 조작된 2.75).
+> 패널 사유는 다중헤더 분기가 문구를 하드코딩하고 있어 SOP 근거 보류와 엔진 실패가 구별되지 않았음 → 기존
+> 사유 조회에 `terra_variant` 축 추가, 다만 변수는 **스레딩하지 않고 `resolve_product_line`으로 내부 도출**
+> (호출부 4곳 중 하나가 `capture/record.py:405`의 교정 원장 기준선이라, 한 곳이 빠지면 기준선과 라이브 패널의
+> `blocked_reason`이 조용히 갈라진다). 곁가지: `checklist/mapping.py`가 HGRH 시트의 `DX CD`를 `with_hgrh` 없이
+> 계산해 **같은 DX가 7.5 / 7.5625로 두 번 서술**되고 있었고, 그 값이 시트 INSTALL FIT 입력이라 드레인팬 판정까지
+> 오염(`category == "HGRH"` 게이트 필수 — 같은 블록이 HWC 시트의 CWC 짝도 처리).
+> **Phase C(`c03ac7e`)** — 도면 파라미터 행이 체크리스트 판정을 바로 이고 다닌다(빨강 + hover 시 양쪽 수치).
+> 조인 키는 **slot**이고 그게 난점의 전부다: 패널의 논리 `O2`는 시트의 `O4`, 시트 자신의 `O2`는 패널의 `O` —
+> 이름 조인이면 빨간 표시가 **한 칸 밀린다**(표시 없음보다 나쁨). `DrawingParameter.slot`은 생성자 인자가 아니라
+> **Pydantic computed field**: 모델이 3개 모듈 12곳에서 생성되고 그중 하나가 원장 기준선이라 인자였다면 언젠가
+> 한 곳이 빠진다. 빨강은 아꼈다 — `match`는 **무표시**(두 구현의 일치는 근거지 승인이 아니고 초록은 CCSI의
+> "저장해도 안전" 전용), `overridden`/`missing_one`/"이 시트에 대응 없음"은 중립 배지. 테두리는 하나만 이김
+> (`--empty` > `--divergence` > `--mismatch` > `--match`), **배지는 스택**(전엔 CCSI 배지가 빈값 사유를 가림).
+> 곁가지 누수 수정: `state.ccsiVerdicts`가 평면이라 코일을 바꿔도 이전 색이 남았음 → 태그별로.
+> **Phase D-1(`2277cc1`)** — 체크리스트 불일치가 원장 신호가 됨. 여기서 **리뷰가 지목한 게이트 결함의 실체**가
+> 확인됐다: `project_gate`가 패널 키를 시트 라벨에 조인해서 **헤더별 dim의 불일치는 한 번도 집계된 적이 없다**
+> — Stage 3.0이 "flag와 correction이 identity-disjoint"라 측정한 것의 상당 부분이 행동이 아니라 이 기계적 누락.
+> 게이트는 **건드리지 않고**(원장 라벨 의미가 코퍼스 중간에 바뀌면 안 됨) 관측을 **패널 키로 기록**해 측정
+> 경로만 우회. `param_key_for_slot`을 `slot_for_param_key`의 정확한 역함수로 두고 왕복을 테스트로 고정.
+> **실앱 검증(John 눈확인 6/6)**: 2770 CACI Reston(47p, CDXC-1+RHHGRC-1, TR_C_024)을 워크트리 서버 :8012에서
+> 실업로드 → 불일치 0건, 붉은 배지 0, 코일 전환 시 색 이월 없음, 값·헤더 위치 타당, .xlsx의 DX CD 정합,
+> Excel 인스턴스 1→2→1(좀비 없음), 포트 자동 회피 확인, 도면 평소와 동일. "배지 없음"이 **일치인지 조인
+> 실패인지** 구별되지 않는 게 이 기능의 진짜 위험이라 백엔드에서 직접 대조 — CDXC-1은 패널 20키 중 18개가
+> 체크리스트 행에 연결(ZD/ZD2는 설계상 슬롯 없음), **고아 0개**, `HDx1→slot.HDx1(HD1)`·`I2→slot.I3`·
+> `O2→slot.O4`까지 정확. ⚠️ 아직 **음성(오탐 없음)만 검증**됨 — 양성(실 불일치가 제대로 빨갛게)은 미확인.
+> 전체 PO 486개 제출물 스캔에서 Terra V+HGRH 후보 다수 확보(**2901 CAP1 Ball FAC = TV_B_072 + RHHGRC-3**이
+> 이미지 #3과 동일 조합) → 다음 검증 대상. 1199 green. ⚠️ 워크트리에서 돌리면 `test_phase2c_*` 4건이 실패하는데
+> 이는 `po_logic_bridge.py:70`의 `cwd().parent` 형제 리포 조회 탓(메인 트리 cwd로 같은 워크트리 코드를 돌리면
+> 36건 전부 통과) — 이번 작업 무관, 기존 로드맵 항목이 이미 기록한 사항. 남은 것: Phase D-2(레지스트리·판정
+> UI·규칙 제안서) / E(드레인팬 — 실 제출물에 20+토큰 모델 코드가 남는지 선행 확인 필요, 남으면 위 ⓑ 오검출이
+> **이미 라이브**) / F(CCSI 폼 탭 필요).
 > 이전: **[제출물 파싱 트랙] 2968이 드러낸 커버/상세 오독 2건 — 971e2e4**: John이
 > "왜 도면에 에러가 뜨냐"고 물어온 실 제출물(2968 HTS Houston / College of the Mainland) 하나에서 결함 2개가
 > 나왔고, 둘 다 원인이 **pdf_intake의 읽기 규칙**이었다. ①**HGBP 오탐** — `_package_hgbp_pages`가 124p 문서
@@ -788,9 +1030,14 @@
   - [ ] **Phase 3.1 랭킹 (보류)** — 착수 트리거: 교정 더 축적 + **설계결정** — flag된 코일만 랭킹하면 위 disjoint로
     진짜 override 코일을 놓치므로, `corrected_total−corrected`(unflagged 교정) 신호 노출 여부 John 판정 후. 그다음
     `/api/review/project` gate에 deterministic severity 랭킹 + inert weight seam(측정값 배선은 1줄, Stage 2.0 패턴).
-- [ ] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
+- [~] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
   위험** — John은 flag된 코일만 보므로 안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다. 1d 감사샘플이
   유일한 통계적 수단; 모든 수치는 "리뷰 조건부" 라벨
+  - [~] **착수 2026-08-06 (John 승인)** — 착수 조건이 앞당겨진 이유: `rule_firing`이 **0행**이라는 실측.
+    Tier-A 수동 채움 derive에만 `engine_provenance`가 붙어 필드→규칙 귀속이 통째로 비어 있었다 — 즉 병목은
+    "교정 데이터 부족"만이 아니라 **캡처 공백**이었다. Phase 1(귀속 링크 복구) → Phase 2(관측소) 순.
+    표본 편향 대응은 경고문이 아니라 **구조**: `accuracy` 필드를 만들지 않고, 모든 비율의 분모를 `fired`가
+    아닌 `second_opinion`으로 두며, `coverage==0`이면 `disagreement_rate`를 `None`으로 낸다.
 - [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →
   John 승인. **제안 규칙은 MEDIUM 진입** = 기존 confidence gate가 공짜로 안전을 보장(자동으로 안 그려짐)
 - [ ] **6단계 Format-Agnostic Extraction** — **의존성은 1단계뿐, 순서상 6일 뿐** (타사 서밋털 수요 생기면
@@ -798,7 +1045,26 @@
 - [ ] **7단계 Commercial Intelligence** — `outcome` seam만 유지, 비워둠 (John 확정). 착수 시
   `raw_private_data_returned:False` 철학 재검토 필요
 
-- [ ] PR #3 리뷰·머지 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
+- [ ] **[도면 통합 후속] main 병합에서 버린 도면 기능 2건 재적용 — 유예 승인됨 (John 2026-08-06)** — `9e120fc`에서 main의
+  Phase 2.6–4b 도면 계보를 채택하면서 이쪽 고유 기능 2개가 빠졌다. **근거 있는 채택이었다**(추측 아님):
+  ⓐ**airflow** — 우리는 스케일되는 선+마커, main은 고정 크기 블록 화살표 + `AIRFLOW` 라벨 + `data-direction`.
+  CLAUDE.md의 "주석은 스케일하지 않는다"를 **우리 쪽이 위반**하고 있었다. ⓑ**분배기 확장/방향** — 우리는
+  `slot.DIST_EXT`/`slot.DIST_ORIENTATION`을 슬롯 레이어에서 **게이트 없이** 읽었고, main의 Phase 4a는
+  `slot.DistExtension{id}`를 분배기별로 R-033에서 소싱해 `GatedSlot` 3버킷(HIGH만 방출)으로 낸다 —
+  **같은 문제에 confidence gate를 적용한 버전**. 우리 것은 게이트 이전 판.
+  **빠진 것 2건**: ①**numbers-only 치수 콜아웃**(우리는 값만, main은 `"12.00 FH"` — Direct Coil 발주용
+  표시 결정) ②**`slot.S1`/`slot.R2` 깊이 치수**(main에 대응물 없음). 병합 커밋에서 **재적용하지 않았다** —
+  둘 다 main이 371줄 재구조화한 레이아웃 기준으로 쓰였고, **컴파일되고 테스트도 초록인데 잘못 그리는 도면**이
+  이 프로젝트가 낼 수 있는 최악의 결과다. 자체 eyeball 게이트를 가진 도면 작업으로 처리할 것.
+  **John 유예 승인(2026-08-06)** — 두 기능 없이 머지해도 좋다는 판정. 즉 **지금 도면은 main 계보 단독**이고,
+  Direct Coil 발주 도면의 치수 표기가 `"12.00 FH"` 형식으로 바뀐다(종전 이 브랜치는 값만 표시). 나중에
+  "왜 표기가 달라졌지 / S1·R2 깊이 치수가 어디 갔지"가 나오면 **원인은 이것이고 버그가 아니다.**
+  재적용 시 조건: main의 현 레이아웃 기준으로 다시 구현 + 자체 eyeball 게이트.
+- [x] ~~PR #3 리뷰·머지 (claude/ccsi-autofill → main)~~ — **PR #4가 완전 대체**(#3의 모든 커밋 포함 + 80).
+  2026-08-05 통합 완료: 충돌 7건을 **귀속 분석**으로 해소(기계적 3 / main 채택 4 / 수작업 1)하고
+  `9e120fc`로 병합, **1391 green·실패 0**(main의 `cc2a039`가 이 브랜치가 몇 주간 달고 다니던
+  `test_phase2c_*` 4 red를 해소 — 이 브랜치 최초의 완전 초록). #3은 닫으면 된다.
+- [ ] (구) PR #3 원문 기록 (claude/ccsi-autofill → main) — ⚠️ 2026-07-07 병합 시도 = CONFLICTING: drawing engine 5파일 충돌(main Phase 2.6–4b 라벨/V3 vs ccsi 병렬 피처 S1·R2·HDx1·AIRFLOW·Terra V·Ventum+, 양쪽 고유). 통합 병합은 크고 위험 → **drawing 세션과 조율 후 진행 (보류)**
 - [ ] CCSI Tier 1 실 mutation 라이브 end-to-end 1회 (미완) — 2026-07-05 이후 우선순위 하향.
   **프리플라이트 드라이런 (2026-07-15, /ccsi-preflight, mutation 0건)**: CoilForge측 GREEN — 서버 up·
   정적 맵 25셀렉터(13 base+12 멀티헤더)·브릿지 전역 3개(`coilforgeCoils`/`coilforgeCcsiCompare`/

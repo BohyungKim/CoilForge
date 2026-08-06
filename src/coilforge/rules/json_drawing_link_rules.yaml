@@ -112,6 +112,42 @@ header_connection_links:
     evidence: ["EZC-0013 DX_HB Headers[0].IsASC=true, ASCOrientation set"]
 
 # --------------------------------------------------------------------------- #
+# 5b. V3 distributor-strip links (Phase 4a — sourced in services/distributor_slots.py)
+# --------------------------------------------------------------------------- #
+# These four slots are emitted UPSTREAM and gated; the drawing engine consumes only the
+# HIGH (values) ones. Real DX cases ship no EZ Geometry JSON, so the rule engine + the
+# display/callout strings are the live source (see docs/design/ez-drawing-model.md §6.2).
+distributor_strip_links:
+  links:
+    - link_id: L-025
+      slot_pattern: "DistExtension{id}"
+      source: "engine dist_extension (R-033) PRIMARY; Headers[supply].DistExtension overrides; drawing_callouts 'DISTRIBUTOR <id> HAS <X> EXTENSION' CROSS-CHECK"
+      confidence: STRONG
+      review_required: false
+      gate: "FAIL-CLOSED: a callout that disagrees with the chosen value gates to CONFLICT/blocked, never HIGH."
+    - link_id: L-026
+      slot_pattern: "DistModel{id}"
+      source: "distributors_display[0] model token / Headers[supply].DistributorModelNumber"
+      confidence: UNCERTAIN
+      review_required: true
+      note: "LABEL-ONLY: never parse geometry/dimensions from the model string."
+    - link_id: L-027
+      slot_pattern: "DistOD{id}"
+      source: "distributors_display 'OD:x' (5/8 -> 0.625)"
+      confidence: UNCERTAIN
+      review_required: true
+      note: "Display-string mapping unconfirmed until John signs off."
+    - link_id: L-028
+      slot: slot.AIRFLOW
+      source: "airflow_direction (explicit enum)"
+      confidence: STRONG
+      review_required: false
+      note: "Stored direction; NEVER derived from hand/category."
+  evidence:
+    - "EZC-0001 callout DISTRIBUTOR 1 HAS 6in EXTENSION; distributors_display (1)501-2-3/16-1.5(0 ASC) / OD:5/8"
+    - "EZC-0007 DIST LIST (2)/(1)502-3-1/4-5 OD:5/8; callouts DISTRIBUTOR 1/3/5"
+
+# --------------------------------------------------------------------------- #
 # 6. Notes-token links (HGRH single-feed, physicaldata schema)
 # --------------------------------------------------------------------------- #
 notes_token_links:

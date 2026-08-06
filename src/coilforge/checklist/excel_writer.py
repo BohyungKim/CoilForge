@@ -27,6 +27,7 @@ from typing import Any
 
 from coilforge.checklist import template_map as T
 from coilforge.checklist.model import ChecklistFill, SheetFill
+from coilforge.common.excel_lock import excel_single_flight
 
 _VALUE_COL = 3  # column C ("SUBMITTAL")
 _LABEL_COL = 2  # column B
@@ -225,7 +226,31 @@ def write_checklist(
     Result: ``{saved_path, sheets:[{tag,category}], removed:[...], skipped_labels:[...],
     overridden_dims:[...], warnings:[...], export_allowed: False}``. The source template
     is untouched.
+
+    Serialized against every other Excel COM write — in this process and in any other
+    CoilForge server (``run_server.bat`` takes a port, so parallel projects are normal).
+    Raises ``ExcelBusyError`` if the guard is still held after the bounded wait; the
+    routes map that to HTTP 409, distinct from the 501 that means Excel is absent.
     """
+    with excel_single_flight(label="Coil Checklist"):
+        return _write_checklist_unlocked(
+            fill,
+            template_path=template_path,
+            dest_dir=dest_dir,
+            dest_name=dest_name,
+            visible=visible,
+        )
+
+
+def _write_checklist_unlocked(
+    fill: ChecklistFill,
+    *,
+    template_path: str = T.DEFAULT_TEMPLATE_PATH,
+    dest_dir: str | None = None,
+    dest_name: str | None = None,
+    visible: bool = False,
+) -> dict[str, Any]:
+    """The real writer. Call ``write_checklist`` — this one assumes the guard is held."""
     if not fill.sheets:
         raise ValueError("nothing to write — no coil sheets in the fill")
 

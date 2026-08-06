@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from coilforge.contracts.evidence import SourceEvidence
 from coilforge.direct_coil.draft import DirectCoilDraftField, DirectCoilInputDraft
@@ -79,6 +79,29 @@ class DrawingParameter(BaseModel):
     review_required: bool
     blocked_reason: str | None = None
     manual_override: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def slot(self) -> str | None:
+        """The engine slot this row renders (``"slot.S1"`` for ``S``, ``"slot.O4"`` for ``O2``).
+
+        COMPUTED rather than passed in, deliberately. ``DrawingParameter`` is built at
+        twelve call sites across three modules; a constructor argument would be forgotten
+        at one of them and that row would silently lose its identity. It is a pure
+        function of ``key``, so the model can answer it and no caller can get it wrong.
+
+        Why it is on the wire at all: the Coil Checklist comparison already reports each
+        dimension by slot id, but the panel's key and the checklist's label disagree about
+        what the SAME dimension is called (the panel's logical ``O2`` is the sheet's ``O4``,
+        while the sheet's own ``O2`` is the panel's ``O``). Joining the two by name would
+        put the mismatch flag on the wrong row. The slot is the only shared identity, and
+        re-deriving the logical<->parity bridge in JavaScript would make a third copy of a
+        mapping the code says must live in exactly one place. ``None`` for ``ZD``/``ZD2``,
+        which have no slot.
+        """
+        from coilforge.services.drawing_param_resolver import slot_for_param_key
+
+        return slot_for_param_key(self.key)
 
 
 class DrawingParameterSet(BaseModel):

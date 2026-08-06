@@ -27,7 +27,15 @@ is no install step or `pyproject.toml`.
 - Full suite: `python -m pytest -q`
 - Single file: `python -m pytest tests/test_header_prepopulate_engine.py -q`
 - Single test: `python -m pytest tests/test_header_prepopulate_engine.py::test_name -x`
-- Run the local web app (Windows, port 8011): double-click / run `run_server.bat`
+- Run the local web app (Windows, port 8011 by default): double-click / run `run_server.bat`,
+  or `run_server.bat 8012` to run a second project side by side. A busy port is auto-avoided
+  by scanning upward and the port actually used is printed on startup, so **read the window**
+  rather than assuming 8011. Excel COM is serialized across every running server
+  (`common/excel_lock.py`), so two checklist fills queue instead of leaving zombie EXCEL.EXE
+  processes; a fill still blocked after the bounded wait returns HTTP **409** (distinct from
+  the 501 that means Excel/pywin32 is absent), and `/api/deliverable/finalize` treats 409 as a
+  hard error rather than filing the order folder without its .xlsx. `COILFORGE_EXCEL_LOCK=0`
+  disables the guard.
   (NOTE: `run_server.bat` runs uvicorn WITHOUT `--reload` — restart it after any `src/`
   edit, and re-analyze the PDF in the browser since `pdfCoilPages` is cached client-side,
   or your change won't show. The manual `--reload` entrypoint below auto-reloads.)
@@ -43,6 +51,31 @@ PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade g
 The Coil Checklist auto-fill (below) uses Excel COM via `pywin32` (already present on
 the Windows box) and reads `.xlsx` back with `openpyxl`; its writer test is guarded by
 `pytest.importorskip` so the suite still runs where Excel/pywin32 is absent.
+
+## Trigger keywords
+
+**`shipit`** — "tests-green, then commit + push, in one go." When John types `shipit`
+(alone or in a message), do exactly this, in order, and stop at the first failure:
+
+1. Run the full suite: `python -m pytest -q`.
+2. **Gate:** proceed only if the run is green. The tree currently has 4 known
+   pre-existing `phase2c` PO-logic reds — `shipit` treats the run as passing only when
+   the *only* failures are those 4 documented reds and nothing in the files you changed
+   regressed; any new/other failure → **STOP, report it, commit nothing.** (To require a
+   fully-green run instead, say `shipit strict`. To scope to the drawing work, say
+   `shipit drawing` → run only `tests/test_schematic_renderer.py`.)
+3. Stage **only the files for the current work** — review `git status` first and `git add`
+   those paths explicitly. **Never `git add -A`**: this worktree carries unrelated edits
+   from a concurrent session that must not be swept into the commit.
+4. Commit with a Conventional Commit subject (`feat:`/`fix:`/`refactor:`/`docs:`…) and the
+   `Co-Authored-By: Claude …` trailer.
+5. Push: first push on this branch needs `git push -u origin <current-branch>`; later
+   pushes are plain `git push`.
+
+**Hard guards (never bypass, even with `shipit`):** never push to `main`; never
+`--force`/`--force-with-lease`; never `--no-verify`; never amend an already-pushed commit.
+For drawing-engine changes the Phase-Gate eyeball approval still applies — John typing
+`shipit` *is* that approval for the change in hand; it does not pre-approve future work.
 
 ## Architecture — the big picture
 
@@ -217,6 +250,74 @@ debounced `scheduleChecklistRefill` after an interactive derive; the headless re
 fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
 gate) deliberately passes none — it reads the machine proposal.
 
+**Drain-pan option from the unit model code** (`submittal/model_code.py`) — R-077 keys
+Terra's drain-pan width by option D1/D2/D3, and nothing produced that value, so every Terra
+INSTALL FIT reported `CANNOT_EVALUATE` while explaining its own blockage. The option is
+**token index 7** of the 22-token underscore model code (first digit = control qty, second =
+pan type); confirmed for **Terra H**. Three things make this harder than a split():
+① **The full code is kept in a dedicated field, not `row.model`/`candidate.notes`** — those
+mean "the schedule code", and a 22-token string there is noise in every note and summary
+that echoes it. This USED to be a safety guard and no longer is: until 2026-08-05 the Terra
+regexes in `detect_product_and_size` ended in `\b`, which cannot match a code continuing
+with `_`, and the outcome depended on the code's INNER size token — Terra V's `H10` IS a
+valid Ventum H size → confidently WRONG (`VENTUM_H`), Terra H's `H11` is not → `(None,None)`.
+Real submittals survived only because the cover schedule also prints the short code, which
+detection finds first. **Now fixed at the source** (`(?![0-9])` = "no further size digit",
+which is what the regex always meant; R-076 size validation still gates every match, and
+real-submittal output is byte-identical). Don't defend against the old defect — check
+`test_the_full_code_now_detects_correctly_in_both_terra_formats` for what is actually
+guaranteed. ② **Attribution is
+by unit SIZE** (`drain_pan_option_for_unit_size`), never document-wide: the code sits alone
+on a configuration page with no coil tag, and 2755 is a MULTI-unit submittal (009 + 012)
+printing only ONE full code — "one distinct code = one unit" silently gives 009 the 012
+unit's pan. A size with no code stays blocked rather than borrowing. ③ **Terra V is refused**
+(its code carries a two-digit token at the same index, so the refusal must be explicit):
+its pan is size-keyed and the Install sheet has no Terra V rows. That guard lives INSIDE
+`mechanical_fit._drain_pan_row` because both callers reach R-077 through it — and the
+checklist caller (`mapping._install_widths`, whose number is written into the .xlsx filed
+with the order) used to fold `"TERRA V" → "TERRA"` in `_FAMILY_FROM_UNIT`, which was the
+route around any call-site guard. R-077 deliberately has NO empty `TERRA_V|<size>` rows:
+`_drain_pan_row` tests `row is None`, and `{}` would fall to "no width column available"
+instead of the real reason. **Partner size guard:** a DX+HGRH / CWC+HWC pair is one unit,
+so differing `unit_size` means a detection is wrong — width/height **and `drain_pan`** all
+degrade to `CANNOT_EVALUATE` (drain_pan reads the same size through the same lookup, so
+leaving it live keeps a verdict standing on a distrusted value) and the note states BOTH
+sizes without choosing.
+
+**Known-divergence registry / adjudication** (`review/divergence.py`, `review/adjudicate.py`,
+`rules/known_divergences.yaml`, `scripts/promote_divergences.py`) — John rules ONCE on a
+checklist-vs-engine disagreement so the same known gap stops re-asking. A ruling **only
+re-labels a review row** (red → amber); it changes no value, no confidence, and
+**`project_gate` is deliberately untouched** — the ledger's `gate_verdict` label must keep one
+meaning across the corpus, so a suppression that lowered `exceptions_K` would corrupt every
+measurement taken before it. Identity =
+`(coil_category, product_family, terra_variant, unit_size_scope, slot)`; `terra_variant` is
+load-bearing (a Terra V ruling must not silence Terra H) and the family token is the **split**
+`TERRA_H`/`TERRA_V` straight from `resolve_product_line` — deliberately NOT the coarse `TERRA`
+that `mechanical_fit._coarse_terra_family` folds back to for its `TERRA|…` R-077/R-078 keys.
+`unit_size_scope` is **declared** (`"*"` or a size), never inferred. **Numbers are not in the
+identity** — CD varies per coil, so a numeric key would never match twice; magnitude is policed
+by an optional signed `delta_band` on `coilforge - checklist`, and outside it (wrong sign or too
+large) the row **re-escalates** instead of staying amber. A bandless ruling is *structural*, not
+unmeasured (when the sheet has no branch for the line at all, no magnitude makes it right).
+`coilforge_wrong` keeps its RED (`known_defect`) — dimming an open defect of ours would hide the
+one class that most needs fixing. Two files: the tracked promoted registry, and
+`outputs/divergence_staging.yaml` (**gitignored**) which is the ONLY thing
+`POST /api/divergence/adjudicate` writes — a concurrent session auto-commits this tree, so a
+browser action must never touch a tracked path; promotion is John's script + his commit.
+Staging **wins** on a key collision and a differing band raises a warning onto the annotation.
+Ledger side: migration 5 `divergence_adjudication` (append-only, re-ruling INSERTs) kept
+separate from `correction` so `retrieve`/`tuning` don't read a ruling as a manual override;
+`unresolved` is ledgered but **never registered**. `annotate_known_divergences` runs on **both**
+`_run_or_reuse_checklist` return paths and annotates the DEEPCOPY — bake it into the cache and a
+new ruling silently does nothing (the fill is memoized by PDF bytes); the cache carries an
+`identities` map so the hit path can annotate without re-running the workflow. Rule proposals
+(`review/rule_proposal.py` → gitignored `outputs/rule_proposals/`) may only ever *reduce* what is
+drawn — `demote_confidence` / `narrow_applies_to` / `new_medium_scope`, the last forced to
+MEDIUM so the existing gate does the enforcing; an inferred HIGH is not expressible. They flag
+`_SPECIAL_IDS` targets as **inert** (helper hardcodes MEDIUM, YAML flip does nothing) and treat
+"no governing rule" as a valid finding. Env `COILFORGE_DIVERGENCE=0` disables the whole feature.
+
 **CCSI value push + green/red compare** (`ccsi/compare.py`, `web/ccsi/`) — pushes the resolved
 drawing params into the external CCSI Direct Coil form (Claude-in-Chrome `/ccsi-fill`; never
 auto-saves, read-only CCSI-computed fields skipped) and reads them back to compare vs CoilForge,
@@ -266,7 +367,27 @@ responses deliberately assert safety flags (`raw_private_data_returned: False`,
 Empty drawing-parameter fields render RED with their `blocked_reason` as inline English
 evidence + a hover tooltip (`web/app.js::renderParameterRow`); the frontend colors by
 emptiness, not backend `status`, so a missing value never reads as a silent blank — don't
-revert empties to plain blanks. A `blocked_reason` may be **category-scoped**
+revert empties to plain blanks.
+**Inline checklist divergence (John 2026-08-04)** — the same row also carries the Coil
+Checklist's verdict for that dimension (red + both numbers on hover), so the panel John
+reviews most no longer requires scrolling to the comparison table and lining two tables up
+by eye. The join key is **`DrawingParameter.slot`**, never the key/label: the panel's
+logical `O2` is the sheet's `O4` while the sheet's own `O2` is the panel's `O`, so a name
+join flags the wrong row. `slot` is a Pydantic **computed field** (`drawing/parameters.py`)
+delegating to `drawing_param_resolver.slot_for_param_key` — the model is built at ~12 call
+sites across 3 modules, so a constructor argument would eventually be forgotten; the
+logical↔parity bridge stays in ONE place and is never re-implemented in JS.
+Front-end contract: `state.checklistBySlot` = `Map<tag, Map<slot, row>>` (per-coil, so
+verdicts cannot bleed across coils — `state.ccsiVerdicts` was flat and did bleed; it is now
+`ccsiVerdictsByTag`); one border class wins, `--empty` > `--divergence` (checklist) >
+`--mismatch` (CCSI) > `--match`, and **badges stack** rather than one hiding another.
+A checklist `match` earns **no** styling (two implementations agreeing is evidence, not
+approval — green stays CCSI's "safe to save"); `overridden`/`missing_one`/"no counterpart
+on this sheet" get a neutral note, not red. Staleness after a manual correction is an
+**explicit flag** (`checklistRefillPending`), never a value comparison — `mapping.py:353-357`
+resolves the checklist's CoilForge column with the checklist's OWN product detection, so the
+two CoilForge numbers can differ permanently and a value-based rule would hide the badge
+forever on exactly the coils under investigation. A `blocked_reason` may be **category-scoped**
 (`_BLANK_REASON_BY_CATEGORY`): the generic R message names the connection size, which is right
 for DX/HGRH but was a misdiagnosis on water coils whose conn size IS extracted — sending the
 engineer to hunt for a value already present is worse than saying nothing.
@@ -453,7 +574,19 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   2026-06-28 (`R-023` DX return spacing, `R-046` HGRH supply/return, `R-067` CWC/HWC
   vent-drain) — it is no longer a blanket LOW/blocked line. What genuinely stays gated:
   `R-082` Terra mounting holes (blocked/deferred) and HGRH Supply 2/3/4 I/O (review-required —
-  a software default, not derivable). The Terra V **CWC/HWC drawing** was the third item until
+  a software default, not derivable). **Since 2026-08-04 the code matches that sentence:** the
+  slot layer used to broadcast R-046's Supply-**1** constant to every odd header, so a
+  multi-header Terra V HGRH printed 2.75 on positions the SOP declines to specify (the
+  checklist caught it as `I3: CoilForge 2.75 vs Checklist TBD`). `slot.I{2k-1}` for k≥2 is now
+  left blank; the drawing prints one more "REVIEW REQUIRED" callout (18→19 on a header-2
+  reference) instead of a fabricated number, and the panel names R-046 as the reason rather
+  than the generic "engine did not derive this". Terra V HGRH `slot.S{2k-1}` past the R-052
+  return-spacing list is blanked for the same reason — it used to fall through to the generic
+  even-spacing net and print DX distributor spacing on a reheat coil (reachable when the
+  CoilMaster prose states more circuits than connections-per-header). Both are Terra-V-HGRH
+  scoped; every other line's broadcast is unchanged. Blanks are counted by
+  `project_gate` as `blocked` exceptions, so `exceptions_K` rises for these coils (pinned by
+  `tests/test_terra_v_hgrh_headers.py`). The Terra V **CWC/HWC drawing** was the third item until
   John released it 2026-07-28 — it now draws on the shared water template with Terra V values.
 
 ### MVP checklist
@@ -583,6 +716,36 @@ The model holds inches; each backend decides how to present them:
 Geometry scales; annotations do not. Dimension text, arrowheads, and
 witness-line labels are drawn at **fixed size** (in the SVG/PDF backends),
 anchored to datums. Scaling text or arrowheads is a defect.
+
+### Label legibility (Phase 3c — verified against the real EZC-0007)
+
+The narrow spread/end view is the hard case: many dims compete for a ~8" wide
+column. The rules that keep it legible — and the precedent for any future view:
+
+- **One view, one job.** The spread/end view carries only what positions the
+  circuits: spacing (`S`/`R`), offsets (`I`/`O`), and the box overalls (`CD`/`CH`),
+  plus the connection **glyphs** (nozzles, return circles, stubs, tube runs).
+  **Per-feature value labels do NOT belong here** — header diameters (`HDx`/`HD`),
+  stub length (`SL`), and the `RETURN` connection size are **data-strip / table
+  items, deferred to the wider header strip (Phase 4)**. EZC-0007 keeps them out of
+  the end view for exactly this reason; forcing them in makes their leaders rake
+  through the cramped return column. Keep the glyph, move the text. When a label
+  cannot be placed without crossing geometry/another label, **defer it to the right
+  view — do not cram it.**
+- **Value off its own line.** A dimension value sits a clear gap *beside* its line,
+  never on it (strikethrough is a defect). Place it at the **datum end** (away from
+  the measured point), like EZC-0007, so it never lands where the dim/ext lines run.
+- **Mirror-covariance is load-bearing.** LH↔RH is a single `mirror_view_x` on the
+  layer-2 layout, so every placement must be mirror-*covariant*: midpoint `(a+b)/2`
+  and `ax + sign(ax-bx)*gap` are; a hardcoded `min(ax,bx)` + fixed anchor is **not**.
+  For datum-end text, flip the anchor with the span (`end`↔`start`) so it reflects.
+  There are mirror-equivariance tests — run LH and RH for any label change.
+- **Obstacle-complete de-collision.** Label nudging treats **dim/witness/leader
+  lines + connection glyphs as fixed obstacles**, not just other labels. A green
+  label↔label test while lines cross labels is a **false green** — assert
+  "no line through any label bbox" and "no glyph over any label bbox" (LH+RH,
+  single+multi). Overalls (`kind=="overall"`) draw as tiered **arrows** regardless
+  of span; only offsets stay leader-style.
 
 ### Phase Gate workflow
 

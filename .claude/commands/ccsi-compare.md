@@ -2,7 +2,7 @@
 description: Read the open CCSI Direct Coil form's current values back and compare them to CoilForge, colouring each drawing-param field green (match) / red (mismatch) in the open CoilForge tab (review aid; never writes to CCSI).
 ---
 
-John has a coil open in **CoilForge** (`localhost:8011` / `127.0.0.1:8011`) AND the same coil
+John has a coil open in **CoilForge** (`localhost` / `127.0.0.1`, any port) AND the same coil
 open in the external **CCSI Online "Direct Coil" DX form** (`coil.ccsi.ie/Coils/Edit`). He
 wants a safety check: read CCSI's **current** values back and compare them field-by-field to
 what CoilForge derived, so a wrong number is caught **before** he saves the CCSI record. Drive
@@ -26,7 +26,7 @@ Hard rules:
 
 2. **Find the tabs** with `tabs_context_mcp` (`createIfEmpty:true` if no group). Identify:
    - **CCSI tab** = url host ends with `ccsi.ie` (should be on `/Coils/Edit/<id>`)
-   - **CoilForge tab** = host `localhost`/`127.0.0.1` on port `8011`
+   - **CoilForge tab** = host `localhost`/`127.0.0.1` on ANY port (the launcher takes a port argument, so parallel projects sit on 8011, 8012, …)
    If either is missing, ask John to confirm both are open (a coil analyzed in CoilForge, the
    same coil open in the CCSI editor). Never reuse tab ids from a prior session.
 

@@ -19,7 +19,7 @@ later phase; this module currently covers the per-coil width/height checks.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
 from coilforge.schemas.header_prepopulate import ProductFamily
@@ -124,6 +124,18 @@ def _drain_pan_row(
     is TBD, Terra H C without an option, or an unknown size).
     """
     lookup = _rule_index()[_R077]["lookup"]
+    # Terra V FIRST, and inside this helper rather than at either call site. Both callers
+    # (`_install_widths` for the .xlsx, `evaluate_drain_pan_fit` for the report) reach the
+    # R-077 table through here, so a guard placed in one of them leaves the other open —
+    # and the checklist path is the dangerous one, because its number is WRITTEN to the
+    # workbook that ships with the order.
+    #
+    # R-077's `TERRA|D1..D3` rows are Terra **H** widths. Terra V's pan is keyed by unit
+    # SIZE and that data is still TBD, so there is nothing to look up — and its model code
+    # does carry a two-digit token at the D-option position, which is exactly why the
+    # refusal has to be explicit rather than relying on the option coming back empty.
+    if product_family == ProductFamily.TERRA_V.value:
+        return None
     if _coarse_terra_family(product_family) == ProductFamily.TERRA.value:
         if not drain_pan_option:
             return None
@@ -513,10 +525,61 @@ def build_mechanical_fit_report(
     # Pairing pass: drain-pan INSTALL FIT for each coil that has a partner.
     all_tags = [c.get("tag") for c in coils if c.get("tag")]
     option_by_tag = {c.get("tag"): c.get("drain_pan_option") for c in coils}
+    # Carried alongside the option, not derived here: the reason belongs to whoever read
+    # the model code, and re-deriving it in this module would be a second interpretation
+    # that could disagree with the first.
+    option_reason_by_tag = {
+        c.get("tag"): str(c.get("drain_pan_option_reason") or "") for c in coils
+    }
     cd_by_tag = {e.tag: e.cd for e in entries if e.tag}
+    size_by_tag = {e.tag: e.unit_size for e in entries if e.tag}
     paired: list[CoilFitEntry] = []
     for entry in entries:
         partner = drain_pan_partner_tag(entry.tag, all_tags) if entry.tag else None
+
+        # A DX+HGRH / CWC+HWC pair is two coils in the SAME unit, so they must report the
+        # same unit size. When they do not, the detection is wrong for at least one of
+        # them -- and unit size selects the R-074 casing AND the R-077 pan width, so every
+        # verdict downstream is computed from a size we have just decided not to trust.
+        # Degrade all three rather than let a confident PASS/FAIL stand on it. The note
+        # states BOTH sizes and does not pick one: the system cannot know which detection
+        # failed, and quietly choosing would be the guess this guard exists to prevent.
+        partner_size = size_by_tag.get(partner) if partner else None
+        size_conflict = bool(
+            partner and partner_size and entry.unit_size and partner_size != entry.unit_size
+        )
+        if size_conflict:
+            note = (
+                f"{entry.tag} detected as unit size {entry.unit_size} but its drain-pan "
+                f"partner {partner} detected as {partner_size}. A DX+HGRH / CWC+HWC pair "
+                "shares one unit, so one of these is wrong — check the unit model code on "
+                "both coils. Fit verdicts are withheld because casing and drain-pan widths "
+                "are both keyed by unit size."
+            )
+            # The card already shows `note` once, as its own banner. Repeating the full
+            # sentence as the detail of all three checks turned one warning into four
+            # copies of itself — noise that buries the numbers underneath. The per-check
+            # line says only what is specific to it and points at the banner.
+            short = f"withheld — unit size disputed with {partner} (see note above)"
+            paired.append(
+                CoilFitEntry(
+                    **{
+                        **entry.__dict__,
+                        "width": _cannot_evaluate_fit(entry.width, short),
+                        "height": _cannot_evaluate_fit(entry.height, short),
+                        # The original plan degraded width/height only. The drain-pan
+                        # check reads entry.unit_size through the SAME lookup, so leaving
+                        # it live would keep a PASS/FAIL standing on the distrusted size.
+                        "drain_pan": _cannot_evaluate_drain_pan(
+                            entry, partner, short
+                        ),
+                        "partner_tag": partner,
+                        "note": note if not entry.note else f"{entry.note} {note}",
+                    }
+                )
+            )
+            continue
+
         drain_pan = evaluate_drain_pan_fit(
             product_family=entry.product_family,
             unit_size=entry.unit_size,
@@ -525,6 +588,7 @@ def build_mechanical_fit_report(
             partner_tag=partner,
             installed_on_drain_pan=installed_on_drain_pan,
             drain_pan_option=option_by_tag.get(entry.tag),
+            drain_pan_option_reason=option_reason_by_tag.get(entry.tag, ""),
         )
         paired.append(
             CoilFitEntry(
@@ -532,6 +596,39 @@ def build_mechanical_fit_report(
             )
         )
     return MechanicalFitReport(coils=tuple(paired))
+
+
+def _cannot_evaluate_fit(original: "FitCheck | None", reason: str) -> "FitCheck | None":
+    """Degrade a width/height verdict to CANNOT_EVALUATE, keeping its inputs visible.
+
+    ``replace`` rather than a rebuilt constructor: FitCheck carries casing/clearance/half
+    provenance that the engineer still wants to see while chasing the size conflict, and a
+    hand-listed constructor would silently drop whichever field is added next. Only the
+    verdict, the margin (meaningless without a trusted casing dim) and the detail change.
+    """
+    if original is None:
+        return None
+    return replace(
+        original, verdict="CANNOT_EVALUATE", margin=None, review_required=True,
+        detail=reason,
+    )
+
+
+def _cannot_evaluate_drain_pan(
+    entry: CoilFitEntry, partner_tag: str | None, reason: str
+) -> DrainPanFitResult:
+    return DrainPanFitResult(
+        verdict="CANNOT_EVALUATE",
+        product_family=entry.product_family,
+        unit_size=entry.unit_size,
+        this_cd=entry.cd,
+        partner_cd=None,
+        partner_tag=partner_tag,
+        columns=(),
+        review_required=True,
+        detail=reason,
+        evidence_refs=tuple(_rule_index()[_R077]["evidence_refs"]),
+    )
 
 
 def mechanical_fit_report_dict(report: MechanicalFitReport) -> dict[str, Any]:
@@ -566,8 +663,16 @@ def evaluate_drain_pan_fit(
     partner_tag: str | None,
     installed_on_drain_pan: bool,
     drain_pan_option: str | None = None,
+    drain_pan_option_reason: str = "",
 ) -> DrainPanFitResult:
     """INSTALL FIT for a coil pair sharing one drain pan.
+
+    ``drain_pan_option_reason`` is the model-code reader's own account of why there is (or
+    is not) an option for THIS coil. It is used verbatim when the option is missing,
+    because this function cannot reconstruct it: "no option" has several causes and they
+    send the engineer to different places. Without it the card falls back to a generic
+    "provide the drain-pan option", which on a multi-unit submittal is an instruction that
+    cannot be followed — the option it asks for is not printed anywhere in the document.
 
     PASS iff ``this_cd + partner_cd < width`` (strict, per the CHK INSTALL FIT).
     Only meaningful when the coil is installed on a shared drain pan AND a partner
@@ -608,11 +713,30 @@ def evaluate_drain_pan_fit(
         )
     row = _drain_pan_row(product_family, unit_size, drain_pan_option)
     if row is None:
-        if _coarse_terra_family(product_family) == ProductFamily.TERRA.value and not drain_pan_option:
+        # Terra V is checked BEFORE the generic Terra branch. It also satisfies
+        # "coarse TERRA and no option", so the shared message would tell the engineer to
+        # supply a D1/D2/D3 option — advice that can never be acted on, because Terra V's
+        # pan is size-keyed and no option would change the outcome. A permanently
+        # unfollowable instruction is worse than saying nothing.
+        if product_family == ProductFamily.TERRA_V.value:
             reason = (
-                "Terra drain-pan width is keyed by option D1/D2/D3, which is not a "
-                "captured input — provide the drain-pan option to evaluate"
+                "Terra V drain-pan width is keyed by unit size, and the Install sheet has "
+                "no Terra V rows yet — blocked pending that data. It deliberately does NOT "
+                "borrow the Terra H D1/D2/D3 widths"
             )
+        elif _coarse_terra_family(product_family) == ProductFamily.TERRA.value and not drain_pan_option:
+            # Prefer the reader's account. "No option" is not one situation: the code may
+            # be absent entirely, or belong to a DIFFERENT unit in the same submittal (in
+            # which case we deliberately refuse to borrow it), or disagree with a second
+            # code for the same size. Only the reader knows which, and the generic text
+            # below reads as "supply the option" in every one of them — advice that is
+            # actionable in the first case and impossible in the others.
+            reason = drain_pan_option_reason.strip() or (
+                "Terra drain-pan width is keyed by option D1/D2/D3, which was not read "
+                "from the unit model code — provide the drain-pan option to evaluate"
+            )
+            if drain_pan_option_reason.strip():
+                reason = f"Terra drain-pan width is keyed by option D1/D2/D3: {reason}"
         else:
             reason = (
                 f"no drain-pan width for {product_family}|{unit_size} "

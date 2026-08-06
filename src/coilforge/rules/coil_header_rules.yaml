@@ -1046,8 +1046,14 @@ rules:
   # per John. Ventum+ exposes Install width + Drain Pan width (the INSTALL FIT
   # compares against install_width for VENTUM+). Nova size pairs (A16/A18 …) share
   # one sheet row, expanded here to per-size keys. Single source (CHK) -> MEDIUM.
-  # GAPS: Terra H C needs the D1/D2/D3 option (not an engine input today) -> review;
-  # Terra V drain pan is "TBD" in the sheet -> absent here -> blocked.
+  # GAPS: Terra V drain pan is "TBD" in the sheet. Its keys are deliberately ABSENT
+  # rather than present-and-empty: mechanical_fit._drain_pan_row tests `row is None`,
+  # and an empty dict is not None — it would fall through to `_basis_columns -> []` and
+  # report "no width column available", which describes a table shape rather than the
+  # actual reason. No key at all takes the None path, which states the real one.
+  # (The Terra D1/D2/D3 rows below are Terra **H** widths; `_drain_pan_row` refuses to
+  # lend them to TERRA_V.) The option itself is now read from the unit model code
+  # (submittal/model_code.py) rather than being an uncaptured input.
   - rule_id: R-077
     applies_to: { coil_type: ["*"], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: drain_pan_width

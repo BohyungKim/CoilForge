@@ -21,6 +21,7 @@ import os
 from typing import Any
 
 from coilforge.ambient.excel_map import AmbientExcelFill, ExcelSheetFill
+from coilforge.common.excel_lock import excel_single_flight
 
 # The master template (per-category sheets CDXC-1 = DX, RHHGRC-1 = HGRH). XXXX is the
 # project-number placeholder in the real template's filename.
@@ -174,7 +175,30 @@ def write_ambient_excel(
     """Write a filled COPY of the comparison workbook; the source template is untouched.
 
     Result: ``{saved_path, sheets:[{tag,category}], skipped_labels:[...], warnings:[...],
-    export_allowed: False, production_drawing_approval_claimed: False}``."""
+    export_allowed: False, production_drawing_approval_claimed: False}``.
+
+    Shares the Excel single-flight guard with the Coil Checklist writer, so a checklist
+    fill running in this (or another) CoilForge server cannot collide with this one.
+    Raises ``ExcelBusyError`` after the bounded wait; the route maps it to HTTP 409."""
+    with excel_single_flight(label="Ambient comparison"):
+        return _write_ambient_excel_unlocked(
+            fill,
+            template_path=template_path,
+            dest_dir=dest_dir,
+            dest_name=dest_name,
+            visible=visible,
+        )
+
+
+def _write_ambient_excel_unlocked(
+    fill: AmbientExcelFill,
+    *,
+    template_path: str = DEFAULT_TEMPLATE_PATH,
+    dest_dir: str | None = None,
+    dest_name: str | None = None,
+    visible: bool = False,
+) -> dict[str, Any]:
+    """The real writer. Call ``write_ambient_excel`` — this one assumes the guard is held."""
     if not fill.sheets:
         raise ValueError("nothing to write — no coil sheets in the fill")
 

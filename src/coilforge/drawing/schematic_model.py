@@ -15,6 +15,7 @@ feature instead of guessing.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,27 +32,29 @@ _SLOT_KEYS: dict[str, str] = {
     "RF": "slot.RF",
 }
 
-# Header/side-view slots (verified against slot_map.json + ez_json_drawing_loader.py).
-# Header id 1 = supply/distributor (odd), id 2 = return/suction (even).
-_SUPPLY_SLOTS = {
-    "diameter": "slot.HDx1",
-    "offset": "slot.I1",
-    "spacing": "slot.S1",
-    "extension": "slot.DIST_EXT",
-    "connection_diameter": "slot.SUPPLY_CONN_SIZE",
-}
-# Distributor mount orientation (R-031 ConnectionDown / R-032 ConnectionUp) — a string,
-# not a dimension. Drives which casing edge the DX distributor is referenced from.
-_DIST_ORIENTATION_SLOT = "slot.DIST_ORIENTATION"
-_RETURN_SLOTS = {
-    "diameter": "slot.HD2",
-    "offset": "slot.O2",
-    "spacing": "slot.R2",
-    "stub_length": "slot.SL2",
-    "connection_diameter": "slot.RETURN_CONN_SIZE",
-}
+# Header/side-view slots (verified against slot_map.json + ez_json_drawing_loader.py and the
+# real DX references EZC-0001 / EZC-0007). Headers are indexed by EZ id: ODD = supply/
+# distributor, EVEN = return/suction. Each circuit k -> supply id 2k-1, return id 2k.
+#   supply id : HDx{id} (header Ø), I{id} (offset from edge), S{id} (spacing along the depth)
+#   return id : HD{id}, O{id}, R{id}, SL{id} (stub) + the shared RETURN_CONN_SIZE (sweat Ø)
+# A DX distributor has no single sweat connection (EZ: Headers[supply].ConnectionSize=[0,0,0]),
+# so the supply carries no connection_diameter — it is represented by labels (HDx + I + S).
+_HEADER_SLOT_RE = re.compile(r"^slot\.(HDx|HD|SL|S|R|I|O)(\d+)$")
+_RETURN_CONN_SLOT = "slot.RETURN_CONN_SIZE"
 
 _REVIEW_REQUIRED = "REVIEW REQUIRED"
+
+
+def _header_ids(slot_values: dict[str, Any]) -> list[int]:
+    """Sorted unique EZ header ids present in the indexed side-view slots (e.g. ``[1, 2]``
+    single-circuit, ``[1, 2, 3, 4, 5, 6]`` for a 3-circuit DX). ``RETURN_CONN_SIZE`` is a
+    shared (un-indexed) slot and is intentionally not matched here."""
+    ids: set[int] = set()
+    for key in slot_values:
+        match = _HEADER_SLOT_RE.match(str(key))
+        if match:
+            ids.add(int(match.group(2)))
+    return sorted(ids)
 
 
 def _slot_inches(slot_values: dict[str, Any], key: str) -> float | None:
@@ -80,35 +83,80 @@ def _slot_int(slot_values: dict[str, Any], key: str) -> int | None:
     return int(value) if value is not None else None
 
 
-def _dist_orientation(slot_values: dict[str, Any]) -> str | None:
-    """Normalize the distributor-orientation slot to ``"UP"`` / ``"DOWN"`` or ``None``.
-
-    Any other / missing value -> ``None`` so the layout keeps its default (DOWN)
-    placement rather than inventing a direction.
-    """
-    value = slot_values.get(_DIST_ORIENTATION_SLOT)
-    if value is None:
-        return None
-    text = str(value).strip().upper()
-    return text if text in ("UP", "DOWN") else None
-
-
 @dataclass(frozen=True)
 class HeaderSpec:
     """One header/connection at the coil's header end, in inches. No pixels.
+
+    Indexed by EZ id (``index``): odd = supply/distributor, even = return. The real DX
+    references (EZC-0001 / EZC-0007) show ``offset`` (I/O) is a per-row CONSTANT while
+    ``spacing`` (S/R) is what positions each circuit along the depth — so both are carried.
 
     A field is ``None`` when its slot was missing / REVIEW REQUIRED — the side view
     drops + annotates that feature rather than inventing it.
     """
 
     role: str  # "supply" | "return"
-    diameter: float | None  # HDx1 (supply) / HD2 (return)
-    offset: float | None  # I1 (supply) / O2 (return) — vertical position, review-aid datum
-    stub_length: float | None  # SL2 (return)
-    connection_diameter: float | None  # RETURN_CONN_SIZE (return)
-    spacing: float | None = None  # S1 (supply) / R2 (return) — depth position along CD
-    extension: float | None = None  # DIST_EXT (supply distributor extension stub)
-    orientation: str | None = None  # "UP"/"DOWN" (supply distributor; R-031/R-032). None = default DOWN
+    index: int  # EZ header id (odd = supply, even = return)
+    diameter: float | None  # HDx{id} (supply) / HD{id} (return)
+    offset: float | None  # I{id} (supply) / O{id} (return) — constant offset from the edge
+    spacing: float | None  # S{id} (supply) / R{id} (return) — position along the depth
+    stub_length: float | None  # SL{id} (return)
+    connection_diameter: float | None  # RETURN_CONN_SIZE (return; shared sweat Ø)
+    # V3 distributor extras (supply/odd id only; HIGH from slot_values, review from dist_review).
+    extension_in: float | None = None  # DistExtension{id} — distributor stem stub (HIGH)
+    nozzle_spec: str | None = None  # DistModel{id} — distributor model string (review, label-only)
+    feeder_od_in: float | None = None  # DistOD{id} — feeder/tube OD (review; sizes the circle)
+
+
+def _review_num(dist_review: Mapping[str, Any], key: str) -> float | None:
+    """Leading numeric inches for a review-bucket slot (e.g. ``slot.DistOD1``), gated like
+    ``_slot_inches`` — None when missing / "REVIEW REQUIRED" / unparseable. The review bucket
+    carries the value; it is drawn FLAGGED, never as a confirmed dimension."""
+    value = dist_review.get(key)
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text or text.upper() == _REVIEW_REQUIRED:
+        return None
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    return float(match.group(0)) if match else None
+
+
+def _make_header(
+    slot_values: dict[str, Any], hid: int, dist_review: Mapping[str, Any]
+) -> HeaderSpec:
+    """Build one indexed header from its gated slots. Odd id = supply/distributor
+    (HDx/I/S, no stub or sweat connection per the EZ DX distributor rule); even id =
+    return (HD/O/R/SL + the shared RETURN_CONN_SIZE sweat Ø).
+
+    The supply/distributor also carries the V3 extras: ``extension_in`` (DistExtension, HIGH,
+    from the flat gated ``slot_values``) and the review-bucket ``nozzle_spec`` (DistModel,
+    opaque string) / ``feeder_od_in`` (DistOD) from ``dist_review`` — drawn FLAGGED downstream."""
+    if hid % 2 == 1:  # supply / distributor
+        model = dist_review.get(f"slot.DistModel{hid}")
+        return HeaderSpec(
+            role="supply",
+            index=hid,
+            diameter=_slot_inches(slot_values, f"slot.HDx{hid}"),
+            offset=_slot_inches(slot_values, f"slot.I{hid}"),
+            spacing=_slot_inches(slot_values, f"slot.S{hid}"),
+            stub_length=None,  # supply distributor has no stubout (per EZ data)
+            connection_diameter=None,  # a distributor has no single sweat connection
+            extension_in=_slot_inches(slot_values, f"slot.DistExtension{hid}"),  # HIGH (gated)
+            nozzle_spec=str(model).strip() if model not in (None, "") else None,  # review
+            feeder_od_in=_review_num(dist_review, f"slot.DistOD{hid}"),  # review
+        )
+    return HeaderSpec(
+        role="return",
+        index=hid,
+        diameter=_slot_inches(slot_values, f"slot.HD{hid}"),
+        offset=_slot_inches(slot_values, f"slot.O{hid}"),
+        spacing=_slot_inches(slot_values, f"slot.R{hid}"),
+        stub_length=_slot_inches(slot_values, f"slot.SL{hid}"),
+        connection_diameter=_slot_inches(slot_values, _RETURN_CONN_SLOT),
+    )
 
 
 @dataclass(frozen=True)
@@ -130,9 +178,6 @@ class CoilGeometry:
     casing_depth: float | None  # CD
     rows: int | None  # ROWS
     headers: tuple[HeaderSpec, ...]  # supply (id 1), return (id 2) for DX
-    # long-axis overalls (return-bend end)
-    return_bend: float | None  # RB — bend allowance beyond the casing at the return end
-    overall_length: float | None  # OAL — casing length + return bend
     # context (carried through for downstream layers / metadata)
     coil_category: str
     coil_hand: str
@@ -140,6 +185,10 @@ class CoilGeometry:
     special_feature: str | None
     # drawing labels whose slot was missing / REVIEW REQUIRED (dropped, not invented)
     omitted: tuple[str, ...]
+    # V3 distributor plan-view extras (additive; default keeps front/side identical).
+    airflow: str | None = None  # slot.AIRFLOW enum (raw, NOT inches) — drives the AIRFLOW arrow
+    dist_review_labels: tuple[str, ...] = ()  # dist features sourced from the review bucket (flagged)
+    dist_blocked: tuple[str, ...] = ()  # blocked dist slots (e.g. conflicted DistExtension) — annotate
 
     @classmethod
     def from_slot_values(
@@ -150,26 +199,25 @@ class CoilGeometry:
         coil_hand: str,
         header_type: str,
         special_feature: str | None,
+        dist_review: Mapping[str, Any] | None = None,
+        dist_blocked: Sequence[str] | None = None,
     ) -> CoilGeometry:
+        """Build the inches model from gated slots. ``dist_review`` carries the review-bucket
+        distributor values (``slot.DistModel{id}`` / ``slot.DistOD{id}``) — drawn FLAGGED, never
+        as confirmed dimensions; ``dist_blocked`` lists blocked dist slots to omit + annotate. HIGH
+        distributor slots (``slot.AIRFLOW``, ``slot.DistExtension{id}``) ride in ``slot_values``."""
+        dist_review = dist_review or {}
         resolved = {label: _slot_inches(slot_values, key) for label, key in _SLOT_KEYS.items()}
         omitted = tuple(label for label, value in resolved.items() if value is None)
-        supply = HeaderSpec(
-            role="supply",
-            diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["diameter"]),
-            offset=_slot_inches(slot_values, _SUPPLY_SLOTS["offset"]),
-            stub_length=None,  # supply uses `extension` (distributor stub), not SL2
-            connection_diameter=_slot_inches(slot_values, _SUPPLY_SLOTS["connection_diameter"]),
-            spacing=_slot_inches(slot_values, _SUPPLY_SLOTS["spacing"]),
-            extension=_slot_inches(slot_values, _SUPPLY_SLOTS["extension"]),
-            orientation=_dist_orientation(slot_values),
-        )
-        return_header = HeaderSpec(
-            role="return",
-            diameter=_slot_inches(slot_values, _RETURN_SLOTS["diameter"]),
-            offset=_slot_inches(slot_values, _RETURN_SLOTS["offset"]),
-            stub_length=_slot_inches(slot_values, _RETURN_SLOTS["stub_length"]),
-            connection_diameter=_slot_inches(slot_values, _RETURN_SLOTS["connection_diameter"]),
-            spacing=_slot_inches(slot_values, _RETURN_SLOTS["spacing"]),
+        # One HeaderSpec per EZ id present (odd = supply, even = return). Default to the
+        # single-circuit pair [1, 2] when no indexed header slots are present (back-compat).
+        ids = _header_ids(slot_values) or [1, 2]
+        headers = tuple(_make_header(slot_values, hid, dist_review) for hid in ids)
+        # AIRFLOW is an explicit enum string, NOT inches — read raw (the gate would null it).
+        airflow_raw = slot_values.get("slot.AIRFLOW")
+        airflow = str(airflow_raw).strip() if airflow_raw not in (None, "") else None
+        review_labels = tuple(
+            key.replace("slot.", "") for key in dist_review if str(key).startswith("slot.")
         )
         return cls(
             casing_length=resolved["CL"],
@@ -182,12 +230,13 @@ class CoilGeometry:
             return_flange=resolved["RF"],
             casing_depth=_slot_inches(slot_values, "slot.CD"),
             rows=_slot_int(slot_values, "slot.ROWS"),
-            headers=(supply, return_header),
-            return_bend=_slot_inches(slot_values, "slot.RB"),
-            overall_length=_slot_inches(slot_values, "slot.OAL"),
+            headers=headers,
             coil_category=coil_category,
             coil_hand=coil_hand,
             header_type=header_type,
             special_feature=special_feature,
             omitted=omitted,
+            airflow=airflow,
+            dist_review_labels=review_labels,
+            dist_blocked=tuple(dist_blocked or ()),
         )

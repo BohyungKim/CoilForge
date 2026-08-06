@@ -25,7 +25,7 @@ Hard rules:
    - CCSI tab present, **logged in** (URL is `/UserProjects/...` or `/Coils/...`, NOT
      `/Account/Login` or `/Customer/directcoil`). If logged out, NO-GO → ask John to log in.
    - CCSI tab is on a project `FullDetails` (or tell John to open the target project).
-   - CoilForge tab up (`:8011`) with coils: `window.coilforgeCoils().length > 0`.
+   - CoilForge tab up (`localhost`, any port) with coils: `window.coilforgeCoils().length > 0`.
 
 3. **T2 handlers resolve (no call)** — on the CCSI `tabId`:
    ```js

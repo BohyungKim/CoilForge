@@ -3,7 +3,7 @@ description: Drive the CCSI project workflow — duplicate the quote, rename the
 ---
 
 John is on the external **CCSI** site (`coil.ccsi.ie`) with a project open, working the same
-project in **CoilForge** (`localhost:8011`, coils in the sidebar). He wants to prepare a revised
+project in **CoilForge** (`localhost` on any port, coils in the sidebar). He wants to prepare a revised
 quote: **duplicate the quote → rename the copy to RFO → for each coil, open it and push +
 compare CoilForge's drawing params**. This composes `/ccsi-sync-all` (which composes `/ccsi-fill`
 + `/ccsi-compare`) and adds the CCSI project navigation from `web/ccsi/ccsi_nav_map.json`.
@@ -27,7 +27,7 @@ Hard rules:
    `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__javascript_tool`
    Read `web/ccsi/ccsi_nav_map.json` for the handlers below.
 
-2. **Find the tabs** (`tabs_context_mcp`): CCSI (`ccsi.ie`) + CoilForge (`:8011`). If CoilForge
+2. **Find the tabs** (`tabs_context_mcp`): CCSI (`ccsi.ie`) + CoilForge (`localhost`, any port). If CoilForge
    shows no coils, tell John to analyze the submittal first (manual drag — no size cap).
 
 3. **Open the project.** Ask John for the project number if not already on it. Navigate the CCSI

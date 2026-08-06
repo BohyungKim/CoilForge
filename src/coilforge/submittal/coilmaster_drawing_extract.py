@@ -212,13 +212,26 @@ def product_size_options() -> dict[str, list[str]]:
 # Terra model code on a submittal schedule, e.g. "TR_C_009" / "TR-C-009" / "TR C 9".
 # The C/V token carries the orientation (C -> TERRA H, V -> TERRA V); the trailing
 # digits are the (zero-padded) Terra unit size.
-_TERRA_MODEL_RE = re.compile(r"\bTR[_\- ]?([CV])[_\- ]?0*(\d{1,3})\b", re.IGNORECASE)
+#
+# The size ends with `(?![0-9])`, NOT `\b`. What we mean is "no further size digit", and
+# on the underscore-joined FULL model code those two differ: `\b` fails after "012" in
+# `TR_C_012_I_R_1_H11_21_...` because "_" is a word character, so the whole code matched
+# nothing and detection fell through to the loose non-Terra size scan below. What
+# happened there depended on the code's INNER size token, so the two Terra formats failed
+# DIFFERENTLY: Terra V's inner "H10" is a valid Ventum H size -> ('VENTUM_H','H10'),
+# confidently wrong; Terra H's "H11" is not -> (None, None), unresolved. Real submittals
+# were rescued only because the cover schedule also prints the short code, which is found
+# first. Fixed 2026-08-05; the R-076 size validation below still gates every match, so
+# the looser boundary cannot introduce a size that is not real.
+_TERRA_MODEL_RE = re.compile(r"\bTR[_\- ]?([CV])[_\- ]?0*(\d{1,3})(?![0-9])", re.IGNORECASE)
 
 # Terra Vertical model code, e.g. "TV_B_084" (unit schedule) / "TV084" (filter table).
 # Always Terra V; the optional middle token ("B" = Base-mounted) is a mount/config code
 # and is skipped. (John 2026-06-29 confirmed both the TV_B_### and TV### forms.)
+# Same `(?![0-9])` boundary and the same reason as _TERRA_MODEL_RE above — this is the
+# format that produced the confidently-wrong ('VENTUM_H','H10').
 _TERRA_V_MODEL_RE = re.compile(
-    r"\bTV[_\- ]?(?:[A-Z][_\- ]?)?0*(\d{1,3})\b", re.IGNORECASE
+    r"\bTV[_\- ]?(?:[A-Z][_\- ]?)?0*(\d{1,3})(?![0-9])", re.IGNORECASE
 )
 
 

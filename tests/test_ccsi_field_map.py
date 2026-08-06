@@ -98,12 +98,37 @@ def test_payload_emits_drawing_notes_as_a_top_level_key() -> None:
     assert 'entry.direct_coil_label === "Drawing Notes"' in _APP_JS
 
 
-def test_notes_selector_is_marked_unverified_until_captured_live() -> None:
-    # No Phase-0 capture exists for CCSI's Drawing Notes input, so the resolver falls back to
-    # label text. That inference must stay flagged so the filler warns before writing.
-    assert "selector_verified: false" in _APP_JS
+def test_notes_selector_is_the_live_captured_id() -> None:
+    """Captured 2026-08-05 off coil.ccsi.ie/Coils/Edit: `#DrawingNotes`.
+
+    This replaces the guard that required the selector to stay unverified — that guard did
+    its job, and the capture is what retires it. The capture also explained why the fallback
+    never worked: CCSI labels the field `<label for="Drawing_Notes">`, an id that does not
+    exist (the input is `DrawingNotes`), so `label.control` is null and labelText resolved
+    to nothing. The notes push was silently a no-op.
+    """
+    assert '{ strategy: "css", selector: "#DrawingNotes" }' in _APP_JS
+    assert "selector_verified: true" in _APP_JS
+    # The labelText entry stays as a SECOND choice — harmless today, useful if CCSI ever
+    # repairs the `for` attribute.
     assert 'strategy: "labelText"' in _APP_JS
+
+
+def test_the_userscript_still_handles_an_unverified_selector() -> None:
+    """The unverified branch must survive the Notes capture. It is not Notes-specific — it
+    is what warns John about ANY future field added before its id is captured."""
     assert "selector_verified === false" in _USERSCRIPT
+
+
+def test_a_single_line_target_gets_newlines_collapsed_on_both_sides() -> None:
+    """CCSI's Drawing Notes is an <input>, not a textarea, and CoilForge assembles notes one
+    per line. An <input> drops newlines, so writing raw and comparing raw reports a mismatch
+    on every successful fill. Both the write and the verify must use the same collapse."""
+    assert "function forTarget(target, value)" in _USERSCRIPT
+    assert "setNativeValue(target, forTarget(target, field.value));" in _USERSCRIPT
+    assert "forTarget(target, field.value).trim()" in _USERSCRIPT
+    # A textarea keeps its newlines.
+    assert "if (target instanceof HTMLTextAreaElement) return text;" in _USERSCRIPT
 
 
 def test_userscript_fills_through_the_entries_adapter_not_raw_fields() -> None:

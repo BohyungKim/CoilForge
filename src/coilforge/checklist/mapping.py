@@ -285,31 +285,63 @@ def _partner(coil: dict[str, Any], coils: list[dict[str, Any]]) -> dict[str, Any
 
 
 # Checklist UNIT value -> engine product family key used by the R-077 lookup.
+#
+# "TERRA V" maps to TERRA_V, NOT the coarse TERRA it used to fold onto. That fold was the
+# route AROUND the Terra V guard: `_drain_pan_row("TERRA", size, "D1")` happily returns the
+# Terra **H** width, and this caller writes its result into the .xlsx that ships with the
+# order. It was inert only while the option argument was hardcoded None — the moment the
+# model-code parser started supplying a real D-option it would have become a wrong number
+# in a customer-facing workbook. The guard now lives inside `_drain_pan_row`, so both
+# callers are covered; this mapping just has to stop hiding which family is asking.
 _FAMILY_FROM_UNIT = {
     "NOVA": "NOVA", "VENTUM H": "VENTUM_H", "VENTUM+": "VENTUM_PLUS",
-    "TERRA H": "TERRA", "TERRA V": "TERRA",
+    "TERRA H": "TERRA", "TERRA V": "TERRA_V",
 }
 
 
-def _install_widths(unit: str | None, unit_size: Any) -> tuple[Any, Any]:
+def _install_widths(
+    unit: str | None, unit_size: Any, drain_pan_option: str | None = None
+) -> tuple[Any, Any]:
     """(INSTALL WIDTH, DRAIN PAN WIDTH) from R-077 for the INSTALL FIT rows.
 
     Reuses ``mechanical_fit._drain_pan_row`` (R-077). The sheet's INSTALL FIT formula
     compares against INSTALL WIDTH for VENTUM+ and DRAIN PAN WIDTH otherwise, so both
     cells are filled with the right R-077 columns. Returns (None, None) when unresolved
-    (Terra needs a D1/D2/D3 option we don't capture; Terra V is TBD) — never invented.
+    (Terra H without a readable D-option; Terra V at all) — never invented.
     """
     from coilforge.compatibility.mechanical_fit import _drain_pan_row
 
     family = _FAMILY_FROM_UNIT.get(unit or "")
     if not family:
         return (None, None)
-    row = _drain_pan_row(family, str(unit_size) if unit_size is not None else None, None)
+    row = _drain_pan_row(
+        family, str(unit_size) if unit_size is not None else None, drain_pan_option
+    )
     if not row:
         return (None, None)
     install_w = row.get("install_width", row.get("with_access"))
     drain_w = row.get("drain_pan_width", row.get("coil_module_only"))
     return (install_w, drain_w)
+
+
+def _install_width_blocked_note(unit: str | None, drain_pan_option: str | None) -> str:
+    """Why INSTALL/DRAIN PAN WIDTH is blank for THIS unit.
+
+    Split by cause so the engineer is not sent after a value that would not help:
+    Terra V cannot be unblocked by any option, and a Terra H that still blocks after the
+    model code was read has a different problem from one whose code was never found.
+    """
+    if (unit or "").upper() == "TERRA V":
+        return (
+            "Terra V drain-pan width is keyed by unit size and the Install sheet has no "
+            "Terra V rows yet — it deliberately does not borrow the Terra H widths"
+        )
+    if (unit or "").upper() == "TERRA H" and not drain_pan_option:
+        return (
+            "Terra H drain-pan width needs the D1/D2/D3 option, which could not be read "
+            "from the unit model code on this submittal"
+        )
+    return "drain-pan/install width not found in R-077 for this unit and size"
 
 
 def _build_sheet(
@@ -483,7 +515,20 @@ def _build_sheet(
                               "review_required" if installed else "constant",
                               "derived:partner_tag"))
         if partner:
-            p_slots, _p = _resolve_engine(partner, None)  # CD does not depend on application
+            # The partner's CD must be resolved the SAME way that partner's OWN sheet
+            # resolves it, or the number written here disagrees with the number the DX
+            # sheet shows for the very same coil — and this cell is an INPUT to the
+            # sheet's INSTALL FIT, so the disagreement propagates into the drain-pan
+            # verdict. On an HGRH sheet the partner IS the reheat-paired DX, so it takes
+            # R-072's with-HGRH branch exactly as `_build_sheet` does at :344-351.
+            # Gated on the category because this block also serves the HWC sheet, whose
+            # partner is a CWC — an ungated with_hgrh=True would apply the reheat branch
+            # to a water coil.
+            p_with_hgrh = True if category == "HGRH" else None
+            p_hgrh_conn = coil.get("conn_size") if category == "HGRH" else None
+            p_slots, _p = _resolve_engine(  # CD does not depend on application
+                partner, None, with_hgrh=p_with_hgrh, hgrh_conn_size=p_hgrh_conn
+            )
             p_cd = p_slots.get("slot.CD")
             ptag = partner.get("tag")
             if category == "HGRH":
@@ -502,14 +547,26 @@ def _build_sheet(
                                       "review_required" if p_cd is not None else "blocked",
                                       f"engine:partner slot.CD({ptag})",
                                       note=None if p_cd is not None else "partner CWC CD unresolved"))
-        iw, dpw = _install_widths(unit, coil.get("unit_size") or coil.get("unit_size_token"))
+        drain_pan_option = coil.get("drain_pan_option")
+        iw, dpw = _install_widths(
+            unit,
+            coil.get("unit_size") or coil.get("unit_size_token"),
+            drain_pan_option,
+        )
+        source = (
+            f"engine:R-077 (drain-pan option {drain_pan_option} from the unit model code)"
+            if drain_pan_option else "engine:R-077"
+        )
         for lbl, val in (("INSTALL WIDTH", iw), ("DRAIN PAN WIDTH", dpw)):
             if val is not None:
-                cells.append(CellFill(lbl, val, "number", "review_required", "engine:R-077"))
+                cells.append(CellFill(lbl, val, "number", "review_required", source))
             else:
+                # Name the actual blocker. "Terra needs a D1/D2/D3 option" was right while
+                # nothing produced one; now that the model code supplies it, a Terra H coil
+                # that still blocks did so for a different reason, and Terra V blocks for a
+                # reason no option can fix.
                 cells.append(CellFill(lbl, None, "number", "blocked", "engine:R-077",
-                                      note="drain-pan/install width unresolved (Terra needs "
-                                           "D1/D2/D3 option; Terra V is TBD)"))
+                                      note=_install_width_blocked_note(unit, drain_pan_option)))
 
     # --- RB (return bend): a direct-coil INPUT value, not a computed dim (John
     # 2026-07-01). CoilForge's rule value is authoritative (R-005 DX/HGRH=1.5,

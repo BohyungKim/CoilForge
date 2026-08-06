@@ -3,8 +3,7 @@
 // @namespace    coilforge
 // @version      2.2.1
 // @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
-// @match        http://localhost:8011/*
-// @match        http://127.0.0.1:8011/*
+// @include      /^https?:\/\/(localhost|127\.0\.0\.1):\d+\//
 // @match        https://coil.ccsi.ie/*
 // @noframes
 // @updateURL    http://localhost:8011/static/ccsi/ccsi_autofill.user.js
@@ -17,9 +16,15 @@
 // ==/UserScript==
 
 /*
+ * PORT: the local-server rule is a regex @include (any port on localhost/127.0.0.1),
+ * because run_server.bat takes a port argument so several projects can run side by side
+ * — a coil open on :8012 must still get the button. @updateURL/@downloadURL cannot be
+ * port-agnostic and stay pinned to 8011: auto-update only works while a server is on the
+ * default port. The install link in index.html is relative, so installing always works.
+ *
  * ONE script, TWO roles (it detects which page it is on):
  *
- *   CoilForge (localhost:8011)  — adds a "▶ Send to CCSI" button. On click it reads
+ *   CoilForge (localhost, any port) — adds a "▶ Send to CCSI" button. On click it reads
  *     the 13 rendered drawing-param values + the field map, builds the payload, and
  *     GM_setValue()s it. No clipboard.
  *   CCSI (coil.ccsi.ie)         — GM_addValueChangeListener wakes on the remote push,
@@ -388,7 +393,10 @@
     // input's readOnly and makes CCSI accept the value — then write + read-back verify.
     enableFieldForUpdate(target);
     if (target.readOnly) { markRow(field, "readonly"); return; }
-    setNativeValue(target, field.value);
+    // Write the SAME normalization verify() will compare against (see forTarget): writing
+    // the raw multi-line value and comparing the collapsed one would report a mismatch on
+    // every successful notes fill.
+    setNativeValue(target, forTarget(target, field.value));
     ["input", "change", "blur"].forEach((type) => target.dispatchEvent(new Event(type, { bubbles: true })));
     markRow(field, verify(target, field) ? "ok" : "mismatch");
   }
@@ -433,9 +441,21 @@
     }
   }
 
+  // A single-line <input> silently drops newlines, so a multi-line value can never read
+  // back as it was written. CCSI's Drawing Notes is exactly that (`#DrawingNotes` is an
+  // <input type=text>, captured live 2026-08-05) and CoilForge assembles its notes one per
+  // line. Collapse newlines to "; " for such a target -- and apply the SAME collapse to
+  // BOTH sides in verify(), or the fill succeeds and still reports a mismatch forever.
+  // A <textarea> keeps the original text untouched.
+  function forTarget(target, value) {
+    const text = String(value);
+    if (target instanceof HTMLTextAreaElement) return text;
+    return text.replace(/\s*\n+\s*/g, "; ").trim();
+  }
+
   function verify(target, field) {
     const got = String(target.value).trim();
-    if (got === String(field.value).trim()) return true;
+    if (got === forTarget(target, field.value).trim()) return true;
     const a = Number(got), b = Number(field.value);
     return Number.isFinite(a) && Number.isFinite(b) && a === b;
   }

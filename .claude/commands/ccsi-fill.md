@@ -4,7 +4,7 @@ description: Turn on the CCSI autofill filler on the open CCSI Direct Coil form 
 
 John is on the external **CCSI Online "Direct Coil" DX form** (`coil.ccsi.ie`) and wants
 the CoilForge filler turned on, with the drawing parameters (13 base plus any multi-header
-I2/S2… the coil produced) carried over from his open **CoilForge** tab (`localhost:8011` / `127.0.0.1:8011`). Do it by driving both tabs
+I2/S2… the coil produced) carried over from his open **CoilForge** tab (`localhost` / `127.0.0.1`, any port). Do it by driving both tabs
 directly via Claude-in-Chrome — **no clipboard, no Tampermonkey**. This is the same flow
 the team validated live; it just removes the manual steps.
 
@@ -25,9 +25,9 @@ Hard rules:
 
 2. **Find the tabs** with `tabs_context_mcp` (`createIfEmpty:true` if no group). Identify:
    - **CCSI tab** = url host ends with `ccsi.ie`
-   - **CoilForge tab** = host `localhost` or `127.0.0.1` on port `8011`
+   - **CoilForge tab** = host `localhost` or `127.0.0.1` on ANY port (the launcher takes a port argument, so parallel projects sit on 8011, 8012, …)
    If either is missing from the MCP group, ask John to confirm both are open in this Chrome
-   window (or navigate a spare tab to `http://localhost:8011/`). Never reuse tab ids from a
+   window (or navigate a spare tab to `http://localhost:8011/` — or whichever port that server window printed on startup). Never reuse tab ids from a
    prior session.
 
 3. **Build the payload from the CoilForge tab** — run on the CoilForge `tabId` with
@@ -42,11 +42,27 @@ Hard rules:
        status:has?'review_required':'blocked', type:e.type||'number',
        selectors:Array.isArray(e.selectors)?e.selectors:[], blocked_reason:has?null:'No value derived; review required.'};
    });
+   // Drawing Notes is a SEPARATE top-level key, never a 14th `fields` entry — the field map's
+   // contract test rejects any non-dimension key, and the filler's entriesOf() adapter is what
+   // merges it back in. Selector captured live 2026-08-05: `#DrawingNotes`.
+   const notesField = (document.querySelector('#dc-field-drawing-notes')
+     || [...document.querySelectorAll('[data-direct-coil-label]')]
+          .find(e=>e.dataset.directCoilLabel==='Drawing Notes'));
+   const notesValue = notesField ? (notesField.value || notesField.textContent || '').trim() : '';
+   const drawing_notes = {ccsi_label:'Drawing Notes', value:notesValue||null,
+     status:notesValue?'review_required':'blocked', type:'text',
+     selectors:[{strategy:'css', selector:'#DrawingNotes'},{strategy:'labelText', text:'Drawing Notes'}],
+     selector_verified:true, blocked_reason:notesValue?null:'No drawing notes assembled for this coil.'};
    ({schema:'coilforge.ccsi.autofill/1', generated_at:new Date().toISOString(),
      coil_tag:(document.querySelector('#edit-coil-name')||{}).value||null, review_aid_only:true,
-     export_allowed:false, form:map.form||'CCSI Online Direct Coil — DX', field_map_version:map.version||'unknown', fields})
+     export_allowed:false, form:map.form||'CCSI Online Direct Coil — DX', field_map_version:map.version||'unknown',
+     hot_gas_bypass:false, drawing_notes, fields})
    ```
    If every `value` is null, stop and tell John to analyze a coil in CoilForge first.
+
+   ⚠️ This inline builder is a MIRROR of `web/app.js`'s own payload builder. They drifted
+   once — this one iterated `map.fields` only, so the skill path pushed 25 dimensions and
+   **no notes**, while the app path pushed both. If you change one, change the other.
 
 4. **Inject the filler onto the CCSI tab.** Read `web/ccsi/ccsi_autofill.user.js` and run its
    full source via `javascript_tool` on the CCSI `tabId`. (The `@grant`/`GM_*` lines are inert
