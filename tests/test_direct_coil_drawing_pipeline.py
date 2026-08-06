@@ -19,6 +19,7 @@ from coilforge.services.direct_coil_drawing_pipeline import (  # noqa: E402
     build_header_request,
     run_direct_coil_drawing_pipeline,
 )
+from coilforge.services.header_prepopulate_engine import prepopulate  # noqa: E402
 
 # EZC-0001 geometry-sourced (non-engine) slots.
 EZC0001_GEOMETRY_SLOTS = {
@@ -149,17 +150,133 @@ def test_hgrh_supply_sl_odd_position_formula_same_per_slot() -> None:
     assert slots["slot.SL1"] == slots["slot.SL3"]
 
 
-def test_hgrh_single_feed_sl1_is_three() -> None:
-    # Coil Checklist HGRH!C58 = IF(feeds/circuits==1, 3, ...), David 2026-07-16 (source of
-    # truth). Supersedes the 2026-06-27 call that had removed the single-feed SL1=3 branch.
-    # SL2 stays the return_sl length (8 for NOVA).
+def test_hgrh_single_feed_sl1_is_six() -> None:
+    """Single-feed supply SL1 = 6 (John 2026-08-06), NOT checklist HGRH!C58's 3.
+
+    The sheet states this dimension twice and contradicts itself: C58's dimension row
+    computes 3, while C26's "Add Headers & Stubouts" note -- emitted for exactly this
+    case, C14 = 1 -- spells out "SL1=6" in all three product branches. A single-feed
+    coil has no supply header of its own, so the drawn header is the ADDED one and 6 is
+    its dimension. R-044a/R-044c and the EZC-0002/EZC-0010 as-built notes agree with the
+    note; only C58 dissents.
+
+    SL2 is untouched -- it stays the return_sl length (8 for NOVA).
+    """
     conn = 0.625
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="NOVA", unit_size="C20",
         rows=4, circuits=1, feeds=1, conn_size=conn,
     )
-    assert slots["slot.SL1"] == 3
+    assert slots["slot.SL1"] == 6
     assert slots["slot.SL2"] == 8
+
+
+def test_hgrh_single_feed_sl1_is_six_on_every_product_line() -> None:
+    """The 2026-08-06 ruling is line-wide: CHK HGRH!C26 emits its "SL1=6" note for all
+    three product branches (NOVA/VENTUM H, TERRA H, VENTUM+), so all three move together.
+
+    TERRA V is the exception and must NOT move: it has no add-headers branch in C26 at
+    all, and its supply SL comes from the SOP (R-046) as 5.
+    """
+    def sl(prod, size):
+        s, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=1, feeds=1, conn_size=0.625,
+        )
+        return s["slot.SL1"], s["slot.SL2"]
+
+    assert sl("NOVA", "C20") == (6, 8)
+    assert sl("VENTUM_H", "H15") == (6, 8)
+    assert sl("TERRA H", "032") == (6, 10)
+    assert sl("VENTUM_PLUS", "V20") == (6, 10)
+    assert sl("TERRA V", "012") == (5, 12)      # SOP, untouched
+
+
+def test_hgrh_multi_feed_slots_are_byte_identical() -> None:
+    """The no-regression contract for the single-feed change. Multi-feed takes a
+    different branch, so nothing about it may move -- asserted on the WHOLE slot dict,
+    not just SL, because a shared-state mistake would surface in CD/S/O/R first.
+
+    Literals captured from the pre-change implementation.
+    """
+    nova2, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="C20",
+        rows=4, circuits=2, feeds=2, conn_size=0.625,
+    )
+    assert nova2 == {
+        "slot.BF": 0.625, "slot.CD": 5.5, "slot.HD2": 3.5, "slot.HD4": 3.5,
+        "slot.HDx1": 3.5, "slot.HDx3": 3.5, "slot.HF": 1.5, "slot.I1": 2,
+        "slot.I3": 2, "slot.NOTES": "Copper Straps Required.", "slot.O2": 2,
+        "slot.O4": 2, "slot.R2": 0.625, "slot.R4": 2.75, "slot.RB": 1.5,
+        "slot.RF": 1.5, "slot.ROWS": 4, "slot.S1": 1.5, "slot.S3": 1.5,
+        "slot.SL1": 4.8125, "slot.SL2": 8, "slot.SL3": 4.8125, "slot.SL4": 8,
+        "slot.TF": 0.625,
+    }
+
+    terra_h3, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA H", unit_size="032",
+        rows=4, circuits=3, feeds=3, conn_size=0.625,
+    )
+    assert terra_h3 == {
+        "slot.BF": 0.5, "slot.CD": 6.625, "slot.HD2": 3.5, "slot.HD4": 3.5,
+        "slot.HD6": 3.5, "slot.HDx1": 3.5, "slot.HDx3": 3.5, "slot.HDx5": 3.5,
+        "slot.HF": 1.5, "slot.I1": 2, "slot.I3": 2, "slot.I5": 2,
+        "slot.NOTES": "Copper Straps Required.", "slot.O2": 3.25, "slot.O4": 3.25,
+        "slot.O6": 3.25, "slot.R2": 0.625, "slot.R4": 2.75, "slot.R6": 4.875,
+        "slot.RB": 1.5, "slot.RF": 1.5, "slot.ROWS": 4, "slot.S1": 0.625,
+        "slot.S3": 0.625, "slot.S5": 0.625, "slot.SL1": 5.6875, "slot.SL2": 10,
+        "slot.SL3": 5.6875, "slot.SL4": 10, "slot.SL5": 5.6875, "slot.SL6": 10,
+        "slot.TF": 1.625,
+    }
+
+    # The remaining lines keep the position formula (C58's multi-feed arm) untouched.
+    conn = 0.625
+    for prod, size in (("VENTUM_H", "H15"), ("VENTUM_PLUS", "V20")):
+        s, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=2, feeds=2, conn_size=conn,
+        )
+        assert s["slot.SL1"] == round(6 + conn / 2 - s["slot.S1"], 4), prod
+
+
+def test_engine_supply_sl_agrees_with_slot_layer_single_feed() -> None:
+    """The bridge test. ``supply_sl`` is emitted by the rule engine and read by NO python
+    in src/, so engine (6) and slot layer (3) contradicted each other for a year without
+    a single test failing. This is what stops that recurring.
+
+    R-044c is HIGH (VENTUM+) so it lands in ``values``; R-044a is MEDIUM (NOVA/VENTUM H)
+    so it lands in ``suggestions``. Both say 6, and the slot layer must now agree.
+    """
+    for prod, size in (("NOVA", "C20"), ("VENTUM_H", "H15"), ("VENTUM_PLUS", "V20")):
+        request = build_header_request(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=1, feeds=1, conn_size=0.625,
+        )
+        response = prepopulate(request)
+        engine = response.values.get("supply_sl") or response.suggestions.get("supply_sl")
+        assert engine is not None, prod
+        slots, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=1, feeds=1, conn_size=0.625,
+        )
+        assert engine.value == slots["slot.SL1"] == 6, prod
+
+
+def test_dx_and_water_unaffected_by_hgrh_sl1_change() -> None:
+    """The change sits behind ``is_hgrh``. DX has no supply header (no odd SL at all) and
+    water coils never enter the branch."""
+    dx, _ = build_drawing_slots(
+        coil_type="DX", product_type="NOVA", unit_size="B20",
+        rows=4, circuits=1, feeds=1, conn_size=0.625, suction_conn_size=0.625,
+    )
+    assert "slot.SL1" not in dx and dx["slot.SL2"] == 8
+
+    for coil_type in ("CWC", "HWC"):
+        water, _ = build_drawing_slots(
+            coil_type=coil_type, product_type="NOVA", unit_size="C20",
+            rows=4, circuits=1, feeds=1, conn_size=1.0,
+        )
+        assert "slot.SL1" not in water
 
 
 def test_hgrh_supply_sl_gated_by_circuit_count() -> None:
@@ -507,8 +624,13 @@ def test_hgrh_cd_s_sl_align_to_checklist_family_branches() -> None:
     Coil Checklist HGRH!C27/C46/C58 family branches (the confirmed source of truth):
       CD  = MAX(base, TERRA H:(n+2)conn+(n-1)1.5+0.5 | NOVA/VH:(n+1)conn+(n-1)1.5 | VP:3conn)
       S1  = conn (TERRA H / VENTUM+)  |  CD-((n+2)conn+(n-1)1.5) (NOVA / VENTUM H)
-      SL1 = 5 (Terra V) | 3 (single feed) | 6+conn/2-S1
-    Values verified against the sheet's recomputed cells for the 3058 reheat coils."""
+      SL1 = 5 (Terra V) | 6 (single feed, CHK C26 note -- see below) | 6+conn/2-S1
+    Values verified against the sheet's recomputed cells for the 3058 reheat coils.
+
+    CD and S1 are the regression this case exists for and are asserted UNCHANGED. Only
+    the single-feed SL1 element moved (3 -> 6, John 2026-08-06): C58's dimension row and
+    C26's "Add Headers & Stubouts" note disagree, and the note is what the drawing shows.
+    """
     def hgrh(prod, size, rows, conn, n, feeds):
         s, _ = build_drawing_slots(
             coil_type="HGRH", product_type=prod, unit_size=size,
@@ -518,17 +640,22 @@ def test_hgrh_cd_s_sl_align_to_checklist_family_branches() -> None:
 
     # RHHGRC-2 TERRA H rows=1 conn=0.875 n=1 feeds=3: CD 2.875->3.125, S1=conn, SL1=6+conn/2-S1.
     assert hgrh("TERRA H", "048", 1, 0.875, 1, 3) == (3.125, 0.875, 5.5625)
-    # RHHGRC-3 VENTUM H rows=2 conn=0.5 n=1 feeds=1: base dominates CD; S1=CD-formula; single feed SL1=3.
-    assert hgrh("VENTUM_H", "H10", 2, 0.5, 1, 1) == (3.75, 2.25, 3)
+    # RHHGRC-3 VENTUM H rows=2 conn=0.5 n=1 feeds=1: base dominates CD; S1=CD-formula;
+    # single feed SL1=6 (CD 3.75 and S1 2.25 unchanged — the regression this case guards).
+    assert hgrh("VENTUM_H", "H10", 2, 0.5, 1, 1) == (3.75, 2.25, 6)
     # RHHGRC-5 TERRA H rows=1 conn=0.625 n=1 feeds=2: SL1 takes the position formula (not 3).
     assert hgrh("TERRA H", "032", 1, 0.625, 1, 2) == (2.875, 0.625, 5.6875)
 
 
 def test_hgrh_sl1_single_feed_branch_keys_on_feeds_then_circuits() -> None:
-    """The single-feed SL1=3 branch keys on the SAME value the checklist's FEEDS/CIRCUITS
+    """The single-feed SL1 branch keys on the SAME value the checklist's FEEDS/CIRCUITS
     cell holds — ``feeds`` if stated, else ``circuits`` (checklist/mapping.py). So a
-    submittal that omits feeds but states 1 circuit still triggers SL1=3 (matches the
-    sheet), while feeds omitted + 2 circuits takes the position formula."""
+    submittal that omits feeds but states 1 circuit still takes the single-feed branch,
+    while feeds omitted + 2 circuits takes the position formula.
+
+    The KEY under test is unchanged by the 2026-08-06 ruling; only the branch's VALUE
+    moved (3 -> 6). Both C58 and all three C26 note branches fire on that same cell, so
+    which coils are single-feed is not in dispute — only what SL1 reads for them."""
     def sl1(feeds, circuits):
         s, _ = build_drawing_slots(
             coil_type="HGRH", product_type="NOVA", unit_size="C20",
@@ -536,8 +663,8 @@ def test_hgrh_sl1_single_feed_branch_keys_on_feeds_then_circuits() -> None:
         )
         return s["slot.SL1"]
 
-    assert sl1(None, 1) == 3                       # feeds absent, 1 circuit -> single feed
-    assert sl1(1, 2) == 3                          # feeds stated =1 wins over circuits=2
+    assert sl1(None, 1) == 6                       # feeds absent, 1 circuit -> single feed
+    assert sl1(1, 2) == 6                          # feeds stated =1 wins over circuits=2
     conn = 0.625
     s, _ = build_drawing_slots(
         coil_type="HGRH", product_type="NOVA", unit_size="C20",
@@ -556,7 +683,7 @@ def test_hgrh_terra_v_unchanged_by_checklist_alignment() -> None:
     )
     assert s["slot.CD"] == 3.75              # rows-based base, not a multi term
     assert s["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn (R-023), unchanged
-    assert s["slot.SL1"] == 5                 # Terra V supply SL (SOP), not 3 or the formula
+    assert s["slot.SL1"] == 5                 # Terra V supply SL (SOP), not 6 or the formula
 
 
 def test_dx_cd_with_hgrh_noop_when_base_dominates() -> None:

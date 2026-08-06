@@ -465,20 +465,43 @@ def build_drawing_slots(
                     # Safety net for a category outside DX/HGRH/CWC/HWC (none today —
                     # water takes the connection-size branch above).
                     slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
-                # HGRH supply-side (odd) SL = stub POSITION (checklist HGRH!C58):
-                # Terra V -> 5 (SOP); single feed/circuit -> 3; else 6 + return_conn/2 - S
-                # (John 2026-06-26). The even SL (length) stays the return_sl clearance.
+                # HGRH supply-side (odd) SL = stub POSITION:
+                # Terra V -> 5 (SOP); single feed/circuit -> 6; else 6 + return_conn/2 - S.
+                # The even SL (length) stays the return_sl clearance.
                 if is_hgrh and conn_size is not None:
                     if is_terra_v:
                         # Terra V HGRH: all Supply SL = 5 (SOP), not the position formula.
                         slots[f"slot.SL{supply_id}"] = 5
                     elif (feeds if feeds is not None else circuits) == 1:
-                        # CHK HGRH!C58 single feed/circuit branch (short "Add Headers" stub).
-                        # Keyed on the SAME value the checklist's "FEEDS/CIRCUITS" cell holds
-                        # (feeds, else circuits — see checklist/mapping.py) so this matches the
-                        # sheet exactly even when the submittal states only one of the two.
-                        slots[f"slot.SL{supply_id}"] = 3
+                        # SINGLE FEED = 6, not the 3 in checklist HGRH!C58 (John 2026-08-06).
+                        #
+                        # The sheet states this dimension TWICE and disagrees with itself.
+                        # C58's dimension row computes 3; C26 (NOTES) emits an "Add Headers
+                        # & Stubouts" instruction whenever C14 = 1 -- and all THREE of its
+                        # product branches spell out "SL1=6" literally. A single-feed coil
+                        # has no supply header of its own, so the header on the drawing IS
+                        # the added one, and 6 is that header's dimension.
+                        #
+                        # Every other source agrees with the note, and only C58 dissents:
+                        #   CHK HGRH!C26   "... SupConnAngle=LAS. S1=<C46>. SL1=6. ..." x3
+                        #   R-044a         supply_sl = 6  (HGRH NOVA/VENTUM_H, MEDIUM)
+                        #   R-044c         supply_sl = 6  (HGRH VENTUM_PLUS, HIGH)
+                        #   EZC-0002 / EZC-0010 as-built notes (json_drawing_link_rules)
+                        # The engine has been emitting the right number all along -- see
+                        # test_engine_supply_sl_agrees_with_slot_layer_single_feed, which
+                        # exists so the two can never silently drift apart again.
+                        #
+                        # This diverges from the sheet on purpose; the divergence is
+                        # registered (KD-006..009), not hidden, so the checklist compare
+                        # still shows it and John's ruling is what re-labels it.
+                        #
+                        # Keyed on the SAME value the checklist's "FEEDS/CIRCUITS" cell
+                        # holds (feeds, else circuits — see checklist/mapping.py) so the
+                        # BRANCH still matches the sheet even where the value no longer
+                        # does; a submittal stating only one of the two lands identically.
+                        slots[f"slot.SL{supply_id}"] = 6
                     else:
+                        # Multi-feed keeps CHK HGRH!C58's position formula unchanged.
                         slots[f"slot.SL{supply_id}"] = round(
                             6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
                         )
