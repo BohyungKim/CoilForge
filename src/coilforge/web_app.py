@@ -283,6 +283,27 @@ async def capture_override_rate():
     return jsonable_encoder(report)
 
 
+@app.get("/api/capture/rule-observatory")
+async def capture_rule_observatory():
+    """Read-only Stage 4.0 measurement: per-RULE disagreement over the ledger — one level up
+    from override-rate, at the grain a YAML change is actually made at.
+
+    Reports NO accuracy figure, by construction. Every rate divides by ``second_opinion``
+    rather than ``fired``, and a rule nobody has ever checked comes back with
+    ``disagreement_rate: None`` plus a ``no_second_opinion`` flag — because the failure mode
+    this stage is most exposed to is an unexamined rule reading as a perfect one. The
+    ``blind_spots`` list is returned alongside the ranked rules for the same reason.
+
+    Aggregate counts only; redacts on this unauthenticated surface (a per-rule aggregate
+    needs no coil tags or project numbers at all); never creates the DB."""
+    from coilforge.capture.observatory import measure_rule_observatory
+
+    report = measure_rule_observatory(redact=True)
+    report["export_allowed"] = False
+    report["production_drawing_approval_claimed"] = False
+    return jsonable_encoder(report)
+
+
 @app.get("/api/capture/similar")
 async def capture_similar(coil_uid: str, k: int = 5, same_category: bool = True):
     """Read-only case retrieval (Stage 2): the nearest past coils to ``coil_uid`` plus John's
