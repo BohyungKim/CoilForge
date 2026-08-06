@@ -1,6 +1,35 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-06 (**[코팅·검토표면 트랙] 브라우저 교정이 산출물에 도달하지 못하던 결함 2건 — b44fdd0**:
+> 마지막 갱신: 2026-08-06 (**[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
+> John의 요청("불일치·결측을 DB에 쌓아 로직을 고치게")을 조사해보니 **DB는 이미 있고 이미 쌓이고 있었다**
+> — 체크리스트 불일치 500 match/4 mismatch, 결측 `blocked_reason` 945행, 교정 36행. 진짜 공백은 하나였다:
+> **`rule_firing` 0행**. 마이그레이션 3이 만든 표가 392 run 동안 비어 있었던 건 `_attach_engine_provenance`가
+> **Tier-A 수동 채움에만** 붙었기 때문이고(frozen path는 엔진 응답을 버린다), 그래서 "O가 아홉 번 틀렸다"는
+> 알아도 **"R-061v가 틀렸다"로 번역할 수가 없었다** — 즉 병목은 "John이 교정을 안 한다"만이 아니라 **캡처**였다.
+> ①**병합(94209c8)**: 불일치 캡처·판정 원장·규칙 제안 엔진이 `claude/review-convergence`에만 있는데 **두 브랜치가
+> 같은 ledger에 쓰고 있어** DB의 checklist 행은 전부 저쪽 code_version이었다. 텍스트 충돌은 roadmap.md 1건뿐
+> (양쪽 서술 union, 어느 쪽도 버리지 않음). `param_key_for_slot`이 저쪽에만 있어 병합이 선행조건.
+> ②**귀속 복구(e31a92d)**: `_attach_recomputed_engine_provenance`가 caller-side에서 엔진을 **관측 목적으로만**
+> 재실행 — frozen 무수정, 그 모듈 자신의 입력 에코로 호출을 재구성, frozen이 안 넘긴 인자는 안 넘김.
+> **재구성은 주장이므로 검증한다**: 재계산 슬롯 전부를 실제로 그려진 slot_values와 대조해 어긋나면
+> `fidelity='drifted'` + 어긋난 키를 **기록**(지우면 신뢰 불가 신호 자체가 사라진다), 리더는 비율에서 제외.
+> `source`는 블록 레벨이라 한 (run,coil)에 두 출처가 섞이는 게 **표현 불가능**. 순서가 양방향으로 load-bearing —
+> analyze는 `_apply_hgrh_pairing_cd` **뒤**(페어링이 CD를 5.625→5.75로 바꾸므로 frozen 호출을 재현하면 오히려
+> drift), derive는 Tier-B 반영 **앞**(뒤면 엔지니어의 입력을 엔진 drift로 오보). 코일당 0.19ms. 마이그레이션 6은
+> additive-only, NULL source는 1c seam이므로 `COALESCE(...,'live')`. ③**Observatory(75fe368)**: 규칙별 불일치
+> 측정. **`accuracy` 필드를 만들지 않는 것**이 설계의 핵심 — 로드맵이 4단계 최대 위험으로 적어둔 표본 편향
+> ("안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다")에 대한 답은 경고문이 아니라 구조다. 모든 비율의 분모는
+> `fired`가 아니라 `second_opinion`(100발화/4관측/2불일치 = 0.5이지 0.02가 아니다), coverage 0은
+> `disagreement_rate: None`, `blind_spots`를 `rules`와 **나란히** 내고 CLI는 그걸 **먼저** 찍는다.
+> 어휘 브리지가 난제였다(엔진필드 `suction_io` ↔ 패널키 `O2` ↔ 시트슬롯 `slot.O4`) — 기존 맵 합성으로 만들되
+> **실제 derive를 돌려서** 두 누락을 발견: `record._compare_rows`가 `param_key_for_slot(slot) or label`로
+> 파일링하므로 라벨 반쪽도 따라가야 하고(안 그러면 **R-033 DIST EXTENTION**이 미귀속으로 샌다 — 이 도구가 가장
+> 귀속하고 싶은 바로 그 행), `return_spacing`은 per-circuit **리스트**라 role 표를 우회해 `slot.R{even}`을 직접
+> 쓴다(빠지면 DX return-spacing 규칙이 조용히 미측정). 검증: 임시 원장에 **실제 derive 12건 → rule_firing 124행
+> / 고유 규칙 40개 / 전부 recomputed·verified / (field,rule) 44쌍 중 30쌍 측정가능**. 라이브 원장에는 아직
+> `insufficient` — 1c'는 **새 실행부터** 적용되므로 정직한 0이다. **1493 green**(1237→1440 병합→1459→1493),
+> frozen 무접촉, 도면 값 불변(스냅샷 비교로 고정). 범위 밖으로 남긴 것: 판정 UI, 제안서 자동 생성.
+> 이전: **[코팅·검토표면 트랙] 브라우저 교정이 산출물에 도달하지 못하던 결함 2건 — b44fdd0**:
 > 성격이 같은 두 결함을 함께 닫았다 — **엔지니어가 브라우저에서 고친 값이 정작 넘겨주는 산출물에 반영되지 않던**
 > 문제. ①**TR-9**: analyze는 `_engine_drawing_notes`+`_engine_drawing_dims`를 정본 기록에 태워 붙여넣기 52필드
 > 표면에 올리는데 `/derive`는 그 후처리를 통째로 안 했다(**228d731 CD 회귀와 동일 계열** — analyze에만 배선된
@@ -1033,11 +1062,18 @@
 - [~] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
   위험** — John은 flag된 코일만 보므로 안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다. 1d 감사샘플이
   유일한 통계적 수단; 모든 수치는 "리뷰 조건부" 라벨
-  - [~] **착수 2026-08-06 (John 승인)** — 착수 조건이 앞당겨진 이유: `rule_firing`이 **0행**이라는 실측.
-    Tier-A 수동 채움 derive에만 `engine_provenance`가 붙어 필드→규칙 귀속이 통째로 비어 있었다 — 즉 병목은
-    "교정 데이터 부족"만이 아니라 **캡처 공백**이었다. Phase 1(귀속 링크 복구) → Phase 2(관측소) 순.
-    표본 편향 대응은 경고문이 아니라 **구조**: `accuracy` 필드를 만들지 않고, 모든 비율의 분모를 `fired`가
-    아닌 `second_opinion`으로 두며, `coverage==0`이면 `disagreement_rate`를 `None`으로 낸다.
+  - [x] **Phase 4.0a 귀속 링크 복구 (e31a92d)** — `_attach_recomputed_engine_provenance`가 caller-side에서
+    provenance 전용 재실행. 마이그레이션 6(`source`/`fidelity`/`drift_keys_json`, additive-only).
+    도면 값 불변은 스냅샷 비교로 고정, 재구성 신뢰도는 drawn slot 대조로 `verified`/`drifted` 라벨.
+  - [x] **Phase 4.0b Observatory (75fe368)** — `capture/observatory.py` + `GET /api/capture/rule-observatory`
+    + `scripts/rule_observatory.py`. **`accuracy` 필드 없음**(표본 편향 대응은 경고문이 아니라 구조),
+    분모는 `second_opinion`, coverage 0 → `disagreement_rate: None`, `blind_spots`를 나란히 출력.
+  - [ ] **Phase 4.1 실측 대기** — 라이브 원장은 아직 `insufficient`(1c'는 새 실행부터). John이 실제 제출물을
+    몇 건 돌려야 숫자가 나온다. 그때 볼 것: ①`min_second_opinion=5`/`min_identities=10` 임계값이 맞는지
+    ②`join_quality.same_run` vs `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에
+    뭐가 쌓이는지 ④R-033 DIST EXTENTION이 실제로 귀속되는지.
+  - [ ] **감사샘플이 여전히 유일한 통계적 수단** — `audit_sample`은 0행이라 현재 모든 규칙이
+    `review_conditional: True`. 이걸 채우기 전까지 어떤 수치도 "John이 이미 의심한 코일" 조건부다.
 - [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →
   John 승인. **제안 규칙은 MEDIUM 진입** = 기존 confidence gate가 공짜로 안전을 보장(자동으로 안 그려짐)
 - [ ] **6단계 Format-Agnostic Extraction** — **의존성은 1단계뿐, 순서상 6일 뿐** (타사 서밋털 수요 생기면
