@@ -1,6 +1,39 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-06 (**[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
+> 마지막 갱신: 2026-08-06 (**[제출물 파싱 + HGRH 트랙] John이 지적한 결함 2건 — 브랜치
+> `worktree-sl1-tagfilter`, 미병합**: ①**EKEXV 유령 코일** — EEV 밸브킷이 코일로 잡혔다. 가드는 있었으나
+> `_NON_COIL_TAG_PREFIXES` 3문자열 denylist를 **단 한 곳**(`_is_cover_coil_row`)에서만 봤다. 그 함수는 정상
+> 작동했고, 문제는 **그 함수를 안 거치는 진입로들**이었다 — `Unit Tag: EKEXV-CDXC-1`이 무필터로 COIL_TAG가 되고
+> (`_RE_UNIT_TAG_ANCHOR`), `2 CDXC-1 EEV Kit …` 부속 줄이 **유령 CDXC-1**을 만들었다(둘 다 실행으로 재현).
+> 게다가 사내 킷 명명이 `EKEXVA{n}U`라 `EKEXVA-CDXC-1`은 애초에 목록에 없었다. **질문을 바꿨다**: "코일 태그는
+> 정확히 `<coil-prefix>-<seq>`". 그 앵커는 `coil_category_of_tag`에 **이미 있었는데 필터로 안 쓰였다** —
+> `coil_tag_aliases`/`drain_pan_partner_tag`와 함께 **fail-open**(거부가 아니라 분류 포기)이라, 유출된 복합
+> 태그가 조용히 drain-pan 파트너를 잃고 INSTALL FIT을 건너뛰었다. `is_coil_tag`가 그걸 위임하므로 정의가 하나가
+> 되고 미래 철자변형(`EEVK-`/`TXV-`)까지 목록 추가 없이 막힌다. **item-token denylist는 존치** — 서로를 포함하지
+> 않는다: 구조규칙은 `CDXC-1` + "EEV Kit"을 못 잡고, item규칙은 `_cover_item_from_text`가 "EKEXV Valve (DX Coil)"을
+> **"DX Coil"로 축약한 뒤**엔 볼 게 없다(테이블 경로는 원문 셀을 넘겨 비대칭이었다). 그래서 텍스트줄 경로는
+> **줄 전체**를 item 자리에 넘긴다. `_FieldPattern.validator`로 3개 루프를 한 번에 덮고, `_detail_page_tags`는
+> 정규화가 구분자를 지워 `CDXC1 ⊂ EKEXVCDXC1`이 되던 걸 **앞서 마스킹**(비코일 AND 코일태그 포함, 이중조건 —
+> `CDXC - 1` recall 보존). 대가로 `_is_cover_coil_row`의 **코일-키워드 fallthrough가 사라진다**(OCR로 깨진 진짜
+> 태그는 구제 못 함) — 그래서 **모든 거부에 사유를 붙여 화면에 올린다**(`non_coil_rows_excluded`). 조용히 사라진
+> 행은 "제출물에 없음"으로 읽히는데, 그게 바로 이 필터가 없애려는 모호함이다. ②**HGRH 단일피드 SL1** — John:
+> "Ventum+ SL1에 6인치 익스텐션이 빠진다". 파보니 **체크리스트가 스스로와 모순**이었다: `HGRH!C58`(치수행)은
+> `IF(C14=1, 3, …)`, `HGRH!C26`(NOTES)은 같은 조건에서 `" Add Headers & Stubouts. … SupConnAngle=LAS. **SL1=6**"`을
+> **제품 3분기 전부**에 찍는다. 단일피드 코일은 자기 공급헤더가 없어 C26이 "헤더를 추가하라"는 지시이고, 도면에
+> 그려지는 헤더가 **그 추가된 헤더**다 → 6이 그려지는 물건의 치수. 나머지 근거 넷이 전부 6(R-044a MEDIUM /
+> **R-044c HIGH** / EZC-0002·0010 실도면 / vplus 참조 도면 내장 노트)이고 **C58만 이탈**. John이 노트 쪽으로
+> 판정(라인 전체, Terra V 제외). **엔진은 내내 정답을 내고 있었다** — `supply_sl`을 읽는 Python이 `src/`에 0줄이라
+> 엔진 6 vs 슬롯 3이 어긋나도 깨지는 테스트가 없었다(브리지 테스트로 봉함). 값은 **슬롯 레이어에 남긴다**:
+> 엔진 소싱은 `build_drawing_slots`가 `values`만 읽으므로 R-044a(MEDIUM)인 NOVA/VH를 **공란으로 되돌리고**,
+> TERRA_H는 `supply_sl` 규칙 자체가 없어 영구 공란이 된다. 덤으로 상수 6이 `cd is not None` 안에 갇혀 있어
+> **CD 미해결 코일은 SL1이 사유도 없이 사라지던 것**을 별도 커밋으로 un-gate(`not in slots` no-op 가드).
+> 시트와의 불일치는 **숨기지 않고 등록**(KD-006~009, `delta_band {3,3}` — 신원에 피드수 축이 없어 밴드가 없으면
+> 다중피드까지 조용해진다 + RP-002 제안서). **1513 green**(1493→1513), invariant-guard BLOCKER 0·HIGH 0,
+> frozen·`templates/**` 무접촉. **실 제출물 12개 전수 대조: 커버 코일 행 100% 동일**(진짜 코일 손실 0),
+> 다중피드 슬롯 딕셔너리 5라인×2서킷 **byte-identical**. ⚠️ **동시 세션 충돌**로 메인 트리 대신 워크트리
+> `.claude/worktrees/sl1-tagfilter`에서 작업 — 다른 Claude 세션이 같은 폴더에서 병합을 시작해 충돌 상태로
+> 멈춰 있었다(자세히는 memory `phase2_worktree_isolation`). **미병합·미푸시, John 판정 대기.**
+> 이전: **[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
 > John의 요청("불일치·결측을 DB에 쌓아 로직을 고치게")을 조사해보니 **DB는 이미 있고 이미 쌓이고 있었다**
 > — 체크리스트 불일치 500 match/4 mismatch, 결측 `blocked_reason` 945행, 교정 36행. 진짜 공백은 하나였다:
 > **`rule_firing` 0행**. 마이그레이션 3이 만든 표가 392 run 동안 비어 있었던 건 `_attach_engine_provenance`가
@@ -937,6 +970,14 @@
   2R APPROVED), 실 제출물 라이브 검증 + **John A/B 탭 눈확인 통과**. 부수 성과: 코팅 노트가 슬롯이 아니라
   **크롭 영역 주입**으로 구현돼 3장이 아니라 **22개 버킷 전부**에서 동작한다.
 
+- [x] **[제출물 파싱 + HGRH 트랙] EKEXV 유령 코일 차단 + 단일피드 SL1=6 (브랜치 `worktree-sl1-tagfilter`,
+  6커밋 `f7ff518`→`dbec65b`, 2026-08-06)** — John 지적 2건. 상세는 상단 갱신 노트 참조. **1513 green**
+  (1493→1513, 신규 14테스트), invariant-guard BLOCKER 0·HIGH 0, frozen·`templates/**` 무접촉.
+  커밋 순서: ①`is_coil_tag` 단일 관문 신설 ②전 진입로 배선 + `_detail_page_tags` 마스킹 ③제외 사유 UI 노출
+  ④SL1 3→6 ⑤CD 미해결 시 SL1 누락 수정(독립 revert 가능) ⑥divergence 등록(KD-006~009 + RP-002).
+  **실 제출물 12개 전수 대조**: 커버 코일 행 100% 동일(코일 손실 0), 다중피드 슬롯 5라인×2서킷 byte-identical.
+  ⚠️ **미병합·미푸시** — 아래 TR-11 눈확인 + 라벨 판정(앞으로 항목) 후 John이 병합처를 정한다. 🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -1025,6 +1066,19 @@
   분기(1798~1807)를 갖고 있으므로 derive에도 같은 폴백이 필요하고, `distributor_notes`(도면 분배기 콜아웃)와
   섞으면 안 됨(전용 manufacturing_options 키).
 
+- [ ] **[TR-11] EKEXV 차단 + SL1=6 브라우저 눈확인 (John)** — 브랜치 `worktree-sl1-tagfilter`.
+  ⚠️ 워크트리에서 서버를 띄우거나 병합 후 실행 + `run_server.bat`은 `--reload` 없음 → **재시작 + PDF 재분석** 필수
+  (`pdfCoilPages`가 클라 캐시). 3건:
+  ① **EKEXV** — `EKEXV-CDXC-1`이 든 제출물 분석 → 코일 카드에 유령 없음 + PDF Intake Summary에
+     **"Non-coil rows excluded"** 블록에 태그와 사유 표시 + Mechanical Fit의 DX↔HGRH INSTALL FIT이
+     `CANNOT_EVALUATE` 대신 판정이 나오는지.
+  ② **SL1 양성** — **Nova / Ventum H / Terra H**, 1-header, 단일피드 HGRH → 공급 콜아웃 `3 SL1` → **`6 SL1`**,
+     `SL2`는 불변(Nova/VH 8, Terra H 10).
+  ③ **Ventum+ 음성 대조** — Ventum+ 단일피드 HGRH → 도면 **무변경이 정상**(전용 템플릿에 SL1 자리가 없거나
+     `5.69`가 하드코딩), 체크리스트 SL1 행만 6 + 호박색(KD-009). **이 괴리를 눈으로 봐야** 아래 템플릿 리댁션
+     단계를 승인할 근거가 생긴다.
+  자동검증은 완료(1513 green · invariant clean · 실 제출물 12개 대조 · 다중피드 byte-identical); 남은 건 실 렌더.
+
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
   **실사용으로 코퍼스 + 교정 축적**. 현황 **46/50 · 교정 0**. 착수조건 n≥50까지 4개 부족하나, **개수보다
@@ -1050,6 +1104,26 @@
   John의 실 2755 Gumbo 실행이고 그 뒤 7개가 검증분 — **append-only 저널이라 삭제하지 않았다**. 코퍼스 카운트를
   읽을 때 project=None 검증 실행을 어떻게 다룰지는 미결(Stage 2 착수 시 판단 필요).
 ## ⬜ 앞으로
+- [ ] 🔴 **[SL1 트랙] `worktree-sl1-tagfilter` 병합처 결정 (John)** — 6커밋 미병합·미푸시. 다른 Claude 세션이
+  `claude/ambient-supplier`에 Stage 4를 계속 커밋 중이라 **양쪽이 `pdf_intake.py`·`direct_coil_drawing_pipeline.py`를
+  각자 고치기 전에** 정하는 편이 낫다. 워크트리는 `origin/main` + `claude/ambient-supplier`(c84df80)를 이미 병합해
+  담고 있으므로 되돌려 합치는 건 어렵지 않다. ⚠️ `.claude/roadmap.md`는 양쪽이 동시에 쓰므로 충돌 1건 예상(union).
+- [ ] **[SL1 트랙] 유닛 태그 라벨 판정 (John)** — 태그 필터의 **의도된 부작용 1건**: 커버 코일 행이 **없는**
+  제출물에서 코일 페이지 라벨이 `ERV-4` → **`Coil 1`**로 바뀐다(실측 `SIGNED 2808 Premiere Dance`; 도면 자체는
+  정상 생성 `coilmaster_dx_lh_header1`). `ERV-4`는 모 유닛 태그라 이미 drain-pan 페어링·alias 매칭에서 실패하고
+  있었지만 엔지니어가 알아보던 식별자이기도 하다. **받아들이면 그대로**, 아니면 유닛 태그를 *표시용 라벨로만*
+  남기는 별도 배선이 필요(COIL_TAG로는 계속 거부).
+- [ ] **[SL1 트랙] Ventum+ HGRH 템플릿 리댁션 (별도 승인 필요, DO-NOT-TOUCH 게이트)** — 값은 6인데 **도면에
+  표시될 자리가 없다**. 2026-07-03 리댁션 패스가 나중 시드된 Ventum+ 포크(2026-07-06)에 적용되지 않았다:
+  `coilmaster_vplus_hgrh_lh_header1`은 **SL1·I1·O2·R2·S1 콜아웃이 통째로 없고**(slot_map에 `slot.SL2`만),
+  `..._rh_header1`은 `5.69 SL1`, `..._rh_header2`는 `5.56 SL3`이 하드코딩(as-built 잔재). **Redaction gotcha**:
+  `template.svg`와 `slot_map.json`을 **둘 다** 고쳐야 플레이스홀더가 문자 그대로 인쇄되지 않는다.
+  ⚠️ **시드 출처 의심(선행 확인)**: `vplus_hgrh_lh_header1`의 내장 노트가 `SL2=8`(= Nova/Ventum H 값, Ventum+는
+  R-045a로 10)이다 → 그 시드가 정말 Ventum+ 도면인지, 아니면 R-045a가 틀렸는지 먼저 판정.
+- [ ] **[SL1 트랙] RP-002 전달 (John → Oxygen8)** — `docs/rule_proposals/RP-002-hgrh-single-feed-sl1.md`.
+  체크리스트 `HGRH!C58`의 단일피드 분기를 3→6으로. **적용하지 않았다** — 시트는 Oxygen8 소유.
+  만약 3이 맞는 것으로 판명되면 CoilForge 쪽 한 줄을 되돌리고 KD-006~009를 `coilforge_wrong`으로 재판정
+  (설계상 호박색이 아니라 **빨강 유지**). 대안 경로도 RP-002에 적어뒀다.
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
 - [~] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
