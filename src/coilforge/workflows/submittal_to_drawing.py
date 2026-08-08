@@ -754,6 +754,60 @@ def _flag_defaulted_coil_hand(
     return result
 
 
+def _header_count_int(value: Any) -> int | None:
+    """``value`` as a whole number, or None when it is not one. Intake normalisation
+    leaves these as ints, floats or strings depending on the source line."""
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return int(number) if number == int(number) and number > 0 else None
+
+
+def _flag_header_count_conflict(
+    result: dict[str, Any], ctx: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Mark a drawing whose header count is contradicted by the stated connections.
+
+    ``circuits`` IS the header count on this path (``header_type = f"Header {circuits}"``
+    in pdf_to_template_drawing), and when nothing states it, it falls to ``or 1`` with no
+    flag of any kind — a confidently single-header drawing built on no evidence. Project
+    3095 is that failure: every coil block states ``Qty Conn. / Header 2`` while
+    ``Coil Style: Dual Face Split`` went unparsed, so the reheat coils drew as Header 1.
+
+    Connections-per-header is a DIFFERENT quantity from header count, so it is read here
+    only to notice the disagreement — never to resolve it. Labels only: the value, the
+    template and the slots are untouched.
+
+    CWC/HWC are excluded because their ``circuits`` is not a reading at all — the water
+    branch in `_template_header_context_from_candidate` forces 1 per the 1HD-only MVP
+    taxonomy, so a stated 2 connections is not a contradiction of anything.
+    """
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    extracted = result.get("extracted") or {}
+    if str(extracted.get("coil_category") or "").upper() in ("CWC", "HWC"):
+        return result
+    stated = _header_count_int((ctx or {}).get("qty_conn_per_header"))
+    if stated is not None:
+        # Stamped whether or not the flag fires, so /derive can round-trip it back
+        # (deriveSpecFromTemplate -> spec.stated_qty_conn_per_header). Without that the
+        # banner would vanish on the first re-derive for any unrelated reason -- an
+        # analyze-only post-process is the TR-9 defect shape.
+        result["qty_conn_per_header_stated"] = stated
+    circuits = _header_count_int(extracted.get("circuits"))
+    if stated is None or circuits is None or stated <= circuits:
+        return result
+    result["header_count_conflict"] = True
+    result["header_count_review"] = (
+        f"The submittal states {stated} connections per header, but only {circuits} "
+        f"circuit(s) could be read — so this drew as Header {circuits}. The header count "
+        "selects the template and adds a whole header column, so confirm it; set "
+        "Circuits in the spec panel to redraw with the right header count."
+    )
+    return result
+
+
 def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     """When a dedicated per-family template is seeded for this coil's (family, category,
     hand, header, special), re-select + re-populate the drawing from it instead of the
@@ -1349,6 +1403,14 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "coil_category": spec.get("coil_category"),
         "coil_hand": spec.get("coil_hand"),
         "circuits": spec.get("circuits") or 1,
+        # Header-count cross-check only (_flag_header_count_conflict). The round-tripped
+        # analyze reading wins over the manual-fill lever of the same name: the lever is
+        # what the engineer ASKED for, the stated value is what the submittal SAYS, and
+        # the flag is about the second one. Not an engine input on this path -- the
+        # Tier-A re-run reads `spec`, not `ctx`.
+        "qty_conn_per_header": (
+            spec.get("stated_qty_conn_per_header") or spec.get("qty_conn_per_header")
+        ),
         "special_feature": spec.get("special_feature"),
         "tag": spec.get("tag"),
         "rows": spec.get("rows"),
@@ -1414,6 +1476,7 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     _flag_hgbp_product_line_unverified(result)
     _flag_distributor_orientation_review(result)
     _flag_defaulted_coil_hand(result, ctx)
+    _flag_header_count_conflict(result, ctx)
 
     # Print the coil's actual coating on the drawing. Wired into BOTH paths (analyze does
     # the same below) -- an analyze-only post-process is exactly the TR-9 / 228d731 defect.
@@ -1580,6 +1643,14 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         # circuiting, connection). Mapped review-required; independent of the
         # rule engine (which only drives the dimension geometry).
         "panel": _candidate_panel(candidate),
+        # Cross-check only, for _flag_header_count_conflict -- NOT an engine input and
+        # NOT a source for `circuits`. derive_slot_values reads `geometry` by named key
+        # (geo.get("rows") ...), so carrying an extra key here is inert on the frozen
+        # path. Connections-per-header is a different quantity from header count; it is
+        # read here to notice a disagreement, never to resolve one.
+        "qty_conn_per_header": _candidate_field_value(
+            candidate, "connections", "qty_connections_per_header"
+        ),
     }
     if hand_raw:
         ctx["coil_hand"] = "RH" if _normalize_handing(str(hand_raw)) == "Right" else "LH"
@@ -2071,6 +2142,7 @@ def _run_candidate_to_drawing_payload(
         _flag_hgbp_product_line_unverified(template_drawing)
         _flag_distributor_orientation_review(template_drawing)
         _flag_defaulted_coil_hand(template_drawing, ctx)
+        _flag_header_count_conflict(template_drawing, ctx)
         # DX-with-reheat casing-depth correction (R-072 with-HGRH branch). Runs on the
         # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
         # every downstream artifact shows the corrected CD. No-op unless DX + partner.

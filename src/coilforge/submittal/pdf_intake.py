@@ -1886,23 +1886,34 @@ _COIL_STYLE_CIRCUIT_NUM_RE = re.compile(r"(\d+)\s*[- ]?\s*Circuit", re.IGNORECAS
 _COIL_STYLE_CIRCUIT_WORDS: dict[str, int] = {
     "single": 1, "dual": 2, "double": 2, "triple": 3, "quad": 4,
 }
+# A word-stated count attaches to whichever circuiting descriptor the document uses --
+# Oxygen8 prints all four, and R-086 names two of them itself (DX "Interlaced N
+# Circuits", HGRH "Face Split N Circuits"). Project 3095 writes "Dual Face Split" /
+# "Dual Interlaced", where the count is a word and the line carries no "Circuit" at all;
+# gating the word map on the literal substring "circuit" therefore read those as no
+# count and let them fall to circuits=1, i.e. a silently single-header drawing.
+# Adjacency is required on purpose: the "Single" in "Single Row" counts rows, not
+# circuits, so a count word only counts when it sits against a descriptor.
+_COIL_STYLE_WORD_COUNT_RE = re.compile(
+    r"\b(single|dual|double|triple|quad)\b[\s-]*"
+    r"(?:face[\s-]*split|interlaced|intertwined|circuit)",
+    re.IGNORECASE,
+)
 
 
 def _circuits_from_coil_style(text: str | None) -> int | None:
     """Circuit count embedded in a 'Coil Style' value.
 
-    'Interlaced 2 Circuits' / '2-Circuit' -> 2; 'Dual Circuit' -> 2; 'Single Circuit'
-    -> 1. Returns None when no count is stated (a bare 'Intertwined'/'Interlaced' is
-    never assumed to be 2).
+    'Interlaced 2 Circuits' / '2-Circuit' -> 2; 'Dual Circuit' -> 2; 'Dual Face Split'
+    -> 2; 'Dual Interlaced' -> 2; 'Single Circuit' -> 1. Returns None when no count is
+    stated (a bare 'Intertwined'/'Interlaced'/'Face Split' is never assumed to be 2).
     """
     s = str(text or "")
     if (match := _COIL_STYLE_CIRCUIT_NUM_RE.search(s)):
         n = int(match.group(1))
         return n if 1 <= n <= 8 else None
-    if re.search(r"circuit", s, re.IGNORECASE):
-        for word, n in _COIL_STYLE_CIRCUIT_WORDS.items():
-            if re.search(rf"\b{word}\b", s, re.IGNORECASE):
-                return n
+    if (match := _COIL_STYLE_WORD_COUNT_RE.search(s)):
+        return _COIL_STYLE_CIRCUIT_WORDS[match.group(1).lower()]
     return None
 
 
