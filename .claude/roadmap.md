@@ -1,6 +1,30 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-06 (**[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
+> 마지막 갱신: 2026-08-07 (**[인테이크 트랙] 헤더 수가 조용히 1로 떨어지던 결함 — 4a3c403**:
+> John 보고: 3095 Harrison의 `RHHGRC-1`은 헤더가 2조인데 `Header 1`로 그려져 **두 번째 헤더 열이 통째로
+> 사라졌다**. 제출물은 세 번 말하고 있었다 — `Coil Style: Dual Face Split`, `Qty Conn. / Header 2`,
+> `Qty of Valves: 2` — 그리고 우리는 **셋 다 안 읽었다**. 이 경로엔 `header_count`라는 독립 값이 아예 없고
+> 헤더 수가 곧 `circuits`인데(`header_type = f"Header {circuits}"`, `catalog._header_matches`가 문자열 정확
+> 일치), `_circuits_from_coil_style`이 단어 매핑을 **리터럴 "circuit" 게이트 뒤에** 두고 있었다. "Dual Face
+> Split"은 수량이 단어이고 줄에 "Circuit"이 없다 → 파서는 **정직하게 `None`을 반환했는데** 하류의 `or 1`
+> 세 곳이 그 `None`을 확신에 찬 `1`로 바꿨다. 즉 "추측 금지" 불변식이 **역방향으로** 깨진 사례다.
+> 어휘는 원래 알고 있던 것이다 — **R-086**이 DX `Interlaced N Circuits` / HGRH `Face Split N Circuits`를
+> 이미 규정한다. 이제 수량 단어가 네 서술자(`Circuit`/`Interlaced`/`Intertwined`/`Face Split`) **바로 옆에
+> 붙었을 때만** 센다. **인접 조건이 안전장치** — "Single Row"의 `Single`은 행 수라, 문자열 전역 매칭이면
+> 같은 결함을 부호만 뒤집어 재현한다. 숫자 없는 맨 `Interlaced`/`Face Split`은 여전히 거부.
+> **실 3095 실측 before→after**: RHHGRC-1/-2/-3 · CDXC-3 `Header 1`→`Header 2`(S3/O4/R4 등장), CDXC-1/-2 무변경.
+> **기존 숫자는 하나도 안 바뀌었다** — CD·S1 동일, 없던 헤더 열이 생긴 것(계획서엔 R-072로 CD가 재계산될
+> 것이라 적었으나 실측은 불변, 그만큼 눈확인 범위가 작다). CDXC-3은 CDXC-1과 코일 모델 코드가 동일한데
+> (`3DX-08-24.0-14-15.0-8`) 서로 다르게 그려지고 있었고, 이제 좌우 반전으로 일치한다. HGRH `I3`은 의도적
+> 공란 — R-046이 Terra V Supply 2+ I/O를 규정하지 않으므로 그 규칙이 **이제야 발화**하고, 도면은 지어낸
+> 2.75 대신 `REVIEW REQUIRED` 콜아웃을 하나 더 낸다(= `exceptions_K` 상승, fail-closed 방향).
+> 둘째 변경 — 다음 표기는 조용하지 않도록 `_flag_header_count_conflict`: 명시된 `Qty Conn. / Header`와 읽어낸
+> circuits가 어긋나면 배너. **연결수는 헤더수와 다른 물리량이라 질문만 하고 답하지 않는다**(값·confidence·
+> 템플릿 전부 불변). 수정 전 파서로 되돌려 재생하면 **틀렸던 4개 코일에만** 뜨고 옳던 2개엔 안 뜬다 = 가드가
+> 자기 효용을 증명, 수정 후엔 6개 전부 조용(노이즈 0). analyze·`/derive` **양쪽** 배선 + stated 값 각인·왕복
+> (무관한 이유의 재-derive로 배너가 사라지면 TR-9와 같은 형태의 결함). **1504 green**, frozen·YAML·템플릿
+> 무접촉, 검증 실행이 원장에 남긴 행 0건.
+> 이전: **[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
 > John의 요청("불일치·결측을 DB에 쌓아 로직을 고치게")을 조사해보니 **DB는 이미 있고 이미 쌓이고 있었다**
 > — 체크리스트 불일치 500 match/4 mismatch, 결측 `blocked_reason` 945행, 교정 36행. 진짜 공백은 하나였다:
 > **`rule_firing` 0행**. 마이그레이션 3이 만든 표가 392 run 동안 비어 있었던 건 `_attach_engine_provenance`가
@@ -937,6 +961,17 @@
   2R APPROVED), 실 제출물 라이브 검증 + **John A/B 탭 눈확인 통과**. 부수 성과: 코팅 노트가 슬롯이 아니라
   **크롭 영역 주입**으로 구현돼 3장이 아니라 **22개 버킷 전부**에서 동작한다.
 
+- [x] **[인테이크 트랙] 헤더 수가 조용히 1로 떨어지던 결함 (4a3c403, 2026-08-07)** — 3095 Harrison
+  `RHHGRC-1`이 `Header 1`로 그려져 두 번째 헤더 열을 통째로 잃었다. `_circuits_from_coil_style`이 수량 단어
+  매핑을 리터럴 `"circuit"` 게이트 뒤에 두어 `Coil Style: Dual Face Split`을 못 읽었고, 파서의 정직한 `None`을
+  하류 `or 1` 세 곳이 확신에 찬 `1`로 바꿨다. 어휘는 **R-086이 이미 규정한 것**(DX `Interlaced N Circuits` /
+  HGRH `Face Split N Circuits`) — 수량 단어가 네 서술자 **바로 옆**에 붙었을 때만 세도록 넓혔다(인접 조건 =
+  "Single Row"의 Single을 회로수로 읽지 않기 위한 안전장치). 실 3095 실측: RHHGRC-1/-2/-3·CDXC-3이
+  `Header 1→2`, **기존 숫자는 불변**(없던 열이 생긴 것), CDXC-3이 동일 모델 CDXC-1과 드디어 일치. 함께 넣은
+  `_flag_header_count_conflict`는 `Qty Conn. / Header`와 대조해 배너만 띄우고 값은 건드리지 않으며, 수정 전
+  파서로 재생하면 **틀렸던 4개에만** 뜬다. **1504 green**, frozen·YAML·템플릿 무접촉. 상세는 상단 갱신 노트 참조.
+  🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -1068,6 +1103,9 @@
   실행 후 볼 것: ①임계값 `min_second_opinion=5`/`min_identities=10`이 맞는지 ②`join_quality.same_run` vs
   `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에 뭐가 쌓이는지
   ④R-033 `DIST EXTENTION`이 실제로 귀속되는지.
+  **2026-08-07 보강:** 4a3c403이 **돌릴 제출물을 하나 만들어 줬다** — 3095 Harrison은 John이 어차피 눈으로
+  확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
+  ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
