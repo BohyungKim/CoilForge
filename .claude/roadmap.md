@@ -1,7 +1,7 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-06 (**[제출물 파싱 + HGRH 트랙] John이 지적한 결함 2건 — 브랜치
-> `worktree-sl1-tagfilter`, 미병합**: ①**EKEXV 유령 코일** — EEV 밸브킷이 코일로 잡혔다. 가드는 있었으나
+> 마지막 갱신: 2026-08-15 (**[제출물 파싱 + HGRH 트랙] John이 지적한 결함 2건 —
+> `worktree-sl1-tagfilter` → `claude/ambient-supplier` 병합**: ①**EKEXV 유령 코일** — EEV 밸브킷이 코일로 잡혔다. 가드는 있었으나
 > `_NON_COIL_TAG_PREFIXES` 3문자열 denylist를 **단 한 곳**(`_is_cover_coil_row`)에서만 봤다. 그 함수는 정상
 > 작동했고, 문제는 **그 함수를 안 거치는 진입로들**이었다 — `Unit Tag: EKEXV-CDXC-1`이 무필터로 COIL_TAG가 되고
 > (`_RE_UNIT_TAG_ANCHOR`), `2 CDXC-1 EEV Kit …` 부속 줄이 **유령 CDXC-1**을 만들었다(둘 다 실행으로 재현).
@@ -32,7 +32,33 @@
 > frozen·`templates/**` 무접촉. **실 제출물 12개 전수 대조: 커버 코일 행 100% 동일**(진짜 코일 손실 0),
 > 다중피드 슬롯 딕셔너리 5라인×2서킷 **byte-identical**. ⚠️ **동시 세션 충돌**로 메인 트리 대신 워크트리
 > `.claude/worktrees/sl1-tagfilter`에서 작업 — 다른 Claude 세션이 같은 폴더에서 병합을 시작해 충돌 상태로
-> 멈춰 있었다(자세히는 memory `phase2_worktree_isolation`). **미병합·미푸시, John 판정 대기.**
+> 멈춰 있었다(자세히는 memory `phase2_worktree_isolation`). **John 승인으로 2026-08-15 병합** —
+> 겹치는 파일은 `pdf_intake.py` 하나였고 자동 병합됐다(각자 다른 함수: 태그 필터 vs `_circuits_from_coil_style`).
+> 이 로드맵만 충돌 1건, union으로 해소.
+> 이전: **[인테이크 트랙] 헤더 수가 조용히 1로 떨어지던 결함 — 4a3c403**:
+> John 보고: 3095 Harrison의 `RHHGRC-1`은 헤더가 2조인데 `Header 1`로 그려져 **두 번째 헤더 열이 통째로
+> 사라졌다**. 제출물은 세 번 말하고 있었다 — `Coil Style: Dual Face Split`, `Qty Conn. / Header 2`,
+> `Qty of Valves: 2` — 그리고 우리는 **셋 다 안 읽었다**. 이 경로엔 `header_count`라는 독립 값이 아예 없고
+> 헤더 수가 곧 `circuits`인데(`header_type = f"Header {circuits}"`, `catalog._header_matches`가 문자열 정확
+> 일치), `_circuits_from_coil_style`이 단어 매핑을 **리터럴 "circuit" 게이트 뒤에** 두고 있었다. "Dual Face
+> Split"은 수량이 단어이고 줄에 "Circuit"이 없다 → 파서는 **정직하게 `None`을 반환했는데** 하류의 `or 1`
+> 세 곳이 그 `None`을 확신에 찬 `1`로 바꿨다. 즉 "추측 금지" 불변식이 **역방향으로** 깨진 사례다.
+> 어휘는 원래 알고 있던 것이다 — **R-086**이 DX `Interlaced N Circuits` / HGRH `Face Split N Circuits`를
+> 이미 규정한다. 이제 수량 단어가 네 서술자(`Circuit`/`Interlaced`/`Intertwined`/`Face Split`) **바로 옆에
+> 붙었을 때만** 센다. **인접 조건이 안전장치** — "Single Row"의 `Single`은 행 수라, 문자열 전역 매칭이면
+> 같은 결함을 부호만 뒤집어 재현한다. 숫자 없는 맨 `Interlaced`/`Face Split`은 여전히 거부.
+> **실 3095 실측 before→after**: RHHGRC-1/-2/-3 · CDXC-3 `Header 1`→`Header 2`(S3/O4/R4 등장), CDXC-1/-2 무변경.
+> **기존 숫자는 하나도 안 바뀌었다** — CD·S1 동일, 없던 헤더 열이 생긴 것(계획서엔 R-072로 CD가 재계산될
+> 것이라 적었으나 실측은 불변, 그만큼 눈확인 범위가 작다). CDXC-3은 CDXC-1과 코일 모델 코드가 동일한데
+> (`3DX-08-24.0-14-15.0-8`) 서로 다르게 그려지고 있었고, 이제 좌우 반전으로 일치한다. HGRH `I3`은 의도적
+> 공란 — R-046이 Terra V Supply 2+ I/O를 규정하지 않으므로 그 규칙이 **이제야 발화**하고, 도면은 지어낸
+> 2.75 대신 `REVIEW REQUIRED` 콜아웃을 하나 더 낸다(= `exceptions_K` 상승, fail-closed 방향).
+> 둘째 변경 — 다음 표기는 조용하지 않도록 `_flag_header_count_conflict`: 명시된 `Qty Conn. / Header`와 읽어낸
+> circuits가 어긋나면 배너. **연결수는 헤더수와 다른 물리량이라 질문만 하고 답하지 않는다**(값·confidence·
+> 템플릿 전부 불변). 수정 전 파서로 되돌려 재생하면 **틀렸던 4개 코일에만** 뜨고 옳던 2개엔 안 뜬다 = 가드가
+> 자기 효용을 증명, 수정 후엔 6개 전부 조용(노이즈 0). analyze·`/derive` **양쪽** 배선 + stated 값 각인·왕복
+> (무관한 이유의 재-derive로 배너가 사라지면 TR-9와 같은 형태의 결함). **1504 green**, frozen·YAML·템플릿
+> 무접촉, 검증 실행이 원장에 남긴 행 0건.
 > 이전: **[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
 > John의 요청("불일치·결측을 DB에 쌓아 로직을 고치게")을 조사해보니 **DB는 이미 있고 이미 쌓이고 있었다**
 > — 체크리스트 불일치 500 match/4 mismatch, 결측 `blocked_reason` 945행, 교정 36행. 진짜 공백은 하나였다:
@@ -970,13 +996,24 @@
   2R APPROVED), 실 제출물 라이브 검증 + **John A/B 탭 눈확인 통과**. 부수 성과: 코팅 노트가 슬롯이 아니라
   **크롭 영역 주입**으로 구현돼 3장이 아니라 **22개 버킷 전부**에서 동작한다.
 
-- [x] **[제출물 파싱 + HGRH 트랙] EKEXV 유령 코일 차단 + 단일피드 SL1=6 (브랜치 `worktree-sl1-tagfilter`,
-  6커밋 `f7ff518`→`dbec65b`, 2026-08-06)** — John 지적 2건. 상세는 상단 갱신 노트 참조. **1513 green**
+- [x] **[제출물 파싱 + HGRH 트랙] EKEXV 유령 코일 차단 + 단일피드 SL1=6 (6커밋 `f7ff518`→`dbec65b`,
+  2026-08-06 · `claude/ambient-supplier` 병합 2026-08-15)** — John 지적 2건. 상세는 상단 갱신 노트 참조. **1513 green**
   (1493→1513, 신규 14테스트), invariant-guard BLOCKER 0·HIGH 0, frozen·`templates/**` 무접촉.
   커밋 순서: ①`is_coil_tag` 단일 관문 신설 ②전 진입로 배선 + `_detail_page_tags` 마스킹 ③제외 사유 UI 노출
   ④SL1 3→6 ⑤CD 미해결 시 SL1 누락 수정(독립 revert 가능) ⑥divergence 등록(KD-006~009 + RP-002).
   **실 제출물 12개 전수 대조**: 커버 코일 행 100% 동일(코일 손실 0), 다중피드 슬롯 5라인×2서킷 byte-identical.
-  ⚠️ **미병합·미푸시** — 아래 TR-11 눈확인 + 라벨 판정(앞으로 항목) 후 John이 병합처를 정한다. 🆕 이번 세션
+  ⚠️ **자동검증만 완료** — 아래 TR-11 브라우저 눈확인 + 라벨 판정(앞으로 항목)은 여전히 John 몫. 🆕 이번 세션
+
+- [x] **[인테이크 트랙] 헤더 수가 조용히 1로 떨어지던 결함 (4a3c403, 2026-08-07)** — 3095 Harrison
+  `RHHGRC-1`이 `Header 1`로 그려져 두 번째 헤더 열을 통째로 잃었다. `_circuits_from_coil_style`이 수량 단어
+  매핑을 리터럴 `"circuit"` 게이트 뒤에 두어 `Coil Style: Dual Face Split`을 못 읽었고, 파서의 정직한 `None`을
+  하류 `or 1` 세 곳이 확신에 찬 `1`로 바꿨다. 어휘는 **R-086이 이미 규정한 것**(DX `Interlaced N Circuits` /
+  HGRH `Face Split N Circuits`) — 수량 단어가 네 서술자 **바로 옆**에 붙었을 때만 세도록 넓혔다(인접 조건 =
+  "Single Row"의 Single을 회로수로 읽지 않기 위한 안전장치). 실 3095 실측: RHHGRC-1/-2/-3·CDXC-3이
+  `Header 1→2`, **기존 숫자는 불변**(없던 열이 생긴 것), CDXC-3이 동일 모델 CDXC-1과 드디어 일치. 함께 넣은
+  `_flag_header_count_conflict`는 `Qty Conn. / Header`와 대조해 배너만 띄우고 값은 건드리지 않으며, 수정 전
+  파서로 재생하면 **틀렸던 4개에만** 뜬다. **1504 green**, frozen·YAML·템플릿 무접촉. 상세는 상단 갱신 노트 참조.
+  🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
@@ -1103,11 +1140,33 @@
   `intake_drawing`/`checklist_filled`/`coil_manual_fill` 라인을 남긴다(project=None). 8/6 13:58 라인 2개는
   John의 실 2755 Gumbo 실행이고 그 뒤 7개가 검증분 — **append-only 저널이라 삭제하지 않았다**. 코퍼스 카운트를
   읽을 때 project=None 검증 실행을 어떻게 다룰지는 미결(Stage 2 착수 시 판단 필요).
+  ✅ **착수조건 해소(2026-08-06 실측, `scripts/override_rate.py`)**: 위의 "46/50 · 교정 0"은 **낡았다**.
+  현재 **flagged identity 123 · 교정 보유 17 · correction 32행**(원표는 36행이고, 그중 tag+project가 둘 다
+  있어 신원에 귀속되는 것이 32 — 두 숫자가 다른 건 정상이다)으로, n≥50 게이트는 이미 통과했고 "교정 0"도
+  더는 사실이 아니다. 즉 **Phase 2.1을 "지금 하면 헛작업"이라던 근거가 사라졌다** — 가중치 채택(John eyeball
+  후 1줄)을 실제로 판단할 수 있는 상태다. 덤으로 검토수렴 트랙의 B2 신호가 살아 있음이 확인됐다:
+  `S`/`O`의 `by_reason`에 `checklist_mismatch`가 실제로 찍힌다.
+  🔴 **원장이 이미 말하고 있는 것**: John의 교정 사유가 `S`·`O`에서 반복적으로
+  **"incorrect logic error from coilforge"**(2.375→1.375, 2.75→2.0)라고 적혀 있다. 이건 "값이 애매했다"가
+  아니라 **우리 로직이 틀렸다는 진술**이고, 4단계가 규칙으로 번역해야 할 1순위 후보다. 반대로
+  `airflow_direction`은 123/123 identity에서 blocked인데 교정은 0 — 아무도 신경 쓰지 않는 항목을 flag가
+  계속 만들어내고 있다는 뜻이라, 3.1 랭킹의 노이즈 원천으로 따로 봐야 한다.
+- [ ] **4단계 Phase 4.1 — 실측 대기** (엔진은 4.0a·4.0b로 구축·커밋 완료, e31a92d·75fe368) — 다음 걸음:
+  **John이 실 제출물을 브라우저에서 몇 건 돌리는 것**. `rule_firing`은 1c'가 붙은 **새 실행부터** 쌓이므로
+  라이브 원장은 아직 `insufficient`다(정직한 0, 파손 아님). ⚠️ `run_server.bat`은 `--reload`가 없으므로
+  **재시작 필수** — 안 하면 옛 프로세스가 새 코드를 안 물어 영원히 0행이다.
+  **Stage 2와 착수 행동이 동일하다**(둘 다 "브라우저 edit으로 실사용") — 한 번의 실사용이 두 단계를 함께 푼다.
+  실행 후 볼 것: ①임계값 `min_second_opinion=5`/`min_identities=10`이 맞는지 ②`join_quality.same_run` vs
+  `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에 뭐가 쌓이는지
+  ④R-033 `DIST EXTENTION`이 실제로 귀속되는지.
+  **2026-08-07 보강:** 4a3c403이 **돌릴 제출물을 하나 만들어 줬다** — 3095 Harrison은 John이 어차피 눈으로
+  확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
+  ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
-- [ ] 🔴 **[SL1 트랙] `worktree-sl1-tagfilter` 병합처 결정 (John)** — 6커밋 미병합·미푸시. 다른 Claude 세션이
-  `claude/ambient-supplier`에 Stage 4를 계속 커밋 중이라 **양쪽이 `pdf_intake.py`·`direct_coil_drawing_pipeline.py`를
-  각자 고치기 전에** 정하는 편이 낫다. 워크트리는 `origin/main` + `claude/ambient-supplier`(c84df80)를 이미 병합해
-  담고 있으므로 되돌려 합치는 건 어렵지 않다. ⚠️ `.claude/roadmap.md`는 양쪽이 동시에 쓰므로 충돌 1건 예상(union).
+- [x] **[SL1 트랙] `worktree-sl1-tagfilter` 병합처 결정 — John: `claude/ambient-supplier` (2026-08-15)** —
+  예상대로 겹친 파일은 `pdf_intake.py` 하나뿐이고 각자 다른 함수를 고쳐 자동 병합됐다(태그 필터 vs
+  `_circuits_from_coil_style`). 충돌은 `.claude/roadmap.md` 1건, union으로 해소. 워크트리에서 먼저 흡수한 뒤
+  메인 트리로 넘겨 되돌리기 비용을 낮춘 순서.
 - [ ] **[SL1 트랙] 유닛 태그 라벨 판정 (John)** — 태그 필터의 **의도된 부작용 1건**: 커버 코일 행이 **없는**
   제출물에서 코일 페이지 라벨이 `ERV-4` → **`Coil 1`**로 바뀐다(실측 `SIGNED 2808 Premiere Dance`; 도면 자체는
   정상 생성 `coilmaster_dx_lh_header1`). `ERV-4`는 모 유닛 태그라 이미 drain-pan 페어링·alias 매칭에서 실패하고
@@ -1126,6 +1185,9 @@
   (설계상 호박색이 아니라 **빨강 유지**). 대안 경로도 RP-002에 적어뒀다.
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
+  **2026-08-06 확정**: 가설이 아니라 사실이 됐다 — `capture/observatory.py`가 ccsi 행을 원천 제외하고
+  (`triage.py`와 같은 이유) 그 사유를 코드에 적어두고 있다. 즉 CCSI 비교는 지금 **어느 측정에도 기여하지
+  않는다**. 다만 CCSI 자체가 2026-07-05에 DEPRIORITIZED된 트랙이라 이 항목의 우선순위는 그대로 낮다.
 - [~] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
   틀린 값 자동승인). 실제 override율은 1단계가 처음 알려줌 → **그 숫자를 보고 착수, 미리 약속 안 함**
   - [x] **Phase 3.0 측정 도구 (af3b4fc)** — `measure_override_rate`가 그 override율을 원장에서 산출(위 ✅ 참조).
@@ -1142,10 +1204,8 @@
   - [x] **Phase 4.0b Observatory (75fe368)** — `capture/observatory.py` + `GET /api/capture/rule-observatory`
     + `scripts/rule_observatory.py`. **`accuracy` 필드 없음**(표본 편향 대응은 경고문이 아니라 구조),
     분모는 `second_opinion`, coverage 0 → `disagreement_rate: None`, `blind_spots`를 나란히 출력.
-  - [ ] **Phase 4.1 실측 대기** — 라이브 원장은 아직 `insufficient`(1c'는 새 실행부터). John이 실제 제출물을
-    몇 건 돌려야 숫자가 나온다. 그때 볼 것: ①`min_second_opinion=5`/`min_identities=10` 임계값이 맞는지
-    ②`join_quality.same_run` vs `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에
-    뭐가 쌓이는지 ④R-033 DIST EXTENTION이 실제로 귀속되는지.
+  - [ ] **Phase 4.1 실측 대기 → `▶️ 지금`으로 승격** (2026-08-06). 착수 행동이 Stage 2와 **동일**하므로
+    (둘 다 "브라우저 edit으로 실사용") 거기서 함께 관리한다. 상세는 지금 섹션 참조.
   - [ ] **감사샘플이 여전히 유일한 통계적 수단** — `audit_sample`은 0행이라 현재 모든 규칙이
     `review_conditional: True`. 이걸 채우기 전까지 어떤 수치도 "John이 이미 의심한 코일" 조건부다.
 - [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →

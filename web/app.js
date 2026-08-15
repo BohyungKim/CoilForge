@@ -2573,6 +2573,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
       ${distributorOrientationBanner(templateDrawing)}
       ${coilHandAssumedBanner(templateDrawing)}
       ${hgbpProductLineBanner(templateDrawing)}
+      ${headerCountConflictBanner(templateDrawing)}
       ${manualOverrideBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
       ${renderThreeWayView(templateDrawing)}
@@ -2757,6 +2758,10 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
     application: engineInputs.application,
     header_count: engineInputs.header_count,
     qty_conn_per_header: engineInputs.qty_conn_per_header,
+    // NOT the lever above: the connections-per-header the SUBMITTAL stated, stamped by
+    // analyze and round-tripped so the header-count conflict banner survives a re-derive
+    // done for any unrelated reason. Cross-check input only — never an engine input.
+    stated_qty_conn_per_header: templateDrawing.qty_conn_per_header_stated,
     // A DX paired with a reheat HGRH takes the engine's with-HGRH casing-depth branch
     // (CD 8.125, not 7.5 — and CD feeds the distributor spacing S). Analyze resolves the
     // partner across the sibling coils; /derive handles ONE coil and cannot see them, so
@@ -3365,6 +3370,20 @@ function hgbpProductLineBanner(templateDrawing) {
   return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
 }
 
+// Loud review-required banner when the submittal states more connections per header than
+// the circuit count we could read. Circuits IS the header count on the drawing path
+// (header_type = "Header N"), and with nothing stating it the backend falls to 1 — a
+// confidently single-header drawing built on no evidence (project 3095). The stated
+// connection count is a DIFFERENT quantity, so it only raises the question here; it never
+// answers it. See submittal_to_drawing._flag_header_count_conflict.
+function headerCountConflictBanner(templateDrawing) {
+  const warning = templateDrawing && templateDrawing.header_count_review;
+  if (!warning || !templateDrawing.header_count_conflict) {
+    return "";
+  }
+  return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
+}
+
 // Loud marker when one or more dimensions were manually overridden (Phase 1 reflection):
 // the drawing now shows an engineer-supplied value, not the machine proposal, so it must
 // never read as an approved as-built. Driven by result.manual_override_keys; empty when
@@ -3666,6 +3685,7 @@ function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
         ${distributorOrientationBanner(templateDrawing)}
         ${coilHandAssumedBanner(templateDrawing)}
         ${hgbpProductLineBanner(templateDrawing)}
+        ${headerCountConflictBanner(templateDrawing)}
         <div class="dc-coil-drawing-canvas">
           ${templateDrawingBody(templateDrawing, rendered)}
         </div>
