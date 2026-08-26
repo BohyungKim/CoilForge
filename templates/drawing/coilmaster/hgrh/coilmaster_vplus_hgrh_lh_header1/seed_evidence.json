@@ -26,7 +26,7 @@
   "slot_evidence": [
     {
       "slot_id": "slot.BF",
-      "value": "0.63",
+      "value": "1.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -58,30 +58,6 @@
     },
     {
       "slot_id": "slot.CH",
-      "value": "13.25",
-      "source_channels": [
-        "ez_drawing_pdf"
-      ],
-      "review_status": "review_required"
-    },
-    {
-      "slot_id": "slot.CIRCUITING",
-      "value": "1 Feed / 12 Pass",
-      "source_channels": [
-        "ez_drawing_pdf"
-      ],
-      "review_status": "review_required"
-    },
-    {
-      "slot_id": "slot.CIRCUITING_2",
-      "value": "0 Dropped Tubes",
-      "source_channels": [
-        "ez_drawing_pdf"
-      ],
-      "review_status": "review_required"
-    },
-    {
-      "slot_id": "slot.CL",
       "value": "27.00",
       "source_channels": [
         "ez_drawing_pdf"
@@ -89,8 +65,32 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.CIRCUITING",
+      "value": "2 Feed / 12 Pass",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CIRCUITING_2",
+      "value": "1 Dropped Tubes",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.CL",
+      "value": "59.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.COIL_TUBE_FACE",
-      "value": "Tube Face = 12",
+      "value": "Tube Face = 25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -98,7 +98,7 @@
     },
     {
       "slot_id": "slot.DRY_WEIGHT",
-      "value": "15.3 Lbs. Per Coil",
+      "value": "37.2 Lbs. Per Coil",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -114,7 +114,7 @@
     },
     {
       "slot_id": "slot.FH",
-      "value": "12",
+      "value": "25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -122,7 +122,7 @@
     },
     {
       "slot_id": "slot.FIN_MATERIAL",
-      "value": "12.5 Fins Per Inch",
+      "value": "9.5 Fins Per Inch",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -146,7 +146,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "24",
+      "value": "56",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -154,7 +154,7 @@
     },
     {
       "slot_id": "slot.HD2",
-      "value": "3",
+      "value": "3.50",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -177,8 +177,24 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.I1",
+      "value": "2.00",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.MODEL_NUMBER",
-      "value": "CD-F-S-01-12.5-12.00x24.00-L",
+      "value": "CD-F-S-01-09.5-25.00x56.00-L",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.O2",
+      "value": "2.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -186,7 +202,15 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "25.75",
+      "value": "61.25",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.R2",
+      "value": "0.63",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -217,8 +241,16 @@
       "review_status": "review_required"
     },
     {
+      "slot_id": "slot.S1",
+      "value": "0.63",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
       "slot_id": "slot.SL2",
-      "value": "3.00",
+      "value": "10.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -226,7 +258,15 @@
     },
     {
       "slot_id": "slot.SUPPLY_CONN_SIZE",
-      "value": "0.63\" swt",
+      "value": "0.625\" OD Header",
+      "source_channels": [
+        "ez_drawing_pdf"
+      ],
+      "review_status": "review_required"
+    },
+    {
+      "slot_id": "slot.SUPPLY_CONN_SIZE_2",
+      "value": "0.625\" SWT-Copper",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -234,7 +274,7 @@
     },
     {
       "slot_id": "slot.TAG",
-      "value": "RHHGRC-1",
+      "value": "RHHGRC-2",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -242,7 +282,7 @@
     },
     {
       "slot_id": "slot.TF",
-      "value": "0.63",
+      "value": "1.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],

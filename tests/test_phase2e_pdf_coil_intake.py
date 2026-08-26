@@ -918,7 +918,7 @@ def test_coil_drawing_product_options_endpoint() -> None:
     response = client.get("/api/coil-drawing/product-options")
     assert response.status_code == 200
     lines = response.json()["product_lines"]
-    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
+    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS", "OMNIA"}
     assert "A16" in lines["NOVA"]
 
 

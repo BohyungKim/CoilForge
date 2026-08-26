@@ -507,6 +507,37 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   carried over: the water templates still have un-redacted as-built dims (see
   *Template hardcoded dims deferred*), which are Nova-shaped for every line that borrows
   them, Terra V included.
+- **Omnia (`OW###` model codes, John 2026-08-25) is a first-class `ProductFamily.OMNIA` that
+  IS Ventum+ except for one value.** "Everything is exactly the same rule and drawing template
+  as Ventum+; the only difference is TF and BF = 0.625" (Ventum+ R-011 = 1.0). Four mechanisms
+  make that sentence hold, and each has a test in `tests/test_omnia_product_line.py`:
+  ① every Ventum+ rule lists `OMNIA` next to `VENTUM_PLUS` in `applies_to` (11 rules + the
+  R-064 `value_map`), and `R-011o` is Omnia's ONLY own rule; ② the Python `== VENTUM_PLUS`
+  branches (HGRH flat R / `CD = 3*conn` / R-063b water SL / supply S / install_width drain-pan
+  compare) test `in VENTUM_PLUS_CLASS` (`schemas/header_prepopulate.py`) — a new Ventum+
+  special-case written as `== VENTUM_PLUS` silently drops Omnia, which is what the
+  field-by-field `omnia == ventum_plus except flanges` test exists to catch; ③ templates are
+  an **alias**, not a seed: `catalog.TEMPLATE_FAMILY_ALIAS = {"OMNIA": "VENTUM_PLUS"}` answers
+  an Omnia selection from the 11 dedicated Ventum+ buckets (bucket count unchanged;
+  `dedicated_family_template` records the BUCKET family `VENTUM_PLUS`), and the DX
+  not-registered / R-032 gates in `submittal_to_drawing.py` key on `_VENTUM_PLUS_CLASS`;
+  ④ detection needs no regex — `R-076 OMNIA: [OW050 … OW085]` puts the token into
+  `_non_terra_size_tokens()`, so `OW085_I` resolves through the existing Pass A. **Data gap
+  (deliberate):** the "Wheel Product Sizing Summary" chart gives the coil envelope (coil width;
+  coil height + clearance = 23/25/28/31/34/37/39 per size), NOT the unit casing or drain-pan
+  widths, so R-074 / R-077 / R-078 carry **no** OMNIA rows — casing is absent (never borrowed
+  from a Ventum+ size) and every fit verdict is `CANNOT_EVALUATE` until John supplies them.
+  The Coil Checklist workbook has no OMNIA unit: `template_map.UNIT_BY_PRODUCT` fills it as
+  `VENTUM+` (SIZE left blank — `OW085` is not in the sheet's list), so the sheet computes
+  TF/BF = 1.0 and `known_divergences.yaml` KD-010..017 (one per category × flange, band
+  exactly −0.375) label that row amber instead of red.
+  **Seed-page audit (John 2026-08-26):** the first Omnia drawing exposed that
+  `coilmaster_vplus_dx_lh_header1` and `coilmaster_vplus_hgrh_lh_header1` had been seeded from
+  2760 Revere **p.2 / p.6 (CDXC-1 / RHHGRC-1)** — a NON-Ventum+ pair in a mixed project
+  (TF/BF 0.63, SL 8, I 3, distributor nozzle UP = ConnectionDown). Re-seeded from **p.5 / p.7**
+  (CDXC-4 / RHHGRC-2: TF/BF 1.00, SL 10, I 12 / 2, nozzle DOWN = R-032 UP). The check that
+  catches this class of mistake is cheap: a Ventum+ reference page must print **TF = BF = 1.00**
+  (R-011) — 2619 Congress prints 0.88 on both its seeded pages and is still unexplained.
 - **Hot gas bypass (HGBP) is a Nova / Ventum H option ONLY** (John 2026-07-15). Both HGBP
   DX templates (`coilmaster_dx_{lh,rh}_hgbp`, seeded from real `(1 ASC)` 1-header references)
   are Nova/Ventum-H-class, so `_gate_hgbp_unsupported_product_line` **omits** an HGBP drawing

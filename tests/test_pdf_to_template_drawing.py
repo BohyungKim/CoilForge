@@ -384,7 +384,7 @@ def test_product_size_options_lists_the_four_product_lines() -> None:
     from coilforge.submittal.coilmaster_drawing_extract import product_size_options
 
     options = product_size_options()
-    assert set(options) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
+    assert set(options) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS", "OMNIA"}
     assert "A16" in options["NOVA"]
     # Terra H and Terra V have DIFFERENT size sets (John 2026-06-29): Terra V adds
     # 060/072/084/100 on top of the shared 9; Terra H stays at 9.

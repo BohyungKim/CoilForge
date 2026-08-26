@@ -265,3 +265,237 @@ divergences:
     adjudicated_utc: "2026-08-06"
     status: proposed
     rule_proposal: RP-002
+
+  # KD-010..KD-017: Omnia TF/BF (John 2026-08-25). The Coil Checklist workbook has no
+  # OMNIA unit, so an Omnia coil is filled as VENTUM+ (checklist/template_map.py) and the
+  # sheet computes the Ventum+ flange TF = BF = 1.0; CoilForge's R-011o carries the
+  # confirmed Omnia value 0.625. The registry has no category wildcard, so one ruling per
+  # (category, flange). Band is the exact -0.375: any other magnitude re-escalates.
+
+  - id: KD-010
+    coil_category: DX
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.TF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-011
+    coil_category: DX
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.BF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-012
+    coil_category: HGRH
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.TF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-013
+    coil_category: HGRH
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.BF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-014
+    coil_category: CWC
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.TF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-015
+    coil_category: CWC
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.BF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-016
+    coil_category: HWC
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.TF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  - id: KD-017
+    coil_category: HWC
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.BF
+    verdict: checklist_wrong
+    reason: >-
+      The workbook has no OMNIA unit; the coil is filled as VENTUM+ so the sheet computes
+      the Ventum+ flange (1.0). Omnia is Ventum+ in every other rule but TF/BF = 0.625
+      (R-011o, John 2026-08-25).
+    delta_band: {min: -0.375, max: -0.375}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-25 Omnia = Ventum+ rules, TF/BF 0.625"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-25"
+    status: proposed
+
+  # KD-018..KD-021: the CH consequence of KD-010..017. CH = FH + TF + BF on every sheet, so
+  # the same VENTUM+ fill makes the sheet's CH exactly 0.75 above CoilForge's (live 3097
+  # CDXC-1: checklist 29 vs 28.25). Any other magnitude is a real CH problem and re-escalates.
+
+  - id: KD-018
+    coil_category: DX
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.CH
+    verdict: checklist_wrong
+    reason: >-
+      CH = FH + TF + BF; the sheet, filled as VENTUM+, adds 1.0 + 1.0 where Omnia is
+      0.625 + 0.625 (R-011o). Pure flange consequence, band exactly -0.75.
+    delta_band: {min: -0.75, max: -0.75}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-26 live 3097 CDXC-1 CH 29 vs 28.25"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-26"
+    status: proposed
+
+  - id: KD-019
+    coil_category: HGRH
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.CH
+    verdict: checklist_wrong
+    reason: >-
+      CH = FH + TF + BF; the sheet, filled as VENTUM+, adds 1.0 + 1.0 where Omnia is
+      0.625 + 0.625 (R-011o). Pure flange consequence, band exactly -0.75.
+    delta_band: {min: -0.75, max: -0.75}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-26 live 3097 CDXC-1 CH 29 vs 28.25"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-26"
+    status: proposed
+
+  - id: KD-020
+    coil_category: CWC
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.CH
+    verdict: checklist_wrong
+    reason: >-
+      CH = FH + TF + BF; the sheet, filled as VENTUM+, adds 1.0 + 1.0 where Omnia is
+      0.625 + 0.625 (R-011o). Pure flange consequence, band exactly -0.75.
+    delta_band: {min: -0.75, max: -0.75}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-26 live 3097 CDXC-1 CH 29 vs 28.25"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-26"
+    status: proposed
+
+  - id: KD-021
+    coil_category: HWC
+    product_family: OMNIA
+    terra_variant: null
+    unit_size_scope: "*"
+    slot: slot.CH
+    verdict: checklist_wrong
+    reason: >-
+      CH = FH + TF + BF; the sheet, filled as VENTUM+, adds 1.0 + 1.0 where Omnia is
+      0.625 + 0.625 (R-011o). Pure flange consequence, band exactly -0.75.
+    delta_band: {min: -0.75, max: -0.75}
+    evidence_refs:
+      - "RULE:R-011o"
+      - "JOHN:2026-08-26 live 3097 CDXC-1 CH 29 vs 28.25"
+    adjudicated_by: John
+    adjudicated_utc: "2026-08-26"
+    status: proposed

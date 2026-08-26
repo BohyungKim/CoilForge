@@ -579,7 +579,10 @@ VPLUS_BUCKETS: list[tuple] = [
     ("coilmaster_vplus_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
      "Case/feed/vplus_dx_rh_header1/2798_Centra_Reno.pdf", "VPLUS-2798-CENTRA-RENO", 1),
     ("coilmaster_vplus_dx_lh_header1", "dx", "DX", "LH", "Header 1", None,
-     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 2),
+     # p2 (CDXC-1) is NOT a Ventum+ coil -- TF/BF 0.63, SL 8, I 3, nozzle-up distributor;
+     # John caught the Down-orientation on the Omnia 3097 drawing (2026-08-26). p5 (CDXC-4)
+     # is the real Ventum+ LH 1-distributor page (TF/BF 1.00, SL 10, I 12, R-032 UP).
+     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 5),
     ("coilmaster_vplus_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
      "Case/feed/vplus_dx_lh_header2/2760_Revere.pdf", "VPLUS-2760-REVERE", 3),
     ("coilmaster_vplus_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
@@ -587,7 +590,9 @@ VPLUS_BUCKETS: list[tuple] = [
     ("coilmaster_vplus_dx_rh_header2", "dx", "DX", "RH", "Header 2", None,
      "Case/feed/vplus_dx_rh_header2/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 1),
     ("coilmaster_vplus_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
-     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 6),
+     # p6 (RHHGRC-1) pairs with the non-Ventum+ CDXC-1 above (TF/BF 0.63); p7 (RHHGRC-2)
+     # is the Ventum+ one (TF/BF 1.00, SL 10, I 2.0 -- same pattern as Hoffman/Congress).
+     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 7),
     ("coilmaster_vplus_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
      "Case/feed/vplus_hgrh_rh_header1/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 2),
     ("coilmaster_vplus_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,

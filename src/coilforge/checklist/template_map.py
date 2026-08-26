@@ -41,6 +41,9 @@ UNIT_BY_PRODUCT = {
     "VENTUM H": "VENTUM H",
     "VENTUM_PLUS": "VENTUM+",
     "VENTUM+": "VENTUM+",
+    # The workbook has no OMNIA unit (John 2026-08-25): fill as VENTUM+ and let the
+    # TF/BF difference (0.625 vs the sheet's 1.0) surface as a known divergence.
+    "OMNIA": "VENTUM+",
     "TERRA H": "TERRA H",
     "TERRA_H": "TERRA H",
     "TERRA H C": "TERRA H",

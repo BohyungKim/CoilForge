@@ -137,6 +137,20 @@ rules:
     blocked_reason: null
     evidence_refs: ["SOP §DX-VP", "SOP §HGRH-VP", "SOP §CWC/HWC", "CHK *!TF/BF"]
 
+  # R-011o: Omnia (OW### model codes) inherits every Ventum+ rule — the applies_to
+  # lists above/below carry OMNIA next to VENTUM_PLUS — and differs in exactly one
+  # value: TF = BF = 0.625 (John 2026-08-25). R-011 is scoped to VENTUM_PLUS only, so
+  # there is no last-writer race; this rule is the sole flange source for Omnia.
+  - rule_id: R-011o
+    applies_to: { coil_type: ["*"], product_family: [OMNIA], terra_variant: null, size_pattern: null }
+    field: [top_flange, bottom_flange]
+    value: 0.625
+    kind: constant
+    confidence: HIGH
+    review_required: false
+    blocked_reason: null
+    evidence_refs: ["John 2026-08-25: Omnia = Ventum+ rules and templates; only TF/BF differ = 0.625"]
+
   # R-012/R-013/R-014: TF/BF conflicts resolved in favor of the checklist
   # values (John, 2026-06-11: "checklist is typically the most accurate").
   # The Terra asymmetry (TF=1.625, BF) is intentional per the checklist.
@@ -202,7 +216,7 @@ rules:
 
   # --- 2.3 Connection / stubout geometry --------------------------------------
   - rule_id: R-020
-    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [DX], product_family: [NOVA, VENTUM_H, VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: suction_io
     value: 2
     kind: constant
@@ -296,7 +310,7 @@ rules:
     evidence_refs: ["John 2026-06-26: DX Ventum H H05/H10 SL = 17 (overrides R-025 default 8; even-slot SL2/4/6/8 clearance)"]
 
   - rule_id: R-026
-    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: suction_sl
     value: 10
     kind: constant
@@ -337,7 +351,7 @@ rules:
     evidence_refs: ["SOP §DX-TNVH", "CHK DX!C50:C53"]
 
   - rule_id: R-029
-    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: dist_i
     value: 12
     kind: constant
@@ -371,7 +385,7 @@ rules:
     evidence_refs: ["CHK DX HD=4.5", "John 2026-06-11 (Terra H C; checklist reliable)"]
 
   - rule_id: R-030b
-    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: dist_hd
     value: 4.5
     kind: constant
@@ -391,7 +405,7 @@ rules:
     evidence_refs: ["SOP §DX-TNVH", "CHK DX!C58"]
 
   - rule_id: R-032
-    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: dist_orientation
     value: "UP"
     kind: constant
@@ -439,7 +453,7 @@ rules:
 
   # --- 2.4 HGRH-specific ------------------------------------------------------
   - rule_id: R-040
-    applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [HGRH], product_family: [NOVA, VENTUM_H, VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: supply_io
     value: 2
     kind: constant
@@ -515,7 +529,7 @@ rules:
     evidence_refs: ["SOP §HGRH-TNVH supply SL=6", "CHK HGRH supply SL1 geometric (6 + D/2 - S1)"]
 
   - rule_id: R-044c
-    applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: supply_sl
     value: 6
     kind: constant
@@ -547,7 +561,7 @@ rules:
     evidence_refs: ["John 2026-06-26: HGRH Ventum H H05/H10 return SL = 17 (overrides R-044b default 8; even-slot SL2/4/6/8 clearance)"]
 
   - rule_id: R-045a
-    applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [HGRH], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: return_sl
     value: 10
     kind: constant
@@ -661,7 +675,7 @@ rules:
     applies_to: { coil_type: [HGRH], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: return_spacing
     value: null
-    formula: "TERRA/NOVA/VENTUM_H: Rn = n*D + (n-1)*1.5; VENTUM+: Rn = D (D=conn_size, n=1..qty_conn_per_header)"
+    formula: "TERRA/NOVA/VENTUM_H: Rn = n*D + (n-1)*1.5; VENTUM+/OMNIA: Rn = D (D=conn_size, n=1..qty_conn_per_header)"
     kind: formula_return_spacing_hgrh
     requires_inputs: [conn_size, qty_conn_per_header]
     confidence: MEDIUM
@@ -674,7 +688,7 @@ rules:
 
   # --- 2.5 CWC / HWC-specific -------------------------------------------------
   - rule_id: R-060
-    applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H, VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [CWC, HWC], product_family: [NOVA, VENTUM_H, VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: io
     value: 2.3125
     kind: special_cwc_io
@@ -730,7 +744,7 @@ rules:
     evidence_refs: ["SOP §CWC/HWC", "CHK CWC/HWC SL formula NOVA/VENTUM H=8"]
 
   - rule_id: R-063b
-    applies_to: { coil_type: [CWC, HWC], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [CWC, HWC], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: sl
     value: 10
     kind: special_cwc_sl
@@ -743,7 +757,7 @@ rules:
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: sl
     value: null
-    value_map: { NOVA: 12, VENTUM_H: 12, VENTUM_PLUS: 14 }
+    value_map: { NOVA: 12, VENTUM_H: 12, VENTUM_PLUS: 14, OMNIA: 14 }
     kind: special_cwc_sl_single
     only_when: feeds_eq_1
     requires_inputs: [feeds]
@@ -1035,6 +1049,10 @@ rules:
       TERRA_V: ["006", "009", "012", "015", "018", "024", "032", "040", "048", "060", "072", "084", "100"]
       VENTUM_H: [H05, H10, H15, H20, H25, H30]
       VENTUM_PLUS: [V20, V25, V30, V40, V50, V60, V80, V100, V120, V150]
+      # Omnia sizes from the "Wheel Product Sizing Summary" chart (John 2026-08-25).
+      # No R-074 / R-077 / R-078 rows yet: the chart gives the coil envelope, not the
+      # unit casing / drain-pan widths, so casing stays blocked and fit CANNOT_EVALUATE.
+      OMNIA: [OW050, OW055, OW060, OW070, OW075, OW080, OW085]
 
   # R-077: drain-pan / install width lookup. Data-only (consumed by
   # compatibility/mechanical_fit.py for the INSTALL FIT pair check
@@ -1189,7 +1207,7 @@ rules:
   # R-035c carries the hot-gas-bypass wording and DISPLACES R-035b (which is gated
   # not_hot_gas_bypass) rather than adding to it -- hence the mutual exclusion holds.
   - rule_id: R-035a
-    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS], terra_variant: null, size_pattern: null }
+    applies_to: { coil_type: [DX], product_family: [VENTUM_PLUS, OMNIA], terra_variant: null, size_pattern: null }
     field: notes
     value: "Distributor 6\" Extension Upwards"
     kind: notes_append

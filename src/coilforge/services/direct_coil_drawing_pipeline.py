@@ -26,6 +26,7 @@ from coilforge.schemas.header_prepopulate import (
     HeaderPrepopulateResponse,
     ProductFamily,
     TerraVariant,
+    VENTUM_PLUS_CLASS,
 )
 from coilforge.services.distributor_slots import distributor_drawing_slots
 from coilforge.services.header_prepopulate_engine import prepopulate, round_eighth
@@ -45,6 +46,7 @@ _PRODUCT = {
     "TERRA_V": ProductFamily.TERRA_V,
     "VENTUM_H": ProductFamily.VENTUM_H,
     "VENTUM_PLUS": ProductFamily.VENTUM_PLUS,
+    "OMNIA": ProductFamily.OMNIA,
 }
 
 
@@ -264,7 +266,7 @@ def _hgrh_supply_s(request, cd: float, conn: float) -> float:  # type: ignore[no
     Unlike the DX distributor S (k*CD/(circuits+1)), every odd HGRH S is the SAME
     value (the sheet's S1=S3=S5 share one formula), so this is not k-scaled. Terra V
     keeps its own S = CD - Rn path in the caller and never reaches here."""
-    if request.product_type == ProductFamily.VENTUM_PLUS or request.terra_variant in (
+    if request.product_type in VENTUM_PLUS_CLASS or request.terra_variant in (
         TerraVariant.TERRA_H,
         TerraVariant.TERRA_H_C,
     ):

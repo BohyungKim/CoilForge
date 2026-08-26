@@ -629,6 +629,9 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
 # branch here until 2026-07-28; John released it on the same reasoning — see
 # _gate_unregistered_product_line.)
 _UNREGISTERED_PRODUCT_LINES: set[str] = set()
+# Families that draw on the dedicated Ventum+ template set and carry its R-032 UP
+# distributor (John 2026-08-25: Omnia = Ventum+ rules and templates, TF/BF aside).
+_VENTUM_PLUS_CLASS = {"VENTUM_PLUS", "OMNIA"}
 
 
 def _omit_drawing(result: dict[str, Any], reason: str) -> dict[str, Any]:
@@ -708,7 +711,7 @@ def _flag_distributor_orientation_review(result: dict[str, Any]) -> dict[str, An
 
     family, _ = resolve_product_line(result.get("product_type"))
     category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
-    if family == "VENTUM_PLUS" and category == "DX":
+    if family in _VENTUM_PLUS_CLASS and category == "DX":
         result["distributor_orientation_warning"] = _DIST_ORIENTATION_REVIEW
     return result
 
@@ -818,6 +821,7 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
         return result
     from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
     from coilforge.template_population.catalog import (
+        TEMPLATE_FAMILY_ALIAS,
         TemplateSelectionRequest,
         select_drawing_template,
     )
@@ -826,6 +830,10 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     family, _ = resolve_product_line(result.get("product_type"))
     if not family:
         return result
+    # Omnia has no buckets of its own; it is answered from the Ventum+ set (John
+    # 2026-08-25), so the "genuinely dedicated" check below compares against the
+    # bucket family the alias resolves to, not the coil's own label.
+    bucket_family = TEMPLATE_FAMILY_ALIAS.get(family, family)
     ex = result.get("extracted") or {}
     sel = select_drawing_template(
         TemplateSelectionRequest(
@@ -839,7 +847,7 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     )
     # Only swap when a genuinely dedicated bucket matched (not the shared fallback) and
     # it differs from what the frozen path already drew.
-    if not (sel.found and sel.entry and sel.entry.product_family == family):
+    if not (sel.found and sel.entry and sel.entry.product_family == bucket_family):
         return result
     if sel.template_id == result.get("template_id"):
         return result
@@ -849,7 +857,7 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     result["svg"] = repop.svg
     result["template_id"] = sel.template_id
     result["source_case_id"] = sel.entry.source_case_id
-    result["dedicated_family_template"] = family
+    result["dedicated_family_template"] = bucket_family  # the bucket that drew it
     return result
 
 
@@ -876,7 +884,7 @@ def _gate_unseeded_ventum_plus_dx(result: dict[str, Any]) -> dict[str, Any]:
 
     family, _ = resolve_product_line(result.get("product_type"))
     category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
-    if family == "VENTUM_PLUS" and category == "DX":
+    if family in _VENTUM_PLUS_CLASS and category == "DX":
         _omit_drawing(
             result,
             "Ventum+ DX drawing template not registered — the distributor mounts "
