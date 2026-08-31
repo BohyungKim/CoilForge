@@ -838,6 +838,12 @@ column. The rules that keep it legible — and the precedent for any future view
 - Tests: `tests/test_schematic_renderer.py`
 - Existing template path — **DO NOT TOUCH**: `slot_population.py::populate_template_slots`,
   the 17 `template.svg` files, `pdf_to_template_drawing.py`.
+  **Approved exception, 2026-08-30 (John, in advance of the work):** asked whether to redact the
+  frozen as-built callouts in the HGRH multi-header templates given that "이 리댁션은
+  DO-NOT-TOUCH 게이트라 별도 승인이 필요합니다", John chose "이번에 같이 리댁션". Scope of that
+  approval = `coilmaster_hgrh_{lh,rh}_header2`, `coilmaster_hgrh_rh_header3`,
+  `coilmaster_vplus_hgrh_rh_header2` (commit `27d1ef9`). It does NOT extend to the 14 callouts
+  left in place, nor to any future template edit — each needs its own approval.
 - The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
   at render time by `drawing/label_authority.py::direct_coil_label` (applied in
   `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded

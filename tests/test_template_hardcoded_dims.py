@@ -10,6 +10,10 @@ Substitution is gated by `slot_map.json`, not by the SVG (CLAUDE.md *Redaction g
 so a hardcoded callout is invisible to every existing test: the drawing renders, the
 template is "populated", and nothing is missing. Only an inventory catches it.
 
+`template.svg` is DO-NOT-TOUCH (CLAUDE.md). The four buckets redacted in 27d1ef9 carry John's
+explicit, in-advance approval for exactly those files -- see the "Approved exception" note in
+CLAUDE.md beside the DO-NOT-TOUCH rule. Nothing here authorises the next one.
+
 The list below is the REMAINING inventory, and the assertion is equality, not subset:
 - a new hardcoded dim fails (the regression this file exists for);
 - clearing one also fails, so the list shrinks deliberately rather than drifting.
