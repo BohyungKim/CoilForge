@@ -250,6 +250,34 @@ debounced `scheduleChecklistRefill` after an interactive derive; the headless re
 fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
 gate) deliberately passes none — it reads the machine proposal.
 
+**Deliverable filing — one click, and it MOVES (John 2026-08-30)** (`deliverable/finalize.py`,
+`POST /api/deliverable/finalize`, `web/app.js::fileDeliverable`) — "Build quote package" now
+files the deliverable in the same click (`skip_draft: true`); the second button is
+**"Open Outlook draft"** only. Four rules carry the change:
+① **Move, not copy.** The checklist is the one doc whose real path we know (`saved_path`), so
+it is a true move; the two PDFs reach the server as BYTES ONLY (a browser never hands over a
+path), so their Downloads original is reconstructed as `~/Downloads/<name>` — plus Chrome's
+`<stem> (1)<ext>` duplicate — and deleted **only where sha256 matches what was just filed**
+(`retire_download`). Name-match alone never deletes, which is what makes reconstructing a path
+safe. Never-found is a reported `downloads_cleanup` status, not a failure; the revised PDF gets
+a bounded 5s poll because the browser saves it asynchronously moments earlier.
+② **A conflict is same-name AND different-content**, and it stops the WHOLE deliverable —
+`plan_placements` decides all three destinations before `commit_placements` writes any, so a
+half-filed folder (which looks finished) is unreachable. It returns **HTTP 200 with
+`status: "conflict"`** and writes nothing: a conflict is a decision waiting on John, not an
+error (a missing folder still 400/409s). `overwrite: true` is his answer.
+③ A byte-identical file already at the destination is **`already_filed`, not a conflict** —
+that is precisely what lets Build file the docs and the draft button re-run over the same
+three without arguing. The Outlook attachment is therefore looked up **by name, not
+`files_written[1]`**, since `already_filed` makes list order unreliable.
+④ **Folder names are matched folded** (lowercase, spaces/`_`/`-` removed): a `Direct Coil` is
+**renamed to `DirectCoil`** and reused (never left beside a fresh empty one), while
+`Accessory Order Forms` is matched loosely but **never renamed** — John's rule is that a
+missing AOF means we grabbed the wrong project folder, and that error only carries meaning if
+a spelling variant cannot trigger it. Two spellings coexisting raises rather than guessing.
+The ` (2)` auto-increment that `place_bytes`/`place_copy` used to do is **gone**; the separate
+`(2)` fallback in `checklist/excel_writer.py` (a Downloads write) is untouched.
+
 **Drain-pan option from the unit model code** (`submittal/model_code.py`) — R-077 keys
 Terra's drain-pan width by option D1/D2/D3, and nothing produced that value, so every Terra
 INSTALL FIT reported `CANNOT_EVALUATE` while explaining its own blockage. The option is

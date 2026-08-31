@@ -1403,6 +1403,11 @@ async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict
 _DELIVERABLE_TO = "purchasing; rayl@directcoil.com"
 _DELIVERABLE_CC = "David Newton"
 
+# The browser saves the revised PDF asynchronously moments before it calls finalize,
+# so its Downloads copy may not exist yet when we go to retire it. Bounded poll —
+# never found is a reported status, not a failure.
+_REVISED_DOWNLOAD_WAIT_S = 5.0
+
 
 def _b64_to_bytes(value, field: str) -> bytes:
     import base64
@@ -1417,26 +1422,35 @@ def _b64_to_bytes(value, field: str) -> bytes:
 
 @app.post("/api/deliverable/finalize")
 async def deliverable_finalize(request: Request):
-    """Finalize a DirectCoil deliverable: file the original quote, the revised quote,
+    """Finalize a DirectCoil deliverable: MOVE the original quote, the revised quote,
     and the auto-generated Coil Checklist into the project's
     ``…/02 - POs/<project>/Accessory Order Forms/DirectCoil`` folder (only the
-    ``DirectCoil`` leaf is created if absent), then open a pre-filled Outlook DRAFT
-    (subject ``Coils: <#> - <name>``, revised PDF attached) — never sent.
+    ``DirectCoil`` leaf is created if absent; a differently-spelled one is renamed),
+    then open a pre-filled Outlook DRAFT (subject ``Coils: <#> - <name>``, revised PDF
+    attached) — never sent.
 
     POST JSON: ``submittal_pdf_base64`` (project identity + checklist),
     ``quote_pdf_base64`` (original source quote), ``revised_pdf_base64`` (the built
     revised PDF), plus ``submittal_filename`` / ``quote_filename`` and the optional
     ``checklist_overrides`` (the browser's manual fills, so the filed checklist matches
-    the drawings). Original PDFs are copied, never modified. Review aid only
-    (``export_allowed: False``)."""
+    the drawings). Two optional flags: ``skip_draft`` (file only — this is what the
+    Build button sends) and ``overwrite`` (John's answer to a conflict).
+
+    Filing is ALL-OR-NOTHING. A destination that already holds a byte-identical file is
+    ``already_filed`` and passes; one holding DIFFERENT content stops the whole thing
+    and returns ``status: "conflict"`` with nothing written — a 200, because a conflict
+    is a decision waiting on John, not an error (a missing folder still 400/409s).
+    The Downloads originals are then retired content-verified, so an unrelated
+    same-named file can never be deleted. Review aid only (``export_allowed: False``)."""
     import asyncio
 
     from coilforge.deliverable.finalize import (
         FinalizeError,
+        commit_placements,
         deliverable_subject,
-        place_bytes,
-        place_copy,
+        plan_placements,
         resolve_directcoil_folder,
+        retire_download,
     )
     from coilforge.deliverable.outlook_draft import open_deliverable_draft
 
@@ -1446,6 +1460,8 @@ async def deliverable_finalize(request: Request):
     revised = _b64_to_bytes(payload.get("revised_pdf_base64"), "revised_pdf_base64")
     quote_name = Path(payload.get("quote_filename") or "quote.pdf").name
     submittal_name = payload.get("submittal_filename")
+    overwrite = bool(payload.get("overwrite"))
+    skip_draft = bool(payload.get("skip_draft"))
 
     # Project identity from the submittal intake.
     try:
@@ -1493,37 +1509,111 @@ async def deliverable_finalize(request: Request):
         checklist_outcome.reason or "unavailable"
     )
 
-    # Resolve/create the DirectCoil folder and file the docs (copies, never moves).
+    # Resolve/create the DirectCoil folder.
     try:
         folder = resolve_directcoil_folder(project_number)
     except FinalizeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    revised_name = f"{Path(quote_name).stem}_Revised.pdf"
-    files_written = [
-        place_bytes(folder, quote_name, quote),
-        place_bytes(folder, revised_name, revised),
-    ]
-    if checklist_path and Path(checklist_path).exists():
-        files_written.append(
-            place_copy(folder, Path(checklist_path).name, checklist_path)
-        )
-
-    # Open the Outlook draft with the revised PDF attached (never sent).
     subject = deliverable_subject(project_number, project_name)
-    try:
-        await asyncio.to_thread(
-            open_deliverable_draft,
-            subject=subject,
-            to=_DELIVERABLE_TO,
-            cc=_DELIVERABLE_CC,
-            attachment_path=files_written[1],
-        )
-        draft_opened, draft_status = True, "ok"
-    except RuntimeError as exc:  # pywin32 / Outlook unavailable
-        draft_opened, draft_status = False, str(exc)
-    except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
-        draft_opened, draft_status = False, f"Outlook draft failed: {exc}"
+    revised_name = f"{Path(quote_name).stem}_Revised.pdf"
+    items: list[tuple[str, bytes | str]] = [
+        (quote_name, quote),
+        (revised_name, revised),
+    ]
+    checklist_name = Path(checklist_path).name if checklist_path else None
+    if checklist_path and Path(checklist_path).exists():
+        items.append((checklist_name or "", checklist_path))
+    elif checklist_name and (folder / checklist_name).exists():
+        # The Downloads copy is gone because an earlier run MOVED it into the folder
+        # (Build files the docs; the draft button re-runs over the same three). That is
+        # a completed move, not a missing checklist — say so rather than "unavailable".
+        checklist_status = "already filed"
+    elif checklist_name:
+        checklist_status = "Downloads copy missing — checklist not filed"
+
+    # All-or-nothing: decide every destination first, and if any of them holds
+    # DIFFERENT content under the same name, write nothing and hand the list back.
+    placements = plan_placements(folder, items)
+    conflicts = [p for p in placements if p.is_conflict]
+    if conflicts and not overwrite:
+        return {
+            "status": "conflict",
+            "project_number": project_number,
+            "project_name": project_name,
+            "subject": subject,
+            "folder": str(folder),
+            "conflicts": [
+                {
+                    "name": p.filename,
+                    "existing_size": p.dest.stat().st_size,
+                    "existing_modified": p.dest.stat().st_mtime,
+                }
+                for p in conflicts
+            ],
+            "files_written": [],
+            "downloads_cleanup": [],
+            "checklist_status": checklist_status,
+            "draft_opened": False,
+            "draft_status": "skipped — nothing was filed",
+            "email_sent": False,
+            "review_aid_only": True,
+            "export_allowed": False,
+            "production_drawing_approval_claimed": False,
+            "raw_private_data_returned": False,
+        }
+    files_written = commit_placements(placements, overwrite=overwrite)
+
+    # Retire the Downloads originals. The checklist was moved by path above; the two
+    # PDFs only reach us as bytes, so they are deleted only where the content matches.
+    def _cleanup() -> list[dict]:
+        entries = [
+            {"name": quote_name, "status": retire_download(quote_name, quote)},
+            {
+                "name": revised_name,
+                "status": retire_download(
+                    revised_name, revised, wait_s=_REVISED_DOWNLOAD_WAIT_S
+                ),
+            },
+        ]
+        if checklist_name and any(
+            Path(p).name == checklist_name for p in files_written
+        ):
+            entries.append({
+                "name": checklist_name,
+                "status": (
+                    "moved"
+                    if not (checklist_path and Path(checklist_path).exists())
+                    else "could not delete — left in Downloads"
+                ),
+            })
+        return entries
+
+    downloads_cleanup = await asyncio.to_thread(_cleanup)
+
+    # Open the Outlook draft with the revised PDF attached (never sent). Looked up by
+    # NAME, not by index — `already_filed` entries make the list order unreliable.
+    revised_dest = next(
+        (p for p in files_written if Path(p).name == revised_name), None
+    )
+    if skip_draft:
+        draft_opened, draft_status = False, "skipped"
+    elif revised_dest is None:
+        draft_opened, draft_status = False, "revised PDF not filed — no attachment"
+    else:
+        try:
+            await asyncio.to_thread(
+                open_deliverable_draft,
+                subject=subject,
+                to=_DELIVERABLE_TO,
+                cc=_DELIVERABLE_CC,
+                attachment_path=revised_dest,
+            )
+            draft_opened, draft_status = True, "ok"
+        except RuntimeError as exc:  # pywin32 / Outlook unavailable
+            draft_opened, draft_status = False, str(exc)
+        except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
+            draft_opened, draft_status = False, f"Outlook draft failed: {exc}"
 
     _journal_milestone(
         "deliverable_finalized", result=result,
@@ -1531,11 +1621,14 @@ async def deliverable_finalize(request: Request):
                 "draft_opened": draft_opened},
     )
     return {
+        "status": "filed",
         "project_number": project_number,
         "project_name": project_name,
         "subject": subject,
         "folder": str(folder),
         "files_written": files_written,
+        "conflicts": [],
+        "downloads_cleanup": downloads_cleanup,
         "checklist_status": checklist_status,
         "draft_opened": draft_opened,
         "draft_status": draft_status,

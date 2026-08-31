@@ -4823,25 +4823,41 @@ async function buildQuotePackage() {
   };
   const finalizeBtn = document.querySelector("#finalize-deliverable");
   if (finalizeBtn) finalizeBtn.hidden = false;
+  // File the deliverable in the SAME click (John 2026-08-30) — the three docs stop
+  // living in Downloads. The Outlook draft is deliberately skipped: John chose
+  // "file only" for the automatic step and keeps the draft on its own button.
+  await fileDeliverable({ skipDraft: true });
 }
 
-// Finalize deliverable — file the original quote + revised quote + auto-generated
-// checklist into the project's DirectCoil folder and open a pre-filled Outlook DRAFT
-// (revised PDF attached). Server-side (Outlook COM + SharePoint filing); never sends.
-async function finalizeDeliverable() {
-  const summary = document.querySelector("#quote-package-summary");
+// File the deliverable — MOVE the original quote + revised quote + auto-generated
+// checklist out of Downloads into the project's DirectCoil folder, and (unless
+// skipDraft) open a pre-filled Outlook DRAFT with the revised PDF attached.
+// Server-side (SharePoint filing + Outlook COM); never sends.
+//
+// Called twice per deliverable by design: Build fires it with skipDraft, and the button
+// re-runs it for the draft. The second run finds the same three byte-identical files
+// already filed, which the backend treats as `already_filed`, not a conflict.
+async function fileDeliverable({ skipDraft = false, overwrite = false } = {}) {
+  const summary = document.querySelector("#deliverable-summary");
   const ctx = state.lastQuotePackage;
   if (!ctx || !ctx.revisedBase64) {
     if (summary) summary.textContent = "Build the quote package first.";
-    return;
+    return null;
   }
   const submittal = state.selectedPdfFile;
   const quote = state.selectedQuotePdfFile;
   if (!isPdfFile(submittal) || !isPdfFile(quote)) {
-    if (summary) summary.textContent = "Need both the analyzed submittal PDF and the quote PDF to finalize.";
-    return;
+    if (summary) {
+      summary.textContent =
+        "Need both the analyzed submittal PDF and the quote PDF to file the deliverable.";
+    }
+    return null;
   }
-  if (summary) summary.textContent = "Finalizing deliverable — filing docs & drafting email…";
+  if (summary) {
+    summary.textContent = skipDraft
+      ? "Filing the deliverable into the project's DirectCoil folder…"
+      : "Filing docs & drafting email…";
+  }
   const [subBytes, quoteBytes] = await Promise.all([submittal.arrayBuffer(), quote.arrayBuffer()]);
   const body = {
     submittal_pdf_base64: arrayBufferToBase64(subBytes),
@@ -4852,6 +4868,8 @@ async function finalizeDeliverable() {
     // Same manual fills the checklist panel was filled with, so the .xlsx filed with the
     // order is the override-bearing one (and reuses its cache entry — no second Excel run).
     checklist_overrides: collectChecklistOverrides(),
+    skip_draft: skipDraft,
+    overwrite,
   };
   let res;
   try {
@@ -4860,25 +4878,75 @@ async function finalizeDeliverable() {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    if (summary) summary.textContent = `Finalize failed: ${err.message || err}`;
+    if (summary) summary.textContent = `Filing failed: ${err.message || err}`;
+    return null;
+  }
+  renderDeliverableResult(res, { skipDraft });
+  return res;
+}
+
+// A conflict is not an error — nothing was written and John picks. Rendered with its own
+// Overwrite/Cancel pair rather than a confirm(), so the file list stays readable.
+function renderDeliverableResult(res, { skipDraft }) {
+  const summary = document.querySelector("#deliverable-summary");
+  if (!summary) return;
+  if (res.status === "conflict") {
+    const rows = (res.conflicts || [])
+      .map(
+        (c) =>
+          `<span class="quote-package-warning">⚠ ${escapeHtml(c.name)} — already there with different content</span>`
+      )
+      .join("<br>");
+    summary.innerHTML =
+      `<strong>Nothing was filed.</strong> ${escapeHtml(res.folder)} already holds `
+      + `${(res.conflicts || []).length} file(s) under the same name but with different content:`
+      + `<br>${rows}<br>`
+      + `<button id="deliverable-overwrite" type="button">Overwrite and file</button> `
+      + `<button id="deliverable-cancel" class="secondary-action" type="button">Cancel</button>`;
+    document.querySelector("#deliverable-overwrite")?.addEventListener("click", () => {
+      fileDeliverable({ skipDraft, overwrite: true }).catch((error) => {
+        summary.textContent = `Filing failed: ${error.message || error}`;
+      });
+    });
+    document.querySelector("#deliverable-cancel")?.addEventListener("click", () => {
+      summary.textContent = "Cancelled — nothing was filed.";
+    });
     return;
   }
   const files = (res.files_written || [])
     .map((p) => `<span class="quote-package-coil">${escapeHtml(p)}</span>`)
     .join("<br>");
-  const draft = res.draft_opened
-    ? `<span class="quote-package-coil">Outlook draft opened — review &amp; send: <strong>${escapeHtml(res.subject)}</strong></span>`
-    : `<span class="quote-package-warning">⚠ Draft not opened: ${escapeHtml(res.draft_status || "unknown")}</span>`;
+  // Only the non-"moved" ones matter: a file left behind in Downloads is the one thing
+  // John would otherwise discover weeks later as a stale duplicate.
+  const leftBehind = (res.downloads_cleanup || [])
+    .filter((entry) => entry.status !== "moved")
+    .map(
+      (entry) =>
+        `<span class="quote-package-warning">⚠ Downloads: ${escapeHtml(entry.name)} — ${escapeHtml(entry.status)}</span>`
+    )
+    .join("<br>");
+  const draft = skipDraft
+    ? ""
+    : res.draft_opened
+      ? `<br><span class="quote-package-coil">Outlook draft opened — review &amp; send: <strong>${escapeHtml(res.subject)}</strong></span>`
+      : `<br><span class="quote-package-warning">⚠ Draft not opened: ${escapeHtml(res.draft_status || "unknown")}</span>`;
   const chk =
     res.checklist_status && res.checklist_status !== "ok"
       ? `<br><span class="quote-package-warning">⚠ Checklist: ${escapeHtml(res.checklist_status)}</span>`
       : "";
-  if (summary) {
-    summary.innerHTML = `<strong>Filed to</strong> ${escapeHtml(res.folder)}<br>${files}<br>${draft}${chk}`;
-  }
+  summary.innerHTML =
+    `<strong>Filed to</strong> ${escapeHtml(res.folder)}<br>${files}`
+    + (leftBehind ? `<br>${leftBehind}` : "")
+    + draft
+    + chk;
 }
 
-document.querySelector("#finalize-deliverable")?.addEventListener("click", finalizeDeliverable);
+document.querySelector("#finalize-deliverable")?.addEventListener("click", () => {
+  fileDeliverable().catch((error) => {
+    const summary = document.querySelector("#deliverable-summary");
+    if (summary) summary.textContent = error.message;
+  });
+});
 
 // NOTE: the "Verify Direct Coil entry" panel was unmounted pending completion of
 // the read-and-alert feature; it will be re-added (correctly placed) in a later

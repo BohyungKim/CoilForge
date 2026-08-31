@@ -277,9 +277,12 @@
           </label>
           <div class="quote-package">
             <button id="build-quote-package" type="button">Build quote package</button>
-            <button id="finalize-deliverable" class="secondary-action" type="button" hidden title="Files the original + revised quote + checklist into the project's DirectCoil folder and opens a pre-filled Outlook draft (revised PDF attached). Nothing is sent.">Finalize deliverable</button>
+            <button id="finalize-deliverable" class="secondary-action" type="button" hidden title="Opens a pre-filled Outlook draft (revised PDF attached) for the deliverable already filed into the project's DirectCoil folder. Nothing is sent.">Open Outlook draft</button>
             <span class="quote-package-hint">Review every coil above, then drop the quote PDF to build.</span>
             <div id="quote-package-summary" class="quote-package-summary"></div>
+            <!-- Separate from the package summary so filing status never overwrites the
+                 per-coil insert/copper-strap report John still needs to read. -->
+            <div id="deliverable-summary" class="quote-package-summary"></div>
           </div>
         </section>
 
