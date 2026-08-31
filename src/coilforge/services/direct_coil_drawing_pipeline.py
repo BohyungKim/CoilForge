@@ -444,7 +444,21 @@ def build_drawing_slots(
                     # the Terra V return spacing (R-023). Replaces the checklist even-spacing;
                     # this branch wins for Terra V so the checklist-family HGRH S below never
                     # applies to Terra V (guards the SOP-confirmed Terra V geometry).
-                    slots[f"slot.S{supply_id}"] = round(cd - return_spacing[k - 1], 4)
+                    #
+                    # Rn >= CD withholds instead of computing (John 2026-08-30). Terra V's CD
+                    # is rows-based (R-070) and so does NOT grow with the header count, while
+                    # Rn grows linearly -- so past some header the return stub has crossed the
+                    # entire casing depth and `CD - Rn` is negative. That is not a small
+                    # dimension, it is the SOP formula applied outside its premise: a real
+                    # Terra V HGRH at circuits 3-4 drew S5 = -0.75 ... S7 = -4.25. Withheld,
+                    # not clamped -- clamping would invent a number the SOP never states.
+                    # NOTE a negative S is legitimate elsewhere: the Nova/Ventum H reference
+                    # drawings really do print S1 = -0.25 / -0.63 and the engine reproduces
+                    # them exactly, so this guard is scoped to the Terra V CD - Rn branch and
+                    # keys on the basis being gone, never on the sign alone.
+                    _s = round(cd - return_spacing[k - 1], 4)
+                    if _s > 0:
+                        slots[f"slot.S{supply_id}"] = _s
                 elif is_terra_v and is_hgrh:
                     # Terra V HGRH past the return-spacing list has NO basis for S. Its S is
                     # CD - Rn (SOP, the branch above) and Rn only runs to the connections-

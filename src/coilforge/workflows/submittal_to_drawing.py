@@ -407,6 +407,10 @@ def _run_pdf_to_drawing_workflow_uncached(
 # position. The label is the final uppercase-led token (<=5 chars); for a blank slot the
 # value is "REVIEW REQUIRED", which we replace with the label alone so the dim stays
 # identified (no value yet).
+# Printed in place of a withheld dimension's value (see _clean_callout). Em dash:
+# one glyph, unmistakably "no number", and it cannot be read as a digit or a sign.
+_NO_VALUE_MARK = "—"
+
 _CALLOUT_RE = re.compile(
     r'(fill="#1c0a80"[^>]*\btransform="matrix\(\s*(-?1)\b[^"]*"[^>]*><tspan)([^>]*)(>)'
     r"([^<]*?) ([A-Za-z][A-Za-z0-9]{0,4})(</tspan>)"
@@ -421,8 +425,13 @@ def _clean_callout(m: "re.Match[str]", coil_category: str | None = None) -> str:
     # coil_category disambiguates SL1 (HGRH keeps its slot-driven supply SL1; CWC -> SL2).
     label = direct_coil_label(label, coil_category)
     if value.strip() == "REVIEW REQUIRED":
-        # No value yet — show just the label so the dimension is still identified.
-        return f"{head}{attrs}{gt}{label}{close}"
+        # No value yet. "REVIEW REQUIRED" does not fit a callout, so the dimension shows
+        # its label alone -- but a bare label is indistinguishable from a rendering slip,
+        # and the whole point of withholding (R-046 Supply 2+, an exhausted S basis) is
+        # that the reader can SEE we declined rather than forgot. An em dash is the
+        # drafting convention for "no value here" and costs one glyph. John 2026-08-30,
+        # after a real Terra V HGRH header-2 drew `I3` with nothing beside it.
+        return f"{head}{attrs}{gt}{_NO_VALUE_MARK} {label}{close}"
     # Keep "value label" (existing CoilMaster style) at the original position.
     return f"{head}{attrs}{gt}{value} {label}{close}"
 
@@ -809,6 +818,109 @@ def _flag_header_count_conflict(
         "Circuits in the spec panel to redraw with the right header count."
     )
     return result
+
+
+# Per-header dimension slots the qty re-run OWNS. A key the better-informed run declines
+# must be REMOVED, not left behind by dict.update() -- a stale value whose basis the
+# re-run just disproved is exactly the invented number this whole change removes.
+_PER_HEADER_SLOT_RE = re.compile(r"^slot\.(?:HDx|HD|SL|I|S|O|R)\d+$")
+
+
+def _apply_stated_qty_conn_per_header(
+    result: dict[str, Any], ctx: dict[str, Any] | None
+) -> None:
+    """Re-run the slot layer with the submittal's stated connections-per-header.
+
+    R-052 (HGRH return spacing) documents ``qty_conn_per_header`` as its input and falls
+    back to ``circuits`` when it is absent (``header_prepopulate_engine`` ~R-052 block).
+    The frozen ``derive_slot_values`` never passes it, so on every submittal-driven
+    drawing that fallback silently substituted a DIFFERENT physical quantity -- and the
+    9abe5a7 guard that blanks a Terra V HGRH ``slot.S{2k-1}`` past the return-spacing list
+    became unreachable, because ``len(return_spacing) == circuits`` made its ``k <= len``
+    test unconditionally true. Measured consequence on a real Terra V HGRH: S5 = -0.75,
+    S7 = -2.75 (John 2026-08-30, from 3095 Harrison's RHHGRC geometry).
+
+    The value is read and carried already -- ``_template_header_context_from_candidate``
+    puts the submittal's ``qty_connections_per_header`` on ``ctx`` -- but only as a
+    cross-check for :func:`_flag_header_count_conflict`. It reached no engine on any path:
+    the browser sends the ENGINEER's manual lever as ``spec['qty_conn_per_header']`` and
+    the submittal reading as ``spec['stated_qty_conn_per_header']``, and only the former
+    is a Tier-A input. So today a number the PDF already prints changes the drawing only
+    if a human retypes it.
+
+    Scope is deliberately **Terra V HGRH**. ``qty_conn_per_header`` also feeds
+    ``_hgrh_cd_multi``, whose TERRA_H and NOVA/VENTUM_H branches take it as ``n`` -- so
+    threading it for every line would move ``slot.CD`` (measured: Terra H 6.625 -> 3.75)
+    and the S/SL that follow, corpus-wide. That is a real and arguably correct convergence
+    -- ``checklist/mapping.py`` ALREADY passes qty, so the sheet and the drawing disagree
+    by construction on any HGRH coil where qty != circuits -- but it is a separate value
+    decision for John, not a side effect of this fix.
+
+    No-op unless the submittal states a count that DIFFERS from the circuit count, so a
+    coil where they agree (3095's own RHHGRC-1/-2/-3, qty = circuits = 2) is byte-identical.
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return
+    ex = result.get("extracted") or {}
+    if str(ex.get("coil_category") or "").strip().upper() != "HGRH":
+        return
+    stated = _header_count_int((ctx or {}).get("qty_conn_per_header"))
+    circuits = _header_count_int(ex.get("circuits"))
+    if stated is None or circuits is None or stated == circuits:
+        return
+    product = result.get("product_type")
+    unit_size = result.get("unit_size")
+    if not (product and unit_size):
+        return
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    _family, variant = resolve_product_line(str(product))
+    if variant != "TERRA_V":
+        return
+
+    from coilforge.services.direct_coil_drawing_pipeline import (
+        UnknownCoilInputError,
+        build_drawing_slots,
+    )
+    from coilforge.services.drawing_param_resolver import _coerce_float
+
+    try:
+        slots, _resp = build_drawing_slots(
+            coil_type="HGRH",
+            product_type=product,
+            unit_size=unit_size,
+            rows=ex.get("rows"),
+            feeds=ex.get("feeds"),
+            circuits=circuits,
+            suction_conn_size=_coerce_float(ex.get("return_conn_size")),
+            qty_conn_per_header=stated,
+            finned_height=ex.get("finned_height"),
+            finned_length=ex.get("finned_length"),
+            tag=ex.get("tag"),
+        )
+    except (UnknownCoilInputError, ValueError):
+        return
+
+    merged = result.setdefault("slot_values", {})
+    stale = [
+        key
+        for key in merged
+        if _PER_HEADER_SLOT_RE.match(key) and key not in slots
+    ]
+    for key in stale:
+        del merged[key]
+    merged.update(slots)
+    result["stated_qty_conn_per_header_applied"] = stated
+
+    template_id = result.get("template_id")
+    if template_id and result.get("svg"):
+        from coilforge.template_population.slot_population import populate_template_slots
+
+        repop = populate_template_slots(template_id, merged)
+        if repop.svg:
+            result["svg"] = repop.svg
+            result["populated_slots"] = list(repop.populated_slots)
+            result["missing_required_slots"] = list(repop.missing_required_slots)
 
 
 def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
@@ -1304,6 +1416,14 @@ def _attach_recomputed_engine_provenance(
         if str(coil_type).strip().upper() == "DX" and hgrh_partner_conn is not None:
             kwargs["with_hgrh"] = True
             kwargs["hgrh_conn_size"] = _coerce_float(hgrh_partner_conn)
+        # Mirror `_apply_stated_qty_conn_per_header` for the same reason `with_hgrh` is
+        # mirrored above: this block re-derives the coil to check the DRAWN slots against
+        # a fresh engine run, so it must reproduce the same inputs. Without it every coil
+        # that helper corrects would be scored `fidelity='drifted'` and excluded from the
+        # Rule Observatory's rates -- drift reported against our own deliberate fix.
+        applied_qty = result.get("stated_qty_conn_per_header_applied")
+        if applied_qty is not None:
+            kwargs["qty_conn_per_header"] = applied_qty
         slots, response = build_drawing_slots(
             coil_type=coil_type,
             product_type=product,
@@ -1452,6 +1572,12 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         # 2026-07-30, caught on the real 2901). The partner's connection size comes from
         # the caller because derive resolves ONE coil and cannot see its siblings.
         _apply_hgrh_pairing_cd(result, _partner_conn_from_spec(spec))
+        # Same submittal-stated qty as analyze. Confined to this `else` branch ON
+        # PURPOSE: when the engineer DID supply a Tier-A input, `_rerun_slots_with_
+        # manual_inputs` already passed `spec['qty_conn_per_header']`, and re-running
+        # from `ctx` would overwrite what the human typed with the submittal reading
+        # (ctx prefers `stated_...`, see the ctx builder) -- a manual fill must win.
+        _apply_stated_qty_conn_per_header(result, ctx)
 
     # 1c seam-A: capture engine provenance (rule_id + confidence per field) from the
     # Tier-A-fill response — the only wired non-frozen path that returns it.
@@ -2155,6 +2281,12 @@ def _run_candidate_to_drawing_payload(
         # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
         # every downstream artifact shows the corrected CD. No-op unless DX + partner.
         _apply_hgrh_pairing_cd(template_drawing, hgrh_partner_conn)
+        # The submittal's stated connections-per-header, which the frozen path drops.
+        # AFTER the pairing correction: that helper merges its FULL recomputed slot set
+        # and would undo this one; this helper's own re-run is HGRH-only, where the
+        # pairing helper (DX-only) never runs, so the two cannot fight. BEFORE the
+        # provenance block, whose contract is that it describes the slots actually drawn.
+        _apply_stated_qty_conn_per_header(template_drawing, ctx)
         # 1c': the frozen path discards its engine response, so reconstruct which rules
         # fired. AFTER the pairing correction — the CD this coil actually draws is the
         # one that helper just re-derived, and reproducing the frozen call instead would
