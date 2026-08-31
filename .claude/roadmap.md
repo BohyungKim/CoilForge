@@ -1,6 +1,13 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-15 (**[제출물 파싱 + HGRH 트랙] John이 지적한 결함 2건 —
+> 마지막 갱신: 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
+> 멀티헤더 결함 4건. 도면이 **시드 코일의 as-built을 인쇄**(`-0.25 S1`; slot_map에 없어 치환 대상조차 아님),
+> 9abe5a7의 Terra V 가드가 **실제 PDF 경로에서 死**(R-052의 `qty or circuits` 무언 대체), 그 결과 **S 음수 발산**,
+> 패널 I2/O2 비대칭 미설명. 조사 중 결론이 한 번 뒤집혔다 — 참조를 **그 입력으로 재구성**하면 우리 공식이
+> 정확히 재현하므로 **음수 S는 실제 관례**이고 `_hgrh_supply_s`는 무죄. qty 배선은 Terra V 한정(실측 34/34 일치로
+> 확대 이득 0). 1608 green, invariant BLOCKER 0. 눈확인 TR-12 대기. 이전 갱신 2026-08-26 (**[Omnia 트랙] c43d9d7** — OW### = `ProductFamily.OMNIA`, Ventum+ 규칙·템플릿 상속(`VENTUM_PLUS_CLASS`
+> + catalog alias), 유일한 차이 R-011o TF/BF 0.625; 첫 Omnia 도면이 **Ventum+ LH1 템플릿 2개의 seed 오류**(2760 Revere p.2/p.6 =
+> 비Ventum+ 페이지, TF 0.63·nozzle 위)를 드러내 p.5/p.7로 재seed; 3097 실 PDF 라이브 검증, 1553 green. 이전 갱신 2026-08-15 (**[제출물 파싱 + HGRH 트랙] John이 지적한 결함 2건 —
 > `worktree-sl1-tagfilter` → `claude/ambient-supplier` 병합**: ①**EKEXV 유령 코일** — EEV 밸브킷이 코일로 잡혔다. 가드는 있었으나
 > `_NON_COIL_TAG_PREFIXES` 3문자열 denylist를 **단 한 곳**(`_is_cover_coil_row`)에서만 봤다. 그 함수는 정상
 > 작동했고, 문제는 **그 함수를 안 거치는 진입로들**이었다 — `Unit Tag: EKEXV-CDXC-1`이 무필터로 COIL_TAG가 되고
@@ -1015,6 +1022,39 @@
   파서로 재생하면 **틀렸던 4개에만** 뜬다. **1504 green**, frozen·YAML·템플릿 무접촉. 상세는 상단 갱신 노트 참조.
   🆕 이번 세션
 
+- [x] **[Terra V HGRH 트랙] 3095이 드러낸 멀티헤더 결함 4건 (d60bad1·27d1ef9·2f67dac·9bfef68, 2026-08-30~31)** —
+  John: "Terra V의 HGRH 하고 multiple header 케이스는 정말 엉망진창인거같은데". 3095 Harrison을 실제로
+  파이프라인에 통과시켜 보니 하나가 아니라 **서로 독립인 결함 4건**이었다.
+  ①**도면이 남의 코일 값을 인쇄**: `coilmaster_hgrh_{lh,rh}_header2`가 `-0.25 S1`·`6.56 SL3`(시드 코일의
+  as-built)을 찍는 동안 옆의 패널은 3.25·5라고 말한다. `slot_map.json`에 `slot.S1`/`SL3`이 없어 **치환
+  대상조차 아니었다** — 도면은 렌더되고 템플릿은 "populated"라 **깨지는 테스트가 하나도 없다**.
+  ②**9abe5a7의 가드가 실제 PDF 경로에서 한 번도 실행된 적이 없다**: R-052가 `n_conn = qty_conn_per_header
+  or circuits`로 **다른 물리량을 조용히 대체**하고 동결 `derive_slot_values`는 qty를 안 넘긴다 →
+  `len(return_spacing) == circuits` → `k <= len(...)`이 항상 참. 값은 있었다 — `ctx["qty_conn_per_header"]`로
+  읽어놓고 `_flag_header_count_conflict` 전용으로만 썼다(브라우저는 **엔지니어 레버**만 spec으로 보낸다).
+  즉 **PDF가 이미 인쇄한 숫자를 사람이 손으로 다시 쳐야만** 도면이 달라졌다. ③그 결과 **Terra V S가 음수로
+  발산**(실측 circuits=4에서 `S5 -0.75`, `S7 -2.75`) — Terra V CD는 rows 기반(R-070)이라 안 자라는데 Rn은
+  선형으로 자란다. ④패널의 I2 공란 vs O2 채움이 **정당한데 이유가 없어** 자의적으로 읽힌다(R-046은 Supply 1만,
+  R-042v는 Return 전부).
+  **John 질문 "음수 S는 관례인가"에 대한 조사 — 결론이 한 번 뒤집혔다.** 처음엔 "우리 공식이 참조를 하나도
+  재현 못 한다"고 보고했는데 **틀렸다**: 참조를 **그 참조 자신의 입력으로 재구성**해서 돌리면 정확히 재현한다
+  (`hgrh_rh_header3`: CD 5.5 / R 0.625·2.75·4.875 / **S1 −0.625** / SL5 6.9375 = 시드와 6값 일치).
+  **음수 S는 CoilMaster의 실제 값이지 결함이 아니다** → 전역 음수 금지 규칙은 오답, `_hgrh_supply_s` 무수정,
+  RP-003 폐기. 가드는 Terra V `CD − Rn` 분기(근거 소진)에만 건다.
+  **수정**: qty 배선(**Terra V HGRH 한정**) + `Rn ≥ CD` 보류 + provenance 동조(안 하면 고친 코일이 전부
+  `fidelity='drifted'`로 Observatory에서 탈락) + 템플릿 4개 리댁션 + 보류 치수에 `—` 표식(맨 라벨은 "빠뜨림"과
+  구분 불가) + 패널 사유. **qty를 전 제품군으로 넓히지 않은 근거는 실측**: `_hgrh_cd_multi`도 qty를 먹어
+  Nova/Terra H의 CD가 코퍼스 전역에서 움직이는데(Terra H 6.625→3.75), **실 제출물 40프로젝트·HGRH 34코일에서
+  `qty == circuits`가 34/34** → 바뀔 코일 0개. 뒤집는 조건은 `qty ≠ circuits`인 코일의 등장과 그 실도면뿐.
+  덤으로 시더의 진짜 원인 수정: `_CALLOUT_RE`가 **선행 `-`를 못 받아** 목록에 있던 `S1`이 부호 하나로 빠져나갔다.
+  ⚠️ **재시드 금지 판명**: 커밋된 템플릿이 시더 출력과 이미 다르다(coating-note 앵커 등 후속 작업) →
+  `build-one`은 그걸 **조용히 삭제한다**. CLAUDE.md에 기록. 홀수 SL·HD1은 `SL1`이 HGRH↔물코일에서 다른 슬롯을
+  뜻해 카테고리 판정이 필요 → 미수정.
+  **1608 green**(1553→1608, 신규 55), invariant-guard **BLOCKER 0**, 남긴 하드코딩 14건은
+  `tests/test_template_hardcoded_dims.py`가 **등식**으로 고정(늘어도 몰래 줄어도 red).
+  KD-002 판정도 수치로 확인: 시트의 Nova else-분기를 그대로 계산하면 **정확히 0.25**(John 스크린샷의 시트 값) —
+  판정은 옳고 축약 표현(`S = −conn_size`)만 부정확하다.
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -1055,6 +1095,11 @@
   <textarea#...>"** 행에서 resolve된 엘리먼트가 진짜 Drawing Notes 칸인지 확인 → 맞으면 그 `#id`를
   `web/app.js::ccsiDrawingNotes`의 `selectors` **맨 앞**에 넣고 `selector_verified` 제거. 틀리면 채우지 말고 보고.
 
+- [ ] **[TR-12] Terra V HGRH 멀티헤더 도면 눈확인 (John)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
+  **서버 재시작 + 브라우저에서 PDF 재분석** 필수(`pdfCoilPages`가 클라 캐시). 3095 Harrison 제출물 →
+  RHHGRC-1. 합격 기준 3가지: 도면의 `S1`이 **3.25**(이전 `-0.25`), `SL3`이 **5**(이전 `6.56`),
+  `I3` 자리에 **`— I3`**(이전엔 맨 라벨 `I3`). 그리고 도면 숫자가 Drawing Parameters 패널의 S/S2와 일치할 것.
+  이게 이번 트랙의 눈확인 게이트다.
 - [x] **[TR-7] 물코일 도면 + 데이터 매핑 브라우저 눈확인 — ✅ John 통과 (2026-07-29)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
   **서버 재시작** + `pdfCoilPages` 클라 캐시라 **재분석 필수**. 절차: 2949 Ferguson Theatre submittal 드래그→분석
   → HHWC-1 선택. 확인: **①도면이 나옴**(`coilmaster_hwc_lh`, 종전 공란) **②`R`이 빨간 blocked가 아니라 `S`와
