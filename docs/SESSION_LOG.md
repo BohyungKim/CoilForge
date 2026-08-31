@@ -5,6 +5,70 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-08-31 (Toronto) · base c6c702c..71514a1 · claude/ambient-supplier
+> 참고: 로그의 직전 기준점은 7/23(`c6c702c`)이고 그 사이 83커밋이 쌓였으나 82개는 다른 세션/트랙
+> (Stage 4 Observatory, review-convergence, sl1-tagfilter, Omnia)으로 로드맵 완료 섹션에 이미 기록됨.
+> **이번 대화 세션의 실제 경계는 `c43d9d7..71514a1` — 커밋 1개.**
+> 로드맵 트랙: **견적 납품 워크플로 압축 4단계 "원클릭 납품 정리"** (코드 완료, 눈검증 대기).
+
+### ✅ 구현/결정된 것
+- **탐색 결과가 요청을 뒤집었다: 기능은 이미 90% 있었다.** `POST /api/deliverable/finalize` +
+  `#finalize-deliverable` 버튼이 이미 프로젝트 번호로 `02 - POs/<번호>/Accessory Order Forms/DirectCoil`을
+  찾아 세 파일을 넣고 있었음. 따라서 이번 작업은 신규 구현이 아니라 **기존 finalize 경로의 정책 4가지 변경**.
+  (근거: 탐색 2건, `deliverable/finalize.py` 기존 65-136행)
+- **Build 한 번 = 패키지 + 파일 정리** (커밋 `71514a1`) — `buildQuotePackage()` 끝에서
+  `fileDeliverable({skipDraft:true})` 호출. 두 번째 버튼은 **"Open Outlook draft"** 전용으로 라벨 변경.
+  (근거: web/app.js:4829, web/index.html:280)
+- **복사 → 이동.** 체크리스트는 서버가 경로를 아는 유일한 파일이라 진짜 move. PDF 2개는 **바이트로만**
+  도달하므로(브라우저는 경로를 안 줌) `~/Downloads/<이름>` + Chrome의 `<stem> (1)<ext>`를 재구성하되
+  **sha256이 방금 기록한 내용과 일치할 때만 삭제**(`retire_download`). 이름 일치만으로는 절대 안 지움 =
+  경로 추측이 안전해지는 이유. revised PDF는 브라우저가 비동기 저장하므로 5초 바운디드 폴링.
+  (근거: `deliverable/finalize.py::retire_download`, 신규 테스트 4건)
+- **충돌 = 같은 이름 AND 다른 내용, 그리고 전부 중단.** `plan_placements`가 세 목적지를 먼저 판정하고
+  `commit_placements`가 쓰므로 **반쯤 채워진 폴더**(완료된 것처럼 보여서 더 나쁨)가 도달 불가.
+  응답은 **HTTP 200 + `status:"conflict"`** — 충돌은 에러가 아니라 John의 결정 대기(폴더 부재는 계속 400/409).
+  `overwrite:true`가 답. (근거: web_app.py:1539-1567, 신규 테스트 3건)
+- **동일 내용 = `already_filed`, 충돌 아님.** 이 한 줄 정의가 버튼 두 개를 살림 — Build가 정리한 뒤
+  초안 버튼이 같은 세 파일 위로 다시 돌아도 통과하므로 **초안 전용 엔드포인트를 안 만들었다.**
+  대신 Outlook 첨부를 `files_written[1]` 인덱스가 아니라 **이름으로** 조회(리스트 구성이 달라지므로).
+- **폴더명은 접어서 매칭**(소문자화 + 공백/`_`/`-` 제거). `Direct Coil`은 **`DirectCoil`로 rename 후 재사용**
+  (안에 있던 파일 이력 보존, 빈 폴더를 옆에 안 만듦). `Accessory Order Forms`는 느슨히 찾되 **rename 안 함** —
+  AOF 부재 = 프로젝트 폴더 오인식 신호인데, 철자 변형이 그 에러를 유발하면 의미가 사라지므로.
+  두 철자 공존 시 추측하지 않고 raise. (근거: `_child_by_normalized`, `_rename_to_canonical`, 신규 테스트 5건)
+- **John이 확정한 정책 6건** (AskUserQuestion 2회): 이동 / 충돌 시 멈추고 묻기 / 변형 폴더는 rename 후 사용 /
+  AOF 없으면 에러 중단 / FULL CHECKLIST = 자동생성 `<제출서명> - Coil Checklist.xlsx` / Build는 정리까지만
+  (Outlook 초안은 별도 버튼).
+- **의도적으로 버린 커버리지:** `test_place_bytes_never_clobbers` — 동명 파일이 조용히 ` (2).pdf`가 되던 동작.
+  "멈추고 물어보기"가 이를 대체하므로 충돌/동일내용/덮어쓰기 3건으로 교체. `checklist/excel_writer.py`의
+  별도 `(2)` 폴백(Downloads 쓰기 경로)은 무접촉.
+- **테스트:** `tests/test_deliverable_finalize.py` 10→33건, 전체 **1608 passed, 0 failed** (커밋 직전 측정).
+- **문서:** `CLAUDE.md`에 4개 규칙 기록(252-279행) — 이 파일이 프로젝트 계약서라 drift 방지.
+
+### ⏭️ 다음 스텝
+- [ ] **[Phase Gate] John 브라우저 눈검증 1회** — `run_server.bat` 재시작(--reload 없음) → 제출서 분석 →
+  Quote PDF 드롭 → Build quote package. 합격: DirectCoil에 세 파일 존재 **AND** Downloads에서 셋 다 사라짐.
+  (왜 남음: 실제 OneDrive/SharePoint 폴더에 쓰는 동작이라 사람 확인이 Phase Gate 조건)
+- [ ] **충돌 케이스는 테스트용 사본 폴더에서 먼저** — Quote PDF를 다른 걸로 바꿔 같은 프로젝트에 Build →
+  프롬프트가 뜨고 기존 파일이 안 바뀌는지. (왜 남음: 실제 파일을 대체할 수 있는 유일한 경로)
+- [ ] **로드맵 미기재** — `.claude/roadmap.md`에 4단계 "원클릭 납품 정리" 항목이 없다. (왜 남음: 그 파일을
+  다른 세션이 수정 중이라 충돌 회피를 위해 손대지 않음. 그 세션 커밋 후 추가 필요)
+- [ ] **`DEFAULT_PO_BASE` 하드코딩 유지** — 설정화는 범위 밖으로 확정. (왜 남음: John이 필요하다고 하기 전엔 불필요)
+- [ ] **한계 1건(Confirmed):** 원본 Quote를 Downloads가 **아닌** 곳에서 골랐다면 그 원본은 안 지워지고
+  `not found — left in place`로 보고됨. CCSI export가 Downloads로 떨어지는 워크플로에선 무해.
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `71514a115add14d22d4b1fa4703b0248f9fae3ab` (pushed)
+- 미커밋(**이번 세션 아님 — 다른 세션 진행 중, 건드리지 말 것**): `.claude/roadmap.md`,
+  `capture/{db,observe}.py`, `services/{direct_coil_drawing_pipeline,drawing_param_resolver}.py`,
+  `workflows/submittal_to_drawing.py`, HGRH 템플릿 4쌍(slot_map.json + template.svg),
+  `tests/{test_capture_ledger,test_template_clean}.py`, 미추적 `.agents/ .codex/ pytest.ini`
+  `scripts/migrate_capture_ledger.py` + 테스트 3개
+- 핵심 경로: `src/coilforge/deliverable/finalize.py` (plan/commit_placements, retire_download,
+  _child_by_normalized) · `src/coilforge/web_app.py:1418-1650` · `web/app.js::fileDeliverable`
+  (4840-) · `web/index.html:280-285`
+- 롤백: `web/app.js:4829`의 `await fileDeliverable({ skipDraft: true });` 한 줄 삭제 → 이전 2버튼 흐름 복귀
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ccs-ia-quatt-peaceful-parnas.md` · CLAUDE.md:252-279
+
 ## 2026-07-23 (Toronto) · base e30c36f..c6c702c · claude/ambient-supplier
 > 참고: 이 base 범위엔 중간에 다른 세션 커밋(af3b4fc Stage 3.0 등)이 섞여 있으나 그건 로드맵 완료 섹션에
 > 이미 기록됨. 아래는 **이번 대화 세션(2026-07-23)**에서 실제로 한 작업만.
