@@ -293,7 +293,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M546.59 358.61H546.69V358.71H546.59Z"/>
 <path transform="matrix(1,0,0,-1,546.64,276.5)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M0 0V24.36"/>
 <path transform="matrix(1,0,0,-1,550.78,276.5)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M0 0V24.36"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="9.267159" font-family="Arial"><tspan y="-348.7375" x="556.3402 559.42617 564.5787 567.1457 572.2982 577.45077 580.01779 586.1897">-0.63 S1</tspan></text>
+<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="9.267159" font-family="Arial"><tspan x="556.34" y="-348.7375">{{slot.S1}} S1</tspan></text>
 <path transform="matrix(1,0,0,-1,550.78,253.34)" d="M0 0 3.31-.55V.56L0 0Z" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,546.64,253.34)" d="M0 0-3.31 .56V-.55L0 0Z" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,554.09,253.34)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M0 0H3.31"/>
@@ -451,7 +451,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M389.54 498.04H389.64V498.14H389.54Z"/>
 <path transform="matrix(1,0,0,-1,428.07,113.91)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M0 0H-39.67"/>
 <path transform="matrix(1,0,0,-1,406.97,159.84)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M0 0H-18.57"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="9.267159" font-family="Arial"><tspan y="-499.7408" x="371.0942 376.24674 378.81376 383.96629 389.1188 391.68583 397.85777 403.01029">6.94 SL5</tspan></text>
+<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="9.267159" font-family="Arial"><tspan x="371.09" y="-499.7408">{{slot.SL5}} SL5</tspan></text>
 <path transform="matrix(1,0,0,-1,389.59,159.84)" d="M0 0-.55 3.31H.55L0 0Z" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,389.59,113.91)" d="M0 0 .55-3.31H-.55L0 0Z" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,389.59,156.53)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M0 0V39.19"/>

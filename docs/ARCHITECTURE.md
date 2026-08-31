@@ -51,7 +51,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 126 |
+| `tests` | 127 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 1 |
@@ -211,6 +211,6 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_deliverable_finalize.py` | DirectCoil deliverable finalize — subject cleaning, folder resolution, filing, |
 | `tests/test_derive_review_surfaces.py` | TR-9: the /derive path rebuilds the Direct Coil review surfaces |
 
-_291 source files, 201 with a header comment. 51 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_292 source files, 202 with a header comment. 52 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

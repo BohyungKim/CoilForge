@@ -302,7 +302,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M555.24 338.94H555.33999V339.04H555.24Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M555.29 318.22V340.06"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M556.78 318.22V340.06"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="8.310242" font-family="Arial"><tspan y="-330.08699" x="563.9931 566.76046 571.3809 573.68289 578.30337 582.9238 585.22579 590.7604">-0.25 S1</tspan></text>
+<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="8.310242" font-family="Arial"><tspan x="563.99" y="-330.08699">{{slot.S1}} S1</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" d="M556.78 338.99 559.75 338.5V339.49L556.78 338.99" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M555.29 338.99 552.33 339.49V338.5L555.29 338.99" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M559.75 338.99H562.71"/>
@@ -414,7 +414,7 @@
 <path transform="matrix(1,0,0,-1,0,612)" d="M406.4 449.87H406.5V449.97H406.4Z"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M440.95 449.92H405.38"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M422.03 410.96H405.38"/>
-<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="8.310242" font-family="Arial"><tspan y="-451.4037" x="389.88478 394.50526 396.8072 401.42768 406.04817 408.3501 413.8847 418.5052">6.56 SL3</tspan></text>
+<text fill="#1c0a80" xml:space="preserve" transform="matrix(1 0 -0 1 0 612)" font-size="8.310242" font-family="Arial"><tspan x="389.88" y="-451.4037">{{slot.SL3}} SL3</tspan></text>
 <path transform="matrix(1,0,0,-1,0,612)" d="M406.45 410.96 405.96 413.93H406.95L406.45 410.96" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" d="M406.45 449.92 406.95 446.95H405.96L406.45 449.92" fill="#1c0a80"/>
 <path transform="matrix(1,0,0,-1,0,612)" stroke-width=".1" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#1c0a80" d="M406.45 413.93V446.85"/>
