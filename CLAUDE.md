@@ -45,6 +45,13 @@ is no install step or `pyproject.toml`.
   `python scripts/seed_templates_from_pdf.py build-one <template_id>` (delete that bucket's 4
   artifacts first for a clean regen — `build_bucket` won't rewrite existing metadata/evidence
   and only merges `slot_map`).
+  ⚠️ **The committed templates have DIVERGED from the seeder** (measured 2026-08-30): a fresh
+  seed of `coilmaster_hgrh_{rh,lh}_header2` / `rh_header1` / `rh_header3` does not reproduce
+  the committed `template.svg` — the committed copies carry post-seed work the script does not
+  emit (the `id="coilforge-coating-note"` anchor among it) and the fresh output drops text the
+  committed one has. `build_bucket` writes `template.svg` **unconditionally**, so `build-one`
+  on an already-seeded bucket silently discards that work. Diff a scratch regen against the
+  committed file BEFORE letting it land, and hand-edit instead when they disagree.
 
 Runtime deps that may need installing: `python -m pip install fastapi uvicorn pyyaml pydantic`.
 PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade gracefully.
@@ -194,6 +201,14 @@ Schemas for the catalog / slot map live in `schemas/*.schema.json`.
 listed in that template's `slot_map.json` `slots[]` — not every `{{slot.*}}` in the SVG. So
 redacting a hardcoded as-built dim to a NEW slot means adding it to BOTH `template.svg` AND
 `slot_map.json`, or the placeholder renders literally (`{{slot.SL1}}`).
+The **inverse** failure is worse and was live until 2026-08-30: a callout the seeder never
+redacted stays a literal number and is printed on EVERY coil in that bucket, with nothing
+missing and no test failing — 3095's RHHGRC-1 drew the seed coil's `-0.25 S1` / `6.56 SL3`
+while the panel beside it said 3.25 / 5. Two seeder holes caused it: `_CALLOUT_RE` could not
+match a leading minus (fixed), and the odd supply SLs + `HD1` are absent from `_DIM_LABELS`
+(open — `SL1` means `slot.SL1` on HGRH but `slot.SL2` on water, so the mapping is
+category-dependent). `tests/test_template_hardcoded_dims.py` now pins the remaining inventory
+by EQUALITY, so a new frozen dimension fails and clearing a listed one fails too.
 
 **Mechanical fit / stability** (`compatibility/mechanical_fit.py`) — a review-aid check
 (NOT in the drawing path) mirroring the Coil Checklist WIDTH/HEIGHT/INSTALL fit.

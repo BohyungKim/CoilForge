@@ -45,8 +45,25 @@ _DIM_LABELS = [
 ]
 # Bare drawing-area callout label -> the parity-numbered first-header slot it means.
 _BARE_CALLOUT_SLOT = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2"}
+# The value group accepts a LEADING MINUS. Without it `-0.25 S1` did not match, so the
+# callout was never redacted even though `S1` is in _DIM_LABELS above -- and the seed
+# coil's own -0.25 stayed baked into coilmaster_hgrh_{lh,rh}_header2, printed on every
+# coil that rendered through the bucket while the panel beside it said 3.25 (John, 3095
+# Harrison, 2026-08-30). A negative supply spacing is a REAL CoilMaster value, not a
+# parse artefact: the Nova/Ventum H `S = CD - ((n+2)D + (n-1)1.5)` branch genuinely
+# yields it and reproduces the seeded references exactly.
+#
+# NOT fixed here, because both need a decision this script cannot make on its own:
+#   * the ODD supply SLs (SL1/SL3/SL5/SL7) and HD1 are absent from _DIM_LABELS, so those
+#     callouts are still baked. `SL1` cannot simply be added: on an HGRH sheet it means
+#     `slot.SL1` (the supply stub position) but on a water sheet `label_authority`
+#     rewrites SL1 -> SL2, so the right slot depends on the coil category, which this
+#     matcher does not see.
+#   * re-seeding is NOT the way to apply either fix to the CURRENT templates. They have
+#     diverged from this script (the coilforge-coating-note anchor, among other post-seed
+#     work, is not emitted here), so `build-one` on a seeded bucket silently discards it.
 _CALLOUT_RE = re.compile(
-    r"^([\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
+    r"^(-?[\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
 )
 # Title-block summary column header -> slot id (drawing-area value reused).
 _TB_COLUMN_SLOT = {
