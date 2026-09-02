@@ -1848,6 +1848,7 @@ def _extract_cover_rows_from_table(
     rejected: list[tuple[str, str]] | None = None,
 ) -> list[_CoverRow]:
     rows: list[_CoverRow] = []
+    seen_tags: set[str] = set()
     for row_number, row in enumerate(table[header_idx + 1 :], start=header_idx + 2):
         qty = _extract_qty(_cell_at(row, header_map["qty"]))
         tag = _normalize_tag(_cell_at(row, header_map["tag"]))
@@ -1856,11 +1857,27 @@ def _extract_cover_rows_from_table(
             # A blank tag cell is table padding, not a refused coil -- reporting it as
             # an exclusion would bury the real ones in noise.
             continue
+        # A tag already emitted on this page, reappearing with NO Qty, is the wrapped
+        # continuation of the row above: pdfplumber splits a multi-line cell into its own
+        # table row, repeating the tag and leaving Qty blank while Item holds only the
+        # tail ("Coil)" from "... Hot Gas Reheat (HGRC Coil)"). The text path cannot
+        # produce this -- its row regex REQUIRES a leading qty -- but this path read qty
+        # and never checked it, so the fragment became a SECOND coil with a defaulted
+        # hand and no model (3179 Havtech/TWU signed record submittal, John 2026-09-02).
+        # Deliberately NOT keyed on a missing qty alone: a legitimate layout with a blank
+        # Qty cell would then lose the whole row. The repeat is what makes it a wrap.
+        if qty is None and tag in seen_tags:
+            if rejected is not None:
+                rejected.append(
+                    (tag, "wrapped continuation of the row above (tag repeated, no Qty)")
+                )
+            continue
         rejection = coil_tag_rejection_reason(tag, item)
         if rejection is not None:
             if rejected is not None:
                 rejected.append((tag, rejection))
             continue
+        seen_tags.add(tag)
         rows.extend(
             _expand_cover_row(
                 page_number=page.page_number,

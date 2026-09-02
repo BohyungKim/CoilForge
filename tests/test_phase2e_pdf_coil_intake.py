@@ -152,6 +152,102 @@ def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() ->
     assert values["HANDING"] == "Left"
 
 
+def _wrapped_continuation_page() -> "_TextPage":
+    """3179 Havtech/TWU signed record submittal, p24: a multi-line Item cell that
+    pdfplumber split into its own table row, repeating the tag with a blank Qty."""
+    return _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                ("1", "CDXC-2", "DXC Cooling", "TV_B_100", "", "", "", "", "Right"),
+                ("1", "RHHGRC-2", "HGRC Reheat", "TV_B_100", "", "", "", "", "Right"),
+                # The wrap: same tag, no Qty, Item holds only the tail of the line above.
+                ("", "CDXC-2", "Coil)", "", "", "", "Factory Installed", "", ""),
+            ),
+        ),
+    )
+
+
+def test_wrapped_continuation_row_does_not_become_a_second_coil() -> None:
+    # Regression (John 2026-09-02): the table path read Qty but never checked it, so a
+    # wrapped cell fragment carrying a valid tag became a SECOND CDXC-2 -- a full extra
+    # drawing with a defaulted hand, inserted into the quote package with no warning.
+    page = _wrapped_continuation_page()
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert detection.detected is True
+    assert [row.tag for row in detection.rows] == ["CDXC-2", "RHHGRC-2"]
+
+
+def test_wrapped_continuation_row_is_reported_not_silently_dropped() -> None:
+    # A dropped row must always be explainable -- the same contract every other
+    # cover-row refusal follows (`non_coil_rows_excluded`).
+    detection = detect_cover_page_from_pdf_pages(
+        [_TextPage(page_number=1, text=""), _wrapped_continuation_page()]
+    )
+    reasons = {tag: reason for tag, reason in detection.rejected_rows}
+
+    assert "CDXC-2" in reasons
+    assert "wrapped continuation" in reasons["CDXC-2"]
+
+
+def test_first_occurrence_of_a_tag_without_qty_is_still_a_coil() -> None:
+    # The gate keys on tag-repeat AND missing qty together. A missing Qty alone must
+    # never drop a row: a layout that leaves the cell blank would lose the whole coil.
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                ("", "CDXC-1", "DXC Cooling", "TV_B_024", "", "", "", "", "Left"),
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert [row.tag for row in detection.rows] == ["CDXC-1"]
+    assert detection.rows[0].qty is None
+
+
+def test_clean_cover_table_is_unchanged_by_the_wrap_gate() -> None:
+    # The 3179 authoritative submittal's shape: four DX/HGRH pairs, every row with a Qty
+    # and a distinct tag. The gate must be inert here.
+    rows = []
+    for tag, item, model in (
+        ("CDXC-1", "DXC Cooling", "TV_B_024"), ("RHHGRC-1", "HGRC Reheat", "TV_B_024"),
+        ("CDXC-2", "DXC Cooling", "TV_B_100"), ("RHHGRC-2", "HGRC Reheat", "TV_B_100"),
+        ("CDXC-3", "DXC Cooling", "TV_B_048"), ("RHHGRC-3", "HGRC Reheat", "TV_B_048"),
+        ("CDXC-4", "DXC Cooling", "TV_B_100"), ("RHHGRC-4", "HGRC Reheat", "TV_B_100"),
+    ):
+        rows.append(("1", tag, item, model, "", "", "", "", "Left"))
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                *rows,
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert len(detection.rows) == 8
+    assert detection.rejected_rows == ()
+
+
 def test_borderless_coil_table_without_header_row_is_detected_positionally() -> None:
     # Regression: some submittals render the Qty/Tag/Item/... columns as a borderless
     # table whose header band is dropped during extraction, so the table starts directly
