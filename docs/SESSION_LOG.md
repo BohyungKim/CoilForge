@@ -5,6 +5,62 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-09-02 (Toronto) · base dd99c8d..ebb3c35 · claude/ambient-supplier
+> 이번 세션의 커밋은 `ebb3c35` 하나. 범위 안의 나머지 5개(`8bac658`·`9bfef68`·`2f67dac`·`27d1ef9`·
+> `d60bad1`)는 다른 세션의 Terra V HGRH 트랙이며 로드맵 완료 섹션에 이미 기록돼 있다.
+
+### ✅ 구현/결정된 것
+- **3179 TWU 검증 → 커버 파서 결함 1건 수정으로 DX 결함 3건 동시 해소** (커밋 `ebb3c35`).
+  두 커버 파서가 `qty`에 대해 비대칭이었다: 텍스트 경로는 행 정규식이 `^(?P<qty>\d+)\s+…`로 수량을
+  **구조적으로 요구**하지만, 테이블 경로 `_extract_cover_rows_from_table`은 `qty`를 읽어놓고 **검사하지
+  않았다**(게이트가 `tag` 유무 + `coil_tag_rejection_reason` 둘뿐). pdfplumber가 여러 줄 Item 셀을 자기
+  행으로 쪼개면서 태그를 반복하고 Qty를 비우고 Item에 꼬리(`'Coil)'`)만 남긴 행이 **통째로 코일이 됐다** —
+  손이 기본값 LH로 채워진 가짜 도면이 견적 패키지에 삽입됨. 게이트는 **중복 태그 AND qty 없음**의 결합에만
+  건다(빈 Qty 단독으로 거부하면 그런 레이아웃의 코일을 통째로 잃는다). 침묵 삭제 금지 — 기존 `rejected`
+  채널로 `non_coil_rows_excluded`에 표시.
+- **캐스케이드는 가정하지 않고 검증으로 확인했다.** 계획서에 "Phase 1이 ②③을 고칠 것이라고 가정하지
+  않는다"고 명시하고 실문서 게이트로 확인한 결과, 유령 행이 DX 상세 블록 바인딩을 밀고 있었음:
+  CDXC-3(048)이 100 유닛 치수를 쓰던 것 → **CH 43.25 / FL 33 복구**, CDXC-4 치수 전무 → **54슬롯 복구**.
+  (근거: 두 실문서 게이트, 아래 anchors)
+- **정본 확정:** `Desktop\3179 - Oxygen8 Submittal - Havtech - 3179 - TWU - Rev0.pdf`
+  (sha256 `b76a4e38…`, `Final Working\…Rev0.pdf`와 **바이트 동일**). **정본에는 결함 3건이 원래 없었다** —
+  세 결함은 서명본(`Signed Final Submittal\Record Submittal…8-26-2026.pdf`, 235쪽)에서만 재현.
+- **오보 1건 철회:** "Right 코일 4개가 LH로 그려진다"는 보고는 **틀렸다.** 브라우저에 넣은 파일과 제가
+  헤드리스로 분석한 파일이 **서로 달랐다**(Downloads의 체크리스트 출력 파일명으로 특정). 두 문서 모두
+  자기 커버대로 정확히 해석한다. 교훈: 브라우저 실측과 헤드리스를 비교하기 전에 **입력 파일 동일성부터**.
+- **RHHGRC 체크리스트 불일치 14건은 CoilForge 결함이 아니다** — 전부 John이 2026-08-04에
+  `checklist_wrong`으로 판정한 KD-001~005(체크리스트 시트에 Terra V 분기 없음). `known_defect: 0`.
+- **테스트:** 신규 4건(wrap 거부 / wrap 사유 보고 / **첫 등장 qty 없음은 계속 코일** / 정상 8행 커버 무변화).
+  전체 **1612 passed, 0 failed**.
+
+### ⏭️ 다음 스텝
+- [ ] **[최우선] RHHGRC `X` 치수 — 7개 HGRH 템플릿의 얼어붙은 as-built 값.** 상세는 `.claude/roadmap.md`
+  "⬜ 앞으로" 최상단 항목에 전부 적어 뒀다(고정값 7건 목록·선택지 3개·필요한 승인 2건).
+  (왜 남음: ⓐ 처리 방식 선택 ⓑ **DO-NOT-TOUCH 편집 승인 범위**가 John 결정)
+- [ ] **서명본 vs 정본 핸딩 불일치 자동 검출 (제안만)** — 같은 3179의 두 제출서가 4개 코일의 handing을
+  Left↔Right로 다르게 기재한다. CoilForge는 문서 간 대조를 하지 않아 검출 불가. (왜 남음: 별건, 미승인)
+- [ ] **Phase 2 DX 블록 바인딩 조사 — 보류(닫지 않음).** 증상은 사라졌지만 바인딩 규칙 자체는 읽지 않았다.
+  유령 행 없이 같은 어긋남을 내는 문서가 나오면 재개. (왜 남음: 우선순위 낮아짐)
+- [ ] **다른 세션 미커밋 정리 (John)** — `.claude/roadmap.md`(내 항목 포함), `capture/{db,observe}.py`,
+  `tests/test_capture_ledger.py`, 미추적 `.agents/ .codex/ pytest.ini scripts/migrate_capture_ledger.py`,
+  `tests/test_template_hardcoded_dims.py`. (왜 남음: **내 커밋에 섞으면 안 되는 남의 작업**)
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `ebb3c351ac97efbd6160eb9c246430bfc5e259f8` (pushed)
+- **⚠️ 로드맵 항목은 커밋되지 않았다** — `.claude/roadmap.md`에 다른 세션의 미커밋 변경(+18줄)이 함께
+  있어, 그 파일을 커밋하면 남의 작업이 딸려간다. 내 항목은 워킹트리에만 있으며 이 로그가 백업이다.
+- 핵심 경로: `src/coilforge/submittal/pdf_intake.py::_extract_cover_rows_from_table` (게이트) ·
+  `tests/test_phase2e_pdf_coil_intake.py` (신규 4건) ·
+  `tests/test_template_hardcoded_dims.py::_KNOWN_OPEN` (X 7건이 **등식**으로 고정, untracked)
+- 롤백: `git revert ebb3c35`, 또는 `if qty is None and tag in seen_tags:` 블록 + `seen_tags` 두 줄 제거
+- 실문서(저장소 밖, gitignore 대상): 정본 `C:\Users\JohnKim\Desktop\3179 - Oxygen8 Submittal - Havtech -
+  3179 - TWU - Rev0.pdf` · 서명본 `…\02 - POs\3179 - Havtech - TWU\Signed Final Submittal\Record
+  Submittal - TWU Alumnae Hall Renovation Oxygen8 VRV CU - 8-26-2026.pdf`
+- 게이트 수치 — 정본: 8코일, CDXC-3 `CH 43.25/FL 33`, CDXC-4 54슬롯, 게이트 **미발동** ·
+  서명본: **9→8**, 유령 소멸(`wrapped continuation of the row above (tag repeated, no Qty)`),
+  CDXC-3·CDXC-4 복구
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ccs-ia-quatt-peaceful-parnas.md` · `.claude/roadmap.md` ⬜앞으로 최상단
+
 ## 2026-08-31 (Toronto) · base c6c702c..71514a1 · claude/ambient-supplier
 > 참고: 로그의 직전 기준점은 7/23(`c6c702c`)이고 그 사이 83커밋이 쌓였으나 82개는 다른 세션/트랙
 > (Stage 4 Observatory, review-convergence, sl1-tagfilter, Omnia)으로 로드맵 완료 섹션에 이미 기록됨.
