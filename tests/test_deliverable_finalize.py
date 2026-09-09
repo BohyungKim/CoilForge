@@ -494,3 +494,218 @@ def test_finalize_endpoint_reports_missing_folder(monkeypatch) -> None:
     )
     assert resp.status_code == 409
     assert "9999" in resp.json()["detail"]
+
+
+# ---- the checklist must never go missing quietly (2026-09-09) ---------------
+#
+# The two PDFs reach the server as BYTES in the request body, so they are always in
+# `items`. The checklist reaches it as a Downloads PATH that finalize re-derives per
+# request -- so every failure to re-derive it dropped the .xlsx while both PDFs filed
+# cleanly. These pin the invariant that makes that visible.
+
+
+def test_pathless_cache_entry_is_not_reused_as_a_success(monkeypatch) -> None:
+    """A memoized entry with no ``saved_path`` must regenerate, not report success.
+
+    Reusing it returned ``review != None`` with ``saved_path=None``; finalize then had
+    no file to file AND left ``checklist_status`` at "ok", so the deliverable went out
+    without the sheet and the UI showed no warning at all.
+    """
+    pytest.importorskip("fastapi")
+    import asyncio
+    import hashlib
+
+    import coilforge.web_app as web_app
+
+    web_app.clear_checklist_cache()
+    key = (hashlib.sha1(b"%PDF-x").hexdigest(), None, None, None, None)
+    web_app._CHECKLIST_CACHE[key] = {"review": {"rows": []}, "saved_path": None}
+
+    calls: list[int] = []
+
+    def _regenerated(*a, **k):
+        calls.append(1)
+        raise ValueError("regenerated")
+
+    monkeypatch.setattr(web_app, "run_pdf_to_drawing_workflow", _regenerated)
+
+    outcome = asyncio.run(web_app._run_or_reuse_checklist(b"%PDF-x"))
+
+    assert calls, "a pathless entry must fall through to a fresh generation"
+    assert outcome.review is None and outcome.saved_path is None
+    assert key not in web_app._CHECKLIST_CACHE
+    web_app.clear_checklist_cache()
+
+
+def test_checklist_status_is_never_ok_when_the_sheet_was_not_filed(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """THE invariant: not in ``files_written`` -> the status names why, never "ok"."""
+    from fastapi.testclient import TestClient
+
+    web_app, _directcoil, _ = _stub_endpoint(monkeypatch, tmp_path)
+
+    async def _no_sheet(*a, **k):
+        return web_app._ChecklistOutcome(
+            review=None,
+            saved_path=None,
+            reason="Excel COM (pywin32) is required to write the checklist",
+            http_status=501,
+        )
+
+    monkeypatch.setattr(web_app, "_run_or_reuse_checklist", _no_sheet)
+
+    body = TestClient(web_app.app).post(
+        "/api/deliverable/finalize", json={**_BODY, "skip_draft": True}
+    ).json()
+
+    assert body["status"] == "filed"
+    assert len(body["files_written"]) == 2  # the PDFs still file
+    assert body["checklist_status"] != "ok"
+    assert "pywin32" in body["checklist_status"]
+    assert "not filed" in body["checklist_status"]
+
+
+def test_checklist_status_names_a_missing_path_even_with_a_review(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """review present + no path: the old code called this "ok" and warned about nothing."""
+    from fastapi.testclient import TestClient
+
+    web_app, _directcoil, _ = _stub_endpoint(monkeypatch, tmp_path)
+
+    async def _review_without_path(*a, **k):
+        return web_app._ChecklistOutcome(
+            review={"rows": []}, saved_path=None, reason=None, http_status=None
+        )
+
+    monkeypatch.setattr(web_app, "_run_or_reuse_checklist", _review_without_path)
+
+    body = TestClient(web_app.app).post(
+        "/api/deliverable/finalize", json={**_BODY, "skip_draft": True}
+    ).json()
+
+    assert body["checklist_status"] == "checklist path unavailable — not filed"
+    checklist = next(d for d in body["documents"] if d["kind"] == "checklist")
+    assert checklist["filed"] is False
+
+
+def test_finalize_passes_the_cover_page_hint_to_the_checklist(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The hint is part of the checklist cache key. Dropping it here guaranteed a miss
+    on every hand-selected cover page, re-deriving the coils without it."""
+    from fastapi.testclient import TestClient
+
+    web_app, _directcoil, _ = _stub_endpoint(monkeypatch, tmp_path)
+    seen: dict = {}
+
+    async def _capture(pdf_bytes, **kwargs):
+        seen.update(kwargs)
+        return web_app._ChecklistOutcome(None, None, "no coils", 400)
+
+    monkeypatch.setattr(web_app, "_run_or_reuse_checklist", _capture)
+
+    TestClient(web_app.app).post(
+        "/api/deliverable/finalize",
+        json={**_BODY, "skip_draft": True, "cover_page": "7"},
+    )
+    assert seen["cover_page_hint"] == 7
+
+
+def test_finalize_rejects_a_nonsense_cover_page(monkeypatch, tmp_path: Path) -> None:
+    from fastapi.testclient import TestClient
+
+    web_app, _directcoil, _ = _stub_endpoint(monkeypatch, tmp_path)
+    resp = TestClient(web_app.app).post(
+        "/api/deliverable/finalize", json={**_BODY, "cover_page": "0"}
+    )
+    assert resp.status_code == 400
+
+
+def test_documents_log_reports_each_document_separately(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The per-document log the status panel renders: kind, filed, state, downloads."""
+    from fastapi.testclient import TestClient
+
+    web_app, _directcoil, _ = _stub_endpoint(monkeypatch, tmp_path)
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    sheet = downloads / "2572 - Coil Checklist.xlsx"
+    sheet.write_bytes(b"xlsx bytes")
+    _stub_checklist(monkeypatch, web_app, sheet)
+
+    body = TestClient(web_app.app).post(
+        "/api/deliverable/finalize", json={**_BODY, "skip_draft": True}
+    ).json()
+
+    docs = {d["kind"]: d for d in body["documents"]}
+    assert set(docs) == {"quote", "revised", "checklist"}
+    assert all(d["filed"] for d in docs.values())
+    assert docs["quote"]["name"] == "2572 - Bowie.pdf"
+    assert docs["revised"]["name"] == "2572 - Bowie_Revised.pdf"
+    assert docs["checklist"]["name"] == sheet.name
+    assert docs["checklist"]["downloads"] == "moved"
+    assert all(d["state"] == "new" for d in docs.values())
+    assert all(d["detail"] is None for d in docs.values())
+
+
+def test_a_copy_failure_is_a_named_error_not_a_bare_oserror(tmp_path: Path) -> None:
+    """The commit loop has no rollback and path payloads come last, so an OSError there
+    surfaced as an unnamed 500 with earlier documents already on disk."""
+    folder = tmp_path / "dest"
+    folder.mkdir()
+    missing = tmp_path / "gone.xlsx"
+    missing.write_bytes(b"x")
+    placements = plan_placements(folder, [("gone.xlsx", missing)])
+    missing.unlink()  # vanishes between plan and commit
+
+    with pytest.raises(FinalizeError) as excinfo:
+        commit_placements(placements)
+    assert "gone.xlsx" in str(excinfo.value)
+
+
+# ---- opening the filed folder (a browser-supplied path is never trusted) ----
+
+
+def test_open_folder_refuses_a_path_outside_the_po_base(tmp_path: Path) -> None:
+    from coilforge.deliverable.open_folder import open_deliverable_folder
+
+    base = tmp_path / "base"
+    (base / "inside").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with pytest.raises(FinalizeError):
+        open_deliverable_folder(outside, base_dir=str(base))
+    # ...and traversal back out of the base is normalized BEFORE the check, not after.
+    with pytest.raises(FinalizeError):
+        open_deliverable_folder(
+            base / "inside" / ".." / ".." / "outside", base_dir=str(base)
+        )
+
+
+def test_open_folder_refuses_an_empty_or_vanished_folder(tmp_path: Path) -> None:
+    from coilforge.deliverable.open_folder import open_deliverable_folder
+
+    base = tmp_path / "base"
+    base.mkdir()
+    with pytest.raises(FinalizeError):
+        open_deliverable_folder("", base_dir=str(base))
+    with pytest.raises(FinalizeError):
+        open_deliverable_folder(base / "never-made", base_dir=str(base))
+
+
+def test_open_folder_opens_a_folder_inside_the_base(monkeypatch, tmp_path: Path) -> None:
+    from coilforge.deliverable import open_folder as mod
+
+    base = tmp_path / "base"
+    target = base / "3121" / "Accessory Order Forms" / "DirectCoil"
+    target.mkdir(parents=True)
+    opened: list[str] = []
+    monkeypatch.setattr(mod.os, "startfile", opened.append, raising=False)
+
+    result = mod.open_deliverable_folder(target, base_dir=str(base))
+    assert opened == [str(target.resolve())]
+    assert result == str(target.resolve())

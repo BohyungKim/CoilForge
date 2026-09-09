@@ -306,6 +306,39 @@ button:disabled,
   color: var(--sidebar-muted);
 }
 
+/* Sidebar coil row: tag button + its own review-approve toggle. Only tokens that are
+   defined in BOTH the light and dark blocks are referenced here (--sidebar-muted,
+   --sidebar-active-em, --status-ready). An undefined token silently falls back to
+   white/inherited, which is the dark-mode white-card bug -- see the CLAUDE.md guard. */
+.tree-row {
+  align-items: center;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr auto;
+}
+
+.tree-approve {
+  background: transparent;
+  border: 1px solid var(--sidebar-muted);
+  border-radius: 999px;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 7px;
+}
+
+.tree-approve:hover {
+  border-color: var(--sidebar-active-em);
+  color: var(--sidebar-active-em);
+}
+
+.tree-approve.is-reviewed {
+  border-color: var(--status-ready);
+  color: var(--status-ready);
+  font-weight: 700;
+}
+
 .workspace {
   display: grid;
   gap: 14px;

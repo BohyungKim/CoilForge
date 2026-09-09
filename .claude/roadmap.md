@@ -1022,6 +1022,16 @@
   파서로 재생하면 **틀렸던 4개에만** 뜬다. **1504 green**, frozen·YAML·템플릿 무접촉. 상세는 상단 갱신 노트 참조.
   🆕 이번 세션
 
+- [x] **[Omnia 트랙] OW### 제품군 추가 + Ventum+ LH1 템플릿 seed 오류 수정 (c43d9d7, 2026-08-25~26)** —
+  John: "Ventum+와 규칙·도면 템플릿 완전 동일, TF/BF만 0.625". ①`ProductFamily.OMNIA` 1급 family +
+  `VENTUM_PLUS_CLASS`로 Python `== VENTUM_PLUS` 분기 5곳 흡수, YAML 11규칙 applies_to + R-064 + **R-011o**,
+  R-076 `OW050…OW085`(regex 없이 기존 Pass A가 감지). ②템플릿은 **alias**(OMNIA→VENTUM_PLUS 버킷, seed 0).
+  ③체크리스트 UNIT=VENTUM+ + KD-010..021(TF/BF −0.375, CH −0.75). ④**seed 감사**: 첫 Omnia 도면의
+  distributor가 반대(John) → `coilmaster_vplus_dx_lh_header1`/`..._hgrh_lh_header1`이 2760 Revere **p.2/p.6**
+  (TF/BF 0.63·SL 8·I 3 = Nova급, 혼합 프로젝트)에서 seed됐던 것. p.5/p.7(TF 1.00·SL 10·I 12, R-032 UP)로
+  재seed — 검증 규칙: **Ventum+ 원본은 TF=BF=1.00**. 3097 Sunnyside 실 PDF를 Chrome으로 올려 라이브 확인.
+  `tests/test_omnia_product_line.py` 23개(OMNIA==VENTUM_PLUS 전 필드 동일성 pin). **데이터 공백 유지**:
+  Wheel Product Sizing 차트는 코일 envelope라 R-074/077/078 OMNIA 행 없음 → fit `CANNOT_EVALUATE`.
 - [x] **[Terra V HGRH 트랙] 3095이 드러낸 멀티헤더 결함 4건 (d60bad1·27d1ef9·2f67dac·9bfef68, 2026-08-30~31)** —
   John: "Terra V의 HGRH 하고 multiple header 케이스는 정말 엉망진창인거같은데". 3095 Harrison을 실제로
   파이프라인에 통과시켜 보니 하나가 아니라 **서로 독립인 결함 4건**이었다.
@@ -1054,6 +1064,39 @@
   `tests/test_template_hardcoded_dims.py`가 **등식**으로 고정(늘어도 몰래 줄어도 red).
   KD-002 판정도 수치로 확인: 시트의 Nova else-분기를 그대로 계산하면 **정확히 0.25**(John 스크린샷의 시트 값) —
   판정은 옳고 축약 표현(`S = −conn_size`)만 부정확하다.
+
+- [x] **[Deliverable 트랙] Coil Checklist가 조용히 빠지던 원인 + 이동 로그 + 폴더 열기 (2026-09-09)** —
+  John: "pdf 두개는 DirectCoil로 옮기는데 coil checklist는 함께 가져가지 않는다". 화면 증거가
+  **경고 없이 파일 2개 + Downloads에 .xlsx 잔존**이라 조용한 누락으로 확정.
+  **근본은 구조적 비대칭**: quote/revised PDF는 요청 본문에 **bytes**로 실려 와 `items`에 항상 들어가지만,
+  체크리스트는 **Downloads 경로**를 요청 시점에 재유도해야 한다(`_run_or_reuse_checklist`) — 재유도가
+  실패하면 체크리스트만 빠지고 PDF는 정상 파일링된다. 결정적 결함은 `checklist_status`가
+  *"파일이 옮겨졌는가"*가 아니라 *"리뷰 테이블이 만들어졌는가"*(`review is not None`)를 뜻했다는 점 —
+  두 의미가 갈라지는 순간 UI(`!== "ok"`일 때만 ⚠)는 **성공으로 보고**한다.
+  **수정 4건:** ①`web_app.py`의 캐시 재사용 `not saved_path or …` 단락평가 제거 — 경로 없는 항목이
+  "성공"으로 반환되어 경고 0·파일링 0이 되던 유일한 경로(주석은 이미 "경로가 살아 있을 때만 재사용"을
+  약속하고 있었다 = 주석·코드 불일치). ②finalize가 `cover_page` 힌트를 안 보내 캐시 키가 analyze와
+  달라 **수동 커버페이지 제출물은 100% 미스** → 힌트 없이 Excel 재실행 → "no recognizable coils" 가능;
+  `_cover_page_hint(raw, label)`로 검증 규칙을 공유해 헤더·본문이 같은 값을 만들게 했다.
+  ③`checklist_status`를 **파일링 결과**에서 유도 — **불변식: `files_written`에 없으면 절대 `ok`가 아니다**.
+  ④`commit_placements`의 `copyfile` `OSError`를 파일명 담은 `FinalizeError`(→409)로 — 롤백이 없고
+  경로형 문서가 마지막이라 종전엔 PDF 2개가 디스크에 남은 채 **이름 없는 500**이었다.
+  **로그/UX:** 응답에 `documents[]`(kind·filed·state·path·downloads·detail) 추가(additive — 기존
+  `files_written`/`downloads_cleanup`/`checklist_status` 계약 유지), 상태창에 문서별 `✓/⚠` 한 줄 +
+  `Filed n/3` + 시각. `POST /api/deliverable/open-folder` + 인라인 "Open the DirectCoil folder" 버튼
+  (`confirm()` 미사용 — 페이지·Claude-in-Chrome 세션을 멈춘다). **보안 게이트**: 브라우저가 보낸 경로는
+  `resolve()` 후 `DEFAULT_PO_BASE` 하위인지 검증해야만 열고, 거부 시 경로를 되비추지 않는다.
+  **사이드바 코일별 REVIEW 승인 버튼(John 요청)**: 태그 옆 `○/✓` 토글. 사이드바 항목이 이미 `<button>`이라
+  중첩 불가 → `div.tree-row`로 감싸 형제 배치, `stopPropagation()`으로 행 클릭 분리, **이동하지 않는다**
+  (승인하다 다른 코일로 끌려가면 자리를 잃는다). footer 버튼과 달리 **토글** — 종전엔 취소가 불가능해
+  오클릭이 quote 게이트를 열어둔 채 남았다.
+  **1622 green / 0 red**(신규 10), 별도 포트 8012로 보안 게이트 라이브 확인(범위 밖·`..` 트래버설·빈 경로·
+  없는 폴더 전부 400). CSS는 정의된 토큰만(`--sidebar-muted`/`--sidebar-active-em`/`--status-ready`),
+  `var(--surface|--text)` 가드 clean.
+  ⚠️ **재현 조건 미확정**: 09-09 실제 파일링 3건(2977·3193·3219)은 .xlsx가 정상 이동했다 — 어느 구멍이
+  실제로 물었는지는 로그가 쌓여야 확정된다. ⚠️ **MAX_PATH**: 3193의 파일링 경로가 **279자**로 260을 이미
+  넘겼다(현재는 통과). 넘치면 정확히 이 증상이 되고, 이제 500이 아니라 파일명 담긴 409로 보고된다.
+  🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
@@ -1208,6 +1251,29 @@
   확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
   ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
+- [ ] **[3179 트랙] RHHGRC `X` 치수 — 배선 STOP. 게이트는 `X`의 정의 확보 (John 2026-09-05)**
+  — 3179 TWU에서 드러남(09-02) → 정체 규명 시도(09-03) → **실측으로 작업가설 반증(09-05). 코드 0줄.**
+  John의 family-aware 지시(Terra V blank / Terra H는 공식)를 착수 전 검증하다 **두 전제가 모두**
+  무너졌다. Terra 도면 3장을 읽고 PO 트리 HGRH 도면을 전수 측정(511 PDF → 1,964면 → HGRH 태그 631면
+  → 타이틀블록 파싱 **328면**).
+  **확정:** `X`의 **존재 여부**는 리턴 연결 표기와 완전 상관 — `… " OD Header` **186/186 값 있음**,
+  `… " swt` **142/142 공란**(공란 페이지는 `I·S·O·R`도 전부 공란), 예외 0. 용어는
+  **connection-notation cohort**(버전 근거 없으므로 "세대"라 부르지 않음), "swt는 헤더가 없어서"라는
+  인과는 `[LIKELY]`.
+  **반증:** 작업가설 `(h+1)·D+(h−1)·1.5`는 값 있는 186장 중 **96장(52%)**만 설명. 불일치 값
+  (`1.63`·`2.00`·`2.50`·`3.00`·`3.25`)은 h=1..8 어디로도 재현 불가이고, `FH·FL·CH·CL·CD·OAL·SL·I·S·O`가
+  **완전히 동일한 두 코일**(2575 / 2504)이 `X`만 1.94 대 2.00 → **결정 변수가 타이틀블록 안에 없다.**
+  **철회 2건:** ⓐ "Terra V는 `X`를 비운다" = 순환논법(공란 원인은 swt였고 신형 Terra V 3025는 1.25를
+  인쇄) ⓑ "Terra H는 Nova 공식을 따른다" = 표본 선택(Hope Lodge 2장이 일치 3장 안에 있었다).
+  **리댁션 단독 실행 금지(John):** 규칙 없이 7개를 슬롯화하면 모든 계열이 `— X`가 되는 회귀.
+  `_SLOT_ENGINE_FIELD`는 HIGH만 읽어 중간 상태가 없다.
+  **게이트: `X`의 engineering definition 또는 `X`를 결정하는 source input 확보.**
+  ("Terra 참조 도면 1장"은 무효 — 도면이 오히려 공식을 반증했다.)
+  **다음 액션: SOP / CoilMaster 정의 탐색** — ⓐ Obsidian 볼트(Tier 3 게이트, John이 직접
+  `gate.py unlock "Oxygen8 vault" --purpose … --ref …` 실행해야 열림; 우회하지 않았다)
+  ⓑ 코일 PDF 1페이지 성능 시트(248장)에 열 범례가 있는지 ⓒ John의 직접 지식(`2.50`·`1.63` 군집).
+  전체 기록·재현 정보: `docs/wiki/concepts/x-header-stack-depth.md` ·
+  `docs/wiki/open-questions.md`(4항목) · plan `~/.claude/plans/coilforge-rhhgrc-x-snoopy-boole.md`.
 - [x] **[SL1 트랙] `worktree-sl1-tagfilter` 병합처 결정 — John: `claude/ambient-supplier` (2026-08-15)** —
   예상대로 겹친 파일은 `pdf_intake.py` 하나뿐이고 각자 다른 함수를 고쳐 자동 병합됐다(태그 필터 vs
   `_circuits_from_coil_style`). 충돌은 `.claude/roadmap.md` 1건, union으로 해소. 워크트리에서 먼저 흡수한 뒤
@@ -1224,6 +1290,8 @@
   `template.svg`와 `slot_map.json`을 **둘 다** 고쳐야 플레이스홀더가 문자 그대로 인쇄되지 않는다.
   ⚠️ **시드 출처 의심(선행 확인)**: `vplus_hgrh_lh_header1`의 내장 노트가 `SL2=8`(= Nova/Ventum H 값, Ventum+는
   R-045a로 10)이다 → 그 시드가 정말 Ventum+ 도면인지, 아니면 R-045a가 틀렸는지 먼저 판정.
+  ✅ **판정됨(2026-08-26, c43d9d7)**: 시드가 틀렸었다 — p.6 RHHGRC-1은 비Ventum+(TF 0.63); p.7로 재seed해 R-045a는
+  그대로 맞다. 재seed 템플릿에도 `5.69 SL1`·`1.63` as-built 잔재는 남아 있어 리댁션 항목 자체는 유효.
 - [ ] **[SL1 트랙] RP-002 전달 (John → Oxygen8)** — `docs/rule_proposals/RP-002-hgrh-single-feed-sl1.md`.
   체크리스트 `HGRH!C58`의 단일피드 분기를 3→6으로. **적용하지 않았다** — 시트는 Oxygen8 소유.
   만약 3이 맞는 것으로 판명되면 CoilForge 쪽 한 줄을 되돌리고 KD-006~009를 `coilforge_wrong`으로 재판정
@@ -1346,4 +1414,10 @@
 - [ ] **[코팅 트랙] 커버 라인아이템 coating 인식이 실 사례로 미검증** — `_package_coating`은 HGBP 어더 패턴을
   그대로 따랐고 어휘 앵커로 안전하지만, **커버에 coating이 적힌 실 제출물을 아직 못 구했다**(리포의 12개 제출물
   전수 스캔에서 coating 언급 0건). 그런 파일이 들어오면 스캔 창·우선순위(코일 상세 블록 우선)를 실물로 확인할 것.
+- [ ] **[Omnia 트랙] 케이싱/드레인팬/핏 표 (John 제공 대기)** — R-074 casing W/H, R-077 drain_pan/install width,
+  R-078 여유값·`h_half` 여부. 차트의 Coil Width(38…70)·Height+Clearance(23/25/28/31/34/37/39)를 casing으로 간주해도
+  되는지 John 판정 → 되면 sub=0/h_half=false 7행. 그 전까지 Omnia fit 판정은 전부 `CANNOT_EVALUATE`(설계상).
+- [ ] **[Omnia/Ventum+ 트랙] 2619 Congress TF/BF 0.88 판정** — `coilmaster_vplus_dx_rh_header2`·`..._hgrh_rh_header1`의
+  원본이 1.00도 0.63도 아닌 0.88(SL 10·I 12는 Ventum+ 패턴). 커스텀 플랜지면 그대로, 아니면 다른 원본으로 재seed.
+  seed 스크립트에 "Ventum+ 원본 TF=BF=1.00" 자동 검증을 넣는 것도 같은 묶음.
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류

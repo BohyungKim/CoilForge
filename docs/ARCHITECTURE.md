@@ -34,7 +34,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/common` | 2 |
 | `src/coilforge/compatibility` | 10 |
 | `src/coilforge/contracts` | 4 |
-| `src/coilforge/deliverable` | 3 |
+| `src/coilforge/deliverable` | 4 |
 | `src/coilforge/direct_coil` | 7 |
 | `src/coilforge/drawing` | 9 |
 | `src/coilforge/drawing/backends` | 2 |
@@ -128,6 +128,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/contracts/__init__.py` | Shared CoilForge contract models |
 | `src/coilforge/deliverable/__init__.py` | DirectCoil deliverable finalization — file the docs + draft the hand-off email |
 | `src/coilforge/deliverable/finalize.py` | Pure / filesystem layer for finalizing a DirectCoil deliverable |
+| `src/coilforge/deliverable/open_folder.py` | Open a filed deliverable's folder in Windows Explorer |
 | `src/coilforge/deliverable/outlook_draft.py` | Outlook draft I/O (Windows + Outlook COM only) |
 | `src/coilforge/direct_coil/__init__.py` | Direct Coil draft models and mappers |
 | `src/coilforge/direct_coil/page_reader.py` | Read values a human entered into the CCSI 'Direct Coil' web form |
@@ -209,8 +210,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_copper_strap_rule.py` | R-090 copper-strap rule: deterministic straps-per-header by coil type |
 | `tests/test_coverage_dashboard_generator.py` | The coverage-dashboard generator must reflect the LIVE catalog, not a snapshot |
 | `tests/test_deliverable_finalize.py` | DirectCoil deliverable finalize — subject cleaning, folder resolution, filing, |
-| `tests/test_derive_review_surfaces.py` | TR-9: the /derive path rebuilds the Direct Coil review surfaces |
 
-_292 source files, 202 with a header comment. 52 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_293 source files, 203 with a header comment. 53 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

@@ -162,17 +162,29 @@ def _write_journal_line(milestone: str, result: dict | None, request_payload: di
         return None, f"journal hook failed: {type(exc).__name__}: {exc}"
 
 
-def _cover_page_hint_from_request(request: Request) -> int | None:
-    raw_value = request.headers.get("x-coilforge-cover-page")
+def _cover_page_hint(raw_value: Any, label: str) -> int | None:
+    """Validate a cover-page hint from a header or a JSON body field.
+
+    Shared so every entry point produces the SAME value for the checklist cache key:
+    the analyze-time fill sends it as a header and `deliverable_finalize` as a body
+    field, and a hint that differs between them is a guaranteed cache miss (which is
+    what made finalize re-run Excel without the hint and lose the checklist).
+    """
     if raw_value in (None, ""):
         return None
     try:
         page_number = int(raw_value)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be an integer.") from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} must be an integer.") from exc
     if page_number < 1:
-        raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be 1 or greater.")
+        raise HTTPException(status_code=400, detail=f"{label} must be 1 or greater.")
     return page_number
+
+
+def _cover_page_hint_from_request(request: Request) -> int | None:
+    return _cover_page_hint(
+        request.headers.get("x-coilforge-cover-page"), "X-CoilForge-Cover-Page"
+    )
 
 
 def _identity_from_request(request: Request) -> str | None:
@@ -745,7 +757,7 @@ async def _run_or_reuse_checklist(
     cached = _CHECKLIST_CACHE.get(key)
     if cached is not None:
         saved_path = cached.get("saved_path")
-        if not saved_path or Path(saved_path).exists():
+        if saved_path and Path(saved_path).exists():
             _CHECKLIST_CACHE.move_to_end(key)
             # Annotate the COPY, never the cached original: a ruling John records in the
             # browser has to change the next render, and this result is memoized by PDF
@@ -758,7 +770,10 @@ async def _run_or_reuse_checklist(
                 ),
                 saved_path, None, None,
             )
-        # The filled copy was deleted -- drop the stale entry and regenerate.
+        # No path, or the filled copy was deleted -- drop the stale entry and regenerate.
+        # A pathless entry must NOT short-circuit to "success": its review would be handed
+        # back with saved_path=None, and `deliverable_finalize` then has no file to file --
+        # the silent-skip John reported (docs filed, checklist absent, no warning).
         del _CHECKLIST_CACHE[key]
 
     try:
@@ -1462,6 +1477,11 @@ async def deliverable_finalize(request: Request):
     submittal_name = payload.get("submittal_filename")
     overwrite = bool(payload.get("overwrite"))
     skip_draft = bool(payload.get("skip_draft"))
+    # Same hint the browser sent to /api/checklist/fill. It is part of the checklist cache
+    # key, so omitting it here guaranteed a MISS on every submittal whose cover page was
+    # selected by hand -- finalize then re-derived the coils WITHOUT the hint, which can
+    # yield "no recognizable coils" and drop the .xlsx from the deliverable.
+    cover_page_hint = _cover_page_hint(payload.get("cover_page"), "cover_page")
 
     # Project identity from the submittal intake.
     try:
@@ -1469,6 +1489,7 @@ async def deliverable_finalize(request: Request):
             submittal,
             source_id="DELIVERABLE-FINALIZE-001",
             source_filename=submittal_name,
+            cover_page_hint=cover_page_hint,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1489,6 +1510,7 @@ async def deliverable_finalize(request: Request):
     # missing payload here would key differently and quietly file the pre-override sheet).
     checklist_outcome = await _run_or_reuse_checklist(
         submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001",
+        cover_page_hint=cover_page_hint,
         coil_overrides=payload.get("checklist_overrides"),
     )
     # A BUSY guard is a hard error here, not a degraded status. Everywhere else a
@@ -1504,9 +1526,13 @@ async def deliverable_finalize(request: Request):
                 "deliverable, so finalize was stopped rather than filing without it."
             ),
         )
+    # NOT the checklist status yet -- only why the fill itself failed, if it did. The
+    # status is derived from the FILING outcome below: reporting "ok" here because a
+    # review table was built is exactly how a missing .xlsx read as a clean success.
     checklist_path = checklist_outcome.saved_path
-    checklist_status = "ok" if checklist_outcome.review is not None else (
-        checklist_outcome.reason or "unavailable"
+    checklist_blocked_reason = (
+        None if checklist_outcome.review is not None
+        else (checklist_outcome.reason or "unavailable")
     )
 
     # Resolve/create the DirectCoil folder.
@@ -1521,9 +1547,13 @@ async def deliverable_finalize(request: Request):
         (quote_name, quote),
         (revised_name, revised),
     ]
+    # INVARIANT: the checklist is only "ok" when it is actually in `items` (and therefore
+    # in `files_written`). Every other outcome names its own cause -- there is no branch
+    # left that can leave the status at a default while the .xlsx quietly stays behind.
     checklist_name = Path(checklist_path).name if checklist_path else None
     if checklist_path and Path(checklist_path).exists():
         items.append((checklist_name or "", checklist_path))
+        checklist_status = "ok"
     elif checklist_name and (folder / checklist_name).exists():
         # The Downloads copy is gone because an earlier run MOVED it into the folder
         # (Build files the docs; the draft button re-runs over the same three). That is
@@ -1531,6 +1561,15 @@ async def deliverable_finalize(request: Request):
         checklist_status = "already filed"
     elif checklist_name:
         checklist_status = "Downloads copy missing — checklist not filed"
+    else:
+        # No path at all: the fill failed (Excel absent, no coils, COM error), or a
+        # cache entry carried no path. Either way the deliverable goes out WITHOUT the
+        # checklist, so say so in the same breath as the reason.
+        checklist_status = (
+            f"{checklist_blocked_reason} — checklist not filed"
+            if checklist_blocked_reason
+            else "checklist path unavailable — not filed"
+        )
 
     # All-or-nothing: decide every destination first, and if any of them holds
     # DIFFERENT content under the same name, write nothing and hand the list back.
@@ -1553,6 +1592,17 @@ async def deliverable_finalize(request: Request):
             ],
             "files_written": [],
             "downloads_cleanup": [],
+            "documents": [
+                {
+                    "kind": kind, "name": name, "filed": False, "state": "skipped",
+                    "path": None, "downloads": None,
+                    "detail": "nothing was filed — name conflict in the folder",
+                }
+                for kind, name in (
+                    ("quote", quote_name), ("revised", revised_name),
+                    ("checklist", checklist_name),
+                )
+            ],
             "checklist_status": checklist_status,
             "draft_opened": False,
             "draft_status": "skipped — nothing was filed",
@@ -1562,7 +1612,13 @@ async def deliverable_finalize(request: Request):
             "production_drawing_approval_claimed": False,
             "raw_private_data_returned": False,
         }
-    files_written = commit_placements(placements, overwrite=overwrite)
+    try:
+        files_written = commit_placements(placements, overwrite=overwrite)
+    except FinalizeError as exc:
+        # A per-file copy failure (locked source, over-long destination). Documents
+        # ahead of it in the list may already be on disk, so report the named cause
+        # rather than a bare 500 that says nothing about what did land.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     # Retire the Downloads originals. The checklist was moved by path above; the two
     # PDFs only reach us as bytes, so they are deleted only where the content matches.
@@ -1590,6 +1646,36 @@ async def deliverable_finalize(request: Request):
         return entries
 
     downloads_cleanup = await asyncio.to_thread(_cleanup)
+
+    # Per-document log (additive -- `files_written` / `downloads_cleanup` /
+    # `checklist_status` keep their contracts). Matched by NAME, never by list order:
+    # an `already_filed` entry makes the placement order unreliable, the same reason
+    # the Outlook attachment is looked up by name below.
+    cleanup_by_name = {e["name"]: e["status"] for e in downloads_cleanup}
+    state_by_name = {p.filename: p.state for p in placements}
+    filed_by_name = {Path(path).name: path for path in files_written}
+
+    def _document(kind: str, name: str | None, detail: str | None = None) -> dict:
+        filed_path = filed_by_name.get(name) if name else None
+        return {
+            "kind": kind,
+            "name": name,
+            "filed": filed_path is not None,
+            "state": state_by_name.get(name) if filed_path else "skipped",
+            "path": filed_path,
+            "downloads": cleanup_by_name.get(name) if name else None,
+            "detail": detail,
+        }
+
+    documents = [
+        _document("quote", quote_name),
+        _document("revised", revised_name),
+        _document(
+            "checklist",
+            checklist_name,
+            None if checklist_status == "ok" else checklist_status,
+        ),
+    ]
 
     # Open the Outlook draft with the revised PDF attached (never sent). Looked up by
     # NAME, not by index — `already_filed` entries make the list order unreliable.
@@ -1629,6 +1715,7 @@ async def deliverable_finalize(request: Request):
         "files_written": files_written,
         "conflicts": [],
         "downloads_cleanup": downloads_cleanup,
+        "documents": documents,
         "checklist_status": checklist_status,
         "draft_opened": draft_opened,
         "draft_status": draft_status,
@@ -1638,6 +1725,32 @@ async def deliverable_finalize(request: Request):
         "production_drawing_approval_claimed": False,
         "raw_private_data_returned": False,
     }
+
+
+@app.post("/api/deliverable/open-folder")
+async def deliverable_open_folder(request: Request):
+    """Open a filed deliverable's DirectCoil folder in Explorer.
+
+    POST JSON ``{folder}`` — the ``folder`` value the finalize response just returned.
+    The path is validated against the SharePoint PO base before anything is opened, so
+    this cannot be used to launch an arbitrary path. Any path we will not or cannot open
+    (outside the base, empty, no longer there) is a 400 — the caller supplied it, so it is
+    a bad request either way. Read-only: it opens a window and changes nothing on disk."""
+    import asyncio
+
+    from coilforge.deliverable.finalize import FinalizeError
+    from coilforge.deliverable.open_folder import open_deliverable_folder
+
+    payload = await request.json()
+    try:
+        opened = await asyncio.to_thread(open_deliverable_folder, payload.get("folder"))
+    except FinalizeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:  # non-Windows
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except OSError as exc:  # Explorer refused to launch
+        raise HTTPException(status_code=409, detail=f"could not open the folder: {exc}") from exc
+    return {"opened": True, "folder": opened, "raw_private_data_returned": False}
 
 
 @app.post("/api/review/project")

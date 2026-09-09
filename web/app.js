@@ -377,8 +377,13 @@ function renderProjectTree(uiState) {
   }
 
   state.pdfCoilPages.forEach((page, index) => {
-    const pageButton = document.createElement("button");
     const reviewed = state.reviewedCoils.has(index);
+    // A row, not a bare button: the approve control has to sit BESIDE the tag, and a
+    // <button> inside a <button> is invalid HTML that browsers refuse to nest.
+    const row = document.createElement("div");
+    row.className = "tree-row";
+
+    const pageButton = document.createElement("button");
     pageButton.className = `tree-item child ${index === state.activePdfCoilPageIndex ? "active" : ""}`;
     pageButton.type = "button";
     pageButton.dataset.coilPageIndex = String(index);
@@ -389,8 +394,48 @@ function renderProjectTree(uiState) {
     pageButton.addEventListener("click", () => {
       selectPdfCoilPage(index);
     });
-    elements.projectTree.append(pageButton);
+
+    // Approve this coil's review from the sidebar, without leaving the coil John is
+    // looking at. Deliberately a TOGGLE: the footer button can only ever mark, so a
+    // mis-click had no undo and the quote gate stayed open on an unintended approval.
+    const approve = document.createElement("button");
+    approve.type = "button";
+    approve.className = `tree-approve${reviewed ? " is-reviewed" : ""}`;
+    approve.dataset.coilPageIndex = String(index);
+    approve.textContent = reviewed ? "✓" : "○";
+    const tag = page.tag || `Coil ${index + 1}`;
+    approve.title = reviewed
+      ? `${tag} reviewed — click to undo`
+      : `Approve the review for ${tag}`;
+    approve.setAttribute("aria-pressed", reviewed ? "true" : "false");
+    approve.setAttribute("aria-label", approve.title);
+    approve.addEventListener("click", (event) => {
+      // Without this the row's own click also fires and yanks John to another coil.
+      event.stopPropagation();
+      toggleCoilReviewed(index);
+    });
+
+    row.append(pageButton, approve);
+    elements.projectTree.append(row);
   });
+}
+
+// Approve/un-approve ANY coil from the sidebar. Unlike markActiveCoilReviewed it never
+// navigates or advances — John is approving from the side tab, so pulling him to a
+// different coil would lose his place. It refreshes the footer nav too, so the two
+// controls can never disagree about the active coil's state.
+function toggleCoilReviewed(index) {
+  if (index < 0 || index >= state.pdfCoilPages.length) {
+    return;
+  }
+  if (state.reviewedCoils.has(index)) {
+    state.reviewedCoils.delete(index);
+  } else {
+    state.reviewedCoils.add(index);
+  }
+  renderProjectTree(state.ui);
+  renderCoilReviewNav();
+  updateQuoteGate();
 }
 
 function selectPdfCoilPage(index) {
@@ -4868,6 +4913,10 @@ async function fileDeliverable({ skipDraft = false, overwrite = false } = {}) {
     // Same manual fills the checklist panel was filled with, so the .xlsx filed with the
     // order is the override-bearing one (and reuses its cache entry — no second Excel run).
     checklist_overrides: collectChecklistOverrides(),
+    // The cover page the analyze-time fill used. It is part of the server's checklist
+    // cache key, so omitting it made every hand-selected cover page miss the cache and
+    // re-derive the coils without the hint — which is how the .xlsx went missing.
+    cover_page: elements.pdfCoverPageInput?.value.trim() || null,
     skip_draft: skipDraft,
     overwrite,
   };
@@ -4913,32 +4962,91 @@ function renderDeliverableResult(res, { skipDraft }) {
     });
     return;
   }
-  const files = (res.files_written || [])
-    .map((p) => `<span class="quote-package-coil">${escapeHtml(p)}</span>`)
-    .join("<br>");
+  // Per-document log: one line per document with an explicit ✓ / ⚠, so a document that
+  // did NOT travel is as visible as the ones that did. Before this, a missing checklist
+  // showed only as the absence of a line under a bold "Filed to …" header.
+  const files = (res.documents || []).length
+    ? res.documents.map(renderDeliverableDocument).join("<br>")
+    : (res.files_written || [])
+        .map((p) => `<span class="quote-package-coil">${escapeHtml(p)}</span>`)
+        .join("<br>");
   // Only the non-"moved" ones matter: a file left behind in Downloads is the one thing
-  // John would otherwise discover weeks later as a stale duplicate.
-  const leftBehind = (res.downloads_cleanup || [])
-    .filter((entry) => entry.status !== "moved")
-    .map(
-      (entry) =>
-        `<span class="quote-package-warning">⚠ Downloads: ${escapeHtml(entry.name)} — ${escapeHtml(entry.status)}</span>`
-    )
-    .join("<br>");
+  // John would otherwise discover weeks later as a stale duplicate. Suppressed when the
+  // per-document log is present — it already states each document's Downloads outcome.
+  const leftBehind = (res.documents || []).length
+    ? ""
+    : (res.downloads_cleanup || [])
+        .filter((entry) => entry.status !== "moved")
+        .map(
+          (entry) =>
+            `<span class="quote-package-warning">⚠ Downloads: ${escapeHtml(entry.name)} — ${escapeHtml(entry.status)}</span>`
+        )
+        .join("<br>");
   const draft = skipDraft
     ? ""
     : res.draft_opened
       ? `<br><span class="quote-package-coil">Outlook draft opened — review &amp; send: <strong>${escapeHtml(res.subject)}</strong></span>`
       : `<br><span class="quote-package-warning">⚠ Draft not opened: ${escapeHtml(res.draft_status || "unknown")}</span>`;
+  // The per-document log already carries the checklist's own line and reason; keep this
+  // as the fallback for a server that predates `documents`.
   const chk =
-    res.checklist_status && res.checklist_status !== "ok"
+    !(res.documents || []).length && res.checklist_status && res.checklist_status !== "ok"
       ? `<br><span class="quote-package-warning">⚠ Checklist: ${escapeHtml(res.checklist_status)}</span>`
       : "";
+  const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const filedCount = (res.documents || []).filter((d) => d.filed).length;
+  const head = (res.documents || []).length
+    ? `<strong>Filed ${filedCount}/${res.documents.length} to</strong> ${escapeHtml(res.folder)} <span class="quote-package-coil">· ${escapeHtml(stamp)}</span>`
+    : `<strong>Filed to</strong> ${escapeHtml(res.folder)}`;
   summary.innerHTML =
-    `<strong>Filed to</strong> ${escapeHtml(res.folder)}<br>${files}`
+    `${head}<br>${files}`
     + (leftBehind ? `<br>${leftBehind}` : "")
     + draft
-    + chk;
+    + chk
+    + `<br><button id="deliverable-open-folder" type="button">Open the DirectCoil folder</button>`;
+  wireOpenFolderButton(summary, res.folder);
+}
+
+// One log line per document. `filed` is the single source of truth for the icon — it is
+// computed server-side from what actually landed in `files_written`, not from a status
+// string that could drift from the filing outcome.
+function renderDeliverableDocument(doc) {
+  const label = { quote: "Quote", revised: "Revised", checklist: "Checklist" }[doc.kind]
+    || doc.kind;
+  const name = doc.name ? escapeHtml(doc.name) : "(not generated)";
+  if (!doc.filed) {
+    const why = doc.detail ? ` — ${escapeHtml(doc.detail)}` : " — not filed";
+    return `<span class="quote-package-warning">⚠ ${escapeHtml(label)}: ${name}${why}</span>`;
+  }
+  const already = doc.state === "already_filed" ? " (already there)" : "";
+  // A document left behind in Downloads is filed but not cleaned up — say both.
+  const left =
+    doc.downloads && doc.downloads !== "moved"
+      ? ` <span class="quote-package-warning">⚠ Downloads: ${escapeHtml(doc.downloads)}</span>`
+      : "";
+  return `<span class="quote-package-coil">✓ ${escapeHtml(label)}: ${name}${escapeHtml(already)}</span>${left}`;
+}
+
+// Inline confirmation, matching the Overwrite/Cancel pair above: never confirm()/alert(),
+// which blocks the page (and any Claude-in-Chrome session driving it).
+function wireOpenFolderButton(summary, folder) {
+  document.querySelector("#deliverable-open-folder")?.addEventListener("click", async () => {
+    try {
+      await requestJson("/api/deliverable/open-folder", {
+        method: "POST",
+        body: JSON.stringify({ folder }),
+      });
+      summary.insertAdjacentHTML(
+        "beforeend",
+        `<br><span class="quote-package-coil">✓ Opened ${escapeHtml(folder)}</span>`
+      );
+    } catch (error) {
+      summary.insertAdjacentHTML(
+        "beforeend",
+        `<br><span class="quote-package-warning">⚠ Could not open the folder: ${escapeHtml(error.message || String(error))}</span>`
+      );
+    }
+  });
 }
 
 document.querySelector("#finalize-deliverable")?.addEventListener("click", () => {

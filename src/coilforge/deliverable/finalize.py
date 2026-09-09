@@ -301,7 +301,19 @@ def commit_placements(
             if placement.state != ALREADY_FILED:
                 # copy+unlink rather than shutil.move: it overwrites cleanly and
                 # works across volumes (Downloads and OneDrive need not share one).
-                shutil.copyfile(src, placement.dest)
+                try:
+                    shutil.copyfile(src, placement.dest)
+                except OSError as exc:
+                    # This loop has no rollback and the path-payload documents come
+                    # last, so a bare OSError here surfaces as a 500 AFTER the earlier
+                    # documents are already on disk -- a half-filed folder with an
+                    # unnamed cause. Name the file and the reason instead. A long
+                    # destination (Windows MAX_PATH) and a source locked by Excel both
+                    # land here.
+                    raise FinalizeError(
+                        f"could not file '{placement.filename}' into "
+                        f"{placement.dest.parent.name}: {exc}"
+                    ) from exc
             if src.exists():
                 try:
                     if not src.samefile(placement.dest):
