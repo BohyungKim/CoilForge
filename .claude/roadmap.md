@@ -1090,6 +1090,9 @@
   중첩 불가 → `div.tree-row`로 감싸 형제 배치, `stopPropagation()`으로 행 클릭 분리, **이동하지 않는다**
   (승인하다 다른 코일로 끌려가면 자리를 잃는다). footer 버튼과 달리 **토글** — 종전엔 취소가 불가능해
   오클릭이 quote 게이트를 열어둔 채 남았다.
+  ✅ **John 눈 검증 통과 (2026-09-09)**: "왼쪽 부분에 리뷰 승인 하는 부분은 보기 좋아. 승인할게."
+  — 사이드바 승인 버튼만 승인된 것이고, **파일링 로그 / 폴더 열기 버튼은 아직 미검증**(서버 재시작
+  전이라 옛 프로세스가 물고 있다) → TR-12로 분리.
   **1622 green / 0 red**(신규 10), 별도 포트 8012로 보안 게이트 라이브 확인(범위 밖·`..` 트래버설·빈 경로·
   없는 폴더 전부 400). CSS는 정의된 토큰만(`--sidebar-muted`/`--sidebar-active-em`/`--status-ready`),
   `var(--surface|--text)` 가드 clean.
@@ -1099,6 +1102,14 @@
   🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
+- [ ] **[TR-12] Deliverable 파일링 로그 + 폴더 열기 버튼 눈확인 (John)** — 0779c46의 절반.
+  사이드바 승인 버튼은 같은 날 승인됐으나 이 둘은 **서버 재시작 전이라 확인 불가**였다
+  (`run_server.bat`에 `--reload` 없음 + `pdfCoilPages`는 브라우저 캐시 → 재시작 후 **재분석 필수**).
+  절차: 재시작 → 제출물 분석 → 전 코일 리뷰 → Build quote package → 확인 3가지:
+  ① 상태창에 문서 **3줄** 로그(`✓ Quote / ✓ Revised / ✓ Checklist`)와 `Filed 3/3` + 시각
+  ② "Open the DirectCoil folder" 버튼이 실제로 해당 폴더를 연다
+  ③ `DirectCoil` 폴더에 `.xlsx` 포함 **3개** 파일, Downloads에 잔존물 없음.
+  누락이 재현되면 이제 로그가 **어느 분기에서 빠졌는지 이름으로** 알려준다(= 재현 조건 확정 수단).
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
   drawing parameters" 체크 → CD 편집(예 3.75→9.5)+이유 → "Update drawing" → **도면 인쇄 CD가 9.5로 갱신 +
