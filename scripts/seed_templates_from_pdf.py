@@ -29,8 +29,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Dimension callout labels (longest first so HDx1 wins over HD). The regex sorts
 # by length, so list order here is not significant.
-# "X" (uppercase, single char) is the tube-projection callout; it is case-
-# sensitive so it never matches the lowercase "x" in tube specs (e.g.
+# "X" (uppercase, single char) is the drawing's X column. What it MEASURES is still open:
+# the working reading is a header-stack depth (h+1)*D + (h-1)*1.5 (same shape as R-073's
+# header-bank term), but a 328-page measurement of real HGRH drawings (2026-09-05) found it
+# explains only 52% of the pages that carry a value -- see
+# docs/wiki/concepts/x-header-stack-depth.md. What IS settled: X appears only on
+# header-connected coils (RETURN CONN "... OD Header" -> always printed, "... swt" -> always
+# blank, 328/328). The older "tube projection" label was wrong either way.
+# It is case-sensitive so it never matches the lowercase "x" in tube specs (e.g.
 # "0.375 x 0.016"). Added 2026-06-23 (John) so "1.13 X" redacts to {{slot.X}}.
 _DIM_LABELS = [
     "HDx1", "HDx3", "HDx5", "HD2", "HD4", "HD6", "SL2", "SL4", "SL6", "OAL",
@@ -45,8 +51,25 @@ _DIM_LABELS = [
 ]
 # Bare drawing-area callout label -> the parity-numbered first-header slot it means.
 _BARE_CALLOUT_SLOT = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2"}
+# The value group accepts a LEADING MINUS. Without it `-0.25 S1` did not match, so the
+# callout was never redacted even though `S1` is in _DIM_LABELS above -- and the seed
+# coil's own -0.25 stayed baked into coilmaster_hgrh_{lh,rh}_header2, printed on every
+# coil that rendered through the bucket while the panel beside it said 3.25 (John, 3095
+# Harrison, 2026-08-30). A negative supply spacing is a REAL CoilMaster value, not a
+# parse artefact: the Nova/Ventum H `S = CD - ((n+2)D + (n-1)1.5)` branch genuinely
+# yields it and reproduces the seeded references exactly.
+#
+# NOT fixed here, because both need a decision this script cannot make on its own:
+#   * the ODD supply SLs (SL1/SL3/SL5/SL7) and HD1 are absent from _DIM_LABELS, so those
+#     callouts are still baked. `SL1` cannot simply be added: on an HGRH sheet it means
+#     `slot.SL1` (the supply stub position) but on a water sheet `label_authority`
+#     rewrites SL1 -> SL2, so the right slot depends on the coil category, which this
+#     matcher does not see.
+#   * re-seeding is NOT the way to apply either fix to the CURRENT templates. They have
+#     diverged from this script (the coilforge-coating-note anchor, among other post-seed
+#     work, is not emitted here), so `build-one` on a seeded bucket silently discards it.
 _CALLOUT_RE = re.compile(
-    r"^([\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
+    r"^(-?[\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
 )
 # Title-block summary column header -> slot id (drawing-area value reused).
 _TB_COLUMN_SLOT = {
@@ -172,6 +195,20 @@ def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
             if label == "X":
                 # X is a fixed (non-variable) dimension no parameter drives; drop
                 # the callout rather than slot it (would render blank). John 2026-06-27.
+                #
+                # WARNING (2026-09-02): this branch DELETES the callout, so re-seeding an
+                # already-seeded HGRH bucket silently removes its X and
+                # tests/test_template_hardcoded_dims.py then fails the `known - found`
+                # direction. Diff a scratch regen before letting it land (see the
+                # committed-vs-seeder divergence note in CLAUDE.md).
+                #
+                # The premise -- "no parameter drives it" -- is unproven either way. A
+                # 328-page measurement of real HGRH drawings (2026-09-05) showed X IS driven
+                # by something (it varies between coils identical in every other title-block
+                # dimension), but the working formula (h+1)*D + (h-1)*1.5 explains only 52%
+                # of the pages that carry a value, so no rule can be written yet. If a rule
+                # ever lands, this branch must flip to slotting X.
+                # docs/wiki/concepts/x-header-stack-depth.md
                 return ""
             slot = _BARE_CALLOUT_SLOT.get(label, f"slot.{label}")
             used.add(slot)
@@ -579,7 +616,10 @@ VPLUS_BUCKETS: list[tuple] = [
     ("coilmaster_vplus_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
      "Case/feed/vplus_dx_rh_header1/2798_Centra_Reno.pdf", "VPLUS-2798-CENTRA-RENO", 1),
     ("coilmaster_vplus_dx_lh_header1", "dx", "DX", "LH", "Header 1", None,
-     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 2),
+     # p2 (CDXC-1) is NOT a Ventum+ coil -- TF/BF 0.63, SL 8, I 3, nozzle-up distributor;
+     # John caught the Down-orientation on the Omnia 3097 drawing (2026-08-26). p5 (CDXC-4)
+     # is the real Ventum+ LH 1-distributor page (TF/BF 1.00, SL 10, I 12, R-032 UP).
+     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 5),
     ("coilmaster_vplus_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
      "Case/feed/vplus_dx_lh_header2/2760_Revere.pdf", "VPLUS-2760-REVERE", 3),
     ("coilmaster_vplus_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
@@ -587,7 +627,9 @@ VPLUS_BUCKETS: list[tuple] = [
     ("coilmaster_vplus_dx_rh_header2", "dx", "DX", "RH", "Header 2", None,
      "Case/feed/vplus_dx_rh_header2/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 1),
     ("coilmaster_vplus_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
-     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 6),
+     # p6 (RHHGRC-1) pairs with the non-Ventum+ CDXC-1 above (TF/BF 0.63); p7 (RHHGRC-2)
+     # is the Ventum+ one (TF/BF 1.00, SL 10, I 2.0 -- same pattern as Hoffman/Congress).
+     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 7),
     ("coilmaster_vplus_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
      "Case/feed/vplus_hgrh_rh_header1/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 2),
     ("coilmaster_vplus_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,

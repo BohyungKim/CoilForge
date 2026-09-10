@@ -30,6 +30,7 @@ from coilforge.schemas.header_prepopulate import (
     HeaderPrepopulateResponse,
     ProductFamily,
     TerraVariant,
+    VENTUM_PLUS_CLASS,
 )
 
 _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules.yaml"
@@ -157,7 +158,7 @@ def _hgrh_return_spacing(
     all other families use the running-edge formula Rn = n*D + (n-1)*1.5. At n=1
     both reduce to D, so a single-connection header is identical either way.
     """
-    if product == ProductFamily.VENTUM_PLUS:
+    if product in VENTUM_PLUS_CLASS:
         return [conn_size for _ in range(1, n_conn + 1)]
     return [n * conn_size + (n - 1) * 1.5 for n in range(1, n_conn + 1)]
 
@@ -697,7 +698,7 @@ def _hgrh_cd_multi(request) -> float | None:  # type: ignore[no-untyped-def]
     n = request.qty_conn_per_header or request.circuits
     if conn is None or n is None:
         return None
-    if request.product_type == ProductFamily.VENTUM_PLUS:
+    if request.product_type in VENTUM_PLUS_CLASS:
         return 3 * conn                                       # CHK HGRH!C27 VENTUM+
     if request.terra_variant in (TerraVariant.TERRA_H, TerraVariant.TERRA_H_C):
         return (n + 2) * conn + (n - 1) * 1.5 + 0.5           # CHK HGRH!C27 TERRA H
@@ -897,7 +898,7 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
             ),
         )
     else:
-        rid = "R-063b" if product == ProductFamily.VENTUM_PLUS else "R-063a"
+        rid = "R-063b" if product in VENTUM_PLUS_CLASS else "R-063a"
         rule = index[rid]
         place(
             "sl",

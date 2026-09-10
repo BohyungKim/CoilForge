@@ -6,6 +6,7 @@ import hashlib
 import os
 import re
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -99,6 +100,11 @@ class PdfCoilIntakeSummary(BaseModel):
     cover_page_ocr_required: bool = False
     cover_page_user_input_required: bool = False
     cover_page_review_note: str | None = None
+    # Rows/lines the coil-tag gate refused, each with its English reason. Surfaced rather
+    # than dropped in silence: a row that disappears with no explanation reads as "not in
+    # the submittal", and the whole point of the gate is to stop a NON-coil reading that
+    # way -- it must not create the same ambiguity in the other direction.
+    non_coil_rows_excluded: list[str] = Field(default_factory=list)
     # Project-level hot-gas-bypass (HGBP/ASC) option, stated as a cover line item
     # ("HGBP VALVE - DANFOSS AXV-H and hot-gas bypass stub-out on coils adder"). The
     # pages are surfaced as evidence because the flag is applied package-wide to DX
@@ -166,6 +172,10 @@ class _CoverPageDetection:
     ocr_required: bool = False
     user_page_input_required: bool = False
     review_note: str | None = None
+    # Cover rows the coil-tag gate refused, as (tag, reason). Defaults to () so the many
+    # "not detected / OCR required" construction sites -- which parsed no rows at all --
+    # stay correct without listing it. Only the sites that actually PARSE rows fill it.
+    rejected_rows: tuple[tuple[str, str], ...] = ()
 
 
 # Hot gas bypass is quoted as a project-level cover line item, never as a coil row --
@@ -190,6 +200,85 @@ _PACKAGE_HGBP_RE = re.compile(
     r"(?![\s\-]*(?:line|pipe|piping)\b)",
     re.IGNORECASE,
 )
+
+
+# Coating stated as a COVER line item (John 2026-08-05). Until now coating was read only
+# from a coil's detail block, so a package that quotes it once on the cover -- the way the
+# hot-gas-bypass adder is quoted -- read as "no coating" on every coil, which silently
+# dropped the R-080/R-081 note AND left the drawing printing whatever coating its seeded
+# template happened to carry.
+#
+# Vocabulary-anchored, never free-text: the value has to be one of the coating families the
+# company's own Coil Checklist dropdown offers, so a stray sentence cannot invent a coating
+# name. `_COATING_FAMILY_RE` keeps the submittal's own wording (e.g. "Finkote2 Epoxy Coil
+# Coating") rather than snapping it to the dropdown spelling -- normalizing here would
+# assert a specific variant the document may not have stated.
+# Each alternative ends at a KNOWN variant suffix and no further. An open-ended trailing
+# character class over-captures: the EZ drawing writes "Coil Coating: ElectroFin" with the
+# next column's label butted straight up against it, which produced the nonsense
+# instruction "ELECTROFIN EVAP TEMP COATING REQUIRED". Bounded alternatives keep the value
+# inside the company's own vocabulary instead of swallowing whatever follows.
+_COATING_FAMILY_RE = re.compile(
+    r"\b("
+    r"finkote\s*2\s*w/\s*uv\s*topcoat"
+    r"|finkote\s*(?:zx\s*\(?zpex\)?|cc|hp|zx|2)"
+    r"|finkote"
+    r"|heresite\s*(?:hydrophilic|uv)"
+    r"|heresite"
+    r"|electrofin\s*uv"
+    r"|electrofin"
+    r"|blygold\s*anti-?\s*(?:corrosive|microbial)"
+    r"|blygold"
+    r"|black\s+poly(?:\s+coated\s+fin)?"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def coating_family(text: Any) -> str | None:
+    """The coating family named inside ``text``, or None.
+
+    The long-standing ``Coil Coating: <value>`` label pattern captures to end-of-line, and
+    the EZ drawing butts the next column's label straight against the value -- so the
+    stored coating can read "ElectroFin Evap Temp 45". Harmless while nothing printed it;
+    once the drawing carries a coating INSTRUCTION the trailing words become nonsense on a
+    manufacturing note. Callers that render the coating normalize through this.
+
+    Recognition, not invention: it returns a span of the input, never a substituted
+    spelling, and None when no known family is present (the caller then keeps the raw
+    value rather than dropping a coating the document really states).
+    """
+    if text is None:
+        return None
+    match = _COATING_FAMILY_RE.search(str(text))
+    return None if match is None else _clean_line(match.group(1))
+
+
+def _package_coating(
+    pages: list[_TextPage], *, cover_page: int | None = None
+) -> str | None:
+    """The coating quoted once for the whole package, or None.
+
+    Same scan window and reasoning as :func:`_package_hgbp_pages`: the option is a cover
+    LINE ITEM, so pages BEFORE the cover -- the consulting engineer's spec sections, which
+    routinely discuss coatings in the abstract -- cannot be quoting it and are skipped.
+    That exclusion is what makes a document-wide scan safe here; without it a spec
+    paragraph mentioning "epoxy coating" would coat every coil in the package.
+
+    Callers apply it ONLY to coils that stated no coating of their own, and never to water
+    coils (a water coil is never coated -- see `_drop_coating_from_water_coil`).
+    """
+    for page in sorted(pages, key=lambda p: p.page_number):
+        if cover_page is not None and page.page_number < cover_page:
+            continue
+        for raw_line in (page.text or "").splitlines():
+            line = _clean_line(raw_line)
+            if not line or "coat" not in line.lower():
+                continue
+            match = _COATING_FAMILY_RE.search(line)
+            if match:
+                return _clean_line(match.group(1))
+    return None
 
 
 def _package_hgbp_pages(
@@ -237,6 +326,10 @@ class _FieldPattern:
     source_key: str
     labels: tuple[str, ...]
     value_pattern: str = r"(?P<value>[^\n\r]+?)"
+    # Optional post-match acceptance test. Enforced once in _match_field_value, so a
+    # pattern's rule holds for EVERY loop over _FIELD_PATTERNS (there are three) and for
+    # any added later -- rather than being re-implemented per call site and missed.
+    validator: Callable[[str], bool] | None = None
 
 
 # These deterministic rules intentionally mirror the safe portions of the POs
@@ -356,18 +449,69 @@ def drain_pan_partner_tag(tag: str, candidate_tags: list[str]) -> str | None:
 
 # Accessory line items that must never be detected as coils, even when their
 # description mentions a coil keyword (e.g. an electronic expansion valve kit
-# tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)"). Tag-prefix signal +
-# item-token signal; both are checked before the coil-keyword fallthrough.
+# tagged "EKEXV-CDXC-1" with item "EKEXV Valve (DX Coil)").
+#
+# TWO signals, answering different questions -- neither subsumes the other:
+#   * STRUCTURAL (``is_coil_tag``): is this a coil tag at all? Catches the compound
+#     accessory tag whatever its spelling, and survives ``_cover_item_from_text``
+#     canonicalizing "EKEXV Valve (DX Coil)" down to "DX Coil" before anyone reads it.
+#   * ITEM TOKEN (below): does a structurally-VALID tag's line item name an accessory?
+#     The only thing that catches a bare "CDXC-1" row whose item reads "EEV Kit".
+# ``_NON_COIL_TAG_PREFIXES`` is retained as documentation of the observed spellings; the
+# structural rule is what actually rejects them (and their unlisted variants).
 _NON_COIL_TAG_PREFIXES = {"EKEXV", "EEV", "EXV"}
 _NON_COIL_ITEM_TOKENS = ("valve", "ekexv", "eev", "expansionvalve")
+
+
+def is_coil_tag(tag: str) -> bool:
+    """True only when ``tag`` is EXACTLY ``<coil-prefix>-<seq>`` (``CDXC-1``, ``RHHGRH-2``).
+
+    Delegates to ``coil_category_of_tag`` so "this names a coil" has ONE definition:
+    adding a prefix to ``_COIL_TYPE_BY_PREFIX`` then propagates here, to
+    ``coil_tag_aliases`` and to ``drain_pan_partner_tag`` together, instead of to a
+    parallel denylist someone has to remember.
+
+    A compound tag (``EKEXV-CDXC-1``) is a qualifier PREPENDED to a coil tag, and the
+    anchor rejects it structurally -- so unlisted spellings need no entry anywhere.
+    That is not hypothetical: this codebase names the kit ``EKEXVA{n}U``
+    (``ambient/package.py``), so the exact ``EKEXV`` spelling was never the only one.
+    """
+    return coil_category_of_tag(_normalize_tag(tag)) is not None
+
+
+def coil_tag_rejection_reason(tag: str, item: str = "") -> str | None:
+    """``None`` when the row IS a coil; otherwise the English reason it was excluded.
+
+    Accepts a cover TAG CELL, which may name more than one coil ("CDXC-1, CDXC-2" with
+    qty 2 -- ``_expand_cover_tags`` splits those into one row each downstream). The cell
+    is a coil row when EVERY member is a coil tag; one accessory member is enough to
+    reject, because a mixed cell is not a thing a cover schedule writes.
+
+    Callers surface this rather than dropping the row silently. A coil that disappears
+    without explanation reads to the engineer as "absent from the submittal" -- which is
+    the very failure a too-eager filter would cause, so the filter has to say why.
+    """
+    normalized_tag = _normalize_tag(tag)
+    members = [part for part in str(tag or "").split(",") if _normalize_tag(part)]
+    if not members or not all(is_coil_tag(part) for part in members):
+        return (
+            f"'{normalized_tag or tag}' is not a coil tag - a coil tag is "
+            f"<prefix>-<number> with prefix in {'/'.join(_COIL_TAG_PREFIXES)}. "
+            "Read as an accessory or unit line, not a coil."
+        )
+    normalized_item = _normalize_header_token(item)
+    if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
+        return (
+            f"'{normalized_tag}' item text names an accessory "
+            f"({_clean_value(item)}), not a coil."
+        )
+    return None
+
+
 _UNIT_PREFIXES = (
     r"(?:ERV|DOAS|AHU|RTU|MAU|FCU|WSHP|TV|TH|NV|NH|VH|VV|PU|"
     + "|".join(_COIL_TAG_PREFIXES)
     + r")"
-)
-_RE_COIL_TAG_TOKEN = re.compile(
-    rf"\b(?P<prefix>{'|'.join(_COIL_TAG_PREFIXES)})-(?P<sequence>\d+)\b",
-    re.IGNORECASE,
 )
 _RE_UNIT_TAG_ANCHOR = re.compile(
     r"(?:Unit\s+Tag|Coil\s+Tag|Tag)\s*[:#]?\s*(?P<value>[A-Z][A-Z0-9][\w\-\s]*\d+)",
@@ -402,7 +546,10 @@ _DETAIL_SECTION_STOP_PATTERN = re.compile(
 
 
 _FIELD_PATTERNS: tuple[_FieldPattern, ...] = (
-    _FieldPattern("COIL_TAG", ("Coil Unit Tag", "Unit Tag", "Coil Tag", "Tag"), r"(?P<value>[A-Z][A-Z0-9][\w\-\s]*\d+)"),
+    # The value pattern is loose by design (it must survive "Coil Unit Tag: CDXC - 1"),
+    # which also let "Unit Tag: EKEXV-CDXC-1" through. The validator, not a tighter
+    # regex, is what decides whether the captured token names a coil.
+    _FieldPattern("COIL_TAG", ("Coil Unit Tag", "Unit Tag", "Coil Tag", "Tag"), r"(?P<value>[A-Z][A-Z0-9][\w\-\s]*\d+)", validator=is_coil_tag),
     _FieldPattern("COIL_QUANTITY", ("Coil Quantity", "Quantity", "Qty"), r"(?P<value>\d+)"),
     _FieldPattern("HANDING", ("Handing", "Coil Hand", "Hand"), r"(?P<value>Left|Right|L|R)\b"),
     _FieldPattern("PRODUCT_TYPE", ("Product Type", "Coil Type"), r"(?P<value>DX|CHW|HW|CW)\b"),
@@ -642,7 +789,16 @@ def extract_coil_candidate_from_pdf_bytes(
                     "signature was not detected, so extracted label/value candidates require review."
                 ),
             )
-    lines = extract_coil_lines_from_pdf_text(pages, cover_detection=cover_detection)
+    line_rejections: list[str] = []
+    lines = extract_coil_lines_from_pdf_text(
+        pages, cover_detection=cover_detection, rejections=line_rejections
+    )
+    # Cover-row exclusions first (that is the schedule the engineer reads), then the
+    # free-text ones. Both are reported: the cover gate and the line gate can each fire
+    # on a submittal the other never sees.
+    non_coil_excluded = [
+        f"{tag}: {reason}" for tag, reason in cover_detection.rejected_rows
+    ] + line_rejections
     candidate = extract_submittal_candidate_from_structured(
         lines,
         source_id=source_id,
@@ -669,6 +825,7 @@ def extract_coil_candidate_from_pdf_bytes(
     # Read after both OCR passes have rebuilt `pages`, so the scan covers every cover
     # detection tier -- including the two that never look at page text themselves.
     hgbp_pages = _package_hgbp_pages(pages, cover_page=cover_detection.page_number)
+    package_coating = _package_coating(pages, cover_page=cover_detection.page_number)
     cover_candidates = [
         _candidate_from_cover_row(
             row,
@@ -679,6 +836,7 @@ def extract_coil_candidate_from_pdf_bytes(
                 *cover_detail_lines.get(row.tag, ()),
             ),
             package_hgbp_pages=hgbp_pages,
+            package_coating=package_coating,
         )
         for index, row in enumerate(cover_detection.rows, start=1)
     ]
@@ -733,6 +891,7 @@ def extract_coil_candidate_from_pdf_bytes(
         cover_page_ocr_required=cover_detection.ocr_required,
         cover_page_user_input_required=cover_detection.user_page_input_required,
         cover_page_review_note=cover_detection.review_note,
+        non_coil_rows_excluded=non_coil_excluded,
         cover_page_hgbp_detected=bool(hgbp_pages),
         cover_page_hgbp_pages=list(hgbp_pages),
         reused_rule_sources=[
@@ -1348,10 +1507,35 @@ def detect_cover_page_from_pdf_pages(
     )
 
 
+def _accept_line_tag(
+    tag_text: str,
+    line: str,
+    page: _TextPage,
+    line_number: int,
+    rejections: list[str] | None,
+) -> bool:
+    """Gate a tag captured from a free text line, recording the reason when it fails.
+
+    The whole ``line`` plays the cover row's "item" column -- see the call sites. Reasons
+    are page/line located in the same shape ``_add_line`` uses for evidence, and
+    de-duplicated: the three regexes overlap, so one accessory line would otherwise be
+    reported up to three times.
+    """
+    rejection = coil_tag_rejection_reason(tag_text, line)
+    if rejection is None:
+        return True
+    if rejections is not None:
+        located = f"pdf-page-{page.page_number}-line-{line_number}; {rejection}"
+        if located not in rejections:
+            rejections.append(located)
+    return False
+
+
 def extract_coil_lines_from_pdf_text(
     pages: list[_TextPage],
     *,
     cover_detection: _CoverPageDetection | None = None,
+    rejections: list[str] | None = None,
 ) -> list[SanitizedSubmittalLine]:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = 1
@@ -1366,26 +1550,52 @@ def extract_coil_lines_from_pdf_text(
             if not normalized_line:
                 continue
 
+            # Every path below that can emit a COIL_TAG is gated. Each of the three
+            # regexes is deliberately permissive about shape -- _RE_QTY_TAG_ROW even has
+            # explicit compound-tag support ((?:[\w]+-)*) so "1 ERV-CDXC-1 ..." captures
+            # whole -- and none of them consulted the accessory filter, which lived only
+            # in _is_cover_coil_row on the cover path.
+            #
+            # The WHOLE LINE stands in for the cover row's "item" column, and it has to:
+            # an accessory line NAMES the coil it serves ("2 CDXC-1 EEV Kit EKEXVA72U"),
+            # so the tag alone is structurally perfect and only the surrounding text says
+            # this is a valve. The structural rule and the item-token rule each catch a
+            # case the other cannot -- which is why coil_tag_rejection_reason keeps both.
             qty_tag = _RE_QTY_TAG_ROW.search(normalized_line)
-            if qty_tag:
+            if qty_tag and _accept_line_tag(
+                qty_tag.group("tag"), normalized_line, page, line_number, rejections
+            ):
+                # The quantity is gated WITH the tag on purpose: it belongs to this row,
+                # so a row that is not a coil has no coil quantity to contribute either.
                 order = _add_line(extracted, "COIL_QUANTITY", qty_tag.group("qty"), order, page, line_number, "POs-style Qty/Tag row")
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(qty_tag.group("tag")), order, page, line_number, "POs-style Qty/Tag row")
 
             component = _RE_COMPONENT_COIL.search(normalized_line)
-            if component:
+            if component and _accept_line_tag(
+                component.group("tag"), normalized_line, page, line_number, rejections
+            ):
                 coil_tag = _normalize_tag(component.group("tag"))
                 existing_tag = extracted.get(normalize_source_key("COIL_TAG"))
                 # A coil listed as a component (e.g. a preheat coil beneath its parent
                 # air-handling unit) must win over a unit tag captured earlier by the
                 # generic Qty/Tag row rule; otherwise the unit (ERV/AHU/...) shadows the
                 # actual coil. Only override when no coil tag has been captured yet.
+                #
+                # _set_line OVERWRITES, so this is the one path that can replace an
+                # already-captured tag -- which is why the gate matters most here: an
+                # accessory line reading "2 CDXC-1 EEV Kit ..." used to manufacture a
+                # phantom coil out of the tag its own description was qualifying.
                 if existing_tag is None or not _tag_prefix_is_coil(existing_tag.source_value):
                     reason = "POs-style coil component row (coil tag prioritized over unit tag)"
                     order = _set_line(extracted, "COIL_QUANTITY", component.group("qty"), order, page, line_number, reason)
                     order = _set_line(extracted, "COIL_TAG", coil_tag, order, page, line_number, reason)
 
             anchor = _RE_UNIT_TAG_ANCHOR.search(normalized_line)
-            if anchor:
+            if anchor and _accept_line_tag(
+                anchor.group("value"), normalized_line, page, line_number, rejections
+            ):
+                # "Unit Tag: EKEXV-CDXC-1" reached here with no filter of any kind and
+                # became the candidate's tag outright (reproduced 2026-08-06).
                 order = _add_line(extracted, "COIL_TAG", _normalize_tag(anchor.group("value")), order, page, line_number, "POs-style Unit Tag anchor")
 
             ez_dx_model = _RE_EZ_DX_MODEL_NUMBER.search(normalized_line)
@@ -1444,20 +1654,27 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
         header_idx, header_map = _find_cover_header_row(table)
         if header_idx is None or header_map is None:
             continue
-        rows = tuple(_extract_cover_rows_from_table(page, table, header_idx, header_map))
+        rejected: list[tuple[str, str]] = []
+        rows = tuple(
+            _extract_cover_rows_from_table(page, table, header_idx, header_map, rejected)
+        )
         return _CoverPageDetection(
             detected=True,
             page_number=page.page_number,
             detection_method="pdfplumber_table_header",
             detected_headers=COVER_PAGE_REQUIRED_HEADERS,
             rows=rows,
+            rejected_rows=tuple(rejected),
             review_note="Cover page detected by required Qty/Tag/Item/Model/Voltage/Controls/Installation/Duct/Handing table headers.",
         )
     for table in page.tables:
         header_idx, header_map = _find_cover_coil_table(table)
         if header_idx is None or header_map is None:
             continue
-        rows = tuple(_extract_cover_rows_from_table(page, table, header_idx, header_map))
+        rejected = []
+        rows = tuple(
+            _extract_cover_rows_from_table(page, table, header_idx, header_map, rejected)
+        )
         if not rows:
             continue
         return _CoverPageDetection(
@@ -1466,6 +1683,7 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
             detection_method="pdfplumber_table_positional_no_header",
             detected_headers=(),
             rows=rows,
+            rejected_rows=tuple(rejected),
             review_note=(
                 "Cover coil rows detected by canonical column order in a borderless table "
                 "whose header band was dropped during extraction; the column mapping is "
@@ -1478,13 +1696,15 @@ def _detect_cover_page_from_tables(page: _TextPage) -> _CoverPageDetection:
 def _detect_cover_page_from_text(page: _TextPage) -> _CoverPageDetection:
     if not _has_cover_header_signature(page.text):
         return _CoverPageDetection(detected=False)
-    rows = tuple(_extract_cover_rows_from_text(page))
+    rejected: list[tuple[str, str]] = []
+    rows = tuple(_extract_cover_rows_from_text(page, rejected))
     return _CoverPageDetection(
         detected=True,
         page_number=page.page_number,
         detection_method="text_header_signature",
         detected_headers=COVER_PAGE_REQUIRED_HEADERS,
         rows=rows,
+        rejected_rows=tuple(rejected),
         review_note="Cover page detected by required header signature in extracted page text.",
     )
 
@@ -1528,6 +1748,7 @@ def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDete
     if not item_starts:
         return _CoverPageDetection(detected=False)
     rows: list[_CoverRow] = []
+    rejected: list[tuple[str, str]] = []
     for idx, start in enumerate(item_starts):
         end = item_starts[idx + 1] if idx + 1 < len(item_starts) else len(lines)
         tag = _normalize_tag(_dc_quote_value_after_label(lines, "Tagged", start, end))
@@ -1542,7 +1763,9 @@ def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDete
                 model_line = _clean_line(lines[j])
                 if model_line:
                     break
-        if not _is_cover_coil_row(tag, model_line):
+        rejection = coil_tag_rejection_reason(tag, model_line)
+        if rejection is not None:
+            rejected.append((tag, rejection))
             continue
         rows.extend(
             _expand_cover_row(
@@ -1564,6 +1787,7 @@ def _detect_cover_page_from_direct_coil_quote(page: _TextPage) -> _CoverPageDete
         page_number=page.page_number,
         detection_method="direct_coil_quote_numbered_items",
         rows=tuple(rows),
+        rejected_rows=tuple(rejected),
         review_note=(
             "Cover page detected as a Direct Coil quote (numbered 'Tagged:' coil items)."
         ),
@@ -1621,14 +1845,39 @@ def _extract_cover_rows_from_table(
     table: tuple[tuple[str, ...], ...],
     header_idx: int,
     header_map: dict[str, int],
+    rejected: list[tuple[str, str]] | None = None,
 ) -> list[_CoverRow]:
     rows: list[_CoverRow] = []
+    seen_tags: set[str] = set()
     for row_number, row in enumerate(table[header_idx + 1 :], start=header_idx + 2):
         qty = _extract_qty(_cell_at(row, header_map["qty"]))
         tag = _normalize_tag(_cell_at(row, header_map["tag"]))
         item = _cell_at(row, header_map["item"])
-        if not tag or not _is_cover_coil_row(tag, item):
+        if not tag:
+            # A blank tag cell is table padding, not a refused coil -- reporting it as
+            # an exclusion would bury the real ones in noise.
             continue
+        # A tag already emitted on this page, reappearing with NO Qty, is the wrapped
+        # continuation of the row above: pdfplumber splits a multi-line cell into its own
+        # table row, repeating the tag and leaving Qty blank while Item holds only the
+        # tail ("Coil)" from "... Hot Gas Reheat (HGRC Coil)"). The text path cannot
+        # produce this -- its row regex REQUIRES a leading qty -- but this path read qty
+        # and never checked it, so the fragment became a SECOND coil with a defaulted
+        # hand and no model (3179 Havtech/TWU signed record submittal, John 2026-09-02).
+        # Deliberately NOT keyed on a missing qty alone: a legitimate layout with a blank
+        # Qty cell would then lose the whole row. The repeat is what makes it a wrap.
+        if qty is None and tag in seen_tags:
+            if rejected is not None:
+                rejected.append(
+                    (tag, "wrapped continuation of the row above (tag repeated, no Qty)")
+                )
+            continue
+        rejection = coil_tag_rejection_reason(tag, item)
+        if rejection is not None:
+            if rejected is not None:
+                rejected.append((tag, rejection))
+            continue
+        seen_tags.add(tag)
         rows.extend(
             _expand_cover_row(
                 page_number=page.page_number,
@@ -1647,13 +1896,16 @@ def _extract_cover_rows_from_table(
     return rows
 
 
-def _extract_cover_rows_from_text(page: _TextPage) -> list[_CoverRow]:
+def _extract_cover_rows_from_text(
+    page: _TextPage,
+    rejected: list[tuple[str, str]] | None = None,
+) -> list[_CoverRow]:
     rows: list[_CoverRow] = []
     for line_number, line in enumerate(page.text.splitlines(), start=1):
         line = _clean_line(line)
         if not line or _has_cover_header_signature(line):
             continue
-        row = _cover_row_from_text_line(page, line_number, line)
+        row = _cover_row_from_text_line(page, line_number, line, rejected)
         if row is not None:
             rows.extend(row)
     return rows
@@ -1667,6 +1919,10 @@ def _with_continuation_cover_rows(
         return detection
 
     rows: list[_CoverRow] = list(detection.rows)
+    # Continuation-page rejections join the primary page's. This rebuild is the one place
+    # they can be lost: the dataclass is frozen, so a field omitted here silently resets
+    # to () and an accessory row on page 2+ would go back to vanishing without a reason.
+    rejected: list[tuple[str, str]] = list(detection.rejected_rows)
     seen = {(row.page_number, row.row_number, row.tag) for row in rows}
     for page in sorted(pages, key=lambda item: item.page_number):
         if page.page_number <= detection.page_number:
@@ -1680,11 +1936,15 @@ def _with_continuation_cover_rows(
         # resolve its product line + unit size. Fall back to text only when no
         # cover table is found on the page.
         page_detection = _detect_cover_page_from_tables(page)
-        continuation_rows = (
-            page_detection.rows
-            if page_detection.detected
-            else tuple(_extract_cover_rows_from_text(page))
-        )
+        if page_detection.detected:
+            continuation_rows = page_detection.rows
+            rejected.extend(page_detection.rejected_rows)
+        else:
+            page_rejected: list[tuple[str, str]] = []
+            continuation_rows = tuple(
+                _extract_cover_rows_from_text(page, page_rejected)
+            )
+            rejected.extend(page_rejected)
         if not continuation_rows:
             break
         for row in continuation_rows:
@@ -1694,7 +1954,7 @@ def _with_continuation_cover_rows(
             seen.add(key)
             rows.append(row)
 
-    if tuple(rows) == detection.rows:
+    if tuple(rows) == detection.rows and tuple(rejected) == detection.rejected_rows:
         return detection
     return _CoverPageDetection(
         detected=detection.detected,
@@ -1702,6 +1962,7 @@ def _with_continuation_cover_rows(
         detection_method=detection.detection_method,
         detected_headers=detection.detected_headers,
         rows=tuple(rows),
+        rejected_rows=tuple(rejected),
         ocr_required=detection.ocr_required,
         user_page_input_required=detection.user_page_input_required,
         review_note=(
@@ -1733,6 +1994,7 @@ def _cover_row_from_text_line(
     page: _TextPage,
     line_number: int,
     line: str,
+    rejected: list[tuple[str, str]] | None = None,
 ) -> list[_CoverRow] | None:
     match = re.match(
         r"^(?P<qty>\d+)\s+(?P<tag>[A-Z0-9]+(?:\s*-\s*[A-Z0-9]+)+)\s+(?P<rest>.+)$",
@@ -1744,7 +2006,13 @@ def _cover_row_from_text_line(
     tag = _normalize_tag(match.group("tag"))
     rest = match.group("rest")
     item = _cover_item_from_text(rest)
-    if not _is_cover_coil_row(tag, item):
+    # `rest`, not `item`: _cover_item_from_text canonicalizes "EKEXV Valve (DX Coil)"
+    # down to "DX Coil", destroying the accessory tokens before the gate can read them.
+    # The table path passes its raw cell, so this is what makes the two paths agree.
+    rejection = coil_tag_rejection_reason(tag, rest)
+    if rejection is not None:
+        if rejected is not None:
+            rejected.append((tag, rejection))
         return None
     handing_match = re.search(r"\b(?P<handing>LH|RH|Left|Right|L|R)\b\s*$", rest, re.IGNORECASE)
     return _expand_cover_row(
@@ -1805,23 +2073,34 @@ _COIL_STYLE_CIRCUIT_NUM_RE = re.compile(r"(\d+)\s*[- ]?\s*Circuit", re.IGNORECAS
 _COIL_STYLE_CIRCUIT_WORDS: dict[str, int] = {
     "single": 1, "dual": 2, "double": 2, "triple": 3, "quad": 4,
 }
+# A word-stated count attaches to whichever circuiting descriptor the document uses --
+# Oxygen8 prints all four, and R-086 names two of them itself (DX "Interlaced N
+# Circuits", HGRH "Face Split N Circuits"). Project 3095 writes "Dual Face Split" /
+# "Dual Interlaced", where the count is a word and the line carries no "Circuit" at all;
+# gating the word map on the literal substring "circuit" therefore read those as no
+# count and let them fall to circuits=1, i.e. a silently single-header drawing.
+# Adjacency is required on purpose: the "Single" in "Single Row" counts rows, not
+# circuits, so a count word only counts when it sits against a descriptor.
+_COIL_STYLE_WORD_COUNT_RE = re.compile(
+    r"\b(single|dual|double|triple|quad)\b[\s-]*"
+    r"(?:face[\s-]*split|interlaced|intertwined|circuit)",
+    re.IGNORECASE,
+)
 
 
 def _circuits_from_coil_style(text: str | None) -> int | None:
     """Circuit count embedded in a 'Coil Style' value.
 
-    'Interlaced 2 Circuits' / '2-Circuit' -> 2; 'Dual Circuit' -> 2; 'Single Circuit'
-    -> 1. Returns None when no count is stated (a bare 'Intertwined'/'Interlaced' is
-    never assumed to be 2).
+    'Interlaced 2 Circuits' / '2-Circuit' -> 2; 'Dual Circuit' -> 2; 'Dual Face Split'
+    -> 2; 'Dual Interlaced' -> 2; 'Single Circuit' -> 1. Returns None when no count is
+    stated (a bare 'Intertwined'/'Interlaced'/'Face Split' is never assumed to be 2).
     """
     s = str(text or "")
     if (match := _COIL_STYLE_CIRCUIT_NUM_RE.search(s)):
         n = int(match.group(1))
         return n if 1 <= n <= 8 else None
-    if re.search(r"circuit", s, re.IGNORECASE):
-        for word, n in _COIL_STYLE_CIRCUIT_WORDS.items():
-            if re.search(rf"\b{word}\b", s, re.IGNORECASE):
-                return n
+    if (match := _COIL_STYLE_WORD_COUNT_RE.search(s)):
+        return _COIL_STYLE_CIRCUIT_WORDS[match.group(1).lower()]
     return None
 
 
@@ -1841,10 +2120,28 @@ def _candidate_from_cover_row(
     index: int,
     detail_lines: tuple[SanitizedSubmittalLine, ...] = (),
     package_hgbp_pages: tuple[int, ...] = (),
+    package_coating: str | None = None,
 ) -> SubmittalCoilCandidate:
     extracted: dict[str, SanitizedSubmittalLine] = {}
     order = _add_cover_row_lines(extracted, row, 1)
     order = _append_detail_lines(extracted, detail_lines, order)
+    # Cover-quoted coating, applied ONLY where the coil said nothing itself -- the coil's
+    # own detail block is the more specific statement and must win, which is why this runs
+    # AFTER the detail lines rather than riding in with the shared unit lines (those are
+    # prepended, and would outrank the block). Water coils are excluded outright: a water
+    # coil is never coated, so a package coating simply is not about them.
+    if (
+        package_coating
+        and normalize_source_key("COIL_COATING") not in extracted
+        and _derive_coil_format(row.tag, row.item) not in _WATER_COIL_FORMATS
+    ):
+        order = _add_default_line(
+            extracted,
+            "COIL_COATING",
+            package_coating,
+            order,
+            "Coating quoted as a cover-page line item for the package",
+        )
     # Derive the circuit count from the "Coil Style" prose when no discrete "Circuits"
     # cell was extracted (e.g. "Coil Style: Interlaced 2 Circuits"). Inferred ->
     # review-required; the explicit CIRCUITS label, when present, wins -- but only when
@@ -2052,8 +2349,40 @@ def _ordered_detail_blocks_from_page(
     return tuple(blocks)
 
 
+_RE_TAG_LIKE = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")
+
+
+def _without_embedded_non_coil_tags(text: str, known_tags: tuple[str, ...]) -> str:
+    """Blank out compound ACCESSORY tags that EMBED one of ``known_tags``.
+
+    ``_detail_page_tags`` matches by normalized substring containment -- separators are
+    stripped, so "CDXC1" is a substring of "EKEXVCDXC1" and an expansion-valve page
+    attaches itself to the coil its own tag was qualifying. A boundary check is
+    impossible after normalization, so the masking happens before it.
+
+    Narrow on purpose: a token is removed only when it is BOTH not a coil tag AND
+    contains one. That keeps the containment match's real job -- rescuing the "CDXC - 1"
+    and "CDXC1" spellings of a genuine tag -- completely intact.
+    """
+    if not known_tags:
+        return text
+
+    def _mask(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if is_coil_tag(token):
+            return token
+        normalized = _normalize_tag_search_text(token)
+        if any(_normalize_tag_search_text(tag) in normalized for tag in known_tags):
+            return " "
+        return token
+
+    return _RE_TAG_LIKE.sub(_mask, text)
+
+
 def _detail_page_tags(text: str, known_tags: tuple[str, ...]) -> tuple[str, ...]:
-    normalized_text = _normalize_tag_search_text(text)
+    normalized_text = _normalize_tag_search_text(
+        _without_embedded_non_coil_tags(text, known_tags)
+    )
     matched = tuple(
         tag for tag in known_tags if _normalize_tag_search_text(tag) in normalized_text
     )
@@ -2174,7 +2503,35 @@ def _extract_detail_lines_from_block(
                 line_number,
                 "detail page label match",
             )
+    _drop_coating_from_water_coil(extracted, coil_format)
     return tuple(extracted.values())
+
+
+# A water coil is NEVER coated (John 2026-08-05). So a coating reading on a CWC/HWC/PHWC
+# block is not that coil's coating -- it belongs to a neighbouring coil. The detail blocks
+# genuinely bleed: `_DETAIL_COATING_ANNOTATION_RE`'s own comment records a condensing block
+# whose boundary "runs on into the Backup Heating section", and the annotation is a free
+# footnote rather than a label/value pair anchored to a coil.
+#
+# Dropped at the END of extraction rather than at each reader, because COIL_COATING has
+# THREE sources here (the structured table seed, the asterisk annotation, and the
+# "Coil Coating: <value>" label pattern) and gating them one by one would leave the next
+# reader to re-open the hole. Un-formatted blocks (coil_format None) are left alone -- we
+# only suppress where the coil is KNOWN to be a water coil.
+#
+# This is a suppression, not a silent data loss: the value would have been wrong, and the
+# Direct Coil "Coil Coating" field falls back to its declared default. R-080/R-081 are
+# already DX/HGRH-only, so no drawing note depended on it.
+_WATER_COIL_FORMATS = frozenset(
+    {"heating_hot_water", "preheat_hot_water", "cooling_chilled_water"}
+)
+
+
+def _drop_coating_from_water_coil(
+    extracted: dict[str, SanitizedSubmittalLine], coil_format: str | None
+) -> None:
+    if coil_format in _WATER_COIL_FORMATS:
+        extracted.pop(normalize_source_key("COIL_COATING"), None)
 
 
 # --------------------------------------------------------------------------- #
@@ -2632,30 +2989,18 @@ def _extract_qty(raw: Any) -> int | None:
 
 
 def _is_cover_coil_row(tag: str, item: str) -> bool:
-    normalized_tag = _normalize_tag(tag)
-    tag_prefix = normalized_tag.split("-", 1)[0]
-    normalized_item = _normalize_header_token(item)
-    # Reject valves / EEV kits / accessories before the coil-keyword fallthrough so a
-    # description like "EKEXV Valve (DX Coil)" can't sneak through on the "dxcoil" token.
-    if tag_prefix in _NON_COIL_TAG_PREFIXES:
-        return False
-    if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
-        return False
-    if tag_prefix in _COIL_TAG_PREFIXES:
-        return True
-    return any(
-        token in normalized_item
-        for token in (
-            "dxccooling",
-            "coolingcoil",
-            "hgrcreheat",
-            "hgrhreheat",
-            "reheatcoil",
-            "dxcoil",
-            "hotwatercoil",
-            "chilledwatercoil",
-        )
-    )
+    """Is this cover row a coil? One question, answered by ``coil_tag_rejection_reason``.
+
+    The former coil-KEYWORD fallthrough ("the tag prefix is unknown but the item says
+    'DX Coil', so call it a coil") is deliberately gone. It was the hole the accessory
+    rows came through: ``_cover_item_from_text`` reduces "EKEXV Valve (DX Coil)" to the
+    canonical "DX Coil" BEFORE this is called, so on the text-line path the keyword
+    always matched and the item-token guard never saw the word "valve" (John 2026-08-06,
+    structural-rule ruling). Its cost is that an OCR-mangled REAL coil tag is now
+    rejected instead of rescued -- which is why every caller reports the reason rather
+    than dropping the row in silence.
+    """
+    return coil_tag_rejection_reason(tag, item) is None
 
 
 def _expand_cover_row(
@@ -2812,6 +3157,12 @@ def _match_field_value(line: str, field_pattern: _FieldPattern) -> str | None:
             continue
         value = _clean_value(match.group("value"))
         if value:
+            if field_pattern.validator is not None and not field_pattern.validator(value):
+                # The label matched but the captured token fails this pattern's own
+                # acceptance test. Keep scanning the remaining labels instead of
+                # returning: one line can carry an accessory "Unit Tag: EKEXV-CDXC-1"
+                # and a real "Coil Tag: CDXC-2", and only the second is the answer.
+                continue
             if field_pattern.source_key in {"HANDING", "HAND", "COIL_HAND"}:
                 return _normalize_handing(value)
             if field_pattern.source_key == "FIN_SURFACE":
@@ -2889,7 +3240,12 @@ def _set_line(
 
 
 def _tag_prefix_is_coil(tag: str) -> bool:
-    return _normalize_tag(tag).split("-", 1)[0] in _COIL_TAG_PREFIXES
+    """Kept as the historical name; the definition is now the structural one.
+
+    The old form took the segment before the FIRST hyphen, so ``CDXC-1-EXTRA`` and
+    ``CDXC-`` both read as coils. ``is_coil_tag`` anchors the whole tag instead.
+    """
+    return is_coil_tag(tag)
 
 
 def _normalize_tag(raw: str) -> str:

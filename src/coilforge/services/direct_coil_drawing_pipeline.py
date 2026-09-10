@@ -26,6 +26,7 @@ from coilforge.schemas.header_prepopulate import (
     HeaderPrepopulateResponse,
     ProductFamily,
     TerraVariant,
+    VENTUM_PLUS_CLASS,
 )
 from coilforge.services.distributor_slots import distributor_drawing_slots
 from coilforge.services.header_prepopulate_engine import prepopulate, round_eighth
@@ -45,6 +46,7 @@ _PRODUCT = {
     "TERRA_V": ProductFamily.TERRA_V,
     "VENTUM_H": ProductFamily.VENTUM_H,
     "VENTUM_PLUS": ProductFamily.VENTUM_PLUS,
+    "OMNIA": ProductFamily.OMNIA,
 }
 
 
@@ -257,14 +259,19 @@ _PER_HEADER_ENGINE_FIELDS: dict[str, dict[str, str]] = {
 
 
 def _hgrh_supply_s(request, cd: float, conn: float) -> float:  # type: ignore[no-untyped-def]
-    """Checklist HGRH!C46 supply S (family-branched), NON-Terra-V only.
+    """Checklist HGRH!C46 / SOP RHHGRC supply S (family-branched).
 
-    TERRA H / VENTUM+ -> the connection size directly; NOVA / VENTUM H ->
+    TERRA H / VENTUM+ -> the connection size directly; NOVA / VENTUM H / TERRA V ->
     CD - ((n+2)*conn + (n-1)*1.5), where n = qty_conn_per_header (else circuits).
+    ``n`` is the SOP's X_max = connections per header set (single connection -> 1,
+    dual -> 2), NOT the header index and NOT the header count (John 2026-09-09).
     Unlike the DX distributor S (k*CD/(circuits+1)), every odd HGRH S is the SAME
-    value (the sheet's S1=S3=S5 share one formula), so this is not k-scaled. Terra V
-    keeps its own S = CD - Rn path in the caller and never reaches here."""
-    if request.product_type == ProductFamily.VENTUM_PLUS or request.terra_variant in (
+    value (the sheet's S1=S3=S5 share one formula), so this is not k-scaled.
+
+    Terra V reaches here since 2026-09-09: the SOP's Terra V special cases for HGRH
+    are I/O and SL values only (R-046); its supply/return **spacing** special is
+    scoped to DX (R-023, "SOP 2024018 §DX-TNVH"). See the caller for the evidence."""
+    if request.product_type in VENTUM_PLUS_CLASS or request.terra_variant in (
         TerraVariant.TERRA_H,
         TerraVariant.TERRA_H_C,
     ):
@@ -399,15 +406,17 @@ def build_drawing_slots(
     if circuits:
         for k in range(1, circuits + 1):
             supply_id, return_id = 2 * k - 1, 2 * k
-            if hdr_i is not None and not (is_hgrh and is_terra_v and k > 1):
-                # Terra V HGRH: R-046 asserts Supply **1** I/O = 2.75 and its own comment
-                # says Supply 2/3/4 I/O "is NOT derivable here and stays review-required"
-                # (a software default, per the SOP). Broadcasting the Supply-1 constant to
-                # every odd header printed 2.75 on headers the SOP declines to specify —
-                # exactly the "never invent an engineering value" line. Left blank instead,
-                # with the panel naming why (drawing_param_resolver._WITHHELD_REASON...).
-                # Scoped to Terra V HGRH: every other line's supply_io comes from rules
-                # that DO cover all headers, so their broadcast is unchanged.
+            if hdr_i is not None:
+                # One supply I/O serves every supply header, all product lines.
+                #
+                # Terra V HGRH was the exception from 2026-08-04 to 2026-09-09: R-046 states
+                # Supply **1** I/O = 2.75 and the SOP adds "Supply 2,3,4 round to nearest
+                # INT", so Supply 2+ was left blank rather than broadcast — CoilForge has no
+                # EZ Coil default to round. John ruled on 2026-09-09, looking at a live
+                # Terra V Header-2 panel, that **I1 = I2 = I3**: the supply I/O is the same
+                # on every header. That is an engineering ruling that overrides the SOP's
+                # "round to nearest INT" wording for Terra V, and it is recorded as such --
+                # the value is no longer withheld, so the panel shows 2.75 on I2/I3 too.
                 slots[f"slot.I{supply_id}"] = hdr_i
             if hdr_hdx is not None:
                 slots[f"slot.HDx{supply_id}"] = hdr_hdx
@@ -435,25 +444,53 @@ def build_drawing_slots(
             elif cd is not None:
                 if (
                     is_terra_v
+                    and not is_hgrh
                     and isinstance(return_spacing, list)
                     and k <= len(return_spacing)
                 ):
-                    # Terra V DX AND HGRH: distributor/supply S = CD - Rn (SOP), where Rn is
-                    # the Terra V return spacing (R-023). Replaces the checklist even-spacing;
-                    # this branch wins for Terra V so the checklist-family HGRH S below never
-                    # applies to Terra V (guards the SOP-confirmed Terra V geometry).
-                    slots[f"slot.S{supply_id}"] = round(cd - return_spacing[k - 1], 4)
-                elif is_terra_v and is_hgrh:
-                    # Terra V HGRH past the return-spacing list has NO basis for S. Its S is
-                    # CD - Rn (SOP, the branch above) and Rn only runs to the connections-
-                    # per-header count, so this header has no Rn to subtract. Falling through
-                    # reached the generic net below and printed the DX even-spacing
-                    # k*CD/(circuits+1) on a REHEAT coil (a 6-circuit Terra V HGRH drew
-                    # S5=1.6071 … S11=3.2143). Leave it blank; the panel names why.
-                    pass
-                elif is_hgrh and not is_terra_v and conn_size is not None:
+                    # Terra V **DX**: distributor S = CD - Rn, where Rn is the Terra V return
+                    # spacing (R-023). Replaces the checklist even-spacing for the Terra V
+                    # distributor only.
+                    #
+                    # NOT HGRH (corrected John 2026-09-09). This branch used to claim "Terra V
+                    # DX AND HGRH", but R-023 is scoped `coil_type: [DX]` in its own YAML and
+                    # its evidence_ref names "SOP 2024018 **§DX-TNVH** SPECIAL CASE Terra V".
+                    # The SOP's Terra V HGRH section lists only I/O and SL values (R-046) --
+                    # it states no supply-spacing override -- so a Terra V reheat coil takes
+                    # the general RHHGRC supply formula like every other line. Widening a
+                    # DX-only rule to HGRH overshot every Terra V HGRH supply S by exactly
+                    # 2*D: 3025 Bauducco prints 1.88 and this branch produced 3.125.
+                    # Five measured Terra V references (3025 x3, 2522, plus 2733/2792/2959 on
+                    # the same profile) match the general formula on S, R and X exactly.
+                    #
+                    # Rn >= CD withholds instead of computing (John 2026-08-30). Terra V's CD
+                    # is rows-based (R-070) and so does NOT grow with the header count, while
+                    # Rn grows linearly -- so past some header the return stub has crossed the
+                    # entire casing depth and `CD - Rn` is negative. That is not a small
+                    # dimension, it is the SOP formula applied outside its premise: a real
+                    # Terra V HGRH at circuits 3-4 drew S5 = -0.75 ... S7 = -4.25. Withheld,
+                    # not clamped -- clamping would invent a number the SOP never states.
+                    # NOTE a negative S is legitimate elsewhere: the Nova/Ventum H reference
+                    # drawings really do print S1 = -0.25 / -0.63 and the engine reproduces
+                    # them exactly, so this guard is scoped to the Terra V CD - Rn branch and
+                    # keys on the basis being gone, never on the sign alone.
+                    _s = round(cd - return_spacing[k - 1], 4)
+                    if _s > 0:
+                        slots[f"slot.S{supply_id}"] = _s
+                elif is_hgrh and conn_size is not None:
                     # HGRH supply S is family-branched (checklist HGRH!C46), NOT the DX
-                    # even-spacing: TERRA H / VENTUM+ -> conn, NOVA / VENTUM H -> CD-formula.
+                    # even-spacing: TERRA H / VENTUM+ -> conn, NOVA / VENTUM H / TERRA V ->
+                    # CD-formula. Terra V reaches here since 2026-09-09 (see above): the SOP
+                    # gives it no supply-spacing override, so it shares the general formula.
+                    #
+                    # The formula is NOT k-scaled -- one supply position serves every supply
+                    # header ("Supply 1/2/3/etc. = ..." is a single SOP equation whose X_max is
+                    # the connection count, not the header index; John 2026-09-09 confirmed the
+                    # supply stub is a fixed position). That supersedes the 2026-08-30 ruling
+                    # that blanked S past the return-spacing list: that ruling rested on
+                    # S = CD - Rn growing with k, which is no longer how Terra V HGRH S is
+                    # computed. A negative S is legitimate here -- the SOP states outright
+                    # that "Supply S/R values may be negative".
                     slots[f"slot.S{supply_id}"] = _hgrh_supply_s(request, cd, conn_size)
                 elif is_dx:
                     # CHK DX!C46:C49 = ROUND(k*CD/(n+1)*8,0)/8 -- the sheet snaps the
@@ -465,23 +502,61 @@ def build_drawing_slots(
                     # Safety net for a category outside DX/HGRH/CWC/HWC (none today —
                     # water takes the connection-size branch above).
                     slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
-                # HGRH supply-side (odd) SL = stub POSITION (checklist HGRH!C58):
-                # Terra V -> 5 (SOP); single feed/circuit -> 3; else 6 + return_conn/2 - S
-                # (John 2026-06-26). The even SL (length) stays the return_sl clearance.
+                # HGRH supply-side (odd) SL = stub POSITION:
+                # Terra V -> 5 (SOP); single feed/circuit -> 6; else 6 + return_conn/2 - S.
+                # The even SL (length) stays the return_sl clearance.
                 if is_hgrh and conn_size is not None:
                     if is_terra_v:
                         # Terra V HGRH: all Supply SL = 5 (SOP), not the position formula.
                         slots[f"slot.SL{supply_id}"] = 5
                     elif (feeds if feeds is not None else circuits) == 1:
-                        # CHK HGRH!C58 single feed/circuit branch (short "Add Headers" stub).
-                        # Keyed on the SAME value the checklist's "FEEDS/CIRCUITS" cell holds
-                        # (feeds, else circuits — see checklist/mapping.py) so this matches the
-                        # sheet exactly even when the submittal states only one of the two.
-                        slots[f"slot.SL{supply_id}"] = 3
+                        # SINGLE FEED = 6, not the 3 in checklist HGRH!C58 (John 2026-08-06).
+                        #
+                        # The sheet states this dimension TWICE and disagrees with itself.
+                        # C58's dimension row computes 3; C26 (NOTES) emits an "Add Headers
+                        # & Stubouts" instruction whenever C14 = 1 -- and all THREE of its
+                        # product branches spell out "SL1=6" literally. A single-feed coil
+                        # has no supply header of its own, so the header on the drawing IS
+                        # the added one, and 6 is that header's dimension.
+                        #
+                        # Every other source agrees with the note, and only C58 dissents:
+                        #   CHK HGRH!C26   "... SupConnAngle=LAS. S1=<C46>. SL1=6. ..." x3
+                        #   R-044a         supply_sl = 6  (HGRH NOVA/VENTUM_H, MEDIUM)
+                        #   R-044c         supply_sl = 6  (HGRH VENTUM_PLUS, HIGH)
+                        #   EZC-0002 / EZC-0010 as-built notes (json_drawing_link_rules)
+                        # The engine has been emitting the right number all along -- see
+                        # test_engine_supply_sl_agrees_with_slot_layer_single_feed, which
+                        # exists so the two can never silently drift apart again.
+                        #
+                        # This diverges from the sheet on purpose; the divergence is
+                        # registered (KD-006..009), not hidden, so the checklist compare
+                        # still shows it and John's ruling is what re-labels it.
+                        #
+                        # Keyed on the SAME value the checklist's "FEEDS/CIRCUITS" cell
+                        # holds (feeds, else circuits — see checklist/mapping.py) so the
+                        # BRANCH still matches the sheet even where the value no longer
+                        # does; a submittal stating only one of the two lands identically.
+                        slots[f"slot.SL{supply_id}"] = 6
                     else:
+                        # Multi-feed keeps CHK HGRH!C58's position formula unchanged.
                         slots[f"slot.SL{supply_id}"] = round(
                             6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
                         )
+            if (
+                is_hgrh
+                and not is_terra_v
+                and (feeds if feeds is not None else circuits) == 1
+                and f"slot.SL{supply_id}" not in slots
+            ):
+                # The single-feed 6 is a CONSTANT -- it needs neither the casing depth nor
+                # the connection size. But it lived inside `elif cd is not None:` and
+                # behind `conn_size is not None`, so a coil whose CD never resolved lost
+                # SL1 entirely and silently: no value, no blocked_reason, just absent.
+                #
+                # `not in slots` makes this a strict no-op whenever the branch above
+                # already ran, so it can only ADD a value where one was missing -- it can
+                # never overwrite the position formula or Terra V's 5.
+                slots[f"slot.SL{supply_id}"] = 6
             if hdr_o is not None:
                 # Return I/O = the engine's io value, for EVERY product line including
                 # Terra V (John 2026-07-29).

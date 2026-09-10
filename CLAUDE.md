@@ -45,6 +45,13 @@ is no install step or `pyproject.toml`.
   `python scripts/seed_templates_from_pdf.py build-one <template_id>` (delete that bucket's 4
   artifacts first for a clean regen — `build_bucket` won't rewrite existing metadata/evidence
   and only merges `slot_map`).
+  ⚠️ **The committed templates have DIVERGED from the seeder** (measured 2026-08-30): a fresh
+  seed of `coilmaster_hgrh_{rh,lh}_header2` / `rh_header1` / `rh_header3` does not reproduce
+  the committed `template.svg` — the committed copies carry post-seed work the script does not
+  emit (the `id="coilforge-coating-note"` anchor among it) and the fresh output drops text the
+  committed one has. `build_bucket` writes `template.svg` **unconditionally**, so `build-one`
+  on an already-seeded bucket silently discards that work. Diff a scratch regen against the
+  committed file BEFORE letting it land, and hand-edit instead when they disagree.
 
 Runtime deps that may need installing: `python -m pip install fastapi uvicorn pyyaml pydantic`.
 PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade gracefully.
@@ -194,6 +201,14 @@ Schemas for the catalog / slot map live in `schemas/*.schema.json`.
 listed in that template's `slot_map.json` `slots[]` — not every `{{slot.*}}` in the SVG. So
 redacting a hardcoded as-built dim to a NEW slot means adding it to BOTH `template.svg` AND
 `slot_map.json`, or the placeholder renders literally (`{{slot.SL1}}`).
+The **inverse** failure is worse and was live until 2026-08-30: a callout the seeder never
+redacted stays a literal number and is printed on EVERY coil in that bucket, with nothing
+missing and no test failing — 3095's RHHGRC-1 drew the seed coil's `-0.25 S1` / `6.56 SL3`
+while the panel beside it said 3.25 / 5. Two seeder holes caused it: `_CALLOUT_RE` could not
+match a leading minus (fixed), and the odd supply SLs + `HD1` are absent from `_DIM_LABELS`
+(open — `SL1` means `slot.SL1` on HGRH but `slot.SL2` on water, so the mapping is
+category-dependent). `tests/test_template_hardcoded_dims.py` now pins the remaining inventory
+by EQUALITY, so a new frozen dimension fails and clearing a listed one fails too.
 
 **Mechanical fit / stability** (`compatibility/mechanical_fit.py`) — a review-aid check
 (NOT in the drawing path) mirroring the Coil Checklist WIDTH/HEIGHT/INSTALL fit.
@@ -249,6 +264,34 @@ Frontend: `collectChecklistOverrides` (keyed by `page.tag`, like `reapplyManualF
 debounced `scheduleChecklistRefill` after an interactive derive; the headless re-analyze fan-out
 fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
 gate) deliberately passes none — it reads the machine proposal.
+
+**Deliverable filing — one click, and it MOVES (John 2026-08-30)** (`deliverable/finalize.py`,
+`POST /api/deliverable/finalize`, `web/app.js::fileDeliverable`) — "Build quote package" now
+files the deliverable in the same click (`skip_draft: true`); the second button is
+**"Open Outlook draft"** only. Four rules carry the change:
+① **Move, not copy.** The checklist is the one doc whose real path we know (`saved_path`), so
+it is a true move; the two PDFs reach the server as BYTES ONLY (a browser never hands over a
+path), so their Downloads original is reconstructed as `~/Downloads/<name>` — plus Chrome's
+`<stem> (1)<ext>` duplicate — and deleted **only where sha256 matches what was just filed**
+(`retire_download`). Name-match alone never deletes, which is what makes reconstructing a path
+safe. Never-found is a reported `downloads_cleanup` status, not a failure; the revised PDF gets
+a bounded 5s poll because the browser saves it asynchronously moments earlier.
+② **A conflict is same-name AND different-content**, and it stops the WHOLE deliverable —
+`plan_placements` decides all three destinations before `commit_placements` writes any, so a
+half-filed folder (which looks finished) is unreachable. It returns **HTTP 200 with
+`status: "conflict"`** and writes nothing: a conflict is a decision waiting on John, not an
+error (a missing folder still 400/409s). `overwrite: true` is his answer.
+③ A byte-identical file already at the destination is **`already_filed`, not a conflict** —
+that is precisely what lets Build file the docs and the draft button re-run over the same
+three without arguing. The Outlook attachment is therefore looked up **by name, not
+`files_written[1]`**, since `already_filed` makes list order unreliable.
+④ **Folder names are matched folded** (lowercase, spaces/`_`/`-` removed): a `Direct Coil` is
+**renamed to `DirectCoil`** and reused (never left beside a fresh empty one), while
+`Accessory Order Forms` is matched loosely but **never renamed** — John's rule is that a
+missing AOF means we grabbed the wrong project folder, and that error only carries meaning if
+a spelling variant cannot trigger it. Two spellings coexisting raises rather than guessing.
+The ` (2)` auto-increment that `place_bytes`/`place_copy` used to do is **gone**; the separate
+`(2)` fallback in `checklist/excel_writer.py` (a Downloads write) is untouched.
 
 **Drain-pan option from the unit model code** (`submittal/model_code.py`) — R-077 keys
 Terra's drain-pan width by option D1/D2/D3, and nothing produced that value, so every Terra
@@ -507,6 +550,37 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   carried over: the water templates still have un-redacted as-built dims (see
   *Template hardcoded dims deferred*), which are Nova-shaped for every line that borrows
   them, Terra V included.
+- **Omnia (`OW###` model codes, John 2026-08-25) is a first-class `ProductFamily.OMNIA` that
+  IS Ventum+ except for one value.** "Everything is exactly the same rule and drawing template
+  as Ventum+; the only difference is TF and BF = 0.625" (Ventum+ R-011 = 1.0). Four mechanisms
+  make that sentence hold, and each has a test in `tests/test_omnia_product_line.py`:
+  ① every Ventum+ rule lists `OMNIA` next to `VENTUM_PLUS` in `applies_to` (11 rules + the
+  R-064 `value_map`), and `R-011o` is Omnia's ONLY own rule; ② the Python `== VENTUM_PLUS`
+  branches (HGRH flat R / `CD = 3*conn` / R-063b water SL / supply S / install_width drain-pan
+  compare) test `in VENTUM_PLUS_CLASS` (`schemas/header_prepopulate.py`) — a new Ventum+
+  special-case written as `== VENTUM_PLUS` silently drops Omnia, which is what the
+  field-by-field `omnia == ventum_plus except flanges` test exists to catch; ③ templates are
+  an **alias**, not a seed: `catalog.TEMPLATE_FAMILY_ALIAS = {"OMNIA": "VENTUM_PLUS"}` answers
+  an Omnia selection from the 11 dedicated Ventum+ buckets (bucket count unchanged;
+  `dedicated_family_template` records the BUCKET family `VENTUM_PLUS`), and the DX
+  not-registered / R-032 gates in `submittal_to_drawing.py` key on `_VENTUM_PLUS_CLASS`;
+  ④ detection needs no regex — `R-076 OMNIA: [OW050 … OW085]` puts the token into
+  `_non_terra_size_tokens()`, so `OW085_I` resolves through the existing Pass A. **Data gap
+  (deliberate):** the "Wheel Product Sizing Summary" chart gives the coil envelope (coil width;
+  coil height + clearance = 23/25/28/31/34/37/39 per size), NOT the unit casing or drain-pan
+  widths, so R-074 / R-077 / R-078 carry **no** OMNIA rows — casing is absent (never borrowed
+  from a Ventum+ size) and every fit verdict is `CANNOT_EVALUATE` until John supplies them.
+  The Coil Checklist workbook has no OMNIA unit: `template_map.UNIT_BY_PRODUCT` fills it as
+  `VENTUM+` (SIZE left blank — `OW085` is not in the sheet's list), so the sheet computes
+  TF/BF = 1.0 and `known_divergences.yaml` KD-010..017 (one per category × flange, band
+  exactly −0.375) label that row amber instead of red.
+  **Seed-page audit (John 2026-08-26):** the first Omnia drawing exposed that
+  `coilmaster_vplus_dx_lh_header1` and `coilmaster_vplus_hgrh_lh_header1` had been seeded from
+  2760 Revere **p.2 / p.6 (CDXC-1 / RHHGRC-1)** — a NON-Ventum+ pair in a mixed project
+  (TF/BF 0.63, SL 8, I 3, distributor nozzle UP = ConnectionDown). Re-seeded from **p.5 / p.7**
+  (CDXC-4 / RHHGRC-2: TF/BF 1.00, SL 10, I 12 / 2, nozzle DOWN = R-032 UP). The check that
+  catches this class of mistake is cheap: a Ventum+ reference page must print **TF = BF = 1.00**
+  (R-011) — 2619 Congress prints 0.88 on both its seeded pages and is still unexplained.
 - **Hot gas bypass (HGBP) is a Nova / Ventum H option ONLY** (John 2026-07-15). Both HGBP
   DX templates (`coilmaster_dx_{lh,rh}_hgbp`, seeded from real `(1 ASC)` 1-header references)
   are Nova/Ventum-H-class, so `_gate_hgbp_unsupported_product_line` **omits** an HGBP drawing
@@ -764,6 +838,12 @@ column. The rules that keep it legible — and the precedent for any future view
 - Tests: `tests/test_schematic_renderer.py`
 - Existing template path — **DO NOT TOUCH**: `slot_population.py::populate_template_slots`,
   the 17 `template.svg` files, `pdf_to_template_drawing.py`.
+  **Approved exception, 2026-08-30 (John, in advance of the work):** asked whether to redact the
+  frozen as-built callouts in the HGRH multi-header templates given that "이 리댁션은
+  DO-NOT-TOUCH 게이트라 별도 승인이 필요합니다", John chose "이번에 같이 리댁션". Scope of that
+  approval = `coilmaster_hgrh_{lh,rh}_header2`, `coilmaster_hgrh_rh_header3`,
+  `coilmaster_vplus_hgrh_rh_header2` (commit `27d1ef9`). It does NOT extend to the 14 callouts
+  left in place, nor to any future template edit — each needs its own approval.
 - The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
   at render time by `drawing/label_authority.py::direct_coil_label` (applied in
   `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded

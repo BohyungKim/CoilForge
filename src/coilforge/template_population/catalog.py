@@ -85,6 +85,10 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
 # Populated as buckets are seeded (scripts/seed_templates_from_pdf.py); empty = the
 # fork is scaffolded but no dedicated template is active yet -> pure shared fallback.
 VENTUM_PLUS_FAMILY = "VENTUM_PLUS"
+# Omnia draws on the dedicated Ventum+ set (John 2026-08-25: same drawing template);
+# nothing is seeded under its own name, so a selection asked for OMNIA is answered from
+# the VENTUM_PLUS buckets. The bucket count is unchanged.
+TEMPLATE_FAMILY_ALIAS = {"OMNIA": VENTUM_PLUS_FAMILY}
 VENTUM_PLUS_TEMPLATES: dict[
     str, tuple[str, str, str, str | None, str | None, str | None, str]
 ] = {
@@ -447,7 +451,7 @@ def _known_source_case(category: str, header_number: int, hand: str) -> str | No
 def _normalize_product_family(value: str | None) -> str | None:
     """Uppercased family string, or None when unset/blank (= shared, no dedicated pref)."""
     text = str(value or "").strip().upper()
-    return text or None
+    return TEMPLATE_FAMILY_ALIAS.get(text, text) or None
 
 
 def _normalize_supplier(value: str) -> str:

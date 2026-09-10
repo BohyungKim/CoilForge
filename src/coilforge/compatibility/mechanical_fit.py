@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
-from coilforge.schemas.header_prepopulate import ProductFamily
+from coilforge.schemas.header_prepopulate import ProductFamily, VENTUM_PLUS_CLASS_VALUES
 from coilforge.services.header_prepopulate_engine import _rule_index
 
 FitVerdict = Literal["PASS", "FAIL", "CANNOT_EVALUATE"]
@@ -45,6 +45,7 @@ _DX_CWC_APPLICATION = {
     "TERRA": "INTEGRATED",
     "VENTUM_H": "CPLD EXT",
     "VENTUM_PLUS": "INTEGRATED",
+    "OMNIA": "INTEGRATED",  # inherits Ventum+ (assumption, John 2026-08-25)
 }
 
 
@@ -644,7 +645,7 @@ def _basis_columns(product_family: str, row: dict) -> list[str]:
     surface BOTH ``coil_module_only`` and ``with_access`` (John). Terra uses the
     single ``drain_pan_width``.
     """
-    if product_family == ProductFamily.VENTUM_PLUS.value:
+    if product_family in VENTUM_PLUS_CLASS_VALUES:
         cols = ["install_width"]
         if "drain_pan_width" in row:
             cols.append("drain_pan_width")

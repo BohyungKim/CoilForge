@@ -128,16 +128,7 @@ _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
 # dimension", which reads as a bug on a value withheld on SOP grounds — and Phase C
 # then paints it red with no explanation. Keyed on the base letter so every header
 # index (I2/I3/I4) inherits the same reason.
-_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {
-    ("HGRH", "TERRA_V", "I"): (
-        "Terra V HGRH Supply I/O is SOP-confirmed for Supply 1 only (R-046); Supply 2+ "
-        "is a software default, not derivable — fill it in if the drawing needs it."
-    ),
-    ("HGRH", "TERRA_V", "S"): (
-        "Terra V HGRH supply spacing is S = CD − Rn (SOP), and Rn only runs to the "
-        "connections-per-header count — this header has no Rn to subtract."
-    ),
-}
+_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {}
 
 _KEY_BASE_RE = re.compile(r"^([A-Za-z]+)")
 
@@ -148,8 +139,20 @@ def _key_base(key: str) -> str:
     return m.group(1) if m else (key or "")
 
 
+# NOTE (2026-09-09): the two Terra V HGRH supply-S withholding causes that used to live
+# here are gone. Both rested on S = CD - Rn, which the slot layer no longer uses for
+# HGRH -- the SOP scopes Terra V's spacing special to DX (R-023) and gives HGRH the
+# general RHHGRC formula, which is defined for every supply header and may legitimately
+# be negative. Terra V HGRH supply S is therefore never blank on SOP grounds.
+
+
 def _blank_reason(
-    key: str, *, coil_category: str, terra_variant: str | None, product_chosen: bool
+    key: str,
+    *,
+    coil_category: str,
+    terra_variant: str | None,
+    product_chosen: bool,
+    slot_values: dict[str, Any] | None = None,
 ) -> str:
     """The message a blank drawing-parameter row shows in place of a number.
 
@@ -159,9 +162,9 @@ def _blank_reason(
     """
     if not product_chosen:
         return "Pick a product line + unit size to derive this dimension."
-    withheld = _WITHHELD_REASON_BY_VARIANT.get(
-        (coil_category, (terra_variant or "").upper(), _key_base(key))
-    )
+    variant = (terra_variant or "").upper()
+    base = _key_base(key)
+    withheld = _WITHHELD_REASON_BY_VARIANT.get((coil_category, variant, base))
     if withheld:
         return withheld
     return _BLANK_REASON_BY_CATEGORY.get(
@@ -546,6 +549,7 @@ def parameter_set_from_template_drawing(
                 coil_category=coil_category,
                 terra_variant=terra_variant,
                 product_chosen=product_chosen,
+                slot_values=slot_values,
             )
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
@@ -575,6 +579,7 @@ def parameter_set_from_template_drawing(
                     coil_category=coil_category,
                     terra_variant=terra_variant,
                     product_chosen=product_chosen,
+                    slot_values=slot_values,
                 ),
             )
         else:

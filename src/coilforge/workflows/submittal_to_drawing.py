@@ -20,7 +20,7 @@ from coilforge.drawing import (
     resolve_drawing_parameters,
 )
 from coilforge.drawing.label_authority import direct_coil_label
-from coilforge.submittal import extract_submittal_candidates_from_text
+from coilforge.submittal import SubmittalCoilCandidate, extract_submittal_candidates_from_text
 from coilforge.submittal.pdf_intake import (
     _normalize_handing,
     drain_pan_partner_tag,
@@ -407,6 +407,10 @@ def _run_pdf_to_drawing_workflow_uncached(
 # position. The label is the final uppercase-led token (<=5 chars); for a blank slot the
 # value is "REVIEW REQUIRED", which we replace with the label alone so the dim stays
 # identified (no value yet).
+# Printed in place of a withheld dimension's value (see _clean_callout). Em dash:
+# one glyph, unmistakably "no number", and it cannot be read as a digit or a sign.
+_NO_VALUE_MARK = "—"
+
 _CALLOUT_RE = re.compile(
     r'(fill="#1c0a80"[^>]*\btransform="matrix\(\s*(-?1)\b[^"]*"[^>]*><tspan)([^>]*)(>)'
     r"([^<]*?) ([A-Za-z][A-Za-z0-9]{0,4})(</tspan>)"
@@ -421,8 +425,13 @@ def _clean_callout(m: "re.Match[str]", coil_category: str | None = None) -> str:
     # coil_category disambiguates SL1 (HGRH keeps its slot-driven supply SL1; CWC -> SL2).
     label = direct_coil_label(label, coil_category)
     if value.strip() == "REVIEW REQUIRED":
-        # No value yet — show just the label so the dimension is still identified.
-        return f"{head}{attrs}{gt}{label}{close}"
+        # No value yet. "REVIEW REQUIRED" does not fit a callout, so the dimension shows
+        # its label alone -- but a bare label is indistinguishable from a rendering slip,
+        # and the whole point of withholding (R-046 Supply 2+, an exhausted S basis) is
+        # that the reader can SEE we declined rather than forgot. An em dash is the
+        # drafting convention for "no value here" and costs one glyph. John 2026-08-30,
+        # after a real Terra V HGRH header-2 drew `I3` with nothing beside it.
+        return f"{head}{attrs}{gt}{_NO_VALUE_MARK} {label}{close}"
     # Keep "value label" (existing CoilMaster style) at the original position.
     return f"{head}{attrs}{gt}{value} {label}{close}"
 
@@ -524,8 +533,35 @@ def _inject_coil_tag_label(svg: str, tag: str | None) -> str:
     return svg.replace("</svg>", label + "</svg>", 1)
 
 
+def _inject_coating_note_label(svg: str, coating: Any) -> str:
+    """Stamp the coil's coating instruction INSIDE the cropped drawing region.
+
+    The template's own coating line sits in the top-left fabrication-notes block, which
+    ``_strip_intruding_chrome`` deletes and the viewBox crop clips — so slotting that line
+    (which stops the WRONG coating printing) is not enough to make the RIGHT one visible.
+    This mirrors :func:`_inject_coil_tag_label`: a top-level ``<text>`` in root user space,
+    stamped top-left under the tag.
+
+    Deliberately larger than the tag label (John 2026-08-05: "적당히 크게") and in a warning
+    red — it is a manufacturing instruction, not metadata. Uncoated coils get nothing at
+    all rather than an empty row or a REVIEW REQUIRED sentinel: "no coating" is a known
+    state. Review-aid only; no geometry or frozen file touched.
+    """
+    note = _coating_drawing_note(coating)
+    if not note or "</svg>" not in svg:
+        return svg
+    label = (
+        f'<text x="{_CROP_X + 6}" y="{_CROP_Y + 34}" font-family="Arial, sans-serif" '
+        f'font-size="15" font-weight="bold" fill="#b3261e">{_esc_svg_text(note)}</text>'
+    )
+    return svg.replace("</svg>", label + "</svg>", 1)
+
+
 def _clean_template_svg(
-    svg: str, coil_category: str | None = None, tag: str | None = None
+    svg: str,
+    coil_category: str | None = None,
+    tag: str | None = None,
+    coating: Any = None,
 ) -> str:
     """Clean a populated CoilMaster template SVG to the direct-coil ordering view John
     wants (image #7):
@@ -554,6 +590,7 @@ def _clean_template_svg(
     svg = _VIEWBOX_RE.sub(f'viewBox="{_CROP_X} {_CROP_Y} {_CROP_W} {_CROP_H}"', svg)
     svg = _SIZE_RE.sub(rf'\1width="{_CROP_W}" height="{_CROP_H}"', svg)
     svg = _inject_coil_tag_label(svg, tag)
+    svg = _inject_coating_note_label(svg, coating)
     return svg
 
 
@@ -601,6 +638,9 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
 # branch here until 2026-07-28; John released it on the same reasoning — see
 # _gate_unregistered_product_line.)
 _UNREGISTERED_PRODUCT_LINES: set[str] = set()
+# Families that draw on the dedicated Ventum+ template set and carry its R-032 UP
+# distributor (John 2026-08-25: Omnia = Ventum+ rules and templates, TF/BF aside).
+_VENTUM_PLUS_CLASS = {"VENTUM_PLUS", "OMNIA"}
 
 
 def _omit_drawing(result: dict[str, Any], reason: str) -> dict[str, Any]:
@@ -680,7 +720,7 @@ def _flag_distributor_orientation_review(result: dict[str, Any]) -> dict[str, An
 
     family, _ = resolve_product_line(result.get("product_type"))
     category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
-    if family == "VENTUM_PLUS" and category == "DX":
+    if family in _VENTUM_PLUS_CLASS and category == "DX":
         result["distributor_orientation_warning"] = _DIST_ORIENTATION_REVIEW
     return result
 
@@ -726,6 +766,163 @@ def _flag_defaulted_coil_hand(
     return result
 
 
+def _header_count_int(value: Any) -> int | None:
+    """``value`` as a whole number, or None when it is not one. Intake normalisation
+    leaves these as ints, floats or strings depending on the source line."""
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return int(number) if number == int(number) and number > 0 else None
+
+
+def _flag_header_count_conflict(
+    result: dict[str, Any], ctx: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Mark a drawing whose header count is contradicted by the stated connections.
+
+    ``circuits`` IS the header count on this path (``header_type = f"Header {circuits}"``
+    in pdf_to_template_drawing), and when nothing states it, it falls to ``or 1`` with no
+    flag of any kind — a confidently single-header drawing built on no evidence. Project
+    3095 is that failure: every coil block states ``Qty Conn. / Header 2`` while
+    ``Coil Style: Dual Face Split`` went unparsed, so the reheat coils drew as Header 1.
+
+    Connections-per-header is a DIFFERENT quantity from header count, so it is read here
+    only to notice the disagreement — never to resolve it. Labels only: the value, the
+    template and the slots are untouched.
+
+    CWC/HWC are excluded because their ``circuits`` is not a reading at all — the water
+    branch in `_template_header_context_from_candidate` forces 1 per the 1HD-only MVP
+    taxonomy, so a stated 2 connections is not a contradiction of anything.
+    """
+    if not isinstance(result, dict) or not result.get("svg"):
+        return result
+    extracted = result.get("extracted") or {}
+    if str(extracted.get("coil_category") or "").upper() in ("CWC", "HWC"):
+        return result
+    stated = _header_count_int((ctx or {}).get("qty_conn_per_header"))
+    if stated is not None:
+        # Stamped whether or not the flag fires, so /derive can round-trip it back
+        # (deriveSpecFromTemplate -> spec.stated_qty_conn_per_header). Without that the
+        # banner would vanish on the first re-derive for any unrelated reason -- an
+        # analyze-only post-process is the TR-9 defect shape.
+        result["qty_conn_per_header_stated"] = stated
+    circuits = _header_count_int(extracted.get("circuits"))
+    if stated is None or circuits is None or stated <= circuits:
+        return result
+    result["header_count_conflict"] = True
+    result["header_count_review"] = (
+        f"The submittal states {stated} connections per header, but only {circuits} "
+        f"circuit(s) could be read — so this drew as Header {circuits}. The header count "
+        "selects the template and adds a whole header column, so confirm it; set "
+        "Circuits in the spec panel to redraw with the right header count."
+    )
+    return result
+
+
+# Per-header dimension slots the qty re-run OWNS. A key the better-informed run declines
+# must be REMOVED, not left behind by dict.update() -- a stale value whose basis the
+# re-run just disproved is exactly the invented number this whole change removes.
+_PER_HEADER_SLOT_RE = re.compile(r"^slot\.(?:HDx|HD|SL|I|S|O|R)\d+$")
+
+
+def _apply_stated_qty_conn_per_header(
+    result: dict[str, Any], ctx: dict[str, Any] | None
+) -> None:
+    """Re-run the slot layer with the submittal's stated connections-per-header.
+
+    R-052 (HGRH return spacing) documents ``qty_conn_per_header`` as its input and falls
+    back to ``circuits`` when it is absent (``header_prepopulate_engine`` ~R-052 block).
+    The frozen ``derive_slot_values`` never passes it, so on every submittal-driven
+    drawing that fallback silently substituted a DIFFERENT physical quantity -- and the
+    9abe5a7 guard that blanks a Terra V HGRH ``slot.S{2k-1}`` past the return-spacing list
+    became unreachable, because ``len(return_spacing) == circuits`` made its ``k <= len``
+    test unconditionally true. Measured consequence on a real Terra V HGRH: S5 = -0.75,
+    S7 = -2.75 (John 2026-08-30, from 3095 Harrison's RHHGRC geometry).
+
+    The value is read and carried already -- ``_template_header_context_from_candidate``
+    puts the submittal's ``qty_connections_per_header`` on ``ctx`` -- but only as a
+    cross-check for :func:`_flag_header_count_conflict`. It reached no engine on any path:
+    the browser sends the ENGINEER's manual lever as ``spec['qty_conn_per_header']`` and
+    the submittal reading as ``spec['stated_qty_conn_per_header']``, and only the former
+    is a Tier-A input. So today a number the PDF already prints changes the drawing only
+    if a human retypes it.
+
+    Scope is deliberately **Terra V HGRH**. ``qty_conn_per_header`` also feeds
+    ``_hgrh_cd_multi``, whose TERRA_H and NOVA/VENTUM_H branches take it as ``n`` -- so
+    threading it for every line would move ``slot.CD`` (measured: Terra H 6.625 -> 3.75)
+    and the S/SL that follow, corpus-wide. That is a real and arguably correct convergence
+    -- ``checklist/mapping.py`` ALREADY passes qty, so the sheet and the drawing disagree
+    by construction on any HGRH coil where qty != circuits -- but it is a separate value
+    decision for John, not a side effect of this fix.
+
+    No-op unless the submittal states a count that DIFFERS from the circuit count, so a
+    coil where they agree (3095's own RHHGRC-1/-2/-3, qty = circuits = 2) is byte-identical.
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return
+    ex = result.get("extracted") or {}
+    if str(ex.get("coil_category") or "").strip().upper() != "HGRH":
+        return
+    stated = _header_count_int((ctx or {}).get("qty_conn_per_header"))
+    circuits = _header_count_int(ex.get("circuits"))
+    if stated is None or circuits is None or stated == circuits:
+        return
+    product = result.get("product_type")
+    unit_size = result.get("unit_size")
+    if not (product and unit_size):
+        return
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    _family, variant = resolve_product_line(str(product))
+    if variant != "TERRA_V":
+        return
+
+    from coilforge.services.direct_coil_drawing_pipeline import (
+        UnknownCoilInputError,
+        build_drawing_slots,
+    )
+    from coilforge.services.drawing_param_resolver import _coerce_float
+
+    try:
+        slots, _resp = build_drawing_slots(
+            coil_type="HGRH",
+            product_type=product,
+            unit_size=unit_size,
+            rows=ex.get("rows"),
+            feeds=ex.get("feeds"),
+            circuits=circuits,
+            suction_conn_size=_coerce_float(ex.get("return_conn_size")),
+            qty_conn_per_header=stated,
+            finned_height=ex.get("finned_height"),
+            finned_length=ex.get("finned_length"),
+            tag=ex.get("tag"),
+        )
+    except (UnknownCoilInputError, ValueError):
+        return
+
+    merged = result.setdefault("slot_values", {})
+    stale = [
+        key
+        for key in merged
+        if _PER_HEADER_SLOT_RE.match(key) and key not in slots
+    ]
+    for key in stale:
+        del merged[key]
+    merged.update(slots)
+    result["stated_qty_conn_per_header_applied"] = stated
+
+    template_id = result.get("template_id")
+    if template_id and result.get("svg"):
+        from coilforge.template_population.slot_population import populate_template_slots
+
+        repop = populate_template_slots(template_id, merged)
+        if repop.svg:
+            result["svg"] = repop.svg
+            result["populated_slots"] = list(repop.populated_slots)
+            result["missing_required_slots"] = list(repop.missing_required_slots)
+
+
 def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     """When a dedicated per-family template is seeded for this coil's (family, category,
     hand, header, special), re-select + re-populate the drawing from it instead of the
@@ -736,6 +933,7 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
         return result
     from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
     from coilforge.template_population.catalog import (
+        TEMPLATE_FAMILY_ALIAS,
         TemplateSelectionRequest,
         select_drawing_template,
     )
@@ -744,6 +942,10 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     family, _ = resolve_product_line(result.get("product_type"))
     if not family:
         return result
+    # Omnia has no buckets of its own; it is answered from the Ventum+ set (John
+    # 2026-08-25), so the "genuinely dedicated" check below compares against the
+    # bucket family the alias resolves to, not the coil's own label.
+    bucket_family = TEMPLATE_FAMILY_ALIAS.get(family, family)
     ex = result.get("extracted") or {}
     sel = select_drawing_template(
         TemplateSelectionRequest(
@@ -757,7 +959,7 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     )
     # Only swap when a genuinely dedicated bucket matched (not the shared fallback) and
     # it differs from what the frozen path already drew.
-    if not (sel.found and sel.entry and sel.entry.product_family == family):
+    if not (sel.found and sel.entry and sel.entry.product_family == bucket_family):
         return result
     if sel.template_id == result.get("template_id"):
         return result
@@ -767,7 +969,7 @@ def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     result["svg"] = repop.svg
     result["template_id"] = sel.template_id
     result["source_case_id"] = sel.entry.source_case_id
-    result["dedicated_family_template"] = family
+    result["dedicated_family_template"] = bucket_family  # the bucket that drew it
     return result
 
 
@@ -794,7 +996,7 @@ def _gate_unseeded_ventum_plus_dx(result: dict[str, Any]) -> dict[str, Any]:
 
     family, _ = resolve_product_line(result.get("product_type"))
     category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
-    if family == "VENTUM_PLUS" and category == "DX":
+    if family in _VENTUM_PLUS_CLASS and category == "DX":
         _omit_drawing(
             result,
             "Ventum+ DX drawing template not registered — the distributor mounts "
@@ -1161,6 +1363,106 @@ def _attach_engine_provenance(result: dict[str, Any], response: Any) -> None:
     }
 
 
+def _attach_recomputed_engine_provenance(
+    result: dict[str, Any], *, hgrh_partner_conn: Any = None
+) -> None:
+    """1c': reconstruct WHICH rules fired for a coil the frozen path already drew.
+
+    ``_attach_engine_provenance`` above only ever fired on a Tier-A manual fill — the one
+    wired path that hands the ``HeaderPrepopulateResponse`` back — so ``rule_firing``
+    stayed at ZERO rows for every ordinary analyse. Without a (field -> rule_id) edge the
+    ledger can say "O was wrong nine times" but never "R-061v is wrong", and rule
+    correction is the whole point of collecting the corpus. So re-run the engine
+    caller-side, purely to observe it (John 2026-08-06).
+
+    Same discipline as ``_apply_hgrh_pairing_cd`` / ``_rerun_slots_with_manual_inputs``:
+    the frozen ``pdf_to_template_drawing`` is never edited, its result's own echo of its
+    inputs (``extracted`` + product/unit_size) is what the call is rebuilt from, and every
+    argument the frozen path did NOT pass stays unpassed. ``with_hgrh`` is threaded because
+    the DX-with-reheat CD the drawing shows came from ``_apply_hgrh_pairing_cd``'s re-run,
+    not from the frozen call — reproducing the frozen call there would "drift" against a
+    value that is deliberately different.
+
+    THIS NEVER CHANGES A DRAWN VALUE. It reads ``slot_values`` and writes exactly one key,
+    ``engine_provenance``. Reconstruction is a claim, though, so it is checked rather than
+    trusted: every numeric slot the re-run produced is compared against the slot the
+    drawing actually rendered, and a mismatch is recorded as ``fidelity='drifted'`` with
+    the offending keys. The row is KEPT — dropping it would hide the one signal that says
+    the reconstruction is not to be believed. Readers exclude drifted from their rates.
+
+    Never raises: provenance is an observation, and losing it must never cost the caller
+    a drawing.
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return
+    # A live Tier-A response already described this coil. Never overwrite it: 'live' and
+    # 'recomputed' must not mix inside one (run, coil), and the live one is the truth.
+    if result.get("engine_provenance"):
+        return
+    if not result.get("header_engine_used"):
+        return
+    try:
+        from coilforge.checklist.compare import _match
+        from coilforge.services.direct_coil_drawing_pipeline import build_drawing_slots
+        from coilforge.services.drawing_param_resolver import _coerce_float
+
+        extracted = result.get("extracted") or {}
+        coil_type = extracted.get("coil_category")
+        product = result.get("product_type")
+        unit_size = result.get("unit_size")
+        if not (coil_type and product and unit_size):
+            return
+        kwargs: dict[str, Any] = {}
+        if str(coil_type).strip().upper() == "DX" and hgrh_partner_conn is not None:
+            kwargs["with_hgrh"] = True
+            kwargs["hgrh_conn_size"] = _coerce_float(hgrh_partner_conn)
+        # Mirror `_apply_stated_qty_conn_per_header` for the same reason `with_hgrh` is
+        # mirrored above: this block re-derives the coil to check the DRAWN slots against
+        # a fresh engine run, so it must reproduce the same inputs. Without it every coil
+        # that helper corrects would be scored `fidelity='drifted'` and excluded from the
+        # Rule Observatory's rates -- drift reported against our own deliberate fix.
+        applied_qty = result.get("stated_qty_conn_per_header_applied")
+        if applied_qty is not None:
+            kwargs["qty_conn_per_header"] = applied_qty
+        slots, response = build_drawing_slots(
+            coil_type=coil_type,
+            product_type=product,
+            unit_size=unit_size,
+            rows=extracted.get("rows"),
+            feeds=extracted.get("feeds"),
+            circuits=extracted.get("circuits") or 1,
+            suction_conn_size=_coerce_float(extracted.get("return_conn_size")),
+            finned_height=extracted.get("finned_height"),
+            finned_length=extracted.get("finned_length"),
+            tag=extracted.get("tag"),
+            **kwargs,
+        )
+    except Exception:  # noqa: BLE001 — provenance must never cost a drawing
+        return
+
+    _attach_engine_provenance(result, response)
+    provenance = result.get("engine_provenance")
+    if not isinstance(provenance, dict):
+        return
+
+    # Fidelity check. Numeric slots only: the string title-block slots are overlaid by
+    # `material_title_slots` inside the frozen path from a `model_number` the result does
+    # not echo, so comparing them would report drift the engine never caused.
+    drawn = result.get("slot_values") or {}
+    drift = sorted(
+        slot
+        for slot, value in slots.items()
+        if isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and slot in drawn
+        and _match(drawn[slot], value) != "match"
+    )
+    provenance["source"] = "recomputed"
+    provenance["fidelity"] = "drifted" if drift else "verified"
+    if drift:
+        provenance["drift_keys"] = drift
+
+
 # Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
 _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "application", "header_count", "qty_conn_per_header",
@@ -1229,6 +1531,14 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "coil_category": spec.get("coil_category"),
         "coil_hand": spec.get("coil_hand"),
         "circuits": spec.get("circuits") or 1,
+        # Header-count cross-check only (_flag_header_count_conflict). The round-tripped
+        # analyze reading wins over the manual-fill lever of the same name: the lever is
+        # what the engineer ASKED for, the stated value is what the submittal SAYS, and
+        # the flag is about the second one. Not an engine input on this path -- the
+        # Tier-A re-run reads `spec`, not `ctx`.
+        "qty_conn_per_header": (
+            spec.get("stated_qty_conn_per_header") or spec.get("qty_conn_per_header")
+        ),
         "special_feature": spec.get("special_feature"),
         "tag": spec.get("tag"),
         "rows": spec.get("rows"),
@@ -1262,10 +1572,23 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         # 2026-07-30, caught on the real 2901). The partner's connection size comes from
         # the caller because derive resolves ONE coil and cannot see its siblings.
         _apply_hgrh_pairing_cd(result, _partner_conn_from_spec(spec))
+        # Same submittal-stated qty as analyze. Confined to this `else` branch ON
+        # PURPOSE: when the engineer DID supply a Tier-A input, `_rerun_slots_with_
+        # manual_inputs` already passed `spec['qty_conn_per_header']`, and re-running
+        # from `ctx` would overwrite what the human typed with the submittal reading
+        # (ctx prefers `stated_...`, see the ctx builder) -- a manual fill must win.
+        _apply_stated_qty_conn_per_header(result, ctx)
 
     # 1c seam-A: capture engine provenance (rule_id + confidence per field) from the
     # Tier-A-fill response — the only wired non-frozen path that returns it.
     _attach_engine_provenance(result, fill_response)
+    # 1c': no Tier-A fill on this request means no live response, so reconstruct it. MUST
+    # run before the Tier-B reflection below — that merges the human's overrides into
+    # slot_values, and comparing against those would report the ENGINEER's edit as engine
+    # drift. No-op when the line above already attached a live block.
+    _attach_recomputed_engine_provenance(
+        result, hgrh_partner_conn=_partner_conn_from_spec(spec)
+    )
 
     # Tier-B reflection (1b): merge param overrides into slot_values + re-populate the
     # SVG so the drawing shows the corrected dimension, and event-source the pre-override
@@ -1287,6 +1610,13 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     _flag_hgbp_product_line_unverified(result)
     _flag_distributor_orientation_review(result)
     _flag_defaulted_coil_hand(result, ctx)
+    _flag_header_count_conflict(result, ctx)
+
+    # Print the coil's actual coating on the drawing. Wired into BOTH paths (analyze does
+    # the same below) -- an analyze-only post-process is exactly the TR-9 / 228d731 defect.
+    _apply_coating_note_to_drawing(result, ctx.get("coating"))
+
+    _refresh_direct_coil_review_surfaces(result, spec, ctx, parameter_set)
 
     # Auto-surface fill plan — built AFTER the gates so a gate-omitted coil surfaces a
     # "drawing withheld" note instead of fill inputs (filling cannot un-gate it).
@@ -1329,6 +1659,7 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
             result["svg"],
             (result.get("extracted") or {}).get("coil_category"),
             _coil_tag_for_drawing(result),
+            ctx.get("coating"),
         )
     _attach_parametric_schematic(result)
     return result
@@ -1446,6 +1777,14 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         # circuiting, connection). Mapped review-required; independent of the
         # rule engine (which only drives the dimension geometry).
         "panel": _candidate_panel(candidate),
+        # Cross-check only, for _flag_header_count_conflict -- NOT an engine input and
+        # NOT a source for `circuits`. derive_slot_values reads `geometry` by named key
+        # (geo.get("rows") ...), so carrying an extra key here is inert on the frozen
+        # path. Connections-per-header is a different quantity from header count; it is
+        # read here to notice a disagreement, never to resolve one.
+        "qty_conn_per_header": _candidate_field_value(
+            candidate, "connections", "qty_connections_per_header"
+        ),
     }
     if hand_raw:
         ctx["coil_hand"] = "RH" if _normalize_handing(str(hand_raw)) == "Right" else "LH"
@@ -1636,6 +1975,196 @@ def _engine_drawing_notes(ctx: dict[str, Any]) -> list[str]:
     return assemble_drawing_notes(request)
 
 
+_COATING_NOTE_TSPAN_RE = re.compile(
+    r'(<tspan\b[^>]*\bid="coilforge-coating-note"[^>]*>)(.*?)(</tspan>)',
+    re.DOTALL,
+)
+
+
+def _coating_drawing_note(coating: Any) -> str | None:
+    """The drawing's own coating instruction, e.g. ``HERESITE COATING REQUIRED``.
+
+    Distinct from R-080/R-081 ("Do Not Coat Last 5-6 inches..."), which say where NOT to
+    coat. This one names the coating to apply, and the EZ Coil reference drawings print it
+    verbatim per coating type ("ELECTROFIN COATING REQUIRED" / "FINKOTE 2 COATING
+    REQUIRED"). Absent or NONE -> no note (same fail-closed reading the coating rules use:
+    submittals simply omit the field when there is no coating).
+    """
+    if coating is None:
+        return None
+    text = str(coating).strip()
+    if not text or text.upper() in {"NONE", "PLAIN", "N/A"}:
+        return None
+    # The `Coil Coating: <value>` label pattern captures to end-of-line, so a stored value
+    # can carry the next column's text ("ElectroFin Evap Temp 45"). Snap to the family the
+    # string actually names; keep the raw text when none is recognized rather than dropping
+    # a coating the document states.
+    from coilforge.submittal.pdf_intake import coating_family
+
+    text = coating_family(text) or text
+    if "COATING" in text.upper():
+        # Already phrased as an instruction / carries the word (e.g. the submittal's
+        # "Finkote2 Epoxy Coil Coating") -- print it as stated rather than doubling it up.
+        return f"{text.upper()} REQUIRED" if "REQUIRED" not in text.upper() else text.upper()
+    return f"{text.upper()} COATING REQUIRED"
+
+
+def _apply_coating_note_to_drawing(result: dict[str, Any], coating: Any) -> None:
+    """Print the coil's ACTUAL coating on the drawing (John 2026-08-05).
+
+    Three seeded templates (``coilmaster_dx_rh_header2``,
+    ``coilmaster_hgrh_rh_header{1,3}``) were seeded from coated reference drawings, so the
+    reference's own coating name was baked into the artwork and printed on EVERY coil in
+    those buckets -- an uncoated coil got "ELECTROFIN COATING REQUIRED", and a HERESITE
+    coil got it too. The text is now ``slot.COATING_NOTE``.
+
+    Filled HERE rather than in ``build_drawing_slots`` because the frozen
+    ``pdf_to_template_drawing`` assembles slot_values and never sees ``coating``; this
+    mirrors ``_reflect_param_overrides_into_slots`` / ``_apply_hgrh_pairing_cd``, which
+    likewise post-process the frozen result.
+
+    The SVG is edited by the tspan's id instead of re-populating the template because a
+    blank slot renders the literal ``REVIEW REQUIRED`` (``slot_population._slot_text``,
+    frozen) -- and an uncoated coil is not a pending decision, it is a coil with no
+    coating. Editing by id lets it render as genuinely nothing. The slot stays registered
+    in ``slot_map.json`` so the worst case is that sentinel rather than a raw
+    ``{{slot.COATING_NOTE}}`` placeholder.
+    """
+    note = _coating_drawing_note(coating)
+    slot_values = result.get("slot_values")
+    if isinstance(slot_values, dict):
+        slot_values["slot.COATING_NOTE"] = note
+    svg = result.get("svg")
+    if not isinstance(svg, str) or 'id="coilforge-coating-note"' not in svg:
+        return  # this template has no coating line -- nothing to fill or blank
+    result["svg"] = _COATING_NOTE_TSPAN_RE.sub(
+        lambda m: m.group(1) + _esc_svg_text(note or "") + m.group(3), svg, count=1
+    )
+
+
+def _esc_svg_text(text: str) -> str:
+    return (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+
+
+def _norm_coil_tag(tag: Any) -> str | None:
+    """Coil tag normalized for identity comparison (whitespace + case only).
+
+    NOT alias-tolerant on purpose: `coil_tag_aliases` (RHHGRC<->RHHGRH) exists to pair
+    two DIFFERENT coils, and this compares a coil against ITSELF. Widening it here would
+    only loosen the guard below.
+    """
+    if tag is None:
+        return None
+    text = str(tag).strip().upper()
+    return text or None
+
+
+def _refresh_direct_coil_review_surfaces(
+    result: dict[str, Any],
+    spec: dict[str, Any],
+    ctx: dict[str, Any],
+    parameter_set: Any,
+) -> None:
+    """Rebuild the Direct Coil review surfaces on a /derive so a manual fill is reflected
+    there instead of staying frozen at analyze-time values (TR-9).
+
+    Analyze feeds `_engine_drawing_notes` + `_engine_drawing_dims` into the canonical
+    record (`_run_candidate_to_drawing_payload`), which is what puts the drawing notes and
+    the engine dimensions on the paste-ready 52-field surface. /derive never did, so a
+    coil whose coating (or product/size) was corrected in the browser kept showing the
+    submittal-time notes — a manufacturing instruction that silently never reached the
+    order.
+
+    Rebuilding needs the source candidate, which /derive does not receive: it resolves ONE
+    coil from a spec dict, not from the submittal. The browser already holds it
+    (`page.workflow.candidates[0]`) and ships it back, the same way `panel` and
+    `sibling_coils` already round-trip. No candidate -> no-op, so every non-manual-fill
+    caller stays byte-identical.
+
+    Identity is enforced HERE rather than trusted from the frontend: the candidate and the
+    drawing being derived travel by different routes, so a candidate fetched from the
+    wrong coil page (which the concurrent re-analyze fan-out can produce) disagrees on the
+    tag and is discarded. It cannot detect a substituted candidate whose tag happens to
+    agree — both tags trace to the same field — so cross-page mis-pairing is precisely
+    what it guards. Every skip states its reason: a silently unrefreshed panel reads as
+    "the submittal says nothing", which is the failure this whole fix is about.
+    """
+    cand_raw = spec.get("candidate")
+    if not cand_raw:
+        return
+
+    engine_dims = _engine_drawing_dims(parameter_set)
+    # A Tier-B override is a value the ENGINEER typed. `to_canonical` stamps every dim it
+    # receives with `EV-ENGINE-DIM-<key>` / source_type "engine_rule", so passing one
+    # through would file a human value as engine output — inventing provenance, and
+    # landing it `review_required` instead of `manual_override`. Analyze never hits this
+    # (it has no param_overrides), so the helper had never met a human value before.
+    # Filtered in the caller so `_engine_drawing_dims` stays byte-identical for analyze.
+    params = getattr(parameter_set, "parameters", None) or {}
+    engine_dims = {
+        key: value
+        for key, value in engine_dims.items()
+        if getattr(params.get(key), "mode", None) != "manual"
+    }
+
+    engine_notes_list = _engine_drawing_notes(ctx)
+    # Same fallback analyze carries: the candidate can lack product/size while the drawing
+    # resolved them from the full-PDF model-code scan (the water-coil case). Without it the
+    # paste field reads unmapped while the drawing prints the note.
+    if not engine_notes_list:
+        resolved = dict(ctx)
+        for key in ("product_type", "unit_size"):
+            resolved[key] = resolved.get(key) or result.get(key)
+        resolved["coil_category"] = resolved.get("coil_category") or (
+            result.get("extracted") or {}
+        ).get("coil_category")
+        engine_notes_list = _engine_drawing_notes(resolved)
+    engine_notes = "\n".join(engine_notes_list) if engine_notes_list else None
+
+    reason: str | None = None
+    try:
+        candidate = SubmittalCoilCandidate.model_validate(cand_raw)
+    except Exception:  # noqa: BLE001 -- a bad payload skips the refresh, never 500s a fill
+        candidate = None
+        reason = "candidate payload invalid - Direct Coil review fields not refreshed"
+
+    if candidate is not None:
+        spec_tag = _norm_coil_tag(spec.get("tag"))
+        cand_tag = _norm_coil_tag(getattr(getattr(candidate, "tag", None), "value", None))
+        if not spec_tag or not cand_tag:
+            reason = (
+                "coil tag missing - identity unverifiable, "
+                "Direct Coil review fields not refreshed"
+            )
+        elif spec_tag != cand_tag:
+            reason = (
+                f"candidate/coil tag mismatch ({cand_tag} != {spec_tag}) - candidate "
+                "discarded, Direct Coil review fields not refreshed"
+            )
+        elif engine_dims or engine_notes:
+            try:
+                augmented = _run_candidate_to_direct_draft_workflow(
+                    candidate, engine_dims=engine_dims, engine_notes=engine_notes
+                )
+            except Exception:  # noqa: BLE001 -- a review surface must never take down the fill
+                reason = "Direct Coil review fields could not be refreshed"
+            else:
+                # `validation` (safety flags) and `canonical_summary` are deliberately left
+                # alone; these three are what the browser re-renders, and they must move
+                # together or the draft panel and the paste table disagree about one dim.
+                for key in (
+                    "direct_coil_paste_ready",
+                    "readiness_report",
+                    "direct_coil_input_draft",
+                ):
+                    result[key] = augmented[key]
+
+    if reason:
+        result.setdefault("manual_fill_errors", []).append(reason)
+
+
 def _hgrh_partner_conn_for(selected_candidate, candidates) -> Any:
     """The reheat-HGRH partner's connection size for a DX candidate (else None).
 
@@ -1747,15 +2276,33 @@ def _run_candidate_to_drawing_payload(
         _flag_hgbp_product_line_unverified(template_drawing)
         _flag_distributor_orientation_review(template_drawing)
         _flag_defaulted_coil_hand(template_drawing, ctx)
+        _flag_header_count_conflict(template_drawing, ctx)
         # DX-with-reheat casing-depth correction (R-072 with-HGRH branch). Runs on the
         # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
         # every downstream artifact shows the corrected CD. No-op unless DX + partner.
         _apply_hgrh_pairing_cd(template_drawing, hgrh_partner_conn)
+        # The submittal's stated connections-per-header, which the frozen path drops.
+        # AFTER the pairing correction: that helper merges its FULL recomputed slot set
+        # and would undo this one; this helper's own re-run is HGRH-only, where the
+        # pairing helper (DX-only) never runs, so the two cannot fight. BEFORE the
+        # provenance block, whose contract is that it describes the slots actually drawn.
+        _apply_stated_qty_conn_per_header(template_drawing, ctx)
+        # 1c': the frozen path discards its engine response, so reconstruct which rules
+        # fired. AFTER the pairing correction — the CD this coil actually draws is the
+        # one that helper just re-derived, and reproducing the frozen call instead would
+        # read as drift against a value that is deliberately different.
+        _attach_recomputed_engine_provenance(
+            template_drawing, hgrh_partner_conn=hgrh_partner_conn
+        )
+        # Same raw-SVG stage: print THIS coil's coating, replacing the coating name the
+        # template was seeded with. Mirrored in derive_coil_template_drawing.
+        _apply_coating_note_to_drawing(template_drawing, ctx.get("coating"))
     if isinstance(template_drawing, dict) and template_drawing.get("svg"):
         template_drawing["svg"] = _clean_template_svg(
             template_drawing["svg"],
             (template_drawing.get("extracted") or {}).get("coil_category"),
             _coil_tag_for_drawing(template_drawing),
+            ctx.get("coating"),
         )
     if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):
         _attach_parametric_schematic(template_drawing)

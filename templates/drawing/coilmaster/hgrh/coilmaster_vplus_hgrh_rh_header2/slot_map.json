@@ -408,6 +408,16 @@
         "pdf_drawing_value_redacted_to_slot"
       ],
       "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.SL3",
+      "label": "SL3",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "pdf_drawing_value_redacted_to_slot"
+      ],
+      "notes": "Redacted 2026-08-30: the seed's as-built value was printed verbatim on every coil. The engine reproduces it exactly for the seed's own geometry, so the slot is the correct source."
     }
   ]
 }

@@ -162,17 +162,29 @@ def _write_journal_line(milestone: str, result: dict | None, request_payload: di
         return None, f"journal hook failed: {type(exc).__name__}: {exc}"
 
 
-def _cover_page_hint_from_request(request: Request) -> int | None:
-    raw_value = request.headers.get("x-coilforge-cover-page")
+def _cover_page_hint(raw_value: Any, label: str) -> int | None:
+    """Validate a cover-page hint from a header or a JSON body field.
+
+    Shared so every entry point produces the SAME value for the checklist cache key:
+    the analyze-time fill sends it as a header and `deliverable_finalize` as a body
+    field, and a hint that differs between them is a guaranteed cache miss (which is
+    what made finalize re-run Excel without the hint and lose the checklist).
+    """
     if raw_value in (None, ""):
         return None
     try:
         page_number = int(raw_value)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be an integer.") from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} must be an integer.") from exc
     if page_number < 1:
-        raise HTTPException(status_code=400, detail="X-CoilForge-Cover-Page must be 1 or greater.")
+        raise HTTPException(status_code=400, detail=f"{label} must be 1 or greater.")
     return page_number
+
+
+def _cover_page_hint_from_request(request: Request) -> int | None:
+    return _cover_page_hint(
+        request.headers.get("x-coilforge-cover-page"), "X-CoilForge-Cover-Page"
+    )
 
 
 def _identity_from_request(request: Request) -> str | None:
@@ -278,6 +290,27 @@ async def capture_override_rate():
     report = measure_override_rate(redact=True)
     # The core dict carries only raw_private_data_returned (matching health()); the route
     # augments the two review-aid flags (as build_project_gate does).
+    report["export_allowed"] = False
+    report["production_drawing_approval_claimed"] = False
+    return jsonable_encoder(report)
+
+
+@app.get("/api/capture/rule-observatory")
+async def capture_rule_observatory():
+    """Read-only Stage 4.0 measurement: per-RULE disagreement over the ledger — one level up
+    from override-rate, at the grain a YAML change is actually made at.
+
+    Reports NO accuracy figure, by construction. Every rate divides by ``second_opinion``
+    rather than ``fired``, and a rule nobody has ever checked comes back with
+    ``disagreement_rate: None`` plus a ``no_second_opinion`` flag — because the failure mode
+    this stage is most exposed to is an unexamined rule reading as a perfect one. The
+    ``blind_spots`` list is returned alongside the ranked rules for the same reason.
+
+    Aggregate counts only; redacts on this unauthenticated surface (a per-rule aggregate
+    needs no coil tags or project numbers at all); never creates the DB."""
+    from coilforge.capture.observatory import measure_rule_observatory
+
+    report = measure_rule_observatory(redact=True)
     report["export_allowed"] = False
     report["production_drawing_approval_claimed"] = False
     return jsonable_encoder(report)
@@ -724,7 +757,7 @@ async def _run_or_reuse_checklist(
     cached = _CHECKLIST_CACHE.get(key)
     if cached is not None:
         saved_path = cached.get("saved_path")
-        if not saved_path or Path(saved_path).exists():
+        if saved_path and Path(saved_path).exists():
             _CHECKLIST_CACHE.move_to_end(key)
             # Annotate the COPY, never the cached original: a ruling John records in the
             # browser has to change the next render, and this result is memoized by PDF
@@ -737,7 +770,10 @@ async def _run_or_reuse_checklist(
                 ),
                 saved_path, None, None,
             )
-        # The filled copy was deleted -- drop the stale entry and regenerate.
+        # No path, or the filled copy was deleted -- drop the stale entry and regenerate.
+        # A pathless entry must NOT short-circuit to "success": its review would be handed
+        # back with saved_path=None, and `deliverable_finalize` then has no file to file --
+        # the silent-skip John reported (docs filed, checklist absent, no warning).
         del _CHECKLIST_CACHE[key]
 
     try:
@@ -1382,6 +1418,11 @@ async def _try_checklist_review(pdf_bytes: bytes, request: Request, result: dict
 _DELIVERABLE_TO = "purchasing; rayl@directcoil.com"
 _DELIVERABLE_CC = "David Newton"
 
+# The browser saves the revised PDF asynchronously moments before it calls finalize,
+# so its Downloads copy may not exist yet when we go to retire it. Bounded poll —
+# never found is a reported status, not a failure.
+_REVISED_DOWNLOAD_WAIT_S = 5.0
+
 
 def _b64_to_bytes(value, field: str) -> bytes:
     import base64
@@ -1396,26 +1437,35 @@ def _b64_to_bytes(value, field: str) -> bytes:
 
 @app.post("/api/deliverable/finalize")
 async def deliverable_finalize(request: Request):
-    """Finalize a DirectCoil deliverable: file the original quote, the revised quote,
+    """Finalize a DirectCoil deliverable: MOVE the original quote, the revised quote,
     and the auto-generated Coil Checklist into the project's
     ``…/02 - POs/<project>/Accessory Order Forms/DirectCoil`` folder (only the
-    ``DirectCoil`` leaf is created if absent), then open a pre-filled Outlook DRAFT
-    (subject ``Coils: <#> - <name>``, revised PDF attached) — never sent.
+    ``DirectCoil`` leaf is created if absent; a differently-spelled one is renamed),
+    then open a pre-filled Outlook DRAFT (subject ``Coils: <#> - <name>``, revised PDF
+    attached) — never sent.
 
     POST JSON: ``submittal_pdf_base64`` (project identity + checklist),
     ``quote_pdf_base64`` (original source quote), ``revised_pdf_base64`` (the built
     revised PDF), plus ``submittal_filename`` / ``quote_filename`` and the optional
     ``checklist_overrides`` (the browser's manual fills, so the filed checklist matches
-    the drawings). Original PDFs are copied, never modified. Review aid only
-    (``export_allowed: False``)."""
+    the drawings). Two optional flags: ``skip_draft`` (file only — this is what the
+    Build button sends) and ``overwrite`` (John's answer to a conflict).
+
+    Filing is ALL-OR-NOTHING. A destination that already holds a byte-identical file is
+    ``already_filed`` and passes; one holding DIFFERENT content stops the whole thing
+    and returns ``status: "conflict"`` with nothing written — a 200, because a conflict
+    is a decision waiting on John, not an error (a missing folder still 400/409s).
+    The Downloads originals are then retired content-verified, so an unrelated
+    same-named file can never be deleted. Review aid only (``export_allowed: False``)."""
     import asyncio
 
     from coilforge.deliverable.finalize import (
         FinalizeError,
+        commit_placements,
         deliverable_subject,
-        place_bytes,
-        place_copy,
+        plan_placements,
         resolve_directcoil_folder,
+        retire_download,
     )
     from coilforge.deliverable.outlook_draft import open_deliverable_draft
 
@@ -1425,6 +1475,13 @@ async def deliverable_finalize(request: Request):
     revised = _b64_to_bytes(payload.get("revised_pdf_base64"), "revised_pdf_base64")
     quote_name = Path(payload.get("quote_filename") or "quote.pdf").name
     submittal_name = payload.get("submittal_filename")
+    overwrite = bool(payload.get("overwrite"))
+    skip_draft = bool(payload.get("skip_draft"))
+    # Same hint the browser sent to /api/checklist/fill. It is part of the checklist cache
+    # key, so omitting it here guaranteed a MISS on every submittal whose cover page was
+    # selected by hand -- finalize then re-derived the coils WITHOUT the hint, which can
+    # yield "no recognizable coils" and drop the .xlsx from the deliverable.
+    cover_page_hint = _cover_page_hint(payload.get("cover_page"), "cover_page")
 
     # Project identity from the submittal intake.
     try:
@@ -1432,6 +1489,7 @@ async def deliverable_finalize(request: Request):
             submittal,
             source_id="DELIVERABLE-FINALIZE-001",
             source_filename=submittal_name,
+            cover_page_hint=cover_page_hint,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1452,6 +1510,7 @@ async def deliverable_finalize(request: Request):
     # missing payload here would key differently and quietly file the pre-override sheet).
     checklist_outcome = await _run_or_reuse_checklist(
         submittal, filename=submittal_name, source_id="DELIVERABLE-FINALIZE-001",
+        cover_page_hint=cover_page_hint,
         coil_overrides=payload.get("checklist_overrides"),
     )
     # A BUSY guard is a hard error here, not a degraded status. Everywhere else a
@@ -1467,42 +1526,180 @@ async def deliverable_finalize(request: Request):
                 "deliverable, so finalize was stopped rather than filing without it."
             ),
         )
+    # NOT the checklist status yet -- only why the fill itself failed, if it did. The
+    # status is derived from the FILING outcome below: reporting "ok" here because a
+    # review table was built is exactly how a missing .xlsx read as a clean success.
     checklist_path = checklist_outcome.saved_path
-    checklist_status = "ok" if checklist_outcome.review is not None else (
-        checklist_outcome.reason or "unavailable"
+    checklist_blocked_reason = (
+        None if checklist_outcome.review is not None
+        else (checklist_outcome.reason or "unavailable")
     )
 
-    # Resolve/create the DirectCoil folder and file the docs (copies, never moves).
+    # Resolve/create the DirectCoil folder.
     try:
         folder = resolve_directcoil_folder(project_number)
     except FinalizeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    subject = deliverable_subject(project_number, project_name)
     revised_name = f"{Path(quote_name).stem}_Revised.pdf"
-    files_written = [
-        place_bytes(folder, quote_name, quote),
-        place_bytes(folder, revised_name, revised),
+    items: list[tuple[str, bytes | str]] = [
+        (quote_name, quote),
+        (revised_name, revised),
     ]
+    # INVARIANT: the checklist is only "ok" when it is actually in `items` (and therefore
+    # in `files_written`). Every other outcome names its own cause -- there is no branch
+    # left that can leave the status at a default while the .xlsx quietly stays behind.
+    checklist_name = Path(checklist_path).name if checklist_path else None
     if checklist_path and Path(checklist_path).exists():
-        files_written.append(
-            place_copy(folder, Path(checklist_path).name, checklist_path)
+        items.append((checklist_name or "", checklist_path))
+        checklist_status = "ok"
+    elif checklist_name and (folder / checklist_name).exists():
+        # The Downloads copy is gone because an earlier run MOVED it into the folder
+        # (Build files the docs; the draft button re-runs over the same three). That is
+        # a completed move, not a missing checklist — say so rather than "unavailable".
+        checklist_status = "already filed"
+    elif checklist_name:
+        checklist_status = "Downloads copy missing — checklist not filed"
+    else:
+        # No path at all: the fill failed (Excel absent, no coils, COM error), or a
+        # cache entry carried no path. Either way the deliverable goes out WITHOUT the
+        # checklist, so say so in the same breath as the reason.
+        checklist_status = (
+            f"{checklist_blocked_reason} — checklist not filed"
+            if checklist_blocked_reason
+            else "checklist path unavailable — not filed"
         )
 
-    # Open the Outlook draft with the revised PDF attached (never sent).
-    subject = deliverable_subject(project_number, project_name)
+    # All-or-nothing: decide every destination first, and if any of them holds
+    # DIFFERENT content under the same name, write nothing and hand the list back.
+    placements = plan_placements(folder, items)
+    conflicts = [p for p in placements if p.is_conflict]
+    if conflicts and not overwrite:
+        return {
+            "status": "conflict",
+            "project_number": project_number,
+            "project_name": project_name,
+            "subject": subject,
+            "folder": str(folder),
+            "conflicts": [
+                {
+                    "name": p.filename,
+                    "existing_size": p.dest.stat().st_size,
+                    "existing_modified": p.dest.stat().st_mtime,
+                }
+                for p in conflicts
+            ],
+            "files_written": [],
+            "downloads_cleanup": [],
+            "documents": [
+                {
+                    "kind": kind, "name": name, "filed": False, "state": "skipped",
+                    "path": None, "downloads": None,
+                    "detail": "nothing was filed — name conflict in the folder",
+                }
+                for kind, name in (
+                    ("quote", quote_name), ("revised", revised_name),
+                    ("checklist", checklist_name),
+                )
+            ],
+            "checklist_status": checklist_status,
+            "draft_opened": False,
+            "draft_status": "skipped — nothing was filed",
+            "email_sent": False,
+            "review_aid_only": True,
+            "export_allowed": False,
+            "production_drawing_approval_claimed": False,
+            "raw_private_data_returned": False,
+        }
     try:
-        await asyncio.to_thread(
-            open_deliverable_draft,
-            subject=subject,
-            to=_DELIVERABLE_TO,
-            cc=_DELIVERABLE_CC,
-            attachment_path=files_written[1],
-        )
-        draft_opened, draft_status = True, "ok"
-    except RuntimeError as exc:  # pywin32 / Outlook unavailable
-        draft_opened, draft_status = False, str(exc)
-    except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
-        draft_opened, draft_status = False, f"Outlook draft failed: {exc}"
+        files_written = commit_placements(placements, overwrite=overwrite)
+    except FinalizeError as exc:
+        # A per-file copy failure (locked source, over-long destination). Documents
+        # ahead of it in the list may already be on disk, so report the named cause
+        # rather than a bare 500 that says nothing about what did land.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # Retire the Downloads originals. The checklist was moved by path above; the two
+    # PDFs only reach us as bytes, so they are deleted only where the content matches.
+    def _cleanup() -> list[dict]:
+        entries = [
+            {"name": quote_name, "status": retire_download(quote_name, quote)},
+            {
+                "name": revised_name,
+                "status": retire_download(
+                    revised_name, revised, wait_s=_REVISED_DOWNLOAD_WAIT_S
+                ),
+            },
+        ]
+        if checklist_name and any(
+            Path(p).name == checklist_name for p in files_written
+        ):
+            entries.append({
+                "name": checklist_name,
+                "status": (
+                    "moved"
+                    if not (checklist_path and Path(checklist_path).exists())
+                    else "could not delete — left in Downloads"
+                ),
+            })
+        return entries
+
+    downloads_cleanup = await asyncio.to_thread(_cleanup)
+
+    # Per-document log (additive -- `files_written` / `downloads_cleanup` /
+    # `checklist_status` keep their contracts). Matched by NAME, never by list order:
+    # an `already_filed` entry makes the placement order unreliable, the same reason
+    # the Outlook attachment is looked up by name below.
+    cleanup_by_name = {e["name"]: e["status"] for e in downloads_cleanup}
+    state_by_name = {p.filename: p.state for p in placements}
+    filed_by_name = {Path(path).name: path for path in files_written}
+
+    def _document(kind: str, name: str | None, detail: str | None = None) -> dict:
+        filed_path = filed_by_name.get(name) if name else None
+        return {
+            "kind": kind,
+            "name": name,
+            "filed": filed_path is not None,
+            "state": state_by_name.get(name) if filed_path else "skipped",
+            "path": filed_path,
+            "downloads": cleanup_by_name.get(name) if name else None,
+            "detail": detail,
+        }
+
+    documents = [
+        _document("quote", quote_name),
+        _document("revised", revised_name),
+        _document(
+            "checklist",
+            checklist_name,
+            None if checklist_status == "ok" else checklist_status,
+        ),
+    ]
+
+    # Open the Outlook draft with the revised PDF attached (never sent). Looked up by
+    # NAME, not by index — `already_filed` entries make the list order unreliable.
+    revised_dest = next(
+        (p for p in files_written if Path(p).name == revised_name), None
+    )
+    if skip_draft:
+        draft_opened, draft_status = False, "skipped"
+    elif revised_dest is None:
+        draft_opened, draft_status = False, "revised PDF not filed — no attachment"
+    else:
+        try:
+            await asyncio.to_thread(
+                open_deliverable_draft,
+                subject=subject,
+                to=_DELIVERABLE_TO,
+                cc=_DELIVERABLE_CC,
+                attachment_path=revised_dest,
+            )
+            draft_opened, draft_status = True, "ok"
+        except RuntimeError as exc:  # pywin32 / Outlook unavailable
+            draft_opened, draft_status = False, str(exc)
+        except Exception as exc:  # noqa: BLE001 — surface COM failures clearly
+            draft_opened, draft_status = False, f"Outlook draft failed: {exc}"
 
     _journal_milestone(
         "deliverable_finalized", result=result,
@@ -1510,11 +1707,15 @@ async def deliverable_finalize(request: Request):
                 "draft_opened": draft_opened},
     )
     return {
+        "status": "filed",
         "project_number": project_number,
         "project_name": project_name,
         "subject": subject,
         "folder": str(folder),
         "files_written": files_written,
+        "conflicts": [],
+        "downloads_cleanup": downloads_cleanup,
+        "documents": documents,
         "checklist_status": checklist_status,
         "draft_opened": draft_opened,
         "draft_status": draft_status,
@@ -1524,6 +1725,32 @@ async def deliverable_finalize(request: Request):
         "production_drawing_approval_claimed": False,
         "raw_private_data_returned": False,
     }
+
+
+@app.post("/api/deliverable/open-folder")
+async def deliverable_open_folder(request: Request):
+    """Open a filed deliverable's DirectCoil folder in Explorer.
+
+    POST JSON ``{folder}`` — the ``folder`` value the finalize response just returned.
+    The path is validated against the SharePoint PO base before anything is opened, so
+    this cannot be used to launch an arbitrary path. Any path we will not or cannot open
+    (outside the base, empty, no longer there) is a 400 — the caller supplied it, so it is
+    a bad request either way. Read-only: it opens a window and changes nothing on disk."""
+    import asyncio
+
+    from coilforge.deliverable.finalize import FinalizeError
+    from coilforge.deliverable.open_folder import open_deliverable_folder
+
+    payload = await request.json()
+    try:
+        opened = await asyncio.to_thread(open_deliverable_folder, payload.get("folder"))
+    except FinalizeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:  # non-Windows
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except OSError as exc:  # Explorer refused to launch
+        raise HTTPException(status_code=409, detail=f"could not open the folder: {exc}") from exc
+    return {"opened": True, "folder": opened, "raw_private_data_returned": False}
 
 
 @app.post("/api/review/project")
@@ -1626,9 +1853,21 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
     if not _manual_fill_enabled():
         clean.pop("param_overrides", None)
         clean.pop("spec_overrides", None)
+        # The Direct Coil review-surface refresh rides the same feature, so the documented
+        # kill switch has to strip its input too -- otherwise the refresh keeps running
+        # with COILFORGE_MANUAL_FILL=0 and the env var stops being a whole-feature lever.
+        clean.pop("candidate", None)
         for key in ("application", "header_count", "qty_conn_per_header"):
             clean.pop(key, None)
         return clean, errors
+
+    # Source candidate for the Direct Coil review-surface refresh (TR-9). The workflow
+    # validates it and checks its tag against the coil being derived; here we only reject
+    # a non-object so a junk value never reaches model_validate.
+    if "candidate" in clean and clean["candidate"] is not None:
+        if not isinstance(clean["candidate"], dict):
+            errors.append("candidate must be an object")
+            clean.pop("candidate", None)
 
     valid_overrides: list[dict[str, Any]] = []
     for item in spec.get("param_overrides") or []:
@@ -1723,7 +1962,12 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
     if not _manual_fill_enabled():
         result.pop("manual_fill_plan", None)
     if errors:
-        result["manual_fill_errors"] = errors
+        # MERGE, never assign: the workflow puts its own skip reasons here (e.g. the coil
+        # tag could not be verified, so the Direct Coil review fields were not refreshed).
+        # Assigning would drop that reason whenever any unrelated sanitizer error fired --
+        # and an unexplained stale panel is exactly the failure this reporting exists for.
+        existing = result.get("manual_fill_errors")
+        result["manual_fill_errors"] = (list(existing) if existing else []) + errors
     # request_payload=clean carries the coil tag (singular) and the project
     # identity the frontend now sends; derive's result has neither pdf_intake_summary
     # nor pdf_coil_pages, so without this the milestone hits the identity gate and

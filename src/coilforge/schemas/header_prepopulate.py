@@ -49,6 +49,19 @@ class ProductFamily(str, Enum):
     TERRA_V = "TERRA_V"
     VENTUM_H = "VENTUM_H"
     VENTUM_PLUS = "VENTUM_PLUS"
+    # Omnia (OW### model codes, John 2026-08-25): a first-class family that inherits
+    # EVERY Ventum+ rule and the dedicated Ventum+ template set; its only own rule is
+    # R-011o (TF = BF = 0.625, vs Ventum+ 1.0). Python branches that special-case
+    # Ventum+ must test ``in VENTUM_PLUS_CLASS`` so Omnia cannot silently fall out.
+    OMNIA = "OMNIA"
+
+
+# Families that share the Ventum+ engine branches (R-052 flat R, HGRH CD = 3*conn,
+# R-063b water SL, install_width drain-pan compare, dedicated Ventum+ templates).
+VENTUM_PLUS_CLASS: frozenset[ProductFamily] = frozenset(
+    {ProductFamily.VENTUM_PLUS, ProductFamily.OMNIA}
+)
+VENTUM_PLUS_CLASS_VALUES: frozenset[str] = frozenset(p.value for p in VENTUM_PLUS_CLASS)
 
 
 class TerraVariant(str, Enum):

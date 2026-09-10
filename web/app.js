@@ -377,8 +377,13 @@ function renderProjectTree(uiState) {
   }
 
   state.pdfCoilPages.forEach((page, index) => {
-    const pageButton = document.createElement("button");
     const reviewed = state.reviewedCoils.has(index);
+    // A row, not a bare button: the approve control has to sit BESIDE the tag, and a
+    // <button> inside a <button> is invalid HTML that browsers refuse to nest.
+    const row = document.createElement("div");
+    row.className = "tree-row";
+
+    const pageButton = document.createElement("button");
     pageButton.className = `tree-item child ${index === state.activePdfCoilPageIndex ? "active" : ""}`;
     pageButton.type = "button";
     pageButton.dataset.coilPageIndex = String(index);
@@ -389,8 +394,48 @@ function renderProjectTree(uiState) {
     pageButton.addEventListener("click", () => {
       selectPdfCoilPage(index);
     });
-    elements.projectTree.append(pageButton);
+
+    // Approve this coil's review from the sidebar, without leaving the coil John is
+    // looking at. Deliberately a TOGGLE: the footer button can only ever mark, so a
+    // mis-click had no undo and the quote gate stayed open on an unintended approval.
+    const approve = document.createElement("button");
+    approve.type = "button";
+    approve.className = `tree-approve${reviewed ? " is-reviewed" : ""}`;
+    approve.dataset.coilPageIndex = String(index);
+    approve.textContent = reviewed ? "✓" : "○";
+    const tag = page.tag || `Coil ${index + 1}`;
+    approve.title = reviewed
+      ? `${tag} reviewed — click to undo`
+      : `Approve the review for ${tag}`;
+    approve.setAttribute("aria-pressed", reviewed ? "true" : "false");
+    approve.setAttribute("aria-label", approve.title);
+    approve.addEventListener("click", (event) => {
+      // Without this the row's own click also fires and yanks John to another coil.
+      event.stopPropagation();
+      toggleCoilReviewed(index);
+    });
+
+    row.append(pageButton, approve);
+    elements.projectTree.append(row);
   });
+}
+
+// Approve/un-approve ANY coil from the sidebar. Unlike markActiveCoilReviewed it never
+// navigates or advances — John is approving from the side tab, so pulling him to a
+// different coil would lose his place. It refreshes the footer nav too, so the two
+// controls can never disagree about the active coil's state.
+function toggleCoilReviewed(index) {
+  if (index < 0 || index >= state.pdfCoilPages.length) {
+    return;
+  }
+  if (state.reviewedCoils.has(index)) {
+    state.reviewedCoils.delete(index);
+  } else {
+    state.reviewedCoils.add(index);
+  }
+  renderProjectTree(state.ui);
+  renderCoilReviewNav();
+  updateQuoteGate();
 }
 
 function selectPdfCoilPage(index) {
@@ -2216,7 +2261,27 @@ function renderPdfIntakeSummary(uiState) {
       <div><span>Text extraction</span><strong>${escapeHtml(extractionStatus(summary))}</strong></div>
       <div><span>Raw PDF stored</span><strong>${escapeHtml(summary.raw_pdf_stored ? "yes" : "no")}</strong></div>
     </div>
+    ${renderNonCoilRowsExcluded(summary)}
     ${renderPdfCoilReviewPages(summary)}
+  `;
+}
+
+function renderNonCoilRowsExcluded(summary) {
+  const excluded = summary && summary.non_coil_rows_excluded;
+  if (!Array.isArray(excluded) || excluded.length === 0) {
+    return "";
+  }
+  // Shown, never silent. A row the coil-tag gate refused has to be visible with its
+  // reason -- otherwise a wrongly-excluded coil looks identical to one the submittal
+  // never listed, which is the exact ambiguity the gate exists to remove.
+  const items = excluded
+    .map((reason) => `<li>${escapeHtml(reason)}</li>`)
+    .join("");
+  return `
+    <details class="non-coil-excluded" open>
+      <summary>Non-coil rows excluded (${excluded.length})</summary>
+      <ul>${items}</ul>
+    </details>
   `;
 }
 
@@ -2553,6 +2618,7 @@ function renderTemplateDrawingPreview(templateDrawing) {
       ${distributorOrientationBanner(templateDrawing)}
       ${coilHandAssumedBanner(templateDrawing)}
       ${hgbpProductLineBanner(templateDrawing)}
+      ${headerCountConflictBanner(templateDrawing)}
       ${manualOverrideBanner(templateDrawing)}
       <div class="template-drawing-canvas">${templateDrawingBody(templateDrawing, rendered)}</div>
       ${renderThreeWayView(templateDrawing)}
@@ -2707,7 +2773,7 @@ function siblingCoilsForPairing() {
 // plus the engineer's product/size pick and any human-in-the-loop manual fills. Manual
 // engine inputs OVERRIDE the extracted spec value (a filled `rows` beats a blank/wrong
 // extracted `rows`); param overrides + reason ride along for Tier-B + the audit log.
-function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
+function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, candidate) {
   const ex = templateDrawing.extracted || {};
   const f = fills || {};
   const engineInputs = f.engineInputs || {};
@@ -2737,6 +2803,10 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     application: engineInputs.application,
     header_count: engineInputs.header_count,
     qty_conn_per_header: engineInputs.qty_conn_per_header,
+    // NOT the lever above: the connections-per-header the SUBMITTAL stated, stamped by
+    // analyze and round-tripped so the header-count conflict banner survives a re-derive
+    // done for any unrelated reason. Cross-check input only — never an engine input.
+    stated_qty_conn_per_header: templateDrawing.qty_conn_per_header_stated,
     // A DX paired with a reheat HGRH takes the engine's with-HGRH casing-depth branch
     // (CD 8.125, not 7.5 — and CD feeds the distributor spacing S). Analyze resolves the
     // partner across the sibling coils; /derive handles ONE coil and cannot see them, so
@@ -2750,6 +2820,13 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills) {
     // Round-trip the submittal spec-panel values so the right-side panel stays
     // populated after the dimensions are logic-derived.
     panel: templateDrawing.panel,
+    // Source candidate for the Direct Coil review-surface refresh (TR-9). /derive resolves
+    // ONE coil from this spec and never sees the submittal, so it cannot rebuild the
+    // paste-ready 52 fields on its own — without this the Drawing Notes and engine
+    // dimensions stay frozen at analyze time. Same round-trip shape as `panel` /
+    // `sibling_coils`; the backend re-validates it and checks its tag against `tag` above,
+    // so a candidate from the wrong coil page is discarded rather than used.
+    candidate,
     // Project identity so the coil_manual_fill milestone journals to the right case
     // and Case Retrieval can name the project. derive's result carries no
     // pdf_intake_summary, so the backend cannot recover these on its own.
@@ -2768,6 +2845,14 @@ function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
   if (updated.drawing_parameter_set) {
     page.workflow.drawing_parameter_set = updated.drawing_parameter_set;
   }
+  // Direct Coil review surfaces refreshed by the re-derive (TR-9). They also ride along
+  // nested inside `updated`, but `workflowToUiState` reads the OUTER keys — this copy is
+  // the authoritative one, and without it a page switch re-renders the analyze-time values.
+  if (updated.direct_coil_paste_ready) {
+    page.workflow.direct_coil_paste_ready = updated.direct_coil_paste_ready;
+    page.workflow.readiness_report = updated.readiness_report;
+    page.workflow.direct_coil_input_draft = updated.direct_coil_input_draft;
+  }
   if (fills && (Object.keys(fills.engineInputs || {}).length || (fills.paramOverrides || []).length)) {
     page.manualFills = { ...fills, productLine, unitSize };
   }
@@ -2775,7 +2860,15 @@ function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
 
 async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, options) {
   const opts = options || {};
-  const spec = deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills);
+  // The candidate that rebuilds the Direct Coil review surfaces must be THIS coil's.
+  // A headless re-analyze fan-out runs one derive per coil concurrently, so it reads the
+  // explicitly targeted page — the shared active index would hand coil A's candidate to
+  // coil B. An interactive fill is a click on the coil currently on screen, so the active
+  // page is by definition the right one there (same assumption `targetPage` already makes).
+  const candidate = opts.page
+    ? opts.page.workflow?.candidates?.[0] || null
+    : activePdfCandidate();
+  const spec = deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, candidate);
   if (elements.previewStatus && !opts.headless) {
     elements.previewStatus.textContent = "Deriving…";
   }
@@ -2790,6 +2883,14 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     persistDerivedToPage(targetPage, updated, fills, productLine, unitSize);
     if (opts.headless) {
       return updated;  // background re-apply: store only, caller re-renders the active coil once
+    }
+    // The re-derive rebuilt the Direct Coil review surfaces, so re-render the whole shell
+    // from the persisted workflow: the paste table, the draft groups, the blocked-field
+    // list and the header count chips all read those keys, and refreshing only some of
+    // them would leave one panel showing analyze-time values next to another showing the
+    // new ones. Runs BEFORE the drawing render below so the preview keeps the last word.
+    if (updated.direct_coil_paste_ready && targetPage?.workflow) {
+      renderShell(workflowToUiState(state.ui, targetPage.workflow, null));
     }
     // The panel mirrors the drawing's slot values: refresh it from the re-derived
     // response so the Drawing Parameters stay aligned with the new dimensions.
@@ -2832,18 +2933,28 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
 // shows only the OTHER fillable engine inputs + blocked drawing-param overrides.
 function renderManualFillPanel(templateDrawing) {
   const plan = templateDrawing.manual_fill_plan;
-  if (!plan) return "";
+  // Resolved BEFORE the early returns below: these carry the backend's skip reasons (e.g.
+  // "coil tag missing - identity unverifiable, Direct Coil review fields not refreshed"),
+  // and a withheld or plan-less coil is exactly when the engineer needs to be told why a
+  // panel did not move. Returning early on those left the reason invisible.
+  const errors = templateDrawing.manual_fill_errors || [];
+  const errorHtml = errors.length
+    ? `<div class="manual-fill-errors">${errors.map((e) => `<span>⚠ ${escapeHtml(e)}</span>`).join("")}</div>`
+    : "";
+  if (!plan) {
+    return errorHtml ? `<div class="manual-fill-panel">${errorHtml}</div>` : "";
+  }
   if (plan.withheld_reason) {
     return `
       <div class="manual-fill-panel is-withheld">
         <span class="manual-fill-title">Drawing withheld</span>
         <span class="manual-fill-hint">${escapeHtml(plan.withheld_reason)}</span>
+        ${errorHtml}
       </div>`;
   }
   const items = (plan.items || []).filter(
     (it) => it.key !== "product_type" && it.key !== "unit_size",
   );
-  const errors = templateDrawing.manual_fill_errors || [];
   if (!items.length && !errors.length) return "";
   const rows = items
     .map((it) => {
@@ -2868,9 +2979,6 @@ function renderManualFillPanel(templateDrawing) {
         </label>`;
     })
     .join("");
-  const errorHtml = errors.length
-    ? `<div class="manual-fill-errors">${errors.map((e) => `<span>⚠ ${escapeHtml(e)}</span>`).join("")}</div>`
-    : "";
   return `
     <div class="manual-fill-panel">
       <span class="manual-fill-title">Fill these to complete the drawing</span>
@@ -3307,6 +3415,20 @@ function hgbpProductLineBanner(templateDrawing) {
   return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
 }
 
+// Loud review-required banner when the submittal states more connections per header than
+// the circuit count we could read. Circuits IS the header count on the drawing path
+// (header_type = "Header N"), and with nothing stating it the backend falls to 1 — a
+// confidently single-header drawing built on no evidence (project 3095). The stated
+// connection count is a DIFFERENT quantity, so it only raises the question here; it never
+// answers it. See submittal_to_drawing._flag_header_count_conflict.
+function headerCountConflictBanner(templateDrawing) {
+  const warning = templateDrawing && templateDrawing.header_count_review;
+  if (!warning || !templateDrawing.header_count_conflict) {
+    return "";
+  }
+  return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
+}
+
 // Loud marker when one or more dimensions were manually overridden (Phase 1 reflection):
 // the drawing now shows an engineer-supplied value, not the machine proposal, so it must
 // never read as an approved as-built. Driven by result.manual_override_keys; empty when
@@ -3608,6 +3730,7 @@ function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
         ${distributorOrientationBanner(templateDrawing)}
         ${coilHandAssumedBanner(templateDrawing)}
         ${hgbpProductLineBanner(templateDrawing)}
+        ${headerCountConflictBanner(templateDrawing)}
         <div class="dc-coil-drawing-canvas">
           ${templateDrawingBody(templateDrawing, rendered)}
         </div>
@@ -4745,25 +4868,41 @@ async function buildQuotePackage() {
   };
   const finalizeBtn = document.querySelector("#finalize-deliverable");
   if (finalizeBtn) finalizeBtn.hidden = false;
+  // File the deliverable in the SAME click (John 2026-08-30) — the three docs stop
+  // living in Downloads. The Outlook draft is deliberately skipped: John chose
+  // "file only" for the automatic step and keeps the draft on its own button.
+  await fileDeliverable({ skipDraft: true });
 }
 
-// Finalize deliverable — file the original quote + revised quote + auto-generated
-// checklist into the project's DirectCoil folder and open a pre-filled Outlook DRAFT
-// (revised PDF attached). Server-side (Outlook COM + SharePoint filing); never sends.
-async function finalizeDeliverable() {
-  const summary = document.querySelector("#quote-package-summary");
+// File the deliverable — MOVE the original quote + revised quote + auto-generated
+// checklist out of Downloads into the project's DirectCoil folder, and (unless
+// skipDraft) open a pre-filled Outlook DRAFT with the revised PDF attached.
+// Server-side (SharePoint filing + Outlook COM); never sends.
+//
+// Called twice per deliverable by design: Build fires it with skipDraft, and the button
+// re-runs it for the draft. The second run finds the same three byte-identical files
+// already filed, which the backend treats as `already_filed`, not a conflict.
+async function fileDeliverable({ skipDraft = false, overwrite = false } = {}) {
+  const summary = document.querySelector("#deliverable-summary");
   const ctx = state.lastQuotePackage;
   if (!ctx || !ctx.revisedBase64) {
     if (summary) summary.textContent = "Build the quote package first.";
-    return;
+    return null;
   }
   const submittal = state.selectedPdfFile;
   const quote = state.selectedQuotePdfFile;
   if (!isPdfFile(submittal) || !isPdfFile(quote)) {
-    if (summary) summary.textContent = "Need both the analyzed submittal PDF and the quote PDF to finalize.";
-    return;
+    if (summary) {
+      summary.textContent =
+        "Need both the analyzed submittal PDF and the quote PDF to file the deliverable.";
+    }
+    return null;
   }
-  if (summary) summary.textContent = "Finalizing deliverable — filing docs & drafting email…";
+  if (summary) {
+    summary.textContent = skipDraft
+      ? "Filing the deliverable into the project's DirectCoil folder…"
+      : "Filing docs & drafting email…";
+  }
   const [subBytes, quoteBytes] = await Promise.all([submittal.arrayBuffer(), quote.arrayBuffer()]);
   const body = {
     submittal_pdf_base64: arrayBufferToBase64(subBytes),
@@ -4774,6 +4913,12 @@ async function finalizeDeliverable() {
     // Same manual fills the checklist panel was filled with, so the .xlsx filed with the
     // order is the override-bearing one (and reuses its cache entry — no second Excel run).
     checklist_overrides: collectChecklistOverrides(),
+    // The cover page the analyze-time fill used. It is part of the server's checklist
+    // cache key, so omitting it made every hand-selected cover page miss the cache and
+    // re-derive the coils without the hint — which is how the .xlsx went missing.
+    cover_page: elements.pdfCoverPageInput?.value.trim() || null,
+    skip_draft: skipDraft,
+    overwrite,
   };
   let res;
   try {
@@ -4782,25 +4927,134 @@ async function finalizeDeliverable() {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    if (summary) summary.textContent = `Finalize failed: ${err.message || err}`;
-    return;
+    if (summary) summary.textContent = `Filing failed: ${err.message || err}`;
+    return null;
   }
-  const files = (res.files_written || [])
-    .map((p) => `<span class="quote-package-coil">${escapeHtml(p)}</span>`)
-    .join("<br>");
-  const draft = res.draft_opened
-    ? `<span class="quote-package-coil">Outlook draft opened — review &amp; send: <strong>${escapeHtml(res.subject)}</strong></span>`
-    : `<span class="quote-package-warning">⚠ Draft not opened: ${escapeHtml(res.draft_status || "unknown")}</span>`;
-  const chk =
-    res.checklist_status && res.checklist_status !== "ok"
-      ? `<br><span class="quote-package-warning">⚠ Checklist: ${escapeHtml(res.checklist_status)}</span>`
-      : "";
-  if (summary) {
-    summary.innerHTML = `<strong>Filed to</strong> ${escapeHtml(res.folder)}<br>${files}<br>${draft}${chk}`;
-  }
+  renderDeliverableResult(res, { skipDraft });
+  return res;
 }
 
-document.querySelector("#finalize-deliverable")?.addEventListener("click", finalizeDeliverable);
+// A conflict is not an error — nothing was written and John picks. Rendered with its own
+// Overwrite/Cancel pair rather than a confirm(), so the file list stays readable.
+function renderDeliverableResult(res, { skipDraft }) {
+  const summary = document.querySelector("#deliverable-summary");
+  if (!summary) return;
+  if (res.status === "conflict") {
+    const rows = (res.conflicts || [])
+      .map(
+        (c) =>
+          `<span class="quote-package-warning">⚠ ${escapeHtml(c.name)} — already there with different content</span>`
+      )
+      .join("<br>");
+    summary.innerHTML =
+      `<strong>Nothing was filed.</strong> ${escapeHtml(res.folder)} already holds `
+      + `${(res.conflicts || []).length} file(s) under the same name but with different content:`
+      + `<br>${rows}<br>`
+      + `<button id="deliverable-overwrite" type="button">Overwrite and file</button> `
+      + `<button id="deliverable-cancel" class="secondary-action" type="button">Cancel</button>`;
+    document.querySelector("#deliverable-overwrite")?.addEventListener("click", () => {
+      fileDeliverable({ skipDraft, overwrite: true }).catch((error) => {
+        summary.textContent = `Filing failed: ${error.message || error}`;
+      });
+    });
+    document.querySelector("#deliverable-cancel")?.addEventListener("click", () => {
+      summary.textContent = "Cancelled — nothing was filed.";
+    });
+    return;
+  }
+  // Per-document log: one line per document with an explicit ✓ / ⚠, so a document that
+  // did NOT travel is as visible as the ones that did. Before this, a missing checklist
+  // showed only as the absence of a line under a bold "Filed to …" header.
+  const files = (res.documents || []).length
+    ? res.documents.map(renderDeliverableDocument).join("<br>")
+    : (res.files_written || [])
+        .map((p) => `<span class="quote-package-coil">${escapeHtml(p)}</span>`)
+        .join("<br>");
+  // Only the non-"moved" ones matter: a file left behind in Downloads is the one thing
+  // John would otherwise discover weeks later as a stale duplicate. Suppressed when the
+  // per-document log is present — it already states each document's Downloads outcome.
+  const leftBehind = (res.documents || []).length
+    ? ""
+    : (res.downloads_cleanup || [])
+        .filter((entry) => entry.status !== "moved")
+        .map(
+          (entry) =>
+            `<span class="quote-package-warning">⚠ Downloads: ${escapeHtml(entry.name)} — ${escapeHtml(entry.status)}</span>`
+        )
+        .join("<br>");
+  const draft = skipDraft
+    ? ""
+    : res.draft_opened
+      ? `<br><span class="quote-package-coil">Outlook draft opened — review &amp; send: <strong>${escapeHtml(res.subject)}</strong></span>`
+      : `<br><span class="quote-package-warning">⚠ Draft not opened: ${escapeHtml(res.draft_status || "unknown")}</span>`;
+  // The per-document log already carries the checklist's own line and reason; keep this
+  // as the fallback for a server that predates `documents`.
+  const chk =
+    !(res.documents || []).length && res.checklist_status && res.checklist_status !== "ok"
+      ? `<br><span class="quote-package-warning">⚠ Checklist: ${escapeHtml(res.checklist_status)}</span>`
+      : "";
+  const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const filedCount = (res.documents || []).filter((d) => d.filed).length;
+  const head = (res.documents || []).length
+    ? `<strong>Filed ${filedCount}/${res.documents.length} to</strong> ${escapeHtml(res.folder)} <span class="quote-package-coil">· ${escapeHtml(stamp)}</span>`
+    : `<strong>Filed to</strong> ${escapeHtml(res.folder)}`;
+  summary.innerHTML =
+    `${head}<br>${files}`
+    + (leftBehind ? `<br>${leftBehind}` : "")
+    + draft
+    + chk
+    + `<br><button id="deliverable-open-folder" type="button">Open the DirectCoil folder</button>`;
+  wireOpenFolderButton(summary, res.folder);
+}
+
+// One log line per document. `filed` is the single source of truth for the icon — it is
+// computed server-side from what actually landed in `files_written`, not from a status
+// string that could drift from the filing outcome.
+function renderDeliverableDocument(doc) {
+  const label = { quote: "Quote", revised: "Revised", checklist: "Checklist" }[doc.kind]
+    || doc.kind;
+  const name = doc.name ? escapeHtml(doc.name) : "(not generated)";
+  if (!doc.filed) {
+    const why = doc.detail ? ` — ${escapeHtml(doc.detail)}` : " — not filed";
+    return `<span class="quote-package-warning">⚠ ${escapeHtml(label)}: ${name}${why}</span>`;
+  }
+  const already = doc.state === "already_filed" ? " (already there)" : "";
+  // A document left behind in Downloads is filed but not cleaned up — say both.
+  const left =
+    doc.downloads && doc.downloads !== "moved"
+      ? ` <span class="quote-package-warning">⚠ Downloads: ${escapeHtml(doc.downloads)}</span>`
+      : "";
+  return `<span class="quote-package-coil">✓ ${escapeHtml(label)}: ${name}${escapeHtml(already)}</span>${left}`;
+}
+
+// Inline confirmation, matching the Overwrite/Cancel pair above: never confirm()/alert(),
+// which blocks the page (and any Claude-in-Chrome session driving it).
+function wireOpenFolderButton(summary, folder) {
+  document.querySelector("#deliverable-open-folder")?.addEventListener("click", async () => {
+    try {
+      await requestJson("/api/deliverable/open-folder", {
+        method: "POST",
+        body: JSON.stringify({ folder }),
+      });
+      summary.insertAdjacentHTML(
+        "beforeend",
+        `<br><span class="quote-package-coil">✓ Opened ${escapeHtml(folder)}</span>`
+      );
+    } catch (error) {
+      summary.insertAdjacentHTML(
+        "beforeend",
+        `<br><span class="quote-package-warning">⚠ Could not open the folder: ${escapeHtml(error.message || String(error))}</span>`
+      );
+    }
+  });
+}
+
+document.querySelector("#finalize-deliverable")?.addEventListener("click", () => {
+  fileDeliverable().catch((error) => {
+    const summary = document.querySelector("#deliverable-summary");
+    if (summary) summary.textContent = error.message;
+  });
+});
 
 // NOTE: the "Verify Direct Coil entry" panel was unmounted pending completion of
 // the read-and-alert feature; it will be re-added (correctly placed) in a later

@@ -1,6 +1,132 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-05 (**[검토 수렴 트랙] Phase D 종료 — D-2 커밋 `67586f4`**: 판정 원장 +
+> 마지막 갱신: 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
+> 멀티헤더 결함 4건. 도면이 **시드 코일의 as-built을 인쇄**(`-0.25 S1`; slot_map에 없어 치환 대상조차 아님),
+> 9abe5a7의 Terra V 가드가 **실제 PDF 경로에서 死**(R-052의 `qty or circuits` 무언 대체), 그 결과 **S 음수 발산**,
+> 패널 I2/O2 비대칭 미설명. 조사 중 결론이 한 번 뒤집혔다 — 참조를 **그 입력으로 재구성**하면 우리 공식이
+> 정확히 재현하므로 **음수 S는 실제 관례**이고 `_hgrh_supply_s`는 무죄. qty 배선은 Terra V 한정(실측 34/34 일치로
+> 확대 이득 0). 1608 green, invariant BLOCKER 0. 눈확인 TR-12 대기. 이전 갱신 2026-08-26 (**[Omnia 트랙] c43d9d7** — OW### = `ProductFamily.OMNIA`, Ventum+ 규칙·템플릿 상속(`VENTUM_PLUS_CLASS`
+> + catalog alias), 유일한 차이 R-011o TF/BF 0.625; 첫 Omnia 도면이 **Ventum+ LH1 템플릿 2개의 seed 오류**(2760 Revere p.2/p.6 =
+> 비Ventum+ 페이지, TF 0.63·nozzle 위)를 드러내 p.5/p.7로 재seed; 3097 실 PDF 라이브 검증, 1553 green. 이전 갱신 2026-08-15 (**[제출물 파싱 + HGRH 트랙] John이 지적한 결함 2건 —
+> `worktree-sl1-tagfilter` → `claude/ambient-supplier` 병합**: ①**EKEXV 유령 코일** — EEV 밸브킷이 코일로 잡혔다. 가드는 있었으나
+> `_NON_COIL_TAG_PREFIXES` 3문자열 denylist를 **단 한 곳**(`_is_cover_coil_row`)에서만 봤다. 그 함수는 정상
+> 작동했고, 문제는 **그 함수를 안 거치는 진입로들**이었다 — `Unit Tag: EKEXV-CDXC-1`이 무필터로 COIL_TAG가 되고
+> (`_RE_UNIT_TAG_ANCHOR`), `2 CDXC-1 EEV Kit …` 부속 줄이 **유령 CDXC-1**을 만들었다(둘 다 실행으로 재현).
+> 게다가 사내 킷 명명이 `EKEXVA{n}U`라 `EKEXVA-CDXC-1`은 애초에 목록에 없었다. **질문을 바꿨다**: "코일 태그는
+> 정확히 `<coil-prefix>-<seq>`". 그 앵커는 `coil_category_of_tag`에 **이미 있었는데 필터로 안 쓰였다** —
+> `coil_tag_aliases`/`drain_pan_partner_tag`와 함께 **fail-open**(거부가 아니라 분류 포기)이라, 유출된 복합
+> 태그가 조용히 drain-pan 파트너를 잃고 INSTALL FIT을 건너뛰었다. `is_coil_tag`가 그걸 위임하므로 정의가 하나가
+> 되고 미래 철자변형(`EEVK-`/`TXV-`)까지 목록 추가 없이 막힌다. **item-token denylist는 존치** — 서로를 포함하지
+> 않는다: 구조규칙은 `CDXC-1` + "EEV Kit"을 못 잡고, item규칙은 `_cover_item_from_text`가 "EKEXV Valve (DX Coil)"을
+> **"DX Coil"로 축약한 뒤**엔 볼 게 없다(테이블 경로는 원문 셀을 넘겨 비대칭이었다). 그래서 텍스트줄 경로는
+> **줄 전체**를 item 자리에 넘긴다. `_FieldPattern.validator`로 3개 루프를 한 번에 덮고, `_detail_page_tags`는
+> 정규화가 구분자를 지워 `CDXC1 ⊂ EKEXVCDXC1`이 되던 걸 **앞서 마스킹**(비코일 AND 코일태그 포함, 이중조건 —
+> `CDXC - 1` recall 보존). 대가로 `_is_cover_coil_row`의 **코일-키워드 fallthrough가 사라진다**(OCR로 깨진 진짜
+> 태그는 구제 못 함) — 그래서 **모든 거부에 사유를 붙여 화면에 올린다**(`non_coil_rows_excluded`). 조용히 사라진
+> 행은 "제출물에 없음"으로 읽히는데, 그게 바로 이 필터가 없애려는 모호함이다. ②**HGRH 단일피드 SL1** — John:
+> "Ventum+ SL1에 6인치 익스텐션이 빠진다". 파보니 **체크리스트가 스스로와 모순**이었다: `HGRH!C58`(치수행)은
+> `IF(C14=1, 3, …)`, `HGRH!C26`(NOTES)은 같은 조건에서 `" Add Headers & Stubouts. … SupConnAngle=LAS. **SL1=6**"`을
+> **제품 3분기 전부**에 찍는다. 단일피드 코일은 자기 공급헤더가 없어 C26이 "헤더를 추가하라"는 지시이고, 도면에
+> 그려지는 헤더가 **그 추가된 헤더**다 → 6이 그려지는 물건의 치수. 나머지 근거 넷이 전부 6(R-044a MEDIUM /
+> **R-044c HIGH** / EZC-0002·0010 실도면 / vplus 참조 도면 내장 노트)이고 **C58만 이탈**. John이 노트 쪽으로
+> 판정(라인 전체, Terra V 제외). **엔진은 내내 정답을 내고 있었다** — `supply_sl`을 읽는 Python이 `src/`에 0줄이라
+> 엔진 6 vs 슬롯 3이 어긋나도 깨지는 테스트가 없었다(브리지 테스트로 봉함). 값은 **슬롯 레이어에 남긴다**:
+> 엔진 소싱은 `build_drawing_slots`가 `values`만 읽으므로 R-044a(MEDIUM)인 NOVA/VH를 **공란으로 되돌리고**,
+> TERRA_H는 `supply_sl` 규칙 자체가 없어 영구 공란이 된다. 덤으로 상수 6이 `cd is not None` 안에 갇혀 있어
+> **CD 미해결 코일은 SL1이 사유도 없이 사라지던 것**을 별도 커밋으로 un-gate(`not in slots` no-op 가드).
+> 시트와의 불일치는 **숨기지 않고 등록**(KD-006~009, `delta_band {3,3}` — 신원에 피드수 축이 없어 밴드가 없으면
+> 다중피드까지 조용해진다 + RP-002 제안서). **1513 green**(1493→1513), invariant-guard BLOCKER 0·HIGH 0,
+> frozen·`templates/**` 무접촉. **실 제출물 12개 전수 대조: 커버 코일 행 100% 동일**(진짜 코일 손실 0),
+> 다중피드 슬롯 딕셔너리 5라인×2서킷 **byte-identical**. ⚠️ **동시 세션 충돌**로 메인 트리 대신 워크트리
+> `.claude/worktrees/sl1-tagfilter`에서 작업 — 다른 Claude 세션이 같은 폴더에서 병합을 시작해 충돌 상태로
+> 멈춰 있었다(자세히는 memory `phase2_worktree_isolation`). **John 승인으로 2026-08-15 병합** —
+> 겹치는 파일은 `pdf_intake.py` 하나였고 자동 병합됐다(각자 다른 함수: 태그 필터 vs `_circuits_from_coil_style`).
+> 이 로드맵만 충돌 1건, union으로 해소.
+> 이전: **[인테이크 트랙] 헤더 수가 조용히 1로 떨어지던 결함 — 4a3c403**:
+> John 보고: 3095 Harrison의 `RHHGRC-1`은 헤더가 2조인데 `Header 1`로 그려져 **두 번째 헤더 열이 통째로
+> 사라졌다**. 제출물은 세 번 말하고 있었다 — `Coil Style: Dual Face Split`, `Qty Conn. / Header 2`,
+> `Qty of Valves: 2` — 그리고 우리는 **셋 다 안 읽었다**. 이 경로엔 `header_count`라는 독립 값이 아예 없고
+> 헤더 수가 곧 `circuits`인데(`header_type = f"Header {circuits}"`, `catalog._header_matches`가 문자열 정확
+> 일치), `_circuits_from_coil_style`이 단어 매핑을 **리터럴 "circuit" 게이트 뒤에** 두고 있었다. "Dual Face
+> Split"은 수량이 단어이고 줄에 "Circuit"이 없다 → 파서는 **정직하게 `None`을 반환했는데** 하류의 `or 1`
+> 세 곳이 그 `None`을 확신에 찬 `1`로 바꿨다. 즉 "추측 금지" 불변식이 **역방향으로** 깨진 사례다.
+> 어휘는 원래 알고 있던 것이다 — **R-086**이 DX `Interlaced N Circuits` / HGRH `Face Split N Circuits`를
+> 이미 규정한다. 이제 수량 단어가 네 서술자(`Circuit`/`Interlaced`/`Intertwined`/`Face Split`) **바로 옆에
+> 붙었을 때만** 센다. **인접 조건이 안전장치** — "Single Row"의 `Single`은 행 수라, 문자열 전역 매칭이면
+> 같은 결함을 부호만 뒤집어 재현한다. 숫자 없는 맨 `Interlaced`/`Face Split`은 여전히 거부.
+> **실 3095 실측 before→after**: RHHGRC-1/-2/-3 · CDXC-3 `Header 1`→`Header 2`(S3/O4/R4 등장), CDXC-1/-2 무변경.
+> **기존 숫자는 하나도 안 바뀌었다** — CD·S1 동일, 없던 헤더 열이 생긴 것(계획서엔 R-072로 CD가 재계산될
+> 것이라 적었으나 실측은 불변, 그만큼 눈확인 범위가 작다). CDXC-3은 CDXC-1과 코일 모델 코드가 동일한데
+> (`3DX-08-24.0-14-15.0-8`) 서로 다르게 그려지고 있었고, 이제 좌우 반전으로 일치한다. HGRH `I3`은 의도적
+> 공란 — R-046이 Terra V Supply 2+ I/O를 규정하지 않으므로 그 규칙이 **이제야 발화**하고, 도면은 지어낸
+> 2.75 대신 `REVIEW REQUIRED` 콜아웃을 하나 더 낸다(= `exceptions_K` 상승, fail-closed 방향).
+> 둘째 변경 — 다음 표기는 조용하지 않도록 `_flag_header_count_conflict`: 명시된 `Qty Conn. / Header`와 읽어낸
+> circuits가 어긋나면 배너. **연결수는 헤더수와 다른 물리량이라 질문만 하고 답하지 않는다**(값·confidence·
+> 템플릿 전부 불변). 수정 전 파서로 되돌려 재생하면 **틀렸던 4개 코일에만** 뜨고 옳던 2개엔 안 뜬다 = 가드가
+> 자기 효용을 증명, 수정 후엔 6개 전부 조용(노이즈 0). analyze·`/derive` **양쪽** 배선 + stated 값 각인·왕복
+> (무관한 이유의 재-derive로 배너가 사라지면 TR-9와 같은 형태의 결함). **1504 green**, frozen·YAML·템플릿
+> 무접촉, 검증 실행이 원장에 남긴 행 0건.
+> 이전: **[학습루프 트랙] 4단계 Rule Observatory 착수 — 94209c8·e31a92d·75fe368**:
+> John의 요청("불일치·결측을 DB에 쌓아 로직을 고치게")을 조사해보니 **DB는 이미 있고 이미 쌓이고 있었다**
+> — 체크리스트 불일치 500 match/4 mismatch, 결측 `blocked_reason` 945행, 교정 36행. 진짜 공백은 하나였다:
+> **`rule_firing` 0행**. 마이그레이션 3이 만든 표가 392 run 동안 비어 있었던 건 `_attach_engine_provenance`가
+> **Tier-A 수동 채움에만** 붙었기 때문이고(frozen path는 엔진 응답을 버린다), 그래서 "O가 아홉 번 틀렸다"는
+> 알아도 **"R-061v가 틀렸다"로 번역할 수가 없었다** — 즉 병목은 "John이 교정을 안 한다"만이 아니라 **캡처**였다.
+> ①**병합(94209c8)**: 불일치 캡처·판정 원장·규칙 제안 엔진이 `claude/review-convergence`에만 있는데 **두 브랜치가
+> 같은 ledger에 쓰고 있어** DB의 checklist 행은 전부 저쪽 code_version이었다. 텍스트 충돌은 roadmap.md 1건뿐
+> (양쪽 서술 union, 어느 쪽도 버리지 않음). `param_key_for_slot`이 저쪽에만 있어 병합이 선행조건.
+> ②**귀속 복구(e31a92d)**: `_attach_recomputed_engine_provenance`가 caller-side에서 엔진을 **관측 목적으로만**
+> 재실행 — frozen 무수정, 그 모듈 자신의 입력 에코로 호출을 재구성, frozen이 안 넘긴 인자는 안 넘김.
+> **재구성은 주장이므로 검증한다**: 재계산 슬롯 전부를 실제로 그려진 slot_values와 대조해 어긋나면
+> `fidelity='drifted'` + 어긋난 키를 **기록**(지우면 신뢰 불가 신호 자체가 사라진다), 리더는 비율에서 제외.
+> `source`는 블록 레벨이라 한 (run,coil)에 두 출처가 섞이는 게 **표현 불가능**. 순서가 양방향으로 load-bearing —
+> analyze는 `_apply_hgrh_pairing_cd` **뒤**(페어링이 CD를 5.625→5.75로 바꾸므로 frozen 호출을 재현하면 오히려
+> drift), derive는 Tier-B 반영 **앞**(뒤면 엔지니어의 입력을 엔진 drift로 오보). 코일당 0.19ms. 마이그레이션 6은
+> additive-only, NULL source는 1c seam이므로 `COALESCE(...,'live')`. ③**Observatory(75fe368)**: 규칙별 불일치
+> 측정. **`accuracy` 필드를 만들지 않는 것**이 설계의 핵심 — 로드맵이 4단계 최대 위험으로 적어둔 표본 편향
+> ("안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다")에 대한 답은 경고문이 아니라 구조다. 모든 비율의 분모는
+> `fired`가 아니라 `second_opinion`(100발화/4관측/2불일치 = 0.5이지 0.02가 아니다), coverage 0은
+> `disagreement_rate: None`, `blind_spots`를 `rules`와 **나란히** 내고 CLI는 그걸 **먼저** 찍는다.
+> 어휘 브리지가 난제였다(엔진필드 `suction_io` ↔ 패널키 `O2` ↔ 시트슬롯 `slot.O4`) — 기존 맵 합성으로 만들되
+> **실제 derive를 돌려서** 두 누락을 발견: `record._compare_rows`가 `param_key_for_slot(slot) or label`로
+> 파일링하므로 라벨 반쪽도 따라가야 하고(안 그러면 **R-033 DIST EXTENTION**이 미귀속으로 샌다 — 이 도구가 가장
+> 귀속하고 싶은 바로 그 행), `return_spacing`은 per-circuit **리스트**라 role 표를 우회해 `slot.R{even}`을 직접
+> 쓴다(빠지면 DX return-spacing 규칙이 조용히 미측정). 검증: 임시 원장에 **실제 derive 12건 → rule_firing 124행
+> / 고유 규칙 40개 / 전부 recomputed·verified / (field,rule) 44쌍 중 30쌍 측정가능**. 라이브 원장에는 아직
+> `insufficient` — 1c'는 **새 실행부터** 적용되므로 정직한 0이다. **1493 green**(1237→1440 병합→1459→1493),
+> frozen 무접촉, 도면 값 불변(스냅샷 비교로 고정). 범위 밖으로 남긴 것: 판정 UI, 제안서 자동 생성.
+> 이전: **[코팅·검토표면 트랙] 브라우저 교정이 산출물에 도달하지 못하던 결함 2건 — b44fdd0**:
+> 성격이 같은 두 결함을 함께 닫았다 — **엔지니어가 브라우저에서 고친 값이 정작 넘겨주는 산출물에 반영되지 않던**
+> 문제. ①**TR-9**: analyze는 `_engine_drawing_notes`+`_engine_drawing_dims`를 정본 기록에 태워 붙여넣기 52필드
+> 표면에 올리는데 `/derive`는 그 후처리를 통째로 안 했다(**228d731 CD 회귀와 동일 계열** — analyze에만 배선된
+> 후처리, 이 리포에서 두 번째). 조사해보니 **자물쇠가 둘**이었다: 백엔드는 표면을 아예 반환하지 않고
+> (29키 중 부재), 프런트도 derive 응답으로 붙여넣기 표를 다시 그리지 않았다(코일 전환해도 analyze 시점 값을
+> 재판독). 한쪽만 고쳤으면 **테스트는 초록인데 화면은 그대로**였을 것. 재생성엔 원본 후보가 필요한데 derive는
+> 그걸 안 받으므로 **브라우저가 왕복 전달**(기존 `panel`/`sibling_coils`와 같은 관례) — 다만 John의 요구대로
+> **신원은 서버가 강제**한다: 후보와 도면은 **서로 다른 경로로 도착**하므로 엉뚱한 코일 페이지에서 집어온 카드는
+> tag가 어긋나 폐기된다(3단 fail-closed: 일치/불일치/tag없음, **모든 스킵이 사유를 표시** — 조용히 안 갱신된
+> 패널은 "제출물에 없음"으로 읽히는데 그게 바로 이 수정이 없애려는 실패다). 후보 없으면 종전과 byte-identical.
+> **plan-review 1R이 BLOCKER로 잡은 것**: derive의 `parameter_set`엔 **Tier-B 수동 override가 이미 반영**돼 있어
+> 그대로 치수를 뽑으면 사람이 타이핑한 값이 `EV-ENGINE-DIM-*`/`source_type="engine_rule"`로 **엔진 산출물로 위장**
+> 저장된다(analyze는 override가 없어 그 헬퍼가 사람 값을 만난 적이 없었음) → override된 키만 제외. 2R APPROVED.
+> ②**코팅**: 템플릿 3장이 **코팅된 참조 도면에서 시드**돼 그 참조의 코팅명이 아트워크에 박혀 있었다 — 무코팅
+> 코일에 `ELECTROFIN COATING REQUIRED`가 찍히고 HERESITE 코일엔 엉뚱한 코팅이 지시됐다. `slot.COATING_NOTE`로
+> 슬롯화(+`slot_map` 등록, 안 하면 플레이스홀더가 그대로 인쇄) + 글자당 x좌표 목록 제거(ELECTROFIN의 자간으로
+> 다른 코팅을 배치하던 것). **그런데 슬롯화만으론 부족했다** — 그 노트 블록은 `_strip_intruding_chrome`+viewBox
+> 크롭이 이미 제거하고 있어서 **원래 화면에 안 나왔다**(템플릿만 고치고 끝냈으면 테스트 초록·화면 무변화).
+> 코일 태그와 같은 방식으로 **크롭 영역 안에 직접 주입**(15px 굵게 빨강 — 제조 지시이지 메타데이터가 아님) →
+> **22개 버킷 전부**에서 동작. 무코팅은 `REVIEW REQUIRED` 센티넬이 아니라 **완전 공란**(무코팅은 미결정이 아니라
+> 확정 상태). **커버 라인아이템 coating 자동 인식** 신설(HGBP 어더와 동일한 스캔 창·근거 — 커버 앞은 컨설턴트
+> 스펙이라 견적일 수 없음), **회사 어휘 14종에 앵커**(자유 문자열이 코팅명을 만들지 못함), 코일 자신의 상세
+> 블록이 우선. 라이브 실행이 **기존 결함 1건을 드러냄**: `Coil Coating: <값>` 라벨 패턴이 줄 끝까지 삼켜
+> `ELECTROFIN EVAP TEMP COATING REQUIRED`가 나왔다(값이 인쇄된 적 없어 잠자던 것) → 노트 생성 시 어휘로 정규화,
+> 미인식은 버리지 않고 그대로 인쇄. **물코일 coating = John 판정 종결**: 물코일은 절대 코팅되지 않으므로 추출된
+> coating은 이웃 블록에서 번져온 것 → **한 지점에서 제거**(COIL_COATING 리더가 3개라 개별 게이팅은 다음 리더가
+> 구멍을 다시 엶). **수동 입력은 의도적으로 허용**(추론을 거절하는 것과 엔지니어의 명시적 결정을 거부하는 것은
+> 다름 — 테스트로 고정해 다음 세션이 뒤집지 못하게). **1237 green**(+49), frozen 무접촉, 실 제출물 라이브 검증
+> (EZC-0009 자동 인식·2870 무코팅 공란·2857 물코일 공란·수동 HERESITE 반영/해제·tag 가드 4분기),
+> **John 브라우저 A/B 탭 눈확인 완료**. 커밋·푸시 `18ef71a..b44fdd0`(`.agents`/`.codex`/settings 격리).
+> 이전: **[검토 수렴 트랙] Phase D 종료 — D-2 커밋 `67586f4`**: 판정 원장 +
 > 알려진 갭 레지스트리 + 규칙 제안서가 붙어 **Phase D가 닫혔다**. D-1이 체크리스트 불일치를 원장 *신호*로
 > 만들었다면 D-2는 그것을 *판정 가능한* 대상으로 만든다 — John이 한 번 판정하면 그 정체성이 재등장하는 모든
 > 곳에서 빨강이 앰버 + 근거로 바뀐다. **판정이 하지 *않는* 것이 설계의 핵심**: 값·confidence 무변경이고
@@ -871,7 +997,119 @@
   `/api/checklist/fill`을 타 Downloads에 .xlsx를 쓰고 journal 3줄을 남김(클릭은 "Analyze PDF" 하나뿐) →
   승인 후 전량 삭제. ⚠️ John의 :8011은 `--reload` 없음 → **재시작해야 반영**. 🆕 이번 세션
 
+- [x] **[코팅·검토표면 트랙] 브라우저 교정이 산출물에 도달하지 못하던 결함 2건 (b44fdd0, 2026-08-06)** —
+  TR-9(derive가 붙여넣기 52필드 표면을 재생성 안 함) + 템플릿에 박혀 있던 코팅명. 상세는 상단 갱신 노트 참조.
+  신규 3테스트 파일 **1237 green**(+49), frozen 무접촉, plan-review 2R(1R: BLOCKER 1·MAJOR 4·MINOR 5 전건 반영 →
+  2R APPROVED), 실 제출물 라이브 검증 + **John A/B 탭 눈확인 통과**. 부수 성과: 코팅 노트가 슬롯이 아니라
+  **크롭 영역 주입**으로 구현돼 3장이 아니라 **22개 버킷 전부**에서 동작한다.
+
+- [x] **[제출물 파싱 + HGRH 트랙] EKEXV 유령 코일 차단 + 단일피드 SL1=6 (6커밋 `f7ff518`→`dbec65b`,
+  2026-08-06 · `claude/ambient-supplier` 병합 2026-08-15)** — John 지적 2건. 상세는 상단 갱신 노트 참조. **1513 green**
+  (1493→1513, 신규 14테스트), invariant-guard BLOCKER 0·HIGH 0, frozen·`templates/**` 무접촉.
+  커밋 순서: ①`is_coil_tag` 단일 관문 신설 ②전 진입로 배선 + `_detail_page_tags` 마스킹 ③제외 사유 UI 노출
+  ④SL1 3→6 ⑤CD 미해결 시 SL1 누락 수정(독립 revert 가능) ⑥divergence 등록(KD-006~009 + RP-002).
+  **실 제출물 12개 전수 대조**: 커버 코일 행 100% 동일(코일 손실 0), 다중피드 슬롯 5라인×2서킷 byte-identical.
+  ⚠️ **자동검증만 완료** — 아래 TR-11 브라우저 눈확인 + 라벨 판정(앞으로 항목)은 여전히 John 몫. 🆕 이번 세션
+
+- [x] **[인테이크 트랙] 헤더 수가 조용히 1로 떨어지던 결함 (4a3c403, 2026-08-07)** — 3095 Harrison
+  `RHHGRC-1`이 `Header 1`로 그려져 두 번째 헤더 열을 통째로 잃었다. `_circuits_from_coil_style`이 수량 단어
+  매핑을 리터럴 `"circuit"` 게이트 뒤에 두어 `Coil Style: Dual Face Split`을 못 읽었고, 파서의 정직한 `None`을
+  하류 `or 1` 세 곳이 확신에 찬 `1`로 바꿨다. 어휘는 **R-086이 이미 규정한 것**(DX `Interlaced N Circuits` /
+  HGRH `Face Split N Circuits`) — 수량 단어가 네 서술자 **바로 옆**에 붙었을 때만 세도록 넓혔다(인접 조건 =
+  "Single Row"의 Single을 회로수로 읽지 않기 위한 안전장치). 실 3095 실측: RHHGRC-1/-2/-3·CDXC-3이
+  `Header 1→2`, **기존 숫자는 불변**(없던 열이 생긴 것), CDXC-3이 동일 모델 CDXC-1과 드디어 일치. 함께 넣은
+  `_flag_header_count_conflict`는 `Qty Conn. / Header`와 대조해 배너만 띄우고 값은 건드리지 않으며, 수정 전
+  파서로 재생하면 **틀렸던 4개에만** 뜬다. **1504 green**, frozen·YAML·템플릿 무접촉. 상세는 상단 갱신 노트 참조.
+  🆕 이번 세션
+
+- [x] **[Omnia 트랙] OW### 제품군 추가 + Ventum+ LH1 템플릿 seed 오류 수정 (c43d9d7, 2026-08-25~26)** —
+  John: "Ventum+와 규칙·도면 템플릿 완전 동일, TF/BF만 0.625". ①`ProductFamily.OMNIA` 1급 family +
+  `VENTUM_PLUS_CLASS`로 Python `== VENTUM_PLUS` 분기 5곳 흡수, YAML 11규칙 applies_to + R-064 + **R-011o**,
+  R-076 `OW050…OW085`(regex 없이 기존 Pass A가 감지). ②템플릿은 **alias**(OMNIA→VENTUM_PLUS 버킷, seed 0).
+  ③체크리스트 UNIT=VENTUM+ + KD-010..021(TF/BF −0.375, CH −0.75). ④**seed 감사**: 첫 Omnia 도면의
+  distributor가 반대(John) → `coilmaster_vplus_dx_lh_header1`/`..._hgrh_lh_header1`이 2760 Revere **p.2/p.6**
+  (TF/BF 0.63·SL 8·I 3 = Nova급, 혼합 프로젝트)에서 seed됐던 것. p.5/p.7(TF 1.00·SL 10·I 12, R-032 UP)로
+  재seed — 검증 규칙: **Ventum+ 원본은 TF=BF=1.00**. 3097 Sunnyside 실 PDF를 Chrome으로 올려 라이브 확인.
+  `tests/test_omnia_product_line.py` 23개(OMNIA==VENTUM_PLUS 전 필드 동일성 pin). **데이터 공백 유지**:
+  Wheel Product Sizing 차트는 코일 envelope라 R-074/077/078 OMNIA 행 없음 → fit `CANNOT_EVALUATE`.
+- [x] **[Terra V HGRH 트랙] 3095이 드러낸 멀티헤더 결함 4건 (d60bad1·27d1ef9·2f67dac·9bfef68, 2026-08-30~31)** —
+  John: "Terra V의 HGRH 하고 multiple header 케이스는 정말 엉망진창인거같은데". 3095 Harrison을 실제로
+  파이프라인에 통과시켜 보니 하나가 아니라 **서로 독립인 결함 4건**이었다.
+  ①**도면이 남의 코일 값을 인쇄**: `coilmaster_hgrh_{lh,rh}_header2`가 `-0.25 S1`·`6.56 SL3`(시드 코일의
+  as-built)을 찍는 동안 옆의 패널은 3.25·5라고 말한다. `slot_map.json`에 `slot.S1`/`SL3`이 없어 **치환
+  대상조차 아니었다** — 도면은 렌더되고 템플릿은 "populated"라 **깨지는 테스트가 하나도 없다**.
+  ②**9abe5a7의 가드가 실제 PDF 경로에서 한 번도 실행된 적이 없다**: R-052가 `n_conn = qty_conn_per_header
+  or circuits`로 **다른 물리량을 조용히 대체**하고 동결 `derive_slot_values`는 qty를 안 넘긴다 →
+  `len(return_spacing) == circuits` → `k <= len(...)`이 항상 참. 값은 있었다 — `ctx["qty_conn_per_header"]`로
+  읽어놓고 `_flag_header_count_conflict` 전용으로만 썼다(브라우저는 **엔지니어 레버**만 spec으로 보낸다).
+  즉 **PDF가 이미 인쇄한 숫자를 사람이 손으로 다시 쳐야만** 도면이 달라졌다. ③그 결과 **Terra V S가 음수로
+  발산**(실측 circuits=4에서 `S5 -0.75`, `S7 -2.75`) — Terra V CD는 rows 기반(R-070)이라 안 자라는데 Rn은
+  선형으로 자란다. ④패널의 I2 공란 vs O2 채움이 **정당한데 이유가 없어** 자의적으로 읽힌다(R-046은 Supply 1만,
+  R-042v는 Return 전부).
+  **John 질문 "음수 S는 관례인가"에 대한 조사 — 결론이 한 번 뒤집혔다.** 처음엔 "우리 공식이 참조를 하나도
+  재현 못 한다"고 보고했는데 **틀렸다**: 참조를 **그 참조 자신의 입력으로 재구성**해서 돌리면 정확히 재현한다
+  (`hgrh_rh_header3`: CD 5.5 / R 0.625·2.75·4.875 / **S1 −0.625** / SL5 6.9375 = 시드와 6값 일치).
+  **음수 S는 CoilMaster의 실제 값이지 결함이 아니다** → 전역 음수 금지 규칙은 오답, `_hgrh_supply_s` 무수정,
+  RP-003 폐기. 가드는 Terra V `CD − Rn` 분기(근거 소진)에만 건다.
+  **수정**: qty 배선(**Terra V HGRH 한정**) + `Rn ≥ CD` 보류 + provenance 동조(안 하면 고친 코일이 전부
+  `fidelity='drifted'`로 Observatory에서 탈락) + 템플릿 4개 리댁션 + 보류 치수에 `—` 표식(맨 라벨은 "빠뜨림"과
+  구분 불가) + 패널 사유. **qty를 전 제품군으로 넓히지 않은 근거는 실측**: `_hgrh_cd_multi`도 qty를 먹어
+  Nova/Terra H의 CD가 코퍼스 전역에서 움직이는데(Terra H 6.625→3.75), **실 제출물 40프로젝트·HGRH 34코일에서
+  `qty == circuits`가 34/34** → 바뀔 코일 0개. 뒤집는 조건은 `qty ≠ circuits`인 코일의 등장과 그 실도면뿐.
+  덤으로 시더의 진짜 원인 수정: `_CALLOUT_RE`가 **선행 `-`를 못 받아** 목록에 있던 `S1`이 부호 하나로 빠져나갔다.
+  ⚠️ **재시드 금지 판명**: 커밋된 템플릿이 시더 출력과 이미 다르다(coating-note 앵커 등 후속 작업) →
+  `build-one`은 그걸 **조용히 삭제한다**. CLAUDE.md에 기록. 홀수 SL·HD1은 `SL1`이 HGRH↔물코일에서 다른 슬롯을
+  뜻해 카테고리 판정이 필요 → 미수정.
+  **1608 green**(1553→1608, 신규 55), invariant-guard **BLOCKER 0**, 남긴 하드코딩 14건은
+  `tests/test_template_hardcoded_dims.py`가 **등식**으로 고정(늘어도 몰래 줄어도 red).
+  KD-002 판정도 수치로 확인: 시트의 Nova else-분기를 그대로 계산하면 **정확히 0.25**(John 스크린샷의 시트 값) —
+  판정은 옳고 축약 표현(`S = −conn_size`)만 부정확하다.
+
+- [x] **[Deliverable 트랙] Coil Checklist가 조용히 빠지던 원인 + 이동 로그 + 폴더 열기 (2026-09-09)** —
+  John: "pdf 두개는 DirectCoil로 옮기는데 coil checklist는 함께 가져가지 않는다". 화면 증거가
+  **경고 없이 파일 2개 + Downloads에 .xlsx 잔존**이라 조용한 누락으로 확정.
+  **근본은 구조적 비대칭**: quote/revised PDF는 요청 본문에 **bytes**로 실려 와 `items`에 항상 들어가지만,
+  체크리스트는 **Downloads 경로**를 요청 시점에 재유도해야 한다(`_run_or_reuse_checklist`) — 재유도가
+  실패하면 체크리스트만 빠지고 PDF는 정상 파일링된다. 결정적 결함은 `checklist_status`가
+  *"파일이 옮겨졌는가"*가 아니라 *"리뷰 테이블이 만들어졌는가"*(`review is not None`)를 뜻했다는 점 —
+  두 의미가 갈라지는 순간 UI(`!== "ok"`일 때만 ⚠)는 **성공으로 보고**한다.
+  **수정 4건:** ①`web_app.py`의 캐시 재사용 `not saved_path or …` 단락평가 제거 — 경로 없는 항목이
+  "성공"으로 반환되어 경고 0·파일링 0이 되던 유일한 경로(주석은 이미 "경로가 살아 있을 때만 재사용"을
+  약속하고 있었다 = 주석·코드 불일치). ②finalize가 `cover_page` 힌트를 안 보내 캐시 키가 analyze와
+  달라 **수동 커버페이지 제출물은 100% 미스** → 힌트 없이 Excel 재실행 → "no recognizable coils" 가능;
+  `_cover_page_hint(raw, label)`로 검증 규칙을 공유해 헤더·본문이 같은 값을 만들게 했다.
+  ③`checklist_status`를 **파일링 결과**에서 유도 — **불변식: `files_written`에 없으면 절대 `ok`가 아니다**.
+  ④`commit_placements`의 `copyfile` `OSError`를 파일명 담은 `FinalizeError`(→409)로 — 롤백이 없고
+  경로형 문서가 마지막이라 종전엔 PDF 2개가 디스크에 남은 채 **이름 없는 500**이었다.
+  **로그/UX:** 응답에 `documents[]`(kind·filed·state·path·downloads·detail) 추가(additive — 기존
+  `files_written`/`downloads_cleanup`/`checklist_status` 계약 유지), 상태창에 문서별 `✓/⚠` 한 줄 +
+  `Filed n/3` + 시각. `POST /api/deliverable/open-folder` + 인라인 "Open the DirectCoil folder" 버튼
+  (`confirm()` 미사용 — 페이지·Claude-in-Chrome 세션을 멈춘다). **보안 게이트**: 브라우저가 보낸 경로는
+  `resolve()` 후 `DEFAULT_PO_BASE` 하위인지 검증해야만 열고, 거부 시 경로를 되비추지 않는다.
+  **사이드바 코일별 REVIEW 승인 버튼(John 요청)**: 태그 옆 `○/✓` 토글. 사이드바 항목이 이미 `<button>`이라
+  중첩 불가 → `div.tree-row`로 감싸 형제 배치, `stopPropagation()`으로 행 클릭 분리, **이동하지 않는다**
+  (승인하다 다른 코일로 끌려가면 자리를 잃는다). footer 버튼과 달리 **토글** — 종전엔 취소가 불가능해
+  오클릭이 quote 게이트를 열어둔 채 남았다.
+  ✅ **John 눈 검증 통과 (2026-09-09)**: "왼쪽 부분에 리뷰 승인 하는 부분은 보기 좋아. 승인할게."
+  — 사이드바 승인 버튼만 승인된 것이고, **파일링 로그 / 폴더 열기 버튼은 아직 미검증**(서버 재시작
+  전이라 옛 프로세스가 물고 있다) → TR-12로 분리.
+  **1622 green / 0 red**(신규 10), 별도 포트 8012로 보안 게이트 라이브 확인(범위 밖·`..` 트래버설·빈 경로·
+  없는 폴더 전부 400). CSS는 정의된 토큰만(`--sidebar-muted`/`--sidebar-active-em`/`--status-ready`),
+  `var(--surface|--text)` 가드 clean.
+  ⚠️ **재현 조건 미확정**: 09-09 실제 파일링 3건(2977·3193·3219)은 .xlsx가 정상 이동했다 — 어느 구멍이
+  실제로 물었는지는 로그가 쌓여야 확정된다. ⚠️ **MAX_PATH**: 3193의 파일링 경로가 **279자**로 260을 이미
+  넘겼다(현재는 통과). 넘치면 정확히 이 증상이 되고, 이제 500이 아니라 파일명 담긴 409로 보고된다.
+  🆕 이번 세션
+
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
+- [ ] **[TR-12] Deliverable 파일링 로그 + 폴더 열기 버튼 눈확인 (John)** — 0779c46의 절반.
+  사이드바 승인 버튼은 같은 날 승인됐으나 이 둘은 **서버 재시작 전이라 확인 불가**였다
+  (`run_server.bat`에 `--reload` 없음 + `pdfCoilPages`는 브라우저 캐시 → 재시작 후 **재분석 필수**).
+  절차: 재시작 → 제출물 분석 → 전 코일 리뷰 → Build quote package → 확인 3가지:
+  ① 상태창에 문서 **3줄** 로그(`✓ Quote / ✓ Revised / ✓ Checklist`)와 `Filed 3/3` + 시각
+  ② "Open the DirectCoil folder" 버튼이 실제로 해당 폴더를 연다
+  ③ `DirectCoil` 폴더에 `.xlsx` 포함 **3개** 파일, Downloads에 잔존물 없음.
+  누락이 재현되면 이제 로그가 **어느 분기에서 빠졌는지 이름으로** 알려준다(= 재현 조건 확정 수단).
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
   drawing parameters" 체크 → CD 편집(예 3.75→9.5)+이유 → "Update drawing" → **도면 인쇄 CD가 9.5로 갱신 +
@@ -911,6 +1149,11 @@
   <textarea#...>"** 행에서 resolve된 엘리먼트가 진짜 Drawing Notes 칸인지 확인 → 맞으면 그 `#id`를
   `web/app.js::ccsiDrawingNotes`의 `selectors` **맨 앞**에 넣고 `selector_verified` 제거. 틀리면 채우지 말고 보고.
 
+- [ ] **[TR-12] Terra V HGRH 멀티헤더 도면 눈확인 (John)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
+  **서버 재시작 + 브라우저에서 PDF 재분석** 필수(`pdfCoilPages`가 클라 캐시). 3095 Harrison 제출물 →
+  RHHGRC-1. 합격 기준 3가지: 도면의 `S1`이 **3.25**(이전 `-0.25`), `SL3`이 **5**(이전 `6.56`),
+  `I3` 자리에 **`— I3`**(이전엔 맨 라벨 `I3`). 그리고 도면 숫자가 Drawing Parameters 패널의 S/S2와 일치할 것.
+  이게 이번 트랙의 눈확인 게이트다.
 - [x] **[TR-7] 물코일 도면 + 데이터 매핑 브라우저 눈확인 — ✅ John 통과 (2026-07-29)** — ⚠️ `run_server.bat`은 `--reload` 없음 →
   **서버 재시작** + `pdfCoilPages` 클라 캐시라 **재분석 필수**. 절차: 2949 Ferguson Theatre submittal 드래그→분석
   → HHWC-1 선택. 확인: **①도면이 나옴**(`coilmaster_hwc_lh`, 종전 공란) **②`R`이 빨간 blocked가 아니라 `S`와
@@ -937,7 +1180,15 @@
   finalize가 오버라이드본을 파일링). 재검증 후 1178 green. 폰 확인 페이지(1차 실행 근거):
   `claude.ai/code/artifact/976a22c8-3438-4c5f-bb14-7e91d2f4e2cc`
 
-- [ ] **[TR-9] derive가 Drawing Notes·엔진 치수를 재계산하지 않음 (2026-07-30 전수조사 발견, 수정 보류)** —
+- [x] **[TR-9] derive가 Drawing Notes·엔진 치수를 재계산하지 않음 — ✅ 해소·John 눈확인 통과 (b44fdd0, 2026-08-06)** —
+  조사 결과 **자물쇠가 둘**이었다: 백엔드가 붙여넣기 표면을 아예 반환하지 않았고(derive 29키 중 부재), 프런트도
+  derive 응답으로 그 표를 다시 그리지 않았다(코일 전환 시에도 `page.workflow`의 analyze 시점 값을 재판독). 한쪽만
+  고쳤으면 테스트는 초록인데 화면은 그대로였을 것 — 직전 세션의 "죽은 코드" 사건과 대칭. 재생성에 필요한 원본
+  후보를 브라우저가 왕복 전달하되 **신원은 서버가 tag로 강제**(후보와 도면이 서로 다른 경로로 도착하므로 교차
+  오염이 잡힌다; 3단 fail-closed + 모든 스킵에 사유 표시). plan-review 1R BLOCKER = **Tier-B override가 엔진
+  출처로 위장 저장**(analyze는 override가 없어 그 헬퍼가 사람 값을 만난 적 없었음) → override 키 제외. 2R
+  APPROVED. 아래 원 기록 보존:
+  **[원 발견 기록 2026-07-30]** —
   228d731의 CD 회귀와 **같은 계열**(analyze에만 배선된 후처리)을 찾으려 analyze
   `_run_candidate_to_drawing_payload` vs `derive_coil_template_drawing` 후처리를 1:1 대조한 결과. 게이트 5종·
   플래그 2종·`_clean_template_svg`·`_attach_parametric_schematic`·`build_manual_fill_plan`은 양쪽 다 있고,
@@ -950,6 +1201,19 @@
   착수 시 재현부터. 고칠 때 주의: analyze는 후보에 product/size가 없으면 도면이 해결한 값으로 **재시도**하는
   분기(1798~1807)를 갖고 있으므로 derive에도 같은 폴백이 필요하고, `distributor_notes`(도면 분배기 콜아웃)와
   섞으면 안 됨(전용 manufacturing_options 키).
+
+- [ ] **[TR-11] EKEXV 차단 + SL1=6 브라우저 눈확인 (John)** — 브랜치 `worktree-sl1-tagfilter`.
+  ⚠️ 워크트리에서 서버를 띄우거나 병합 후 실행 + `run_server.bat`은 `--reload` 없음 → **재시작 + PDF 재분석** 필수
+  (`pdfCoilPages`가 클라 캐시). 3건:
+  ① **EKEXV** — `EKEXV-CDXC-1`이 든 제출물 분석 → 코일 카드에 유령 없음 + PDF Intake Summary에
+     **"Non-coil rows excluded"** 블록에 태그와 사유 표시 + Mechanical Fit의 DX↔HGRH INSTALL FIT이
+     `CANNOT_EVALUATE` 대신 판정이 나오는지.
+  ② **SL1 양성** — **Nova / Ventum H / Terra H**, 1-header, 단일피드 HGRH → 공급 콜아웃 `3 SL1` → **`6 SL1`**,
+     `SL2`는 불변(Nova/VH 8, Terra H 10).
+  ③ **Ventum+ 음성 대조** — Ventum+ 단일피드 HGRH → 도면 **무변경이 정상**(전용 템플릿에 SL1 자리가 없거나
+     `5.69`가 하드코딩), 체크리스트 SL1 행만 6 + 호박색(KD-009). **이 괴리를 눈으로 봐야** 아래 템플릿 리댁션
+     단계를 승인할 근거가 생긴다.
+  자동검증은 완료(1513 green · invariant clean · 실 제출물 12개 대조 · 다중피드 byte-identical); 남은 건 실 렌더.
 
 ## ▶️ 지금
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
@@ -967,9 +1231,87 @@
   **2026-07-31:** Phase 2.1이 드디어 커밋됨(343b972 · f54d5f1) — 이웃 패널의 질의측 추출과 A5 튜닝 하네스가
   이제 브랜치에 있다. 가중치 **채택은 여전히 미배선**(John eyeball 후 1줄)이고, 착수 조건은 그대로
   **교정 축적**이다. 덤으로 `/derive`가 클린 체크아웃에서 500이던 파손이 이 커밋으로 복구됐다.
+  **2026-08-06 보강:** b44fdd0이 "브라우저에서 고칠 이유"를 한 겹 더 만든다 — 이제 브라우저 edit이 도면·
+  체크리스트뿐 아니라 **붙여넣기 52필드 표면까지** 함께 끌고 가므로, 손으로 고친 값이 산출물 전체에 일관되게
+  반영된다(종전엔 표가 analyze 시점에 얼어 있어 결국 손으로 다시 맞춰야 했고, 그건 교정을 원장에 남길 이유를
+  약하게 만들었다). coating이 새 edit 축으로 열린 것도 같은 방향.
+  ⚠️ **오염 주의(2026-08-06 실측)**: 검증용 실행이 `PO_Release_Case/journal/coil-2026080{5,6}.jsonl`에
+  `intake_drawing`/`checklist_filled`/`coil_manual_fill` 라인을 남긴다(project=None). 8/6 13:58 라인 2개는
+  John의 실 2755 Gumbo 실행이고 그 뒤 7개가 검증분 — **append-only 저널이라 삭제하지 않았다**. 코퍼스 카운트를
+  읽을 때 project=None 검증 실행을 어떻게 다룰지는 미결(Stage 2 착수 시 판단 필요).
+  ✅ **착수조건 해소(2026-08-06 실측, `scripts/override_rate.py`)**: 위의 "46/50 · 교정 0"은 **낡았다**.
+  현재 **flagged identity 123 · 교정 보유 17 · correction 32행**(원표는 36행이고, 그중 tag+project가 둘 다
+  있어 신원에 귀속되는 것이 32 — 두 숫자가 다른 건 정상이다)으로, n≥50 게이트는 이미 통과했고 "교정 0"도
+  더는 사실이 아니다. 즉 **Phase 2.1을 "지금 하면 헛작업"이라던 근거가 사라졌다** — 가중치 채택(John eyeball
+  후 1줄)을 실제로 판단할 수 있는 상태다. 덤으로 검토수렴 트랙의 B2 신호가 살아 있음이 확인됐다:
+  `S`/`O`의 `by_reason`에 `checklist_mismatch`가 실제로 찍힌다.
+  🔴 **원장이 이미 말하고 있는 것**: John의 교정 사유가 `S`·`O`에서 반복적으로
+  **"incorrect logic error from coilforge"**(2.375→1.375, 2.75→2.0)라고 적혀 있다. 이건 "값이 애매했다"가
+  아니라 **우리 로직이 틀렸다는 진술**이고, 4단계가 규칙으로 번역해야 할 1순위 후보다. 반대로
+  `airflow_direction`은 123/123 identity에서 blocked인데 교정은 0 — 아무도 신경 쓰지 않는 항목을 flag가
+  계속 만들어내고 있다는 뜻이라, 3.1 랭킹의 노이즈 원천으로 따로 봐야 한다.
+- [ ] **4단계 Phase 4.1 — 실측 대기** (엔진은 4.0a·4.0b로 구축·커밋 완료, e31a92d·75fe368) — 다음 걸음:
+  **John이 실 제출물을 브라우저에서 몇 건 돌리는 것**. `rule_firing`은 1c'가 붙은 **새 실행부터** 쌓이므로
+  라이브 원장은 아직 `insufficient`다(정직한 0, 파손 아님). ⚠️ `run_server.bat`은 `--reload`가 없으므로
+  **재시작 필수** — 안 하면 옛 프로세스가 새 코드를 안 물어 영원히 0행이다.
+  **Stage 2와 착수 행동이 동일하다**(둘 다 "브라우저 edit으로 실사용") — 한 번의 실사용이 두 단계를 함께 푼다.
+  실행 후 볼 것: ①임계값 `min_second_opinion=5`/`min_identities=10`이 맞는지 ②`join_quality.same_run` vs
+  `identity_only` 비율(부풀면 tag 충돌 의심) ③`unattributed_divergences`에 뭐가 쌓이는지
+  ④R-033 `DIST EXTENTION`이 실제로 귀속되는지.
+  **2026-08-07 보강:** 4a3c403이 **돌릴 제출물을 하나 만들어 줬다** — 3095 Harrison은 John이 어차피 눈으로
+  확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
+  ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
+- [ ] **[3179 트랙] RHHGRC `X` 치수 — 배선 STOP. 게이트는 `X`의 정의 확보 (John 2026-09-05)**
+  — 3179 TWU에서 드러남(09-02) → 정체 규명 시도(09-03) → **실측으로 작업가설 반증(09-05). 코드 0줄.**
+  John의 family-aware 지시(Terra V blank / Terra H는 공식)를 착수 전 검증하다 **두 전제가 모두**
+  무너졌다. Terra 도면 3장을 읽고 PO 트리 HGRH 도면을 전수 측정(511 PDF → 1,964면 → HGRH 태그 631면
+  → 타이틀블록 파싱 **328면**).
+  **확정:** `X`의 **존재 여부**는 리턴 연결 표기와 완전 상관 — `… " OD Header` **186/186 값 있음**,
+  `… " swt` **142/142 공란**(공란 페이지는 `I·S·O·R`도 전부 공란), 예외 0. 용어는
+  **connection-notation cohort**(버전 근거 없으므로 "세대"라 부르지 않음), "swt는 헤더가 없어서"라는
+  인과는 `[LIKELY]`.
+  **반증:** 작업가설 `(h+1)·D+(h−1)·1.5`는 값 있는 186장 중 **96장(52%)**만 설명. 불일치 값
+  (`1.63`·`2.00`·`2.50`·`3.00`·`3.25`)은 h=1..8 어디로도 재현 불가이고, `FH·FL·CH·CL·CD·OAL·SL·I·S·O`가
+  **완전히 동일한 두 코일**(2575 / 2504)이 `X`만 1.94 대 2.00 → **결정 변수가 타이틀블록 안에 없다.**
+  **철회 2건:** ⓐ "Terra V는 `X`를 비운다" = 순환논법(공란 원인은 swt였고 신형 Terra V 3025는 1.25를
+  인쇄) ⓑ "Terra H는 Nova 공식을 따른다" = 표본 선택(Hope Lodge 2장이 일치 3장 안에 있었다).
+  **리댁션 단독 실행 금지(John):** 규칙 없이 7개를 슬롯화하면 모든 계열이 `— X`가 되는 회귀.
+  `_SLOT_ENGINE_FIELD`는 HIGH만 읽어 중간 상태가 없다.
+  **게이트: `X`의 engineering definition 또는 `X`를 결정하는 source input 확보.**
+  ("Terra 참조 도면 1장"은 무효 — 도면이 오히려 공식을 반증했다.)
+  **다음 액션: SOP / CoilMaster 정의 탐색** — ⓐ Obsidian 볼트(Tier 3 게이트, John이 직접
+  `gate.py unlock "Oxygen8 vault" --purpose … --ref …` 실행해야 열림; 우회하지 않았다)
+  ⓑ 코일 PDF 1페이지 성능 시트(248장)에 열 범례가 있는지 ⓒ John의 직접 지식(`2.50`·`1.63` 군집).
+  전체 기록·재현 정보: `docs/wiki/concepts/x-header-stack-depth.md` ·
+  `docs/wiki/open-questions.md`(4항목) · plan `~/.claude/plans/coilforge-rhhgrc-x-snoopy-boole.md`.
+- [x] **[SL1 트랙] `worktree-sl1-tagfilter` 병합처 결정 — John: `claude/ambient-supplier` (2026-08-15)** —
+  예상대로 겹친 파일은 `pdf_intake.py` 하나뿐이고 각자 다른 함수를 고쳐 자동 병합됐다(태그 필터 vs
+  `_circuits_from_coil_style`). 충돌은 `.claude/roadmap.md` 1건, union으로 해소. 워크트리에서 먼저 흡수한 뒤
+  메인 트리로 넘겨 되돌리기 비용을 낮춘 순서.
+- [ ] **[SL1 트랙] 유닛 태그 라벨 판정 (John)** — 태그 필터의 **의도된 부작용 1건**: 커버 코일 행이 **없는**
+  제출물에서 코일 페이지 라벨이 `ERV-4` → **`Coil 1`**로 바뀐다(실측 `SIGNED 2808 Premiere Dance`; 도면 자체는
+  정상 생성 `coilmaster_dx_lh_header1`). `ERV-4`는 모 유닛 태그라 이미 drain-pan 페어링·alias 매칭에서 실패하고
+  있었지만 엔지니어가 알아보던 식별자이기도 하다. **받아들이면 그대로**, 아니면 유닛 태그를 *표시용 라벨로만*
+  남기는 별도 배선이 필요(COIL_TAG로는 계속 거부).
+- [ ] **[SL1 트랙] Ventum+ HGRH 템플릿 리댁션 (별도 승인 필요, DO-NOT-TOUCH 게이트)** — 값은 6인데 **도면에
+  표시될 자리가 없다**. 2026-07-03 리댁션 패스가 나중 시드된 Ventum+ 포크(2026-07-06)에 적용되지 않았다:
+  `coilmaster_vplus_hgrh_lh_header1`은 **SL1·I1·O2·R2·S1 콜아웃이 통째로 없고**(slot_map에 `slot.SL2`만),
+  `..._rh_header1`은 `5.69 SL1`, `..._rh_header2`는 `5.56 SL3`이 하드코딩(as-built 잔재). **Redaction gotcha**:
+  `template.svg`와 `slot_map.json`을 **둘 다** 고쳐야 플레이스홀더가 문자 그대로 인쇄되지 않는다.
+  ⚠️ **시드 출처 의심(선행 확인)**: `vplus_hgrh_lh_header1`의 내장 노트가 `SL2=8`(= Nova/Ventum H 값, Ventum+는
+  R-045a로 10)이다 → 그 시드가 정말 Ventum+ 도면인지, 아니면 R-045a가 틀렸는지 먼저 판정.
+  ✅ **판정됨(2026-08-26, c43d9d7)**: 시드가 틀렸었다 — p.6 RHHGRC-1은 비Ventum+(TF 0.63); p.7로 재seed해 R-045a는
+  그대로 맞다. 재seed 템플릿에도 `5.69 SL1`·`1.63` as-built 잔재는 남아 있어 리댁션 항목 자체는 유효.
+- [ ] **[SL1 트랙] RP-002 전달 (John → Oxygen8)** — `docs/rule_proposals/RP-002-hgrh-single-feed-sl1.md`.
+  체크리스트 `HGRH!C58`의 단일피드 분기를 3→6으로. **적용하지 않았다** — 시트는 Oxygen8 소유.
+  만약 3이 맞는 것으로 판명되면 CoilForge 쪽 한 줄을 되돌리고 KD-006~009를 `coilforge_wrong`으로 재판정
+  (설계상 호박색이 아니라 **빨강 유지**). 대안 경로도 RP-002에 적어뒀다.
 - [ ] **1a′ (분리됨·보류)** — ccsi-compare에 코일 tag 스레딩(프론트 `web/ccsi/` + app.js → 백). 지금은
   `compare_observation`의 ccsi 행이 coil_tag NULL 고아행 → 3·4단계가 조인 못 함. CCSI 스킬 체인과 얽힘.
+  **2026-08-06 확정**: 가설이 아니라 사실이 됐다 — `capture/observatory.py`가 ccsi 행을 원천 제외하고
+  (`triage.py`와 같은 이유) 그 사유를 코드에 적어두고 있다. 즉 CCSI 비교는 지금 **어느 측정에도 기여하지
+  않는다**. 다만 CCSI 자체가 2026-07-05에 DEPRIORITIZED된 트랙이라 이 항목의 우선순위는 그대로 낮다.
 - [~] **3단계 Review Triage** (3~6개월, 양성 200~400) — exceptions_K **랭킹**(스킵 금지 — false negative =
   틀린 값 자동승인). 실제 override율은 1단계가 처음 알려줌 → **그 숫자를 보고 착수, 미리 약속 안 함**
   - [x] **Phase 3.0 측정 도구 (af3b4fc)** — `measure_override_rate`가 그 override율을 원장에서 산출(위 ✅ 참조).
@@ -977,9 +1319,19 @@
   - [ ] **Phase 3.1 랭킹 (보류)** — 착수 트리거: 교정 더 축적 + **설계결정** — flag된 코일만 랭킹하면 위 disjoint로
     진짜 override 코일을 놓치므로, `corrected_total−corrected`(unflagged 교정) 신호 노출 여부 John 판정 후. 그다음
     `/api/review/project` gate에 deterministic severity 랭킹 + inert weight seam(측정값 배선은 1줄, Stage 2.0 패턴).
-- [ ] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
+- [~] **4단계 Rule Observatory** (6~12개월) — 76개 HIGH를 *선언*에서 *측정*으로. ⚠️ **표본 편향이 최대
   위험** — John은 flag된 코일만 보므로 안 보이는 곳의 틀린 규칙은 영원히 완벽해 보인다. 1d 감사샘플이
   유일한 통계적 수단; 모든 수치는 "리뷰 조건부" 라벨
+  - [x] **Phase 4.0a 귀속 링크 복구 (e31a92d)** — `_attach_recomputed_engine_provenance`가 caller-side에서
+    provenance 전용 재실행. 마이그레이션 6(`source`/`fidelity`/`drift_keys_json`, additive-only).
+    도면 값 불변은 스냅샷 비교로 고정, 재구성 신뢰도는 drawn slot 대조로 `verified`/`drifted` 라벨.
+  - [x] **Phase 4.0b Observatory (75fe368)** — `capture/observatory.py` + `GET /api/capture/rule-observatory`
+    + `scripts/rule_observatory.py`. **`accuracy` 필드 없음**(표본 편향 대응은 경고문이 아니라 구조),
+    분모는 `second_opinion`, coverage 0 → `disagreement_rate: None`, `blind_spots`를 나란히 출력.
+  - [ ] **Phase 4.1 실측 대기 → `▶️ 지금`으로 승격** (2026-08-06). 착수 행동이 Stage 2와 **동일**하므로
+    (둘 다 "브라우저 edit으로 실사용") 거기서 함께 관리한다. 상세는 지금 섹션 참조.
+  - [ ] **감사샘플이 여전히 유일한 통계적 수단** — `audit_sample`은 0행이라 현재 모든 규칙이
+    `review_conditional: True`. 이걸 채우기 전까지 어떤 수치도 "John이 이미 의심한 코일" 조건부다.
 - [ ] **5단계 Auto-YAML** — correction 패턴 마이닝 → evidence_refs 붙은 YAML diff 제안 → replay 검증 →
   John 승인. **제안 규칙은 MEDIUM 진입** = 기존 confidence gate가 공짜로 안전을 보장(자동으로 안 그려짐)
 - [ ] **6단계 Format-Agnostic Extraction** — **의존성은 1단계뿐, 순서상 6일 뿐** (타사 서밋털 수요 생기면
@@ -1047,7 +1399,16 @@
   맞춤(현재 상수 6, H05/H10=17 누락) + 체크리스트 compare에 CoilForge 값 노출(현재 blank). John: "체크리스트에 6 push".
 - [ ] **[3058 트랙] Phase 4 — 코일별 product/size 오탐지 조사** — CDXC-3=VENTUM_H/H10 등 혼재(일부 전역폴백).
   오탐지면 R-074 casing W/H + 위 C59(17 vs 6) 틀어짐. `detect_product_and_size` per-coil 추적, 실 유닛 대조(John/BOM).
-- [ ] **[물코일 트랙] coating 노트가 물코일에 없음 (John 판정 필요)** — `R-080`은 `coil_type: [DX]`,
+- [x] **[물코일 트랙] coating 노트가 물코일에 없음 — ✅ John 판정 종결 (b44fdd0, 2026-08-06)** —
+  John: **"물코일엔 coating이 절대 안 들어간다"** → R-080(DX)/R-081(HGRH)이 물코일을 제외하는 것은
+  **미해결 공백이 아니라 확정 설계**로 종결. 동작은 그대로이나 **의미가 확정**됐다(그게 도메인 오너 판정의 일).
+  덤으로 한 걸음 더: 물코일에 coating이 **추출되던 경로 자체를 막았다** — 상세 블록은 경계가 서로 번지므로
+  (`_DETAIL_COATING_ANNOTATION_RE` 주석이 기록한 실제 현상) 물코일이 이웃 코일의 coating을 주워올 수 있었다.
+  `COIL_COATING` 리더가 **3개**(테이블 시드·별표 각주·라벨 줄)라 개별 게이팅은 네 번째 리더가 구멍을 다시 여므로
+  **추출 마지막 한 지점**에서 제거. 코일 종류를 모르는 블록은 무접촉(추측으로 데이터를 버리지 않음).
+  **수동 입력은 의도적으로 허용**(John 확인) — 추론을 거절하는 것과 엔지니어의 명시적 결정을 거부하는 것은 다르며,
+  그 비대칭을 나중에 "버그"로 오인해 막지 않도록 테스트로 고정했다. 아래 원 기록 보존:
+  **[원 기록]** — `R-080`은 `coil_type: [DX]`,
   `R-081`은 `[HGRH]` 전용이라 CWC/HWC는 coating을 지정해도 노트가 늘지 않는다(HERESITE 실측 확인).
   20조합 전수조사에서 **유일하게 남은 설계 공백**. 규칙이 없는 것이라 지어내지 않음 — 물코일에도
   coating 제외 노트가 필요한지 John 확인 후 R-080/081 범위 확장 여부 결정.
@@ -1056,4 +1417,18 @@
   있었는데, 이제 CWC/HWC를 포함한 제출물이 coating을 명시하면 **DX/HGRH만 노트가 늘고 물코일은 조용히
   안 는다** = 같은 패키지 안에서 코일 타입에 따라 노트가 갈리는 게 눈에 보이게 된다. 2968은 DX+HGRH만이라
   드러나지 않았음. 물코일이 섞인 코팅 제출물이 들어오기 전에 John 판정을 받는 편이 낫다.
+- [ ] **[코팅 트랙] `Coil Coating: <값>` 라벨 패턴이 줄 끝까지 삼킴 (2026-08-06 라이브가 노출, 상류 미수정)** —
+  EZ 도면은 다음 열 라벨을 값에 바로 붙여 인쇄하므로 `ElectroFin Evap Temp 45` 같은 값이 **정본에 그대로 저장**된다.
+  b44fdd0은 **도면 노트를 만들 때만** 어휘로 정규화했으므로, 붙여넣기 표/체크리스트의 Coil Coating 칸은 여전히
+  오염된 문자열을 보여준다. 근본 수정은 `_FieldPattern("COIL_COATING", ...)`의 탐욕적 캡처를 좁히는 것인데,
+  다른 라벨 패턴과 같은 형태라 회귀 범위 확인이 선행돼야 함(값이 인쇄되지 않던 동안 잠자던 결함).
+- [ ] **[코팅 트랙] 커버 라인아이템 coating 인식이 실 사례로 미검증** — `_package_coating`은 HGBP 어더 패턴을
+  그대로 따랐고 어휘 앵커로 안전하지만, **커버에 coating이 적힌 실 제출물을 아직 못 구했다**(리포의 12개 제출물
+  전수 스캔에서 coating 언급 0건). 그런 파일이 들어오면 스캔 창·우선순위(코일 상세 블록 우선)를 실물로 확인할 것.
+- [ ] **[Omnia 트랙] 케이싱/드레인팬/핏 표 (John 제공 대기)** — R-074 casing W/H, R-077 drain_pan/install width,
+  R-078 여유값·`h_half` 여부. 차트의 Coil Width(38…70)·Height+Clearance(23/25/28/31/34/37/39)를 casing으로 간주해도
+  되는지 John 판정 → 되면 sub=0/h_half=false 7행. 그 전까지 Omnia fit 판정은 전부 `CANNOT_EVALUATE`(설계상).
+- [ ] **[Omnia/Ventum+ 트랙] 2619 Congress TF/BF 0.88 판정** — `coilmaster_vplus_dx_rh_header2`·`..._hgrh_rh_header1`의
+  원본이 1.00도 0.63도 아닌 0.88(SL 10·I 12는 Ventum+ 패턴). 커스텀 플랜지면 그대로, 아니면 다른 원본으로 재seed.
+  seed 스크립트에 "Ventum+ 원본 TF=BF=1.00" 자동 검증을 넣는 것도 같은 묶음.
 - [ ] (DEFER) 파라메트릭 도면엔진 SVG/DXF/PDF — MVP는 템플릿-우선, 명시 승인 전까지 보류

@@ -5,6 +5,126 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-09-02 (Toronto) · base dd99c8d..ebb3c35 · claude/ambient-supplier
+> 이번 세션의 커밋은 `ebb3c35` 하나. 범위 안의 나머지 5개(`8bac658`·`9bfef68`·`2f67dac`·`27d1ef9`·
+> `d60bad1`)는 다른 세션의 Terra V HGRH 트랙이며 로드맵 완료 섹션에 이미 기록돼 있다.
+
+### ✅ 구현/결정된 것
+- **3179 TWU 검증 → 커버 파서 결함 1건 수정으로 DX 결함 3건 동시 해소** (커밋 `ebb3c35`).
+  두 커버 파서가 `qty`에 대해 비대칭이었다: 텍스트 경로는 행 정규식이 `^(?P<qty>\d+)\s+…`로 수량을
+  **구조적으로 요구**하지만, 테이블 경로 `_extract_cover_rows_from_table`은 `qty`를 읽어놓고 **검사하지
+  않았다**(게이트가 `tag` 유무 + `coil_tag_rejection_reason` 둘뿐). pdfplumber가 여러 줄 Item 셀을 자기
+  행으로 쪼개면서 태그를 반복하고 Qty를 비우고 Item에 꼬리(`'Coil)'`)만 남긴 행이 **통째로 코일이 됐다** —
+  손이 기본값 LH로 채워진 가짜 도면이 견적 패키지에 삽입됨. 게이트는 **중복 태그 AND qty 없음**의 결합에만
+  건다(빈 Qty 단독으로 거부하면 그런 레이아웃의 코일을 통째로 잃는다). 침묵 삭제 금지 — 기존 `rejected`
+  채널로 `non_coil_rows_excluded`에 표시.
+- **캐스케이드는 가정하지 않고 검증으로 확인했다.** 계획서에 "Phase 1이 ②③을 고칠 것이라고 가정하지
+  않는다"고 명시하고 실문서 게이트로 확인한 결과, 유령 행이 DX 상세 블록 바인딩을 밀고 있었음:
+  CDXC-3(048)이 100 유닛 치수를 쓰던 것 → **CH 43.25 / FL 33 복구**, CDXC-4 치수 전무 → **54슬롯 복구**.
+  (근거: 두 실문서 게이트, 아래 anchors)
+- **정본 확정:** `Desktop\3179 - Oxygen8 Submittal - Havtech - 3179 - TWU - Rev0.pdf`
+  (sha256 `b76a4e38…`, `Final Working\…Rev0.pdf`와 **바이트 동일**). **정본에는 결함 3건이 원래 없었다** —
+  세 결함은 서명본(`Signed Final Submittal\Record Submittal…8-26-2026.pdf`, 235쪽)에서만 재현.
+- **오보 1건 철회:** "Right 코일 4개가 LH로 그려진다"는 보고는 **틀렸다.** 브라우저에 넣은 파일과 제가
+  헤드리스로 분석한 파일이 **서로 달랐다**(Downloads의 체크리스트 출력 파일명으로 특정). 두 문서 모두
+  자기 커버대로 정확히 해석한다. 교훈: 브라우저 실측과 헤드리스를 비교하기 전에 **입력 파일 동일성부터**.
+- **RHHGRC 체크리스트 불일치 14건은 CoilForge 결함이 아니다** — 전부 John이 2026-08-04에
+  `checklist_wrong`으로 판정한 KD-001~005(체크리스트 시트에 Terra V 분기 없음). `known_defect: 0`.
+- **테스트:** 신규 4건(wrap 거부 / wrap 사유 보고 / **첫 등장 qty 없음은 계속 코일** / 정상 8행 커버 무변화).
+  전체 **1612 passed, 0 failed**.
+
+### ⏭️ 다음 스텝
+- [ ] **[최우선] RHHGRC `X` 치수 — 7개 HGRH 템플릿의 얼어붙은 as-built 값.** 상세는 `.claude/roadmap.md`
+  "⬜ 앞으로" 최상단 항목에 전부 적어 뒀다(고정값 7건 목록·선택지 3개·필요한 승인 2건).
+  (왜 남음: ⓐ 처리 방식 선택 ⓑ **DO-NOT-TOUCH 편집 승인 범위**가 John 결정)
+- [ ] **서명본 vs 정본 핸딩 불일치 자동 검출 (제안만)** — 같은 3179의 두 제출서가 4개 코일의 handing을
+  Left↔Right로 다르게 기재한다. CoilForge는 문서 간 대조를 하지 않아 검출 불가. (왜 남음: 별건, 미승인)
+- [ ] **Phase 2 DX 블록 바인딩 조사 — 보류(닫지 않음).** 증상은 사라졌지만 바인딩 규칙 자체는 읽지 않았다.
+  유령 행 없이 같은 어긋남을 내는 문서가 나오면 재개. (왜 남음: 우선순위 낮아짐)
+- [ ] **다른 세션 미커밋 정리 (John)** — `.claude/roadmap.md`(내 항목 포함), `capture/{db,observe}.py`,
+  `tests/test_capture_ledger.py`, 미추적 `.agents/ .codex/ pytest.ini scripts/migrate_capture_ledger.py`,
+  `tests/test_template_hardcoded_dims.py`. (왜 남음: **내 커밋에 섞으면 안 되는 남의 작업**)
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `ebb3c351ac97efbd6160eb9c246430bfc5e259f8` (pushed)
+- **⚠️ 로드맵 항목은 커밋되지 않았다** — `.claude/roadmap.md`에 다른 세션의 미커밋 변경(+18줄)이 함께
+  있어, 그 파일을 커밋하면 남의 작업이 딸려간다. 내 항목은 워킹트리에만 있으며 이 로그가 백업이다.
+- 핵심 경로: `src/coilforge/submittal/pdf_intake.py::_extract_cover_rows_from_table` (게이트) ·
+  `tests/test_phase2e_pdf_coil_intake.py` (신규 4건) ·
+  `tests/test_template_hardcoded_dims.py::_KNOWN_OPEN` (X 7건이 **등식**으로 고정, untracked)
+- 롤백: `git revert ebb3c35`, 또는 `if qty is None and tag in seen_tags:` 블록 + `seen_tags` 두 줄 제거
+- 실문서(저장소 밖, gitignore 대상): 정본 `C:\Users\JohnKim\Desktop\3179 - Oxygen8 Submittal - Havtech -
+  3179 - TWU - Rev0.pdf` · 서명본 `…\02 - POs\3179 - Havtech - TWU\Signed Final Submittal\Record
+  Submittal - TWU Alumnae Hall Renovation Oxygen8 VRV CU - 8-26-2026.pdf`
+- 게이트 수치 — 정본: 8코일, CDXC-3 `CH 43.25/FL 33`, CDXC-4 54슬롯, 게이트 **미발동** ·
+  서명본: **9→8**, 유령 소멸(`wrapped continuation of the row above (tag repeated, no Qty)`),
+  CDXC-3·CDXC-4 복구
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ccs-ia-quatt-peaceful-parnas.md` · `.claude/roadmap.md` ⬜앞으로 최상단
+
+## 2026-08-31 (Toronto) · base c6c702c..71514a1 · claude/ambient-supplier
+> 참고: 로그의 직전 기준점은 7/23(`c6c702c`)이고 그 사이 83커밋이 쌓였으나 82개는 다른 세션/트랙
+> (Stage 4 Observatory, review-convergence, sl1-tagfilter, Omnia)으로 로드맵 완료 섹션에 이미 기록됨.
+> **이번 대화 세션의 실제 경계는 `c43d9d7..71514a1` — 커밋 1개.**
+> 로드맵 트랙: **견적 납품 워크플로 압축 4단계 "원클릭 납품 정리"** (코드 완료, 눈검증 대기).
+
+### ✅ 구현/결정된 것
+- **탐색 결과가 요청을 뒤집었다: 기능은 이미 90% 있었다.** `POST /api/deliverable/finalize` +
+  `#finalize-deliverable` 버튼이 이미 프로젝트 번호로 `02 - POs/<번호>/Accessory Order Forms/DirectCoil`을
+  찾아 세 파일을 넣고 있었음. 따라서 이번 작업은 신규 구현이 아니라 **기존 finalize 경로의 정책 4가지 변경**.
+  (근거: 탐색 2건, `deliverable/finalize.py` 기존 65-136행)
+- **Build 한 번 = 패키지 + 파일 정리** (커밋 `71514a1`) — `buildQuotePackage()` 끝에서
+  `fileDeliverable({skipDraft:true})` 호출. 두 번째 버튼은 **"Open Outlook draft"** 전용으로 라벨 변경.
+  (근거: web/app.js:4829, web/index.html:280)
+- **복사 → 이동.** 체크리스트는 서버가 경로를 아는 유일한 파일이라 진짜 move. PDF 2개는 **바이트로만**
+  도달하므로(브라우저는 경로를 안 줌) `~/Downloads/<이름>` + Chrome의 `<stem> (1)<ext>`를 재구성하되
+  **sha256이 방금 기록한 내용과 일치할 때만 삭제**(`retire_download`). 이름 일치만으로는 절대 안 지움 =
+  경로 추측이 안전해지는 이유. revised PDF는 브라우저가 비동기 저장하므로 5초 바운디드 폴링.
+  (근거: `deliverable/finalize.py::retire_download`, 신규 테스트 4건)
+- **충돌 = 같은 이름 AND 다른 내용, 그리고 전부 중단.** `plan_placements`가 세 목적지를 먼저 판정하고
+  `commit_placements`가 쓰므로 **반쯤 채워진 폴더**(완료된 것처럼 보여서 더 나쁨)가 도달 불가.
+  응답은 **HTTP 200 + `status:"conflict"`** — 충돌은 에러가 아니라 John의 결정 대기(폴더 부재는 계속 400/409).
+  `overwrite:true`가 답. (근거: web_app.py:1539-1567, 신규 테스트 3건)
+- **동일 내용 = `already_filed`, 충돌 아님.** 이 한 줄 정의가 버튼 두 개를 살림 — Build가 정리한 뒤
+  초안 버튼이 같은 세 파일 위로 다시 돌아도 통과하므로 **초안 전용 엔드포인트를 안 만들었다.**
+  대신 Outlook 첨부를 `files_written[1]` 인덱스가 아니라 **이름으로** 조회(리스트 구성이 달라지므로).
+- **폴더명은 접어서 매칭**(소문자화 + 공백/`_`/`-` 제거). `Direct Coil`은 **`DirectCoil`로 rename 후 재사용**
+  (안에 있던 파일 이력 보존, 빈 폴더를 옆에 안 만듦). `Accessory Order Forms`는 느슨히 찾되 **rename 안 함** —
+  AOF 부재 = 프로젝트 폴더 오인식 신호인데, 철자 변형이 그 에러를 유발하면 의미가 사라지므로.
+  두 철자 공존 시 추측하지 않고 raise. (근거: `_child_by_normalized`, `_rename_to_canonical`, 신규 테스트 5건)
+- **John이 확정한 정책 6건** (AskUserQuestion 2회): 이동 / 충돌 시 멈추고 묻기 / 변형 폴더는 rename 후 사용 /
+  AOF 없으면 에러 중단 / FULL CHECKLIST = 자동생성 `<제출서명> - Coil Checklist.xlsx` / Build는 정리까지만
+  (Outlook 초안은 별도 버튼).
+- **의도적으로 버린 커버리지:** `test_place_bytes_never_clobbers` — 동명 파일이 조용히 ` (2).pdf`가 되던 동작.
+  "멈추고 물어보기"가 이를 대체하므로 충돌/동일내용/덮어쓰기 3건으로 교체. `checklist/excel_writer.py`의
+  별도 `(2)` 폴백(Downloads 쓰기 경로)은 무접촉.
+- **테스트:** `tests/test_deliverable_finalize.py` 10→33건, 전체 **1608 passed, 0 failed** (커밋 직전 측정).
+- **문서:** `CLAUDE.md`에 4개 규칙 기록(252-279행) — 이 파일이 프로젝트 계약서라 drift 방지.
+
+### ⏭️ 다음 스텝
+- [ ] **[Phase Gate] John 브라우저 눈검증 1회** — `run_server.bat` 재시작(--reload 없음) → 제출서 분석 →
+  Quote PDF 드롭 → Build quote package. 합격: DirectCoil에 세 파일 존재 **AND** Downloads에서 셋 다 사라짐.
+  (왜 남음: 실제 OneDrive/SharePoint 폴더에 쓰는 동작이라 사람 확인이 Phase Gate 조건)
+- [ ] **충돌 케이스는 테스트용 사본 폴더에서 먼저** — Quote PDF를 다른 걸로 바꿔 같은 프로젝트에 Build →
+  프롬프트가 뜨고 기존 파일이 안 바뀌는지. (왜 남음: 실제 파일을 대체할 수 있는 유일한 경로)
+- [ ] **로드맵 미기재** — `.claude/roadmap.md`에 4단계 "원클릭 납품 정리" 항목이 없다. (왜 남음: 그 파일을
+  다른 세션이 수정 중이라 충돌 회피를 위해 손대지 않음. 그 세션 커밋 후 추가 필요)
+- [ ] **`DEFAULT_PO_BASE` 하드코딩 유지** — 설정화는 범위 밖으로 확정. (왜 남음: John이 필요하다고 하기 전엔 불필요)
+- [ ] **한계 1건(Confirmed):** 원본 Quote를 Downloads가 **아닌** 곳에서 골랐다면 그 원본은 안 지워지고
+  `not found — left in place`로 보고됨. CCSI export가 Downloads로 떨어지는 워크플로에선 무해.
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `71514a115add14d22d4b1fa4703b0248f9fae3ab` (pushed)
+- 미커밋(**이번 세션 아님 — 다른 세션 진행 중, 건드리지 말 것**): `.claude/roadmap.md`,
+  `capture/{db,observe}.py`, `services/{direct_coil_drawing_pipeline,drawing_param_resolver}.py`,
+  `workflows/submittal_to_drawing.py`, HGRH 템플릿 4쌍(slot_map.json + template.svg),
+  `tests/{test_capture_ledger,test_template_clean}.py`, 미추적 `.agents/ .codex/ pytest.ini`
+  `scripts/migrate_capture_ledger.py` + 테스트 3개
+- 핵심 경로: `src/coilforge/deliverable/finalize.py` (plan/commit_placements, retire_download,
+  _child_by_normalized) · `src/coilforge/web_app.py:1418-1650` · `web/app.js::fileDeliverable`
+  (4840-) · `web/index.html:280-285`
+- 롤백: `web/app.js:4829`의 `await fileDeliverable({ skipDraft: true });` 한 줄 삭제 → 이전 2버튼 흐름 복귀
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ccs-ia-quatt-peaceful-parnas.md` · CLAUDE.md:252-279
+
 ## 2026-07-23 (Toronto) · base e30c36f..c6c702c · claude/ambient-supplier
 > 참고: 이 base 범위엔 중간에 다른 세션 커밋(af3b4fc Stage 3.0 등)이 섞여 있으나 그건 로드맵 완료 섹션에
 > 이미 기록됨. 아래는 **이번 대화 세션(2026-07-23)**에서 실제로 한 작업만.

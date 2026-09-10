@@ -15,12 +15,17 @@ from fastapi.testclient import TestClient
 from coilforge.submittal.pdf_intake import (
     _candidate_from_cover_row,
     _CoverRow,
+    _cover_row_from_text_line,
     _match_detail_label,
     _cover_row_summary,
     _detail_lines_by_cover_row,
+    _detail_page_tags,
     _detail_table_field_pairs,
     _is_cover_coil_row,
     _normalize_fin_surface,
+    coil_tag_rejection_reason,
+    drain_pan_partner_tag,
+    is_coil_tag,
     _OcrPageResult,
     _package_hgbp_pages,
     _TextPage,
@@ -145,6 +150,102 @@ def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() ->
     assert values["COIL_TYPE"] == "DX COIL"
     assert values["PRODUCT_TYPE"] == "DX"
     assert values["HANDING"] == "Left"
+
+
+def _wrapped_continuation_page() -> "_TextPage":
+    """3179 Havtech/TWU signed record submittal, p24: a multi-line Item cell that
+    pdfplumber split into its own table row, repeating the tag with a blank Qty."""
+    return _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                ("1", "CDXC-2", "DXC Cooling", "TV_B_100", "", "", "", "", "Right"),
+                ("1", "RHHGRC-2", "HGRC Reheat", "TV_B_100", "", "", "", "", "Right"),
+                # The wrap: same tag, no Qty, Item holds only the tail of the line above.
+                ("", "CDXC-2", "Coil)", "", "", "", "Factory Installed", "", ""),
+            ),
+        ),
+    )
+
+
+def test_wrapped_continuation_row_does_not_become_a_second_coil() -> None:
+    # Regression (John 2026-09-02): the table path read Qty but never checked it, so a
+    # wrapped cell fragment carrying a valid tag became a SECOND CDXC-2 -- a full extra
+    # drawing with a defaulted hand, inserted into the quote package with no warning.
+    page = _wrapped_continuation_page()
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert detection.detected is True
+    assert [row.tag for row in detection.rows] == ["CDXC-2", "RHHGRC-2"]
+
+
+def test_wrapped_continuation_row_is_reported_not_silently_dropped() -> None:
+    # A dropped row must always be explainable -- the same contract every other
+    # cover-row refusal follows (`non_coil_rows_excluded`).
+    detection = detect_cover_page_from_pdf_pages(
+        [_TextPage(page_number=1, text=""), _wrapped_continuation_page()]
+    )
+    reasons = {tag: reason for tag, reason in detection.rejected_rows}
+
+    assert "CDXC-2" in reasons
+    assert "wrapped continuation" in reasons["CDXC-2"]
+
+
+def test_first_occurrence_of_a_tag_without_qty_is_still_a_coil() -> None:
+    # The gate keys on tag-repeat AND missing qty together. A missing Qty alone must
+    # never drop a row: a layout that leaves the cell blank would lose the whole coil.
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                ("", "CDXC-1", "DXC Cooling", "TV_B_024", "", "", "", "", "Left"),
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert [row.tag for row in detection.rows] == ["CDXC-1"]
+    assert detection.rows[0].qty is None
+
+
+def test_clean_cover_table_is_unchanged_by_the_wrap_gate() -> None:
+    # The 3179 authoritative submittal's shape: four DX/HGRH pairs, every row with a Qty
+    # and a distinct tag. The gate must be inert here.
+    rows = []
+    for tag, item, model in (
+        ("CDXC-1", "DXC Cooling", "TV_B_024"), ("RHHGRC-1", "HGRC Reheat", "TV_B_024"),
+        ("CDXC-2", "DXC Cooling", "TV_B_100"), ("RHHGRC-2", "HGRC Reheat", "TV_B_100"),
+        ("CDXC-3", "DXC Cooling", "TV_B_048"), ("RHHGRC-3", "HGRC Reheat", "TV_B_048"),
+        ("CDXC-4", "DXC Cooling", "TV_B_100"), ("RHHGRC-4", "HGRC Reheat", "TV_B_100"),
+    ):
+        rows.append(("1", tag, item, model, "", "", "", "", "Left"))
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                *rows,
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert len(detection.rows) == 8
+    assert detection.rejected_rows == ()
 
 
 def test_borderless_coil_table_without_header_row_is_detected_positionally() -> None:
@@ -913,7 +1014,7 @@ def test_coil_drawing_product_options_endpoint() -> None:
     response = client.get("/api/coil-drawing/product-options")
     assert response.status_code == 200
     lines = response.json()["product_lines"]
-    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
+    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS", "OMNIA"}
     assert "A16" in lines["NOVA"]
 
 
@@ -1733,6 +1834,133 @@ def test_is_cover_coil_row_rejects_eev_valve_accessory_rows() -> None:
     assert _is_cover_coil_row("EKEXV-CDXC-1", "DX Coil") is False
     # A plain valve item is rejected via the item-token guard.
     assert _is_cover_coil_row("PHWCV-2", "HWC Pre-Heat Valve") is False
+
+
+def test_is_coil_tag_structural_predicate() -> None:
+    """A coil tag is EXACTLY <coil-prefix>-<seq>. Everything else is an accessory,
+    a unit, or a mangled read -- and none of those may become a coil.
+
+    The rejected spellings are not hypothetical variants: this codebase names the
+    expansion-valve kit ``EKEXVA{n}U``, so a submittal tagging it ``EKEXVA-CDXC-1``
+    walked straight past the old three-string denylist.
+    """
+    for tag in ("CDXC-1", "RHHGRH-2", "RHHGRC-10", "ccwc-3", "PHWC - 4", " HHWC-1 "):
+        assert is_coil_tag(tag) is True, tag
+    for tag in (
+        "EKEXV-CDXC-1",     # the reported case
+        "EKEXVA-CDXC-1",    # spelling variant the denylist never listed
+        "EKEXVA72U-CDXC-1",
+        "EEVK-CDXC-1",
+        "TXV-CDXC-1",
+        "PHWCV-2",          # valve tag that merely starts like a coil prefix
+        "ERV-02",           # parent unit, not a coil
+        "DOAS-1",
+        "660024-001",       # a part number (the HGBP adder line)
+        "CDXC",             # no sequence
+        "CDXC-1-EXTRA",     # trailing segment -- old split("-")[0] read this as a coil
+        "",
+    ):
+        assert is_coil_tag(tag) is False, tag
+
+
+def test_coil_tag_rejection_reason_names_the_tag_and_the_cause() -> None:
+    """Every rejection is explainable. A row that vanishes without a reason reads as
+    'not in the submittal', which is the failure this filter must not cause."""
+    assert coil_tag_rejection_reason("CDXC-1", "DXC Cooling") is None
+
+    structural = coil_tag_rejection_reason("EKEXV-CDXC-1", "DX Coil")
+    assert structural is not None
+    assert "EKEXV-CDXC-1" in structural and "not a coil tag" in structural
+
+    # A structurally-VALID coil tag whose item names an accessory: the item-token
+    # signal is the only thing that catches this, so it must survive independently.
+    item_based = coil_tag_rejection_reason("CDXC-1", "EEV Kit")
+    assert item_based is not None
+    assert "accessory" in item_based
+
+    # A multi-tag cover cell (qty 2, two coils on one row) is a coil row; a cell with
+    # any accessory member is not. _expand_cover_tags splits the accepted one later.
+    assert coil_tag_rejection_reason("CDXC-1, CDXC-2", "DXC Cooling") is None
+    assert coil_tag_rejection_reason("CDXC-1, EKEXV-CDXC-1", "DXC Cooling") is not None
+
+
+def test_cover_item_canonicalization_cannot_launder_a_valve_row() -> None:
+    """The text-line cover path canonicalizes the item BEFORE the coil test, so
+    "EKEXV Valve (DX Coil)" arrives as "DX Coil" with the 'valve'/'ekexv' tokens
+    already destroyed. The structural tag rule is what closes that asymmetry (the
+    table path passes the raw cell and never had it)."""
+    page = _TextPage(page_number=1, text="")
+    assert _cover_row_from_text_line(
+        page, 1, "1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH"
+    ) is None
+    # The real coil on the same cover still parses.
+    rows = _cover_row_from_text_line(page, 2, "1 CDXC-1 DXC Cooling TR_C_032 LH")
+    assert rows is not None and [r.tag for r in rows] == ["CDXC-1"]
+
+
+def _tags_from_text(*lines: str) -> list[str]:
+    page = _TextPage(page_number=1, text="\n".join(lines))
+    return [
+        line.source_value
+        for line in extract_coil_lines_from_pdf_text([page])
+        if line.source_key == "COIL_TAG"
+    ]
+
+
+def test_unit_tag_anchor_rejects_compound_accessory_tag() -> None:
+    """The "Unit Tag:"/"Coil Tag:" anchor had NO non-coil filter at all -- the leak that
+    actually fired (reproduced 2026-08-06). Both the anchor regex and the _FIELD_PATTERNS
+    COIL_TAG label path read the same line, so both have to refuse it."""
+    assert _tags_from_text("Unit Tag: EKEXV-CDXC-1") == []
+    assert _tags_from_text("Coil Tag: EKEXV-CDXC-1") == []
+    assert _tags_from_text("Unit Tag: EKEXVA72U-CDXC-1") == []
+    # A real coil on the same shape still lands.
+    assert _tags_from_text("Unit Tag: CDXC-1") == ["CDXC-1"]
+
+
+def test_qty_tag_row_rejects_eev_kit_phantom_coil() -> None:
+    """A valve accessory line NAMES the coil it serves. The component-row rule harvested
+    that name into a phantom coil -- and via _set_line it could overwrite a tag already
+    captured, so the phantom won."""
+    assert _tags_from_text("2 CDXC-1 EEV Kit EKEXVA72U") == []
+    assert _tags_from_text("1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH") == []
+    # The genuine component row still wins over its parent unit tag.
+    assert _tags_from_text("Unit Tag: ERV-1", "1 PHWC-2 Preheat Coil") == ["PHWC-2"]
+
+
+def test_detail_page_tags_ignores_embedded_coil_tag_in_accessory_tag() -> None:
+    """Containment matching strips separators, so "CDXC1" sits inside "EKEXVCDXC1" and an
+    EEV page attached itself to the real coil even after that row was correctly dropped."""
+    assert _detail_page_tags("EKEXV-CDXC-1 Valve Kit Data", ("CDXC-1",)) == ()
+    # Recall guard: the spellings the containment match exists to rescue still match.
+    assert _detail_page_tags("Tag: CDXC-1", ("CDXC-1",)) == ("CDXC-1",)
+    assert _detail_page_tags("Tag: CDXC - 1", ("CDXC-1",)) == ("CDXC-1",)
+    assert _detail_page_tags("CDXC1 Cooling DX", ("CDXC-1",)) == ("CDXC-1",)
+    # A page naming both the accessory and the coil still resolves to the coil.
+    assert _detail_page_tags(
+        "EKEXV-CDXC-1 Valve Kit\nCDXC-1 Cooling DX", ("CDXC-1",)
+    ) == ("CDXC-1",)
+
+
+def test_drain_pan_partner_resolves_after_compound_tag_filter() -> None:
+    """The downstream payoff. A leaked compound tag failed drain_pan_partner_tag's anchor
+    and returned None, so the DX/HGRH pair silently lost its INSTALL FIT check."""
+    assert drain_pan_partner_tag("EKEXV-CDXC-1", ["RHHGRH-1"]) is None   # the old state
+    assert drain_pan_partner_tag("CDXC-1", ["RHHGRH-1"]) == "RHHGRH-1"   # what we now keep
+
+
+def test_non_coil_rows_are_surfaced_not_silent() -> None:
+    """End-to-end: the excluded row reaches the summary the browser renders, naming the
+    tag and why. Dropping it silently would make a WRONGLY-excluded coil look exactly
+    like one the submittal never listed -- the ambiguity the gate exists to remove."""
+    result = extract_coil_candidate_from_pdf_bytes(
+        _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes()
+    )
+    excluded = result.summary.non_coil_rows_excluded
+    assert any("EKEXV-CDXC-1" in entry for entry in excluded), excluded
+    # The two real coils are not reported as exclusions.
+    assert not any(entry.startswith("CDXC-1:") for entry in excluded), excluded
+    assert not any(entry.startswith("CDXC-2:") for entry in excluded), excluded
 
 
 def test_eev_valve_dropped_and_second_dx_section_reaches_cdxc_2() -> None:

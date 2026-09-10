@@ -75,6 +75,7 @@ VALID_SIZE = {
     ProductFamily.TERRA_V: "060",
     ProductFamily.VENTUM_H: "H15",
     ProductFamily.VENTUM_PLUS: "V40",
+    ProductFamily.OMNIA: "OW085",
 }
 
 # Coating notes (SOP Rev H wording, John 2026-06-11) fire ONLY when a custom coating
