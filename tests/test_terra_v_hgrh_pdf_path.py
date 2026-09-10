@@ -72,66 +72,61 @@ def test_a_stated_count_that_agrees_with_the_circuits_changes_nothing() -> None:
     assert _slots(**two) == _slots(**two, stated_qty_conn_per_header=2)
 
 
-def test_supply_spacing_is_never_negative_on_a_terra_v_hgrh() -> None:
-    """S = CD - Rn is withheld once Rn has crossed the casing, not drawn negative.
+def test_supply_spacing_is_one_position_and_may_be_negative() -> None:
+    """[SUPERSEDED 2026-09-09] This asserted no Terra V supply S could be negative.
 
-    Terra V's CD is rows-based (R-070) and does not grow with the header count while Rn
-    grows linearly, so the SOP formula runs out of premise. Measured before the guard:
-    S5 = -0.75, S7 = -2.75 on exactly this geometry.
+    That rested on S = CD - Rn, which the SOP scopes to **DX** (R-023, "SOP 2024018
+    §DX-TNVH"). The RHHGRC Supply equation applies instead, it is ONE equation for
+    `Supply 1/2/3/etc.`, and the SOP states outright that "Supply S/R values may be
+    negative". The value follows the stated connections-per-header, not the circuit count:
+    4 connections put the supply behind the casing face, 2 put it 0.25" inside.
     """
-    for extra in ({}, {"stated_qty_conn_per_header": 2}):
+    for extra, expected in (({}, -3.75), ({"stated_qty_conn_per_header": 2}, 0.25)):
         slots = _slots(**extra)
-        negatives = {
-            key: value
-            for key, value in slots.items()
-            if key.startswith("slot.S")
-            and isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and value <= 0
+        supply = {
+            key: value for key, value in slots.items()
+            if key.startswith("slot.S") and key[len("slot.S"):].isdigit()
         }
-        assert negatives == {}, negatives
+        assert supply, extra
+        assert set(supply.values()) == {expected}, (extra, supply)
 
 
-def test_the_supply_spacings_that_do_have_a_basis_are_still_drawn() -> None:
-    """The guard withholds; it must not blank the headers the SOP does cover."""
+def test_every_supply_header_is_drawn_and_none_drifts_from_the_first() -> None:
+    """The DX even-spacing net (`k*CD/(circuits+1)`) would both blank and scale these."""
     slots = _slots()
-    assert slots["slot.S1"] == 3.25
-    assert slots["slot.S3"] == 1.25
+    assert [slots.get(f"slot.S{2 * k - 1}") for k in range(1, 5)] == [-3.75] * 4
 
 
-def test_a_withheld_supply_spacing_says_why_it_is_beyond_the_casing() -> None:
-    """The panel must separate 'no Rn to subtract' from 'Rn is past the casing depth'.
-
-    Both are Terra V HGRH supply-S withholdings and `_key_base` folds every S onto one
-    reason key, so the two are told apart from the slot values rather than a new channel.
-    """
+def test_the_supply_spacing_panel_row_carries_a_number_not_a_reason() -> None:
+    """[SUPERSEDED 2026-09-09] Both Terra V supply-S withholding reasons were removed
+    with the branch that produced them; the panel shows the SOP value instead."""
     from coilforge.services.drawing_param_resolver import (
         parameter_set_from_template_drawing,
     )
 
     result = derive_coil_template_drawing({**_BASE})
     params = parameter_set_from_template_drawing(result, circuits=4).model_dump()
-    by_key = params["parameters"]
-    s3 = by_key["S3"]
-    assert s3["value"] is None
-    assert "casing depth" in (s3["blocked_reason"] or "")
+    s3 = params["parameters"]["S3"]
+    assert s3["value"] == -3.75
+    assert not s3["blocked_reason"], s3["blocked_reason"]
 
 
-def test_the_return_io_contrast_is_explained_next_to_the_withheld_supply_io() -> None:
-    """I2 blank while O2 is filled is correct (R-046 vs R-042v) but reads as arbitrary
-    unless the panel says so."""
+def test_the_supply_and_return_io_now_agree_on_every_header() -> None:
+    """[SUPERSEDED 2026-09-09] There is no contrast left to explain.
+
+    I2 used to be blank beside a filled O2 (R-046 covers Supply 1, R-042v covers every
+    return), and the panel carried a paragraph saying why. John ruled I1 = I2 = I3, so
+    both sides now carry 2.75 and the explanation was removed with the blank.
+    """
     from coilforge.services.drawing_param_resolver import (
         parameter_set_from_template_drawing,
     )
 
     result = derive_coil_template_drawing({**_BASE, "feeds": 2, "circuits": 2})
-    params = parameter_set_from_template_drawing(result, circuits=2).model_dump()
-    by_key = params["parameters"]
-    assert by_key["I2"]["value"] is None
-    reason = by_key["I2"]["blocked_reason"] or ""
-    assert "R-046" in reason and "R-042v" in reason
-    # ...and the value it is being contrasted with is genuinely there.
+    by_key = parameter_set_from_template_drawing(result, circuits=2).model_dump()["parameters"]
+    assert by_key["I2"]["value"] == 2.75
     assert by_key["O2"]["value"] == 2.75
+    assert not by_key["I2"]["blocked_reason"], by_key["I2"]["blocked_reason"]
 
 
 @pytest.mark.parametrize("circuits", [2, 3, 4])

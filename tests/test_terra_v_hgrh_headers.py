@@ -7,12 +7,18 @@ Two defects, found by tracing RHHGRC-3 (Terra V / TV072 / 2 rows / 6 feeds /
    I/O "is NOT derivable here" — yet the slot layer broadcast the Supply-1 constant
    to every odd header, printing 2.75 on positions the SOP declines to specify. That
    is the exact case the checklist flagged (`I3: CoilForge 2.75 vs Checklist TBD`).
-2. A Terra V HGRH whose circuit count exceeds its connections-per-header ran off the
-   end of the R-052 return-spacing list and fell through to the generic even-spacing
-   safety net, printing DX distributor spacing (`k*CD/(circuits+1)`) on a REHEAT coil.
+2. [SUPERSEDED 2026-09-09] A Terra V HGRH whose circuit count exceeds its connections-
+   per-header ran off the end of the R-052 return-spacing list. The 2026-08-30 answer was
+   to blank those headers, because the then-current S = CD - Rn grows with the header
+   index. That premise is gone: the SOP scopes Terra V's supply/return SPACING special to
+   **DX** (R-023, "SOP 2024018 §DX-TNVH"), and its Terra V HGRH section states only I/O
+   and SL values (R-046). Terra V HGRH therefore takes the general RHHGRC supply formula,
+   which is ONE equation for `Supply 1/2/3/etc.` — a single fixed position shared by every
+   supply header (John 2026-09-09), and legitimately negative ("Supply S/R values may be
+   negative", SOP). Five measured Terra V references match it on S, R and X exactly.
 
-Both now leave the slot blank, and the panel says WHY rather than showing the generic
-"engine did not derive this" — a withheld value and a failed one must not look alike.
+Defect 1 still stands and is still pinned below. Defect 2's blanking is replaced by a
+computed value; the panel wording for it was removed with the branch that produced it.
 
 Scoped to Terra V HGRH throughout: every other product line's supply_io comes from
 rules that do cover all headers, so their broadcast is deliberately unchanged.
@@ -43,21 +49,28 @@ def _slots(**over):
     return slots
 
 
-# --- 1. Supply I/O beyond header 1 ------------------------------------------
-def test_terra_v_hgrh_supply_io_is_written_for_header_1_only():
+# --- 1. Supply I/O on every header ------------------------------------------
+def test_terra_v_hgrh_supply_io_is_written_on_every_header():
+    """[SUPERSEDED 2026-08-04 -> 2026-09-09] I1 = I2 = I3 (John, on a live Header-2 panel).
+
+    From 2026-08-04 this asserted the opposite: Supply 2+ was blanked because R-046
+    covers Supply 1 and the SOP adds "Supply 2,3,4 round to nearest INT", which CoilForge
+    cannot do without EZ Coil's default. John ruled the supply I/O is the SAME on every
+    header, which overrides that SOP wording for Terra V and is recorded as his ruling.
+    """
     slots = _slots()
     assert slots["slot.I1"] == 2.75, "R-046 Supply 1 I/O is SOP-confirmed and must stay"
-    assert "slot.I3" not in slots, (
-        "Supply 2 I/O is a software default per R-046's own comment — never invent it"
-    )
+    assert slots["slot.I3"] == slots["slot.I1"], "supply I/O is one value for all headers"
 
 
 def test_the_rest_of_the_terra_v_hgrh_geometry_is_untouched():
     """The blanking must not disturb the values the checklist already agreed with."""
     slots = _slots()
     assert slots["slot.CD"] == 3.75           # rows-based (SOP); NOT the checklist 4.125
-    assert slots["slot.S1"] == 2.875          # CD - R1
-    assert slots["slot.S3"] == 0.5            # CD - R2  (Terra V SOP branch, not the net)
+    # One SOP position for every supply header: CD - [(n+2)*D + (n-1)*1.5] with
+    # n = qty_conn_per_header = 2, D = 0.875 -> 3.75 - 5.0. Negative is legitimate.
+    assert slots["slot.S1"] == -1.25
+    assert slots["slot.S3"] == slots["slot.S1"]
     assert slots["slot.R2"] == 0.875
     assert slots["slot.R4"] == 3.25
     assert slots["slot.O2"] == 2.75 and slots["slot.O4"] == 2.75
@@ -88,19 +101,70 @@ def test_terra_v_dx_supply_side_is_untouched():
 
 
 # --- 2. Supply spacing past the return-spacing list -------------------------
-def test_terra_v_hgrh_supply_spacing_stops_where_its_basis_stops():
-    """S = CD - Rn, and Rn runs to qty_conn_per_header — past that there is no basis.
+def test_terra_v_hgrh_supply_spacing_is_one_fixed_position_on_every_header():
+    """SOP RHHGRC states `Supply 1/2/3/etc.` as a SINGLE equation, so one position
+    serves every supply header (John 2026-09-09: the supply stub is a fixed position).
 
-    Reachable whenever the CoilMaster prose states a circuit count ("Interlaced 6
-    Circuits") that exceeds the connections per header: the loop then runs k=1..6
-    while R-052 produced only two spacings.
+    Replaces the 2026-08-30 blanking — see the module docstring. The guard that matters
+    now is the opposite one: no supply header may be blank, and none may drift from the
+    first, because the DX even-spacing net (`k*CD/(circuits+1)`) would do both.
     """
     slots = _slots(circuits=6)
-    assert slots["slot.S1"] == 2.875 and slots["slot.S3"] == 0.5
-    for parity_id in (5, 7, 9, 11):
-        assert f"slot.S{parity_id}" not in slots, (
-            f"slot.S{parity_id} fell through to the DX even-spacing net on a reheat coil"
-        )
+    supply = {k: v for k, v in slots.items()
+              if k.startswith("slot.S") and k[len("slot.S"):].isdigit()}
+    assert len(supply) == 6, supply
+    assert set(supply.values()) == {-1.25}, (
+        "every supply header must share the one SOP position; a k-scaled value means the "
+        f"DX even-spacing net leaked onto a reheat coil: {supply}"
+    )
+
+
+def test_terra_v_hgrh_supply_s_matches_the_measured_coilmaster_reference():
+    """3025 Bauducco RHHGRC-1 (TV_B_024): the drawing prints S 1.88, R 0.63, X 1.25.
+
+    This is the case that exposed the defect. A DX-only rule (R-023, "SOP 2024018
+    §DX-TNVH SPECIAL CASE Terra V") had been widened to HGRH, which overshot every
+    Terra V reheat supply S by exactly 2*D -- 3.125 instead of 1.875 here.
+
+    `X` is not a rule: it is CD - R - S, so pinning S and R pins the X the drawing shows.
+    """
+    slots = _slots(
+        unit_size="024", rows=2, circuits=1, feeds=4, qty_conn_per_header=1,
+        suction_conn_size=0.625, conn_size=0.625,
+        finned_height=30.0, finned_length=33.0,
+    )
+    assert slots["slot.CD"] == 3.75            # printed 3.75
+    assert slots["slot.S1"] == 1.875           # printed 1.88
+    assert slots["slot.R2"] == 0.625           # printed 0.63
+    assert round(slots["slot.CD"] - slots["slot.R2"] - slots["slot.S1"], 4) == 1.25
+    assert slots["slot.I1"] == 2.75            # R-046; the drawing's 2.00 is its own deviation
+
+
+def test_terra_v_hgrh_supply_s_now_agrees_with_the_other_cd_formula_lines():
+    """Terra V shares the general RHHGRC supply formula, so it must equal Nova's S.
+
+    The SOP gives Terra V an HGRH special for I/O and SL values only; its spacing
+    special is DX-scoped. If Terra V ever diverges from Nova here again, a family
+    branch has been reintroduced without an SOP line behind it.
+    """
+    common = dict(
+        rows=2, circuits=1, feeds=4, qty_conn_per_header=1,
+        suction_conn_size=0.625, conn_size=0.625,
+        finned_height=30.0, finned_length=33.0,
+    )
+    terra_v = _slots(unit_size="024", **common)
+    nova = _slots(product_type="NOVA", unit_size="C24", terra_variant=None, **common)
+    assert terra_v["slot.S1"] == nova["slot.S1"] == 1.875
+
+
+def test_terra_v_dx_keeps_its_own_supply_spacing_special():
+    """R-023 is `coil_type: [DX]` -- narrowing the slot layer must not narrow DX too."""
+    dx = _slots(
+        coil_type="DX", tag="CDXC-9", circuits=2, feeds=2,
+        suction_conn_size=0.875, conn_size=None,
+    )
+    # CD - Rn with the Terra V DX return spacing (R-023), NOT the HGRH CD-formula.
+    assert dx["slot.S1"] == 2.9375 and dx["slot.S3"] == 0.5625
 
 
 def test_non_terra_v_hgrh_still_gets_a_spacing_for_every_header():
@@ -122,21 +186,26 @@ def _panel(slots, product_type="TERRA V"):
     )
 
 
-def test_a_withheld_header_value_says_why_instead_of_reading_as_a_bug():
+def test_no_terra_v_hgrh_header_value_is_withheld_any_more():
+    """[SUPERSEDED 2026-09-09] Both Terra V HGRH withholdings are gone.
+
+    I2+ now carries the supply I/O (John's ruling) and S2+ carries the SOP supply
+    position, so the panel shows numbers where it used to show a reason. Pinned in the
+    positive direction: a regression to blanking would fail here, loudly.
+    """
     params = _panel(_slots(circuits=6)).parameters
     by_key = {p.key: p for p in params} if isinstance(params, list) else params
 
-    i2 = by_key["I2"]
-    assert i2.value is None
-    assert "R-046" in (i2.blocked_reason or ""), i2.blocked_reason
-    assert "Supply 1 only" in (i2.blocked_reason or "")
+    for key, expected in (("I2", 2.75), ("S2", -1.25)):
+        row = by_key[key]
+        assert row.value == expected, (key, row.value)
+        assert not row.blocked_reason, (key, row.blocked_reason)
 
+    # S3 is no longer withheld (2026-09-09): the SOP formula defines it, so the panel
+    # shows a number instead of a reason. Pinned so a regression to blanking is loud.
     s3 = by_key["S3"]
-    assert s3.value is None
-    assert "Rn" in (s3.blocked_reason or ""), s3.blocked_reason
-    assert "did not derive" not in (s3.blocked_reason or "").lower(), (
-        "a deliberately withheld value must not share the generic failure wording"
-    )
+    assert s3.value == -1.25, s3.value
+    assert not s3.blocked_reason, s3.blocked_reason
 
 
 def test_other_lines_keep_the_generic_header_message():
@@ -182,9 +251,8 @@ def test_blanking_raises_the_project_gate_exception_count_and_says_why():
         if "R-046" in (e.get("detail") or "") or "Rn" in (e.get("detail") or "")
     ]
 
-    assert result["verdict"] == "exception"
-    # 6 header columns: I2..I6 withheld (5) + S3..S6 withheld (4) = 9 SOP-withheld keys.
-    assert len(withheld) == 9, [e["key"] for e in withheld]
-    assert {e["key"] for e in withheld} == {
-        "I2", "I3", "I4", "I5", "I6", "S3", "S4", "S5", "S6",
-    }
+    # [SUPERSEDED 2026-09-09] Both SOP withholdings are gone: the supply I/O broadcasts
+    # (John's ruling) and the supply position comes from the SOP formula. The count went
+    # 9 -> 5 -> 0. Pinned at zero because exceptions_K feeds the review ledger, and a
+    # silent return of either blank would inflate it again on every multi-header Terra V.
+    assert withheld == [], [e["key"] for e in withheld]

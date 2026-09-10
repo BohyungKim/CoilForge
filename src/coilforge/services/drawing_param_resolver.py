@@ -128,19 +128,7 @@ _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
 # dimension", which reads as a bug on a value withheld on SOP grounds — and Phase C
 # then paints it red with no explanation. Keyed on the base letter so every header
 # index (I2/I3/I4) inherits the same reason.
-_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {
-    ("HGRH", "TERRA_V", "I"): (
-        "Terra V HGRH Supply I/O is SOP-confirmed for Supply 1 only (R-046); Supply 2+ "
-        "is a software default, not derivable — fill it in if the drawing needs it. "
-        "(The Return I/O beside it IS filled on every header: R-042v states 2.75 for all "
-        "Terra V returns, so the two are not inconsistent — one rule covers every "
-        "position, the other only the first.)"
-    ),
-    ("HGRH", "TERRA_V", "S"): (
-        "Terra V HGRH supply spacing is S = CD − Rn (SOP), and Rn only runs to the "
-        "connections-per-header count — this header has no Rn to subtract."
-    ),
-}
+_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {}
 
 _KEY_BASE_RE = re.compile(r"^([A-Za-z]+)")
 
@@ -151,31 +139,11 @@ def _key_base(key: str) -> str:
     return m.group(1) if m else (key or "")
 
 
-#: Terra V HGRH supply spacing has TWO distinct withholding causes and the map above can
-#: hold only one -- ``_key_base`` folds S1/S2/S3 onto "S". They are told apart from the
-#: slot values themselves rather than through a new reason channel: the header's return
-#: spacing is either absent (no Rn to subtract) or present but past the casing depth.
-_TERRA_V_S_BEYOND_CASING = (
-    "Terra V HGRH supply spacing is S = CD − Rn (SOP), and this header's Rn has passed "
-    "the casing depth — the formula is outside its premise here, so no value is drawn "
-    "rather than a negative one. Terra V CD is rows-based and does not grow with the "
-    "header count; confirm the connections-per-header count."
-)
-
-
-def _terra_v_s_beyond_casing(key: str, slot_values: dict[str, Any] | None) -> bool:
-    """True when this Terra V HGRH supply S was withheld because ``Rn >= CD``."""
-    if not slot_values:
-        return False
-    slot = slot_for_param_key(key)
-    if not slot:
-        return False
-    m = re.match(r"^slot\.S(\d+)$", slot)
-    if not m:
-        return False
-    rn = _coerce_float(slot_values.get(f"slot.R{int(m.group(1)) + 1}"))
-    cd = _coerce_float(slot_values.get("slot.CD"))
-    return rn is not None and cd is not None and rn >= cd
+# NOTE (2026-09-09): the two Terra V HGRH supply-S withholding causes that used to live
+# here are gone. Both rested on S = CD - Rn, which the slot layer no longer uses for
+# HGRH -- the SOP scopes Terra V's spacing special to DX (R-023) and gives HGRH the
+# general RHHGRC formula, which is defined for every supply header and may legitimately
+# be negative. Terra V HGRH supply S is therefore never blank on SOP grounds.
 
 
 def _blank_reason(
@@ -196,13 +164,6 @@ def _blank_reason(
         return "Pick a product line + unit size to derive this dimension."
     variant = (terra_variant or "").upper()
     base = _key_base(key)
-    if (
-        coil_category == "HGRH"
-        and variant == "TERRA_V"
-        and base == "S"
-        and _terra_v_s_beyond_casing(key, slot_values)
-    ):
-        return _TERRA_V_S_BEYOND_CASING
     withheld = _WITHHELD_REASON_BY_VARIANT.get((coil_category, variant, base))
     if withheld:
         return withheld

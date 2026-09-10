@@ -559,7 +559,10 @@ def test_terra_v_drawing_slots_use_sop_specials() -> None:
     # CD restored to the rows-based base depth (R-070 HIGH), not the R-073 multi value;
     # rows=4 -> ROUNDUP(4*0.866 to 1/8)+2 = 5.5. This also makes S = CD - Rn use the real CD.
     assert hgrh["slot.CD"] == 5.5
-    assert hgrh["slot.S1"] == round(5.5 - hgrh["slot.R2"], 4)  # S = CD - Rn
+    # SOP RHHGRC supply: CD - [(n+2)*D + (n-1)*1.5], n = connections per header = 2.
+    # (Was CD - Rn until 2026-09-09 -- that special is DX-scoped: R-023 "SOP 2024018
+    # §DX-TNVH". The rows-based CD this test guards is unchanged.)
+    assert hgrh["slot.S1"] == 1.5
 
     # Scope guard: non-Terra-V HGRH keeps the return_sl clearance on the drawn even slot.
     hgrh_h, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA H", **common)
@@ -613,7 +616,9 @@ def test_hgrh_cd_stays_rows_based_when_conn_present() -> None:
     assert tv["slot.CD"] == 3.75          # was blank when R-073 (MEDIUM) hijacked casing_depth
     assert tv["slot.R2"] == 0.5
     assert tv["slot.SL1"] == 5 and tv["slot.SL2"] == 12
-    assert tv["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn uses the real (rows-based) CD
+    # SOP RHHGRC supply with n = 1: 3.75 - 3*0.5. Still built on the real rows-based CD,
+    # which is what this test guards; only the formula changed (2026-09-09).
+    assert tv["slot.S1"] == 2.25
 
 
 def test_dx_cd_with_hgrh_reheat_pair_uses_checklist_branch() -> None:
@@ -701,7 +706,8 @@ def test_hgrh_terra_v_unchanged_by_checklist_alignment() -> None:
         rows=2, circuits=1, suction_conn_size=0.5,
     )
     assert s["slot.CD"] == 3.75              # rows-based base, not a multi term
-    assert s["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn (R-023), unchanged
+    # SOP RHHGRC supply with n = 1: 3.75 - 3*0.5 (R-023 is DX-only; 2026-09-09).
+    assert s["slot.S1"] == 2.25
     assert s["slot.SL1"] == 5                 # Terra V supply SL (SOP), not 6 or the formula
 
 

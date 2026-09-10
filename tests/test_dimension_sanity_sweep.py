@@ -43,9 +43,14 @@ _CIRCUITS = (1, 2, 3, 4)
 _CONNS = (0.5, 0.625, 0.875, 1.125, 1.375)
 _ROWS = (1, 2, 4, 6, 8)
 
-#: Only the Nova / Ventum H HGRH supply-S formula (`_hgrh_supply_s`) may go non-positive,
-#: and only on the odd (supply) slots. Every other family/slot must be > 0 or absent.
-_MAY_BE_NON_POSITIVE = {("HGRH", "NOVA"), ("HGRH", "VENTUM H")}
+#: Only the HGRH supply-S formula (`_hgrh_supply_s`) may go non-positive, and only on the
+#: odd (supply) slots. Every other family/slot must be > 0 or absent.
+#:
+#: TERRA V joined the list on 2026-09-09: it now shares that same formula. Its old
+#: `S = CD - Rn` branch is DX-scoped (R-023, "SOP 2024018 §DX-TNVH"), and the RHHGRC SOP
+#: states outright that "Supply S/R values may be negative" -- the Nova/Ventum H seeds
+#: already prove it (EZC-0016 prints S1 = -0.63).
+_MAY_BE_NON_POSITIVE = {("HGRH", "NOVA"), ("HGRH", "VENTUM H"), ("HGRH", "TERRA V")}
 
 
 def _sweep():
@@ -89,24 +94,28 @@ def test_only_the_confirmed_nova_ventum_h_branch_emits_a_non_positive_dimension(
 
 @pytest.mark.parametrize("circuits", _CIRCUITS)
 @pytest.mark.parametrize("conn", _CONNS)
-def test_terra_v_hgrh_supply_spacing_is_withheld_rather_than_drawn_past_the_casing(
+def test_terra_v_hgrh_supply_spacing_is_one_sop_position_on_every_header(
     circuits: int, conn: float
 ) -> None:
+    """[SUPERSEDED 2026-09-09] This swept for "withheld once Rn crosses the casing".
+
+    That guard existed because `S = CD - Rn` grows with the header index. The SOP scopes
+    that special to DX (R-023) and gives HGRH one equation for `Supply 1/2/3/etc.`, so the
+    sweep now pins the opposite invariant: every supply header carries the SAME value, and
+    it is exactly the SOP subtraction. A k-scaled or missing S means the DX even-spacing
+    net leaked onto a reheat coil -- the failure this sweep has always been here to catch.
+    """
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="TERRA V", unit_size="012",
         rows=2, feeds=circuits, circuits=circuits,
         suction_conn_size=conn, finned_height=24, finned_length=15,
     )
     cd = slots.get("slot.CD")
-    for k in range(1, circuits + 1):
-        s = slots.get(f"slot.S{2 * k - 1}")
-        rn = slots.get(f"slot.R{2 * k}")
-        if s is None:
-            continue  # withheld -- that is the point
-        assert s > 0, f"circuits={circuits} conn={conn} S{2 * k - 1}={s}"
-        # ...and every drawn S is exactly the SOP subtraction, so the guard removed
-        # values without disturbing the formula it protects.
-        assert rn is not None and abs(s - round(cd - rn, 4)) < 1e-9
+    n = circuits  # no stated connections-per-header -> the formula falls back to circuits
+    expected = round(cd - ((n + 2) * conn + (n - 1) * 1.5), 4)
+    drawn = [slots.get(f"slot.S{2 * k - 1}") for k in range(1, circuits + 1)]
+    assert all(v is not None for v in drawn), f"circuits={circuits} conn={conn} {drawn}"
+    assert set(drawn) == {expected}, f"circuits={circuits} conn={conn} {drawn}"
 
 
 def test_the_nova_reference_geometry_still_reproduces_its_seeded_drawing() -> None:
