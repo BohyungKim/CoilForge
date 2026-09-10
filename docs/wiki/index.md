@@ -19,6 +19,7 @@
 ## 개념
 - [[confidence-gate]] `[CONFIRMED]` — HIGH→values / MEDIUM→suggestions / LOW·CONFLICT→blocked; 중심 불변식.
 - [[multi-header-geometry]] `[CONFIRMED]` — circuits/feeds → I2/S2/R2…; N interlaced circuits = N 공급 헤더 (John 2026-07-06).
+- [[x-header-stack-depth]] `[REVIEW-REQUIRED]` — 도면 치수 `X`: **존재 여부는 확정**(리턴 연결 `OD Header`↔값 / `swt`↔공란, 328/328), **값의 결정 규칙은 미상**(유력 공식이 실측 186장 중 52%만 설명). "tube-projection" 라벨은 오기재. 배선 보류 (John 2026-09-05 STOP).
 - [[hot-gas-bypass]] `[CONFIRMED]` — HGBP/ASC: 카테고리가 아닌 직교 special_feature 축, DX 전용·header 무관, Nova/Ventum H 전용 (John 2026-07-15); `(N ASC)`는 개수 — `0 ASC` = HGBP 아님.
 
 ## 스텁 (참조되지만 아직 시드 안 됨 — `/wiki-ingest`로 자라남)

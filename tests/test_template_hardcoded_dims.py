@@ -35,8 +35,18 @@ _HARDCODED = re.compile(r"-?\d+(?:\.\d+)?\s+[A-Za-z]{1,4}\d*")
 #: a withheld marker where it currently shows a number that is at least right for one real
 #: coil. So the bar for clearing a row here is evidence, not effort.
 _KNOWN_OPEN: dict[tuple[str, str], str] = {
-    # `X` is the tube-projection callout. It has NO engine rule at all -- no YAML rule
-    # emits `slot.X` -- so redacting it would blank the dimension on all seven templates.
+    # `X` is the drawing's X column. A 328-page measurement of real HGRH drawings
+    # (2026-09-05, docs/wiki/concepts/x-header-stack-depth.md) settled WHEN it exists --
+    # only on header-connected coils -- but NOT what sets the value: the working reading
+    # (header-stack depth (h+1)*D + (h-1)*1.5) explains 96 of the 186 valued pages, the
+    # misses fall between the formula's steps at every integer h, and two coils identical
+    # across FH/FL/CH/CL/CD/OAL/SL/I/S/O differ in X. The older "tube-projection" label
+    # was wrong too.
+    #
+    # So redaction stays blocked, and for a stronger reason than before: with no rule,
+    # slotting these seven blanks `X` for EVERY family, which John forbade on 2026-09-05.
+    # Gate: an SOP/CoilMaster definition of the column -- not another reference drawing
+    # (three were read on 2026-09-05 and they refuted the formula instead).
     ("coilmaster_hgrh_lh_header2", "3.38 X"): "no engine rule for X",
     ("coilmaster_hgrh_rh_header2", "3.38 X"): "no engine rule for X",
     ("coilmaster_hgrh_lh_header3", "5.50 X"): "no engine rule for X",

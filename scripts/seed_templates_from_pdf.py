@@ -29,8 +29,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Dimension callout labels (longest first so HDx1 wins over HD). The regex sorts
 # by length, so list order here is not significant.
-# "X" (uppercase, single char) is the tube-projection callout; it is case-
-# sensitive so it never matches the lowercase "x" in tube specs (e.g.
+# "X" (uppercase, single char) is the drawing's X column. What it MEASURES is still open:
+# the working reading is a header-stack depth (h+1)*D + (h-1)*1.5 (same shape as R-073's
+# header-bank term), but a 328-page measurement of real HGRH drawings (2026-09-05) found it
+# explains only 52% of the pages that carry a value -- see
+# docs/wiki/concepts/x-header-stack-depth.md. What IS settled: X appears only on
+# header-connected coils (RETURN CONN "... OD Header" -> always printed, "... swt" -> always
+# blank, 328/328). The older "tube projection" label was wrong either way.
+# It is case-sensitive so it never matches the lowercase "x" in tube specs (e.g.
 # "0.375 x 0.016"). Added 2026-06-23 (John) so "1.13 X" redacts to {{slot.X}}.
 _DIM_LABELS = [
     "HDx1", "HDx3", "HDx5", "HD2", "HD4", "HD6", "SL2", "SL4", "SL6", "OAL",
@@ -189,6 +195,20 @@ def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
             if label == "X":
                 # X is a fixed (non-variable) dimension no parameter drives; drop
                 # the callout rather than slot it (would render blank). John 2026-06-27.
+                #
+                # WARNING (2026-09-02): this branch DELETES the callout, so re-seeding an
+                # already-seeded HGRH bucket silently removes its X and
+                # tests/test_template_hardcoded_dims.py then fails the `known - found`
+                # direction. Diff a scratch regen before letting it land (see the
+                # committed-vs-seeder divergence note in CLAUDE.md).
+                #
+                # The premise -- "no parameter drives it" -- is unproven either way. A
+                # 328-page measurement of real HGRH drawings (2026-09-05) showed X IS driven
+                # by something (it varies between coils identical in every other title-block
+                # dimension), but the working formula (h+1)*D + (h-1)*1.5 explains only 52%
+                # of the pages that carry a value, so no rule can be written yet. If a rule
+                # ever lands, this branch must flip to slotting X.
+                # docs/wiki/concepts/x-header-stack-depth.md
                 return ""
             slot = _BARE_CALLOUT_SLOT.get(label, f"slot.{label}")
             used.add(slot)
