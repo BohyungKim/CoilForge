@@ -51,7 +51,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 127 |
+| `tests` | 130 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 1 |
@@ -201,6 +201,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_checklist_overrides.py` | Manual browser fills carried into the Coil Checklist (pure; no Excel, no PDF) |
 | `tests/test_checklist_panel_join.py` | The Drawing Parameters panel joins the Coil Checklist by SLOT, not by name |
 | `tests/test_checklist_partner_cd.py` | The partner CD written onto a sheet must equal that partner's OWN sheet CD (pure) |
+| `tests/test_checklist_template_2026_09_22.py` | Coil Checklist template refresh (2026-09-22): what moved and what deliberately did not |
 | `tests/test_circuit_from_coil_style.py` | Circuit count derived from the 'Coil Style' prose |
 | `tests/test_coating_note_on_drawing.py` | The coil's ACTUAL coating is printed on the drawing (John 2026-08-05) |
 | `tests/test_coil_utilities.py` | Phase 3 — Coil Utilities internal table (geometry engine + capacity-range charts) |
@@ -209,8 +210,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_copper_strap_pricing.py` | Copper-strap price adder: $25/strap over the R-090 strap count |
 | `tests/test_copper_strap_rule.py` | R-090 copper-strap rule: deterministic straps-per-header by coil type |
 | `tests/test_coverage_dashboard_generator.py` | The coverage-dashboard generator must reflect the LIVE catalog, not a snapshot |
-| `tests/test_deliverable_finalize.py` | DirectCoil deliverable finalize — subject cleaning, folder resolution, filing, |
 
-_293 source files, 203 with a header comment. 53 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_296 source files, 206 with a header comment. 56 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

@@ -6,6 +6,24 @@
 - `SOP-OLE1..4` = the four identical embedded casing-depth tables (DX/HGRH): Rows 1–12 → CD = ROUNDUP(rows × 0.866 to nearest ⅛″) + 2″ (2.875 … 12.5).
 - `SOP-OLE5` = embedded casing-depth table (CWC/HWC): Rows 1–12 → CD = ROUNDUP(rows × 1.299 to nearest ⅛″) + 2″ (3.375 … 17.625).
 
+**2026-09-22 template refresh (John):** every CHK tab was re-worked and John ruled that the
+checklist wins over the earlier SOP-derived CoilForge values wherever the two conflict. Cell
+references below are to the pre-refresh workbook unless a row says "(2026-09-22)". What moved:
+Units sheet Terra V SIZE tokens are numeric (6…100) and the Terra V casing W/H block is filled
+(30/47, 44/58, 48/74, 69/74, 77/76); the Install sheet has Terra V drain-pan widths by size band
+(006-012 → 28, 015-024 → 29, 032-100 → 32); DX!C59 distributor extension is 17 on Ventum H
+H05/H10 (R-033b); HGRH!C33 I1 = 2 on every line and HGRH!C58 supply SL = `6+D/2−S1` on every line
+and feed count (R-046 / R-044a / R-044c); the water sheets split "I/O" into I / O / S / R rows
+plus "SUPPLY V/D ANGLE" (LAS) and "VENT & DRAIN" (ConnEnd), CD gained a connection-size operand
+(HWC `MAX(base, 1.5·(IN+OUT)+1.5)`, CWC `MAX(base, 1.5·OUT+IN+4.5)`, R-071), RB became
+`IF(OR(TERRA V,VENTUM+),1.875,2.25)` (R-006/R-006v/R-006p), every single-feed special (SL 12/14,
+I/O TBD, HD N/A — R-064-*) was removed, and the HWC sheet branches Terra TF/BF and I/O on
+INSTALLED ON DP (R-014h). Terra V gained its own WIDTH FIT (`(W−OAL) ≥ 9.75` DX/HGRH, `≥ 8.75`
+water) and HEIGHT FIT (FH ≤ 24/42/45/48 by size band) arms (R-078). NOT adopted, by John's
+separate rulings: the water `O = CH−x` (drawn O = I, KD-024..027), the CWC `S = IN/2+3` (drawn
+S = conn), and the Terra V HGRH CD (rows-based, KD-001) — see `known_divergences.yaml`. Sheet
+defects found in the refresh are filed as `docs/rule_proposals/RP-003-template-2026-09-22-defects.md`.
+
 **Important discovery about the checklist:** the CHK SUBMITTAL column is formula-driven. It is itself a deterministic rule engine keyed on `C3` (product type), `C4` (unit size), `C5` (application), `C13/C14` (rows/feeds), `C15–C18` (conn size, qty conn/header), etc. This makes evidence extraction far stronger than expected — but it also exposes real conflicts with the SOP, listed below.
 
 ---
@@ -44,7 +62,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-003 | * | * | * | header_flange (HF) = 1.5 | SOP all sections "Leave Header Flange… default 1.5"; CHK *!HF `=1.5` | High | No | |
 | R-004 | * | * | * | return_flange (RF) = 1.5 | Same as R-003 | High | No | |
 | R-005 | DX, HGRH | * | * | return_bend (RB) = 1.5 (default; John 2026-06-25, was 1.75) | John 2026-06-25 (prior: SOP §DX-TNVH/§DX-VP/§HGRH-* ; CHK DX!C29, HGRH!C32) | High | No | 1.5 is now the direct-coil default across all product lines (drops OAL=FL+3+RB by 0.25); the old 1.75 with a "reduce to 1.5 if fit issue" escape hatch is superseded |
-| R-006 | CWC, HWC | * | * | return_bend (RB) = 2.25 (min 1.875 if fit issue) | SOP §CWC/HWC; CHK CWC!C26, HWC!C30 | High | No | |
+| R-006 / R-006v / R-006p | CWC, HWC | * | * | return_bend (RB) = 2.25; Terra V and Ventum+/Omnia = 1.875 (2026-09-22) | CHK CWC!C26 / HWC!C30 `IF(OR(TERRA V,VENTUM+),1.875,2.25)`; John 2026-09-22 (supersedes the 2026-06-29 flat 1.875) | High | No | Water RB is compared against the sheet's formula, not written (DX/HGRH RB is still written) |
 | R-007 | CWC, HWC | * | * | notes += "Vent & Drain installed <= 3\" from MPT connection. Only 1 Supply and 1 Return connection required. Do not bend connection to meet dimensional requirements." | SOP §GEN; CHK CWC!C20, HWC!C24 — strings match verbatim | High | No | |
 | R-008 | DX, HGRH | * | * | notes += "Copper Straps Required." | SOP §GEN; CHK DX!C23, HGRH!C26 | High | No | |
 
@@ -76,7 +94,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-030 | DX | * | * | distributor HD (HD1/3/5/7) | SOP: 0″ for Nova/Ventum H/W-Ctrl Terra, 4.5″ for D-Ctrl Terra and Ventum+; CHK: `=4.5` unconditional | **Conflict** | Yes | CHK contradicts SOP for Nova/VH/W-Ctrl Terra. Also needs ctrl-type input for Terra. **Do not prepopulate.** |
 | R-031 | DX | NOVA, TERRA, VENTUM H | * | dist_orientation = ConnectionDown ("DOWN") | SOP §DX-TNVH; CHK DX!C58 | High | No | |
 | R-032 | DX | VENTUM+ | * | dist_orientation = ConnectionUp ("UP") | SOP §DX-VP; CHK DX!C58 | High | No | |
-| R-033 | DX | * | * | dist_extension = 6 | SOP both DX sections; CHK DX!C59 `=6` | High | No | |
+| R-033 / R-033b | DX | * | * | dist_extension = 6; Ventum H H05/H10 = 17 (2026-09-22) | SOP both DX sections; CHK DX!C59 `IF(OR(C4="H05",C4="H10"),17,6)` | High | No | |
 | R-034 | DX | * (non-Terra-V S-convention question) | * | distributor S values | SOP §DX-TNVH: "multiples of −3″" (Nova/VH/W-Ctrl Terra) vs CHK DX!C46–C49: even spacing `ROUND(k·CD/(C+1))` | **Conflict** | Yes | Two different placement conventions. CHK matches SOP's *D-Ctrl/Ventum+* "evenly space" guidance, not the −3″ rule. **Suggestion only.** |
 
 ### 2.4 HGRH-specific
@@ -87,10 +105,10 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-041 | HGRH | NOVA, VENTUM H | * | return I/O (O*) = 2; round other supply I/Os up to integer | SOP §HGRH-TNVH; CHK HGRH!C37–C40 (`else 2`) | High | No | "Round up" needs default values from EZ Coil → suggestion-level |
 | R-042 | HGRH | TERRA | * | return I/O | CHK `TERRA→3.25` vs SOP base text "2″" | **Conflict** | Yes | Same Terra-granularity issue (3.25 = Terra H C per SOP single-feed note) |
 | R-043 | HGRH | * | * | HD (all) = 3.5 | SOP both HGRH sections; CHK HGRH!C50–C57 | High | No | |
-| R-044 | HGRH | NOVA, VENTUM H | * | supply SL = 6, return SL = 8 | SOP §HGRH-TNVH; CHK HGRH!C59 return (8); supply SL1 CHK is computed `6 + D/2 − S1` | High (return) / Medium (supply) | Supply: Yes | CHK supply SL is geometric compensation for negative S; nominal 6 matches SOP. Suggest 6, flag formula. |
+| R-044 | HGRH | NOVA, VENTUM H | * | supply SL = `6 + D/2 − S1` (every line and feed count, 2026-09-22; R-044a/R-044c formula-kind, slot layer), return SL = 8 | CHK HGRH!C58 `=6+C15/2-C46`; CHK HGRH!C59 return (8); John 2026-09-22 | High | No | The engine no longer emits a supply_sl constant; the seeded Ventum+ header-1 5.69 = 6 − 0.625/2 |
 | R-044d | HGRH | VENTUM H | H05, H10 | return SL (even SL2/4/6/8) = 17 (overrides R-044b) | John 2026-06-26 | High | No | size_pattern-scoped; even-slot clearance only; supply SL1 unchanged (still geometric/Medium 6) |
 | R-045 | HGRH | TERRA, VENTUM+ | * | return SL = 10 | SOP §HGRH-VP (10) + §HGRH-TNVH Terra-as-Terra-H; CHK `TERRA/VENTUM+→10` | High (VENTUM+) / Medium (TERRA) | Terra: Yes | Terra V = 12 per SOP only |
-| R-046 | HGRH | TERRA (V) | * | I/O = 2.75, supply SL = 5, return SL = 12 | SOP §HGRH-TNVH Terra V special cases only | Low | Yes | Single-source (SOP Rev I), absent from CHK |
+| R-046 | HGRH | TERRA (V) | * | supply I/O = 2, return SL = 12 (2026-09-22; supply SL is the R-044a formula) | CHK HGRH!C33 `=2` every line, HGRH!C59 TERRA V → 12; John 2026-09-22 (supersedes SOP Terra V 2.75 / SL 5) | High | No | Return I/O 2.75 stays (R-042v, HGRH!C37 agrees); the sheet's O4/O6/O8 = 2 is a defect (RP-003, KD-005/022/023) |
 | R-047 | HGRH | * | * | supply conn_angle = LAS | SOP both HGRH sections "Change Conn Angle for all supply connections to LAS"; CHK single-feed note strings embed `SupConnAngle=LAS` | High | No | |
 | R-048 | HGRH | * | * | S/R header positions: Return X = X·D + (X−1)·1.5; Supply = CD − [(Xmax+2)·D + (Xmax−1)·1.5] | SOP §HGRH-TNVH formulas; CHK HGRH!C42–C49 match (with Terra/Ventum+ branch differences) | Medium | Yes | CHK Terra/Ventum+ branches (`S=conn size`, `R=conn size`) differ from SOP general formula; Ventum+ SOP says "Change S/R values to match Conn Size" which matches CHK. Per-platform agreement is good but mixed → suggestion only |
 | R-049 | HGRH | * | * | single_feed → header/stubout note string (per platform) | SOP §GEN SPECIAL CASE (4 platform variants incl. Terra H C, Terra V); CHK HGRH!C26 builds equivalent note for TERRA / NOVA·VH / VENTUM+ | Medium | Yes | Values consistent where comparable (e.g., Nova SL2=8, VP SL2=10, Terra O2=3.25 ↔ SOP Terra H C R1 I/O=3.25); CHK lacks Terra H vs H C vs V split |
@@ -102,13 +120,13 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | Rule ID | Type of Coil | Product Type | Unit Size / Size Pattern | Required Header Information | Evidence Source | Confidence | Review Required | Notes |
 |---|---|---|---|---|---|---|---|---|
 | R-060 | CWC, HWC | NOVA, VENTUM H, VENTUM+ | * | I/O = 2.3125 (multi-feed) | SOP §CWC/HWC "Update all I/Os to 2.3125″"; CHK `IF(TERRA,3.25,2.3125)` | High | No | Single feed → TBD (CHK) → R-064 |
-| R-061 | CWC, HWC | TERRA | * | I/O | CHK `TERRA→3.25`; SOP base says 2.3125, Terra V special: supply 2.75 / return CH−2.75 | **Conflict** | Yes | Three different values across docs/variants. **Do not prepopulate.** |
+| R-061 / R-061v / R-014h | CWC, HWC | TERRA | * | I/O = 3.25 (Terra H) / 2.75 (Terra V); HWC off the drain pan → 2.3125 and TF/BF = 1/1 (2026-09-22) | CHK CWC!C27 / HWC!C31 `IF(C20=FALSE,2.3125,IF(TERRA H,3.25,IF(TERRA V,2.75,2.3125)))`, HWC!C28:C29 | High | No | The sheet's O row = CH−3.25 / CH−2.75 (opposite datum) is NOT mirrored: drawn O = I (John 2026-07-29), registered as KD-024..027 pending John's NEXT decision |
 | R-062 | CWC, HWC | * | * | HD = 4 (multi-feed); reduce if fit issue | SOP §CWC/HWC; CHK `IF(feeds=1,"N/A",4)` | High | No | Needs feeds input to decide N/A vs 4 |
 | R-063 | CWC, HWC | NOVA, VENTUM H → 8; VENTUM+ → 10 | * | SL | SOP §CWC/HWC; CHK SL formula matches exactly for these platforms | High | No | TERRA→10 in CHK but SOP only specifies Terra V = 12 → Terra is Medium/review (R-065) |
-| R-064 | CWC, HWC | NOVA/VENTUM H → 12; VENTUM+ → 14 | * | single_feed → SL override; I/O→"TBD"; HD→"N/A" | SOP §CWC/HWC SPECIAL CASE single feed (12/14); CHK SL `IF(C14=1,IF(VENTUM+,14,12),…)`, I/O TBD, HD N/A | High (SL) / Medium (TBD/N/A markers, CHK-only) | TBD/N/A: Yes | |
+| R-064 | CWC, HWC | * | * | RETIRED 2026-09-22 — no single-feed special (SL = family constant, I/O = 2.3125, HD = 4 for any stated feed count) | CHK CWC!C33:C34 / HWC!C37:C38 (2026-09-22): no `C14=1` arm; John 2026-09-22 | — | — | YAML entries kept `deprecated: true`; feeds ABSENT still leaves I/O and HD MEDIUM (the sheet blanks them) |
 | R-065 | CWC, HWC | TERRA | * | SL | CHK `TERRA→10`; SOP silent for Terra H/H C, Terra V = 12 | Medium | Yes | |
-| R-066 | CWC, HWC | * (non-Terra-V) | * | vent/drain: Supply 1 & Return 1 = "Connections" | SOP §CWC/HWC | Medium | Yes | SOP-only; CHK has no row |
-| R-067 | CWC, HWC | TERRA (V) | * | vent/drain: Supply 1 & Return 1 = "HDR ENDS" | SOP §CWC/HWC SPECIAL CASE Terra V | Low | Yes | Single source, Rev I addition |
+| R-066 / R-066a | CWC, HWC | * | * | vent/drain = "ConnEnd"; supply V/D angle = "LAS" (2026-09-22, every line incl. Terra V) | CHK CWC!C31:C32 / HWC!C35:C36; John 2026-09-22 (supersedes SOP "Connections") | High | No | |
+| R-067 | CWC, HWC | TERRA (V) | * | RETIRED 2026-09-22 (was vent/drain "HDR ENDS") | CHK has no Terra V arm; John 2026-09-22 checklist wins → R-066 ConnEnd | — | — | |
 | R-068 | CWC, HWC | * | * | S/R = EZ Coil defaults (do not modify) | SOP §CWC/HWC "Leave all S/R as default values" | Medium | No | Prepopulation action = "no-op", safe |
 
 ### 2.6 Casing depth, casing dims, size classification
@@ -116,13 +134,13 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | Rule ID | Type of Coil | Product Type | Unit Size / Size Pattern | Required Header Information | Evidence Source | Confidence | Review Required | Notes |
 |---|---|---|---|---|---|---|---|---|
 | R-070 | DX, HGRH | * | * | CD base = ROUNDUP(rows × 0.866 to ⅛″) + 2 (rows 1–12 table) | SOP-OLE1..4; CHK DX!C24 / HGRH!C27 first MAX operand — formula reproduces table exactly | High | No | Needs `rows` input |
-| R-071 | CWC, HWC | * | * | CD = ROUNDUP(rows × 1.299 to ⅛″) + 2 | SOP-OLE5; CHK CWC!C21 / HWC!C25 | High | No | Needs `rows` |
+| R-071 | CWC, HWC | * | * | CD = MAX(ROUNDUP(rows × 1.299 to ⅛″) + 2, HWC: 1.5·(IN+OUT)+1.5 / CWC: 1.5·OUT+IN+4.5) (2026-09-22) | SOP-OLE5; CHK CWC!C21 / HWC!C25 MAX(...) | High | No | Needs `rows`; the connection term needs inlet AND outlet conn size, else the base stands alone |
 | R-072 | DX | * | * | CD multi-circuit: max(base, (C+1)·D + (C−1)·1.5) (DX-only) or C·(D+1.5)+(D−D_HGRH)/2 (w/ HGRH) | SOP §DX-TNVH & §DX-VP SPECIAL CASE equations; CHK DX!C24 MAX(...) — identical algebra | High | No | Needs circuits, suction conn size, with_hgrh, HGRH conn size |
 | R-073 | HGRH | * | * | CD multi-header: SOP (C+1)·D+(C−1)·1.5; CHK adds branches VENTUM+→3·conn, TERRA→(H+2)·D+(H−1)·1.5+0.5 | SOP §HGRH-TNVH vs CHK HGRH!C27 | Medium | Yes | CHK branches are richer than SOP; no SOP backing for the Terra +0.5 / VP 3× variants |
 | R-074 | * | NOVA(DECOUPLED), TERRA(INTEGRATED), VENTUM H(CPLD EXT / CPLD/DCPLD STD), VENTUM+(INTEGRATED), + 4 Nova HWC application variants | per Units sheet | casing_width / casing_height lookup by (PT, application, US) | CHK Units sheet + CASING WIDTH/HEIGHT XLOOKUP warning formulas (e.g., CWC!E7:E8, HWC!E7:E8) | Medium | Yes | Single source (CHK). SOP has no equivalent table. Deterministic and table-driven, but requires new `application` input. Units sheet labels the Terra column "TERRA H C". |
 | R-075 | * | NOVA | A16, B20, C20, C24, C30 → "1-inch" class; A18, B22, C22, C26, C32, C40, C48, C58, C70 → "2-inch" class | size_class (drives fit margins) | SOP fit rules ("1″ Nova", "2″ Nova"); CHK WIDTH/HEIGHT FIT formulas enumerate the same size lists | High | No | The only place Unit Size deterministically changes header logic from the 3 core inputs |
 | R-076 | * | * | per Units sheet | unit_size validation: NOVA {A16,A18,B20,B22,C20,C22,C24,C26,C30,C32,C40,C48,C58,C70}; TERRA H C {6,9,12,15,18,24,32,40,48}; VENTUM H {H05,H10,H15,H20,H25,H30}; VENTUM+ {V20,V25,V30,V40,V50,V60,V80,V100,V120,V150} | CHK Units sheet | High (as enumeration) | No | Terra V / Terra H sizes not enumerated anywhere → reject with review_required |
-| R-077 | HWC, HGRH | * | per "Install \| Drain Pan Width" sheet | installed_on_drain_pan → drain-pan width / install width checks | CHK HWC rows 20–23 + INSTALL FIT; CHK Install sheet (Nova, Terra H C, Ventum H, Ventum+ tables; Terra V = "TBD"); SOP drain-pan special cases | Medium | Yes | Validation layer; needs installed_on_dp, CWC/DX CD inputs. Terra V explicitly TBD in CHK. |
+| R-077 | HWC, HGRH | * | per "Install \| Drain Pan Width" sheet | installed_on_drain_pan → drain-pan width / install width checks | CHK HWC rows 20–23 + INSTALL FIT; CHK Install sheet (Nova, Terra H C by D-option, Ventum H, Ventum+ tables; Terra V by size band since 2026-09-22: 006-012 → 28, 015-024 → 29, 032-100 → 32) | Medium | Yes | Validation layer; needs installed_on_dp, CWC/DX CD inputs. Terra V has a drain-pan width but no INSTALL WIDTH column. |
 
 ### 2.7 Notes / special-case conflicts
 

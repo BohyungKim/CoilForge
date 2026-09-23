@@ -638,6 +638,10 @@ def _attach_parametric_schematic(result: dict[str, Any]) -> None:
 # branch here until 2026-07-28; John released it on the same reasoning — see
 # _gate_unregistered_product_line.)
 _UNREGISTERED_PRODUCT_LINES: set[str] = set()
+# Terra H / Terra V CWC/HWC drawings are withheld while their dedicated water templates
+# are re-seeded (John 2026-09-22, "keep the drawing template vacant for now"). Empty this
+# set (or remove the family) once the new templates land. See _gate_unregistered_product_line.
+_TERRA_WATER_WITHHELD_FAMILIES = {"TERRA_H", "TERRA_V"}
 # Families that draw on the dedicated Ventum+ template set and carry its R-032 UP
 # distributor (John 2026-08-25: Omnia = Ventum+ rules and templates, TF/BF aside).
 _VENTUM_PLUS_CLASS = {"VENTUM_PLUS", "OMNIA"}
@@ -674,6 +678,21 @@ def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
     from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
 
     family, _variant = resolve_product_line(result.get("product_type"))
+
+    # Terra H / Terra V WATER coils (CWC/HWC) are withheld again since 2026-09-22 (John):
+    # their CWC/HWC SVG templates are being re-seeded, so the shared Nova/Ventum-H water
+    # artwork must not stand in for them meanwhile. The parameter panel and the Coil
+    # Checklist are still produced -- only the drawing is blanked. Terra DX/HGRH and every
+    # other line's water coil are untouched. (This re-gates the 2026-07-28 release.)
+    category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
+    if family in _TERRA_WATER_WITHHELD_FAMILIES and category in ("CWC", "HWC"):
+        _omit_drawing(
+            result,
+            "Terra H/V water-coil templates are being re-seeded (John 2026-09-22) — "
+            "drawing withheld; checklist and parameter panel still produced.",
+        )
+        result["unregistered_terra_water"] = True
+        return result
 
     if family in _UNREGISTERED_PRODUCT_LINES:
         label = str(family).replace("_", " ").title()

@@ -411,8 +411,9 @@ def test_terra_picker_labels_resolve_to_product_family_and_variant() -> None:
 
 def test_terra_v_picker_selection_drives_engine_variant() -> None:
     """Picking TERRA V drives terra_variant=TERRA_V so the Terra-V-only HGRH rule
-    (R-046) fires with its SOP values (supply I/O=2.75, supply SL=5, return SL=12);
-    TERRA H (resolved H C) keeps the generic Terra values. John 2026-06-28."""
+    (R-046) fires (supply I/O=2 and return SL=12 since the 2026-09-22 checklist; supply SL
+    is the R-044a formula and no longer an engine constant); TERRA H (resolved H C) keeps
+    the generic Terra values."""
     from coilforge.schemas.header_prepopulate import ProductFamily, TerraVariant
     from coilforge.services.direct_coil_drawing_pipeline import build_header_request
     from coilforge.services.header_prepopulate_engine import prepopulate
@@ -423,8 +424,8 @@ def test_terra_v_picker_selection_drives_engine_variant() -> None:
     assert req_v.product_type == ProductFamily.TERRA_V  # phase 2: first-class family
     assert req_v.terra_variant == TerraVariant.TERRA_V
     values_v = prepopulate(req_v).values
-    assert values_v["supply_io"].value == 2.75  # R-046 (SOP, HIGH)
-    assert values_v["supply_sl"].value == 5
+    assert values_v["supply_io"].value == 2  # R-046 (checklist 2026-09-22, HIGH)
+    assert "supply_sl" not in values_v
     assert values_v["return_sl"].value == 12
 
     req_h = build_header_request(

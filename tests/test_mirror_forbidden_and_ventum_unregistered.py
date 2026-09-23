@@ -117,34 +117,35 @@ def test_non_ventum_line_is_not_gated() -> None:
     assert out["svg"]
 
 
-def test_terra_v_water_draws_on_the_shared_template() -> None:
-    # John 2026-07-28: Terra V CWC/HWC was gated (no seeded Terra V water reference);
-    # it now draws through the SHARED Nova/Ventum-H water template, because the coil
-    # drawing's shape is line-agnostic and only the printed VALUES are product-specific.
-    for category, template_id in (("CWC", "coilmaster_cwc_lh"), ("HWC", "coilmaster_hwc_lh")):
+def test_terra_v_water_drawing_is_withheld_while_templates_are_reseeded() -> None:
+    # John 2026-07-28 released Terra V CWC/HWC onto the SHARED Nova/Ventum-H water
+    # template. John 2026-09-22 withdrew that ("keep the drawing template vacant for
+    # now"): the Terra H/V water SVG templates are being re-seeded, so the shared artwork
+    # must not stand in meanwhile. The drawing is blanked loudly; the values still resolve.
+    for category in ("CWC", "HWC"):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
                  product_type="TERRA V", unit_size="024", rows=4,
                  finned_height=12, finned_length=15, suction_conn_size=0.625)
         )
-        assert out["template_found"] is True, category
-        assert out["generation_allowed"] is True, category
-        assert out["svg"], category
-        assert out["template_id"] == template_id, category
-        assert out.get("not_registered_reason") is None, category
-        assert out.get("unregistered_product_line") is None, category
+        assert not out["svg"], category
+        assert out["template_found"] is False, category
+        assert out["generation_allowed"] is False, category
+        assert out.get("unregistered_terra_water") is True, category
+        assert "re-seeded" in (out.get("not_registered_reason") or ""), category
+        assert out["export_allowed"] is False, category
 
 
 def test_terra_v_water_carries_terra_v_drawing_parameters() -> None:
-    # Borrowing the shared ARTWORK must not borrow Terra H's NUMBERS: the slot layer's
-    # Terra V water specials (R-061v I/O = 2.75, R-067 vent/drain) still apply, so Terra V
-    # and Terra H resolve DIFFERENT stubout positions on the same template.
+    # Withholding the ARTWORK must not withhold the NUMBERS: the parameter panel and the
+    # Coil Checklist still need the slot layer's Terra V water values (R-061v I/O = 2.75),
+    # and Terra V and Terra H must still resolve DIFFERENT stubout positions.
     spec = dict(coil_category="CWC", coil_hand="Left", circuits=1, unit_size="024",
                 rows=4, finned_height=12, finned_length=15, suction_conn_size=0.625)
     v = derive_coil_template_drawing(dict(spec, product_type="TERRA V"))
     h = derive_coil_template_drawing(dict(spec, product_type="TERRA H"))
     v_slots, h_slots = v["slot_values"], h["slot_values"]
-    assert v["template_id"] == h["template_id"] == "coilmaster_cwc_lh"
+    assert v["template_id"] is None and h["template_id"] is None   # both withheld
     assert v_slots["slot.O2"] == 2.75                    # R-061v Terra V
     assert v_slots["slot.O2"] != h_slots.get("slot.O2")  # Terra H = 3.25 (R-061)
     assert v_slots["slot.O2"] == v_slots["slot.I1"]      # supply/return stubouts level
@@ -162,15 +163,23 @@ def test_terra_v_dx_and_hgrh_still_generate() -> None:
         assert out["svg"], category
 
 
-def test_terra_h_water_still_generates() -> None:
-    # Terra H (resolved H C) water draws unchanged.
+def test_terra_h_water_is_withheld_too_and_other_lines_are_not() -> None:
+    # Terra H (resolved H C) water is withheld on the same 2026-09-22 instruction; a
+    # Nova water coil and a Terra DX/HGRH are untouched by the gate.
     out = derive_coil_template_drawing(
         dict(coil_category="CWC", coil_hand="Left", circuits=1,
              product_type="TERRA H", unit_size="024", rows=4,
              finned_height=12, finned_length=15, suction_conn_size=0.625)
     )
-    assert out["generation_allowed"] is True
-    assert out["svg"]
+    assert out["generation_allowed"] is False and not out["svg"]
+    assert out.get("unregistered_terra_water") is True
+    nova = derive_coil_template_drawing(
+        dict(coil_category="CWC", coil_hand="Left", circuits=1,
+             product_type="NOVA", unit_size="C24", rows=4,
+             finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert nova["generation_allowed"] is True and nova["svg"]
+    assert nova.get("unregistered_terra_water") is None
 
 
 def test_ventum_plus_dx_unseeded_is_not_registered() -> None:

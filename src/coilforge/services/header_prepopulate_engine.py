@@ -45,8 +45,11 @@ _CWC_IO_HD_SL_IDS = {
     "R-064-sl", "R-064-io", "R-064-hd", "R-065", "R-065v",
 }
 _OTHER_SPECIAL_IDS = {
+    "R-014h",  # HWC Terra TF/BF by INSTALLED ON DP (tri-state helper, never only_when)
     "R-034",  # DX distributor S placement (formula)
     "R-034v",  # DX distributor S, Terra V (Sn = CD - Rn)
+    "R-044a",  # HGRH supply SL = 6 + D/2 - S (formula, evaluated in the slot layer)
+    "R-044c",  # HGRH supply SL, Ventum+ class (same formula)
     "R-048",  # HGRH S/R positions (formula)
     "R-049",  # HGRH single-feed note — suppressed (treated as standard one-header)
     "R-051",  # cross-coil validation (no value rule)
@@ -521,6 +524,9 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     # --- CWC/HWC io / hd / sl resolvers ---
     if coil in (CoilType.CWC, CoilType.HWC):
         _emit_cwc_io_hd_sl(request, place)
+        # R-014h: HWC Terra flanges depend on INSTALLED ON DP. Runs AFTER the generic
+        # emitter (which placed R-014 / R-014v) so it is the last writer for TF/BF.
+        _emit_hwc_terra_flanges(request, place, values)
 
     # --- casing dims lookup (R-074) ---
     rule = index["R-074"]
@@ -689,8 +695,13 @@ def _hgrh_cd_multi(request) -> float | None:  # type: ignore[no-untyped-def]
     form — so this only ever RAISES CD above the rows-based base, never blanks or
     lowers it (the failure mode that got R-073 disabled).
 
-    Terra V is excluded: its CD stays rows-based (SOP), which its S = CD - Rn depends
-    on. ``n`` follows the R-052 idiom (qty_conn_per_header, else circuits); ``conn`` is
+    Terra V is excluded: its CD stays rows-based. The original reason (its S = CD - Rn)
+    lapsed on 2026-09-09 (Terra V HGRH S now takes the general CD formula); what keeps
+    the exclusion is the MEASURED reference (RHHGRC-3 prints CD 3.75, not the sheet's
+    else-branch 4.125 — `tests/test_terra_v_hgrh_headers.py`) and John's KD-001 ruling
+    (2026-08-04, `checklist_wrong`). The 2026-09-22 template still has no Terra V arm in
+    HGRH!C27, so nothing has changed on the sheet side; re-adjudication is John's call.
+    ``n`` follows the R-052 idiom (qty_conn_per_header, else circuits); ``conn`` is
     the HGRH connection size (``conn_size``)."""
     if request.terra_variant == TerraVariant.TERRA_V:
         return None
@@ -757,10 +768,17 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
         if request.rows is None:
             add_missing(["rows"])
             return
+        # Coil Checklist (2026-09-22): CD = MAX(rows-based base, connection-size term)
+        # -- HWC!C25 `3/2*(IN+OUT)+1.5`, CWC!C21 `3/2*OUT+IN+4.5`. Floor-preserving MAX,
+        # same shape as DX R-072 / HGRH R-073: it can only RAISE CD above the base. Both
+        # connection sizes are needed for the term; with either absent the base stands
+        # alone (still HIGH -- the sheet blanks the term, it does not block CD).
+        base = cd_cwc_hwc(request.rows)
+        conn_term = _water_cd_conn_term(request)
         place(
             "casing_depth",
             FieldResult(
-                value=cd_cwc_hwc(request.rows),
+                value=base if conn_term is None else max(base, conn_term),
                 confidence=Confidence.HIGH,
                 evidence_refs=index["R-071"]["evidence_refs"],
                 rule_id="R-071",
@@ -768,27 +786,100 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
         )
 
 
+def _water_cd_conn_term(request) -> float | None:  # type: ignore[no-untyped-def]
+    """Checklist CWC!C21 / HWC!C25 connection-size CD term, or None when either
+    connection size is unknown (never guessed from the other)."""
+    inlet, outlet = request.inlet_conn_size, request.outlet_conn_size
+    if inlet is None or outlet is None:
+        return None
+    if request.type_of_coil == CoilType.HWC:
+        return round(1.5 * (inlet + outlet) + 1.5, 4)
+    return round(1.5 * outlet + inlet + 4.5, 4)
+
+
+def _emit_hwc_terra_flanges(request, place, values) -> None:  # type: ignore[no-untyped-def]
+    """R-014h: HWC Terra TF/BF branch on INSTALLED ON DP (CHK HWC!C28:C29, 2026-09-22).
+
+    Tri-state on purpose -- this is why it is a helper and not a generic ``only_when``
+    (whose ``bool()`` would read an UNKNOWN pan state as "off the pan" and rewrite every
+    Terra H HWC on the drawing path to 1/1):
+
+    * ``installed_on_drain_pan is False`` -> TF = BF = 1 (HIGH, the sheet's off-pan arm).
+    * ``is True``                          -> the Terra values already placed by
+                                              R-014 / R-014v stand (HIGH).
+    * ``None`` (drawing / mechanical-fit paths never state it) -> the Terra values
+      stand at HIGH, so ``slot.TF``/``slot.BF``/``slot.CH`` keep resolving exactly as
+      before, but the field is flagged ``review_required`` with the reason. Only the
+      checklist path (``checklist/mapping._resolve_engine``) knows the pan state.
+    CWC (HWC!C24:C25's sibling) has no such branch and is untouched.
+    """
+    if request.type_of_coil != CoilType.HWC or request.product_type != ProductFamily.TERRA:
+        return
+    rule = _rule_index()["R-014h"]
+    if request.installed_on_drain_pan is False:
+        for field, val in rule["field_values_off_pan"].items():
+            place(
+                field,
+                FieldResult(
+                    value=val,
+                    confidence=Confidence.HIGH,
+                    evidence_refs=rule["evidence_refs"],
+                    rule_id=rule["rule_id"],
+                ),
+            )
+        return
+    if request.installed_on_drain_pan is None:
+        for field in ("top_flange", "bottom_flange"):
+            current = values.get(field)
+            if current is None:
+                continue
+            place(
+                field,
+                current.model_copy(
+                    update={
+                        "review_required": True,
+                        "review_required_reason": (
+                            "INSTALLED ON DP unknown; the HWC sheet uses TF = BF = 1 "
+                            "(and I/O 2.3125) when the coil is off the drain pan"
+                        ),
+                    }
+                ),
+            )
+
+
 def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
     """CWC/HWC io / hd / sl, accounting for feeds and product family.
 
-    feeds == 1   -> single-feed overrides (R-064): sl=12/14 HIGH, io=TBD/hd=N/A MEDIUM
-    feeds  > 1   -> R-060 io=2.3125 HIGH, R-062 hd=4 HIGH, R-063 sl HIGH
+    feeds stated -> R-060 io=2.3125 HIGH, R-062 hd=4 HIGH, R-063 sl HIGH
+                    (the single-feed specials R-064-* -- sl=12/14, io=TBD, hd=N/A -- were
+                     RETIRED 2026-09-22: the refreshed checklist has no single-feed arm;
+                     feeds == 1 now resolves exactly like feeds > 1)
     feeds absent -> io/hd MEDIUM suggestions (missing feeds); sl HIGH default
+                    (the sheet blanks I/O and HD when FEEDS/CIRCUITS is empty)
     TERRA        -> io=3.25 HIGH (R-061), sl=10 HIGH (R-065) [checklist, John 2026-06-11]
     TERRA V      -> io=2.75 HIGH (R-061v), sl=12 HIGH (R-065v) [SOP, John 2026-06-28]
-                    (supply AND return alike — the SOP's "return CH-2.75" is the same
-                     position from the opposite datum, not the callout value; the slot
-                     layer's CH-2.75 special was removed 2026-07-29)
+                    (supply AND return alike — the SOP's / sheet's "return CH-2.75" is the
+                     same position from the opposite datum, not the callout value; the
+                     slot layer's CH-2.75 special was removed 2026-07-29 and the sheet's
+                     O = CH-x row is registered as a known divergence, not mirrored)
+    HWC + TERRA  -> INSTALLED ON DP = False -> io=2.3125 (CHK HWC!C31:C32 off-pan arm);
+                    True -> Terra value; None -> Terra value at HIGH, flagged for review
+                    (tri-state, see _emit_hwc_terra_flanges for the reasoning)
     """
     index = _rule_index()
     product = request.product_type
     is_terra_v = request.terra_variant == TerraVariant.TERRA_V
-    feeds_one = request.feeds == 1
-    feeds_multi = request.feeds is not None and request.feeds > 1
+    feeds_stated = request.feeds is not None
+    hwc_off_pan = (
+        request.type_of_coil == CoilType.HWC and request.installed_on_drain_pan is False
+    )
 
     # --- io ---
-    if product == ProductFamily.TERRA:
+    if product == ProductFamily.TERRA and not hwc_off_pan:
         rule = index["R-061v"] if is_terra_v else index["R-061"]
+        dp_unknown = (
+            request.type_of_coil == CoilType.HWC and request.installed_on_drain_pan is None
+        )
         place(
             "io",
             FieldResult(
@@ -796,23 +887,18 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
                 rule_id=rule["rule_id"],
-            ),
-        )
-    elif feeds_one:
-        rule = index["R-064-io"]
-        place(
-            "io",
-            FieldResult(
-                value="TBD",
-                confidence=Confidence.MEDIUM,
-                evidence_refs=rule["evidence_refs"],
-                rule_id=rule["rule_id"],
-                review_required=True,
+                review_required=dp_unknown,
+                review_required_reason=(
+                    "INSTALLED ON DP unknown; the HWC sheet uses I/O 2.3125 when the "
+                    "coil is off the drain pan"
+                    if dp_unknown
+                    else None
+                ),
             ),
         )
     else:
         rule = index["R-060"]
-        if feeds_multi:
+        if feeds_stated:
             place(
                 "io",
                 FieldResult(
@@ -836,42 +922,29 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
             )
 
     # --- hd ---
-    if feeds_one:
-        rule = index["R-064-hd"]
+    rule = index["R-062"]
+    if feeds_stated:
         place(
             "hd",
             FieldResult(
-                value="N/A",
+                value=4,
+                confidence=Confidence.HIGH,
+                evidence_refs=rule["evidence_refs"],
+                rule_id=rule["rule_id"],
+            ),
+        )
+    else:  # feeds absent
+        place(
+            "hd",
+            FieldResult(
+                value=4,
                 confidence=Confidence.MEDIUM,
                 evidence_refs=rule["evidence_refs"],
                 rule_id=rule["rule_id"],
                 review_required=True,
+                missing_inputs=["feeds"],
             ),
         )
-    else:
-        rule = index["R-062"]
-        if feeds_multi:
-            place(
-                "hd",
-                FieldResult(
-                    value=4,
-                    confidence=Confidence.HIGH,
-                    evidence_refs=rule["evidence_refs"],
-                    rule_id=rule["rule_id"],
-                ),
-            )
-        else:  # feeds absent
-            place(
-                "hd",
-                FieldResult(
-                    value=4,
-                    confidence=Confidence.MEDIUM,
-                    evidence_refs=rule["evidence_refs"],
-                    rule_id=rule["rule_id"],
-                    review_required=True,
-                    missing_inputs=["feeds"],
-                ),
-            )
 
     # --- sl ---
     if product == ProductFamily.TERRA:
@@ -880,18 +953,6 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
             "sl",
             FieldResult(
                 value=rule["value"],
-                confidence=Confidence.HIGH,
-                evidence_refs=rule["evidence_refs"],
-                rule_id=rule["rule_id"],
-            ),
-        )
-    elif feeds_one:
-        rule = index["R-064-sl"]
-        value = rule["value_map"][product.value]
-        place(
-            "sl",
-            FieldResult(
-                value=value,
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
                 rule_id=rule["rule_id"],

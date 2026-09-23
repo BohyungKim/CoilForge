@@ -114,6 +114,11 @@ class HeaderPrepopulateRequest(BaseModel):
     circuits: int | None = None
     suction_conn_size: float | None = None
     conn_size: float | None = None
+    # Water-coil (CWC/HWC) inlet / outlet connection sizes. The Coil Checklist's CD
+    # formulas take BOTH (HWC!C25 `1.5*(IN+OUT)+1.5`, CWC!C21 `1.5*OUT+IN+4.5`,
+    # 2026-09-22 template), so they ride separately from the single `conn_size`.
+    inlet_conn_size: float | None = None
+    outlet_conn_size: float | None = None
     handing: str | None = None
     coating: str | None = None
     with_hgrh: bool | None = None

@@ -193,7 +193,7 @@ def test_tier_b_multi_header_key_hits_the_parity_encoded_row():
 def test_tier_b_water_coil_uses_the_water_sheets_labels():
     overrides = normalize_coil_overrides(_payload("HHWC-1", None, {"O": 2.75, "HD": 3.5}))
     sheet = build_checklist_fill([_hwc_coil()], overrides).sheets[0]
-    assert _dim(sheet, "I/O").coilforge_value == 2.75   # water sheet names slot.O2 "I/O"
+    assert _dim(sheet, "O").coilforge_value == 2.75     # water sheet's "O" row is slot.O2 (2026-09-22 template)
     assert _dim(sheet, "HD").coilforge_value == 3.5
 
 

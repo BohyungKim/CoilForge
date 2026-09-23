@@ -33,21 +33,25 @@ version: 1
 
 divergences:
   # ---------------------------------------------------------------------------
-  # KD-001..005 — Terra V HGRH: the checklist template has no TERRA V branch.
+  # KD-001..003, KD-005 (+ KD-022/023, KD-028/029) — Terra V HGRH rows where the sheet and CoilForge
+  # still disagree after the 2026-09-22 template refresh.
   #
-  # Traced 2026-08-04 (plan rev.3 Phase B/D4). Of the six Terra V HGRH disagreements,
-  # FIVE are the sheet's fault and one was ours. The one that was ours (I3 — CoilForge
-  # asserted 2.75, a value R-046 explicitly declines to derive for Supply 2+) was FIXED
-  # in commit 9abe5a7 and is deliberately NOT registered here: a defect we repaired is
-  # not a known gap, and leaving it in the registry would suppress a real regression if
-  # it ever came back.
+  # Traced 2026-08-04 (plan rev.3 Phase B/D4); re-read against the 2026-09-22 template.
+  # The refreshed sheet gained Terra V arms for O2 (2.75), TF/BF, SL2 (12) and the FIT
+  # rows — KD-004 (O2) is therefore RETIRED (the sheet now agrees). CD (HGRH!C27) and the
+  # supply spacing (C46) still have NO Terra V arm and fall through to the NOVA / VENTUM H
+  # else-branch, so KD-001..003 stand; and the new O4/O6/O8 arms give 2 where O2 gives
+  # 2.75, which John ruled a sheet defect on 2026-09-22 (KD-005, KD-022, KD-023).
+  # The I3 disagreement that was ours (CoilForge asserted 2.75 on Supply 2+) was FIXED in
+  # commit 9abe5a7 and is deliberately NOT registered: a defect we repaired is not a known
+  # gap, and leaving it here would suppress a real regression if it ever came back.
   #
-  # These five are structural, hence no delta_band. The HGRH sheet's formulas branch on
-  # unit family and have no TERRA V arm, so a Terra V coil falls through to the
-  # NOVA / VENTUM H else-branch. The fingerprint is `S = -conn_size` — a negative supply
-  # spacing is not a Terra V value at all, it is the else-branch arithmetic running on
-  # inputs it was never written for. Whatever number that produces is wrong regardless of
-  # how far it lands from ours, so a magnitude band would be describing the wrong thing.
+  # These are structural, hence no delta_band. Whatever number the else-branch produces
+  # is wrong regardless of how far it lands from ours, so a magnitude band would be
+  # describing the wrong thing. NOTE (2026-09-22): the CD ruling itself is open for
+  # re-adjudication — the measured RHHGRC-3 reference prints the rows-based 3.75, not the
+  # sheet's 4.125, which is why CoilForge keeps KD-001 rather than adopting the sheet
+  # when "the checklist wins" elsewhere. Until John rules, this entry stands.
   #
   # Scope is `*` (every Terra V size) BY DECLARATION: the missing branch is a property of
   # the template, not of any one unit size. Recorded as `status: proposed` — promoting the
@@ -64,10 +68,11 @@ divergences:
     slot: slot.CD
     verdict: checklist_wrong
     reason: >-
-      The checklist HGRH sheet has no TERRA V branch, so a Terra V coil computes its
-      casing depth through the NOVA / VENTUM H else-branch. CoilForge's CD comes from the
-      Terra V casing table (R-074 `TERRA_V|INTEGRATED|0xx`), which the EZ Coil SOP
-      confirms. Structural, not numeric — the sheet cannot produce a right answer here.
+      The checklist HGRH sheet (still, in the 2026-09-22 template) has no TERRA V arm in
+      C27, so a Terra V coil computes its casing depth through the NOVA / VENTUM H
+      else-branch `(H+1)*D + (H-1)*1.5`. CoilForge keeps the rows-based CD (R-070), which
+      the measured RHHGRC-3 reference prints (3.75, not the sheet's 4.125). Structural,
+      not numeric. Open for re-adjudication (John, NEXT decision 2026-09-22).
     evidence_refs:
       - "SOP:2024018#HGRH-TNVH"
       - "RULE:R-074"
@@ -84,9 +89,11 @@ divergences:
     slot: slot.S1
     verdict: checklist_wrong
     reason: >-
-      Supply-1 spacing. The sheet's else-branch yields `S = -conn_size`; a negative supply
-      spacing is the signature of formulas running on a product line they were not written
-      for. CoilForge resolves S1 from the Terra V `S = CD - Rn` SOP branch.
+      Supply-1 spacing. The sheet has no Terra V arm in C46 (2026-09-22 template
+      included); CoilForge has used the SAME general formula `CD - ((n+2)*D + (n-1)*1.5)`
+      since 2026-09-09, so the residual disagreement is entirely the CD it is subtracted
+      from (KD-001): the sheet's else-branch CD yields `S = -conn_size`, ours yields the
+      measured value (RHHGRC-3: -1.25; 3025 Bauducco: 1.875). Stands or falls with KD-001.
     evidence_refs:
       - "SOP:2024018#HGRH-TNVH"
       - "RULE:R-046"
@@ -103,11 +110,9 @@ divergences:
     slot: slot.S3
     verdict: checklist_wrong
     reason: >-
-      Supply-3 spacing, same else-branch cause as KD-002. Note the boundary: S3 comes from
-      the Terra V `CD - R2` SOP branch (the observed R2/R4 agreeing with the sheet pins
-      `len(return_spacing) == 2`), so it is a REAL value we stand behind. `S5+` is a
-      different matter — that was CoilForge falling into the DX even-spacing safety net and
-      was blanked in 9abe5a7, so it is not registered here.
+      Supply-3 spacing, same cause as KD-002 (one fixed supply position on every odd
+      header since 2026-09-09, so S3 == S1 and inherits the CD difference). Stands or
+      falls with KD-001.
     evidence_refs:
       - "SOP:2024018#HGRH-TNVH"
       - "RULE:R-046"
@@ -116,23 +121,8 @@ divergences:
     status: proposed
     rule_proposal: RP-001
 
-  - id: KD-004
-    coil_category: HGRH
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.O2
-    verdict: checklist_wrong
-    reason: >-
-      Return-header I/O. The else-branch derives it from the Nova/Ventum geometry; Terra V
-      carries its own I/O constant per the SOP. Structural — the sheet has no arm to take.
-    evidence_refs:
-      - "SOP:2024018#HGRH-TNVH"
-      - "RULE:R-046"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-04"
-    status: proposed
-    rule_proposal: RP-001
+  # KD-004 (slot.O2) RETIRED 2026-09-22: HGRH!C37 now has a Terra V arm (2.75) that
+  # agrees with R-042v, so the row matches and there is nothing to rule on.
 
   - id: KD-005
     coil_category: HGRH
@@ -142,129 +132,110 @@ divergences:
     slot: slot.O4
     verdict: checklist_wrong
     reason: >-
-      Second return-header I/O, same cause as KD-004. Registered separately rather than as
-      a wildcard over O-slots: the header index is semantically meaningful (R-046 rules on
-      some positions and declines others), so a ruling that spanned every O position would
-      silence positions nobody has looked at.
+      Second return-header I/O. The 2026-09-22 template gives HGRH!C38 `IF(C16>1, IF(TERRA
+      H, 3.25, 2), "N/A")` — 2 for Terra V — while its own C37 (O2) gives Terra V 2.75.
+      A return I/O that differs between header 1 and header 2 of the same coil has no
+      engineering basis; John ruled 2026-09-22 that this is a sheet defect (the Terra V
+      arm was added to C37 only) and CoilForge keeps 2.75 (R-042v) on every return header.
+      Registered per O position rather than as a wildcard: the header index is
+      semantically meaningful, so a ruling spanning every O position would silence
+      positions nobody has looked at.
     evidence_refs:
-      - "SOP:2024018#HGRH-TNVH"
-      - "RULE:R-046"
+      - "CHK:HGRH!C37 (2026-09-22) Terra V O2 = 2.75"
+      - "CHK:HGRH!C38:C40 (2026-09-22) Terra V O4/O6/O8 = 2"
+      - "RULE:R-042v"
+      - "JOHN:2026-09-22 O4+ = 2 is a sheet bug; keep 2.75"
     adjudicated_by: John
-    adjudicated_utc: "2026-08-04"
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+    rule_proposal: RP-003
+
+  - id: KD-022
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.O6
+    verdict: checklist_wrong
+    reason: >-
+      Third return-header I/O, same cause as KD-005 (HGRH!C39 gives Terra V 2 while C37
+      gives 2.75; John 2026-09-22: sheet defect, CoilForge keeps 2.75).
+    evidence_refs:
+      - "CHK:HGRH!C39 (2026-09-22)"
+      - "RULE:R-042v"
+      - "JOHN:2026-09-22 O4+ = 2 is a sheet bug; keep 2.75"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+    rule_proposal: RP-003
+
+  - id: KD-023
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.O8
+    verdict: checklist_wrong
+    reason: >-
+      Fourth return-header I/O, same cause as KD-005 (HGRH!C40 gives Terra V 2 while C37
+      gives 2.75; John 2026-09-22: sheet defect, CoilForge keeps 2.75).
+    evidence_refs:
+      - "CHK:HGRH!C40 (2026-09-22)"
+      - "RULE:R-042v"
+      - "JOHN:2026-09-22 O4+ = 2 is a sheet bug; keep 2.75"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+    rule_proposal: RP-003
+
+  - id: KD-028
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.SL1
+    verdict: checklist_wrong
+    reason: >-
+      Supply-1 stub SL1 = 6 + D/2 - S1 on BOTH sides since the 2026-09-22 template (the
+      sheet dropped its Terra V = 5 arm and CoilForge followed), so the residual
+      disagreement is entirely S1's (KD-002), i.e. the CD difference (KD-001): live fill
+      RHHGRC-1 TV072 reads CoilForge 7.6875 vs sheet 7.3125 = the 0.375 CD gap. Stands or
+      falls with KD-001.
+    evidence_refs:
+      - "CHK:HGRH!C58 (2026-09-22) =6+C15/2-C46 every line"
+      - "RULE:R-044a"
+      - "KD:KD-001"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+    rule_proposal: RP-001
+
+  - id: KD-029
+    coil_category: HGRH
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.SL3
+    verdict: checklist_wrong
+    reason: >-
+      Supply-3 stub SL3, same cause as KD-028 (SL3 = 6 + D/2 - S3 and S3 == S1). Stands
+      or falls with KD-001.
+    evidence_refs:
+      - "CHK:HGRH!C60 (2026-09-22)"
+      - "RULE:R-044a"
+      - "KD:KD-001"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
     status: proposed
     rule_proposal: RP-001
 
   # ---------------------------------------------------------------------------
-  # KD-006..009 — single-feed HGRH supply SL1: the sheet contradicts ITSELF.
-  #
-  # Unlike KD-001..005 this is not a missing branch. HGRH!C58 has an arm for this case
-  # and computes 3; HGRH!C26 emits an "Add Headers & Stubouts" note for the SAME
-  # condition (C14 = 1) whose text spells out "SL1=6", in all three of its product
-  # branches. A single-feed coil has no supply header of its own, so C26 is the
-  # instruction to ADD one and the header on the drawing IS that added header — 6 is the
-  # dimension of the thing being drawn. R-044a / R-044c and the EZC-0002 / EZC-0010
-  # as-built notes agree with the note; only C58 dissents. John ruled 2026-08-06.
-  #
-  # These DO carry a delta_band, and it is load-bearing. The identity has no feed-count
-  # axis, so a band-less entry would suppress SL1 for every Nova/Terra H/Ventum+ HGRH
-  # coil, including multi-feed ones where CoilForge and the sheet agree exactly and any
-  # future disagreement would be a real regression. `coilforge - checklist = 6 - 3 = 3`
-  # pins the ruling to the single-feed case; multi-feed rows verdict `match` and never
-  # reach the registry at all.
-  #
-  # TERRA V is deliberately absent: C26 has no add-headers branch for it, and its supply
-  # SL comes from the SOP (R-046) as 5. Nothing moved there, so there is nothing to rule
-  # on — and registering it would silence a genuine future disagreement.
-  #
-  # The fix lives on the Excel side: RP-002 drafts C58's single-feed arm. We do not
-  # apply it; the sheet is Oxygen8's.
-  - id: KD-006
-    coil_category: HGRH
-    product_family: NOVA
-    terra_variant: null
-    unit_size_scope: "*"
-    slot: slot.SL1
-    verdict: checklist_wrong
-    reason: >-
-      Single-feed supply stub SL1. The checklist states this dimension twice and
-      disagrees with itself: HGRH!C58 computes 3, while HGRH!C26's "Add Headers &
-      Stubouts" note — emitted for exactly this condition — reads "SL1=6". The drawn
-      header is the ADDED one, so 6 is its dimension. R-044a emits supply_sl = 6 for this
-      line and the EZC-0002 / EZC-0010 as-built notes read the same.
-    delta_band: {min: 3, max: 3}
-    evidence_refs:
-      - "CHK:HGRH!C26"
-      - "CHK:HGRH!C58"
-      - "RULE:R-044a"
-      - "DRAWING:EZC-0002"
-      - "DRAWING:EZC-0010"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-06"
-    status: proposed
-    rule_proposal: RP-002
-
-  - id: KD-007
-    coil_category: HGRH
-    product_family: VENTUM_H
-    terra_variant: null
-    unit_size_scope: "*"
-    slot: slot.SL1
-    verdict: checklist_wrong
-    reason: >-
-      Same cause as KD-006. Ventum H shares C26's NOVA / VENTUM H add-headers branch,
-      which states "SL1=6", and R-044a covers both lines.
-    delta_band: {min: 3, max: 3}
-    evidence_refs:
-      - "CHK:HGRH!C26"
-      - "CHK:HGRH!C58"
-      - "RULE:R-044a"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-06"
-    status: proposed
-    rule_proposal: RP-002
-
-  - id: KD-008
-    coil_category: HGRH
-    product_family: TERRA_H
-    terra_variant: TERRA_H_C
-    unit_size_scope: "*"
-    slot: slot.SL1
-    verdict: checklist_wrong
-    reason: >-
-      Same cause as KD-006, via C26's own TERRA H branch ("... SL1=6. O2=3.25 ... SL2=10").
-      Terra H has no supply_sl rule of its own, which is precisely why the value must stay
-      in the slot layer rather than being sourced from the engine.
-    delta_band: {min: 3, max: 3}
-    evidence_refs:
-      - "CHK:HGRH!C26"
-      - "CHK:HGRH!C58"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-06"
-    status: proposed
-    rule_proposal: RP-002
-
-  - id: KD-009
-    coil_category: HGRH
-    product_family: VENTUM_PLUS
-    terra_variant: null
-    unit_size_scope: "*"
-    slot: slot.SL1
-    verdict: checklist_wrong
-    reason: >-
-      Same cause as KD-006, via C26's VENTUM+ branch. This is the line John reported: the
-      Ventum+ HGRH drawing whose SL1 was missing its 6" extension. R-044c already emitted
-      supply_sl = 6 at HIGH confidence for this line — the engine had the right value and
-      nothing read it.
-    delta_band: {min: 3, max: 3}
-    evidence_refs:
-      - "CHK:HGRH!C26"
-      - "CHK:HGRH!C58"
-      - "RULE:R-044c"
-      - "JOHN:2026-08-06 Ventum+ SL1 report"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-06"
-    status: proposed
-    rule_proposal: RP-002
+  # KD-006..009 (single-feed HGRH supply SL1, 6 vs the sheet's 3) RETIRED 2026-09-22.
+  # The refreshed template dropped C58's single-feed arm: SL1 is `=6+C15/2-C46` for every
+  # line and every feed count, and John ruled the checklist wins. CoilForge's slot layer
+  # now computes the same formula (R-044a / R-044c), so the rows match and there is
+  # nothing left to rule on. RP-002 is superseded.
+  # ---------------------------------------------------------------------------
 
   # KD-010..KD-017: Omnia TF/BF (John 2026-08-25). The Coil Checklist workbook has no
   # OMNIA unit, so an Omnia coil is filled as VENTUM+ (checklist/template_map.py) and the
@@ -498,4 +469,97 @@ divergences:
       - "JOHN:2026-08-26 live 3097 CDXC-1 CH 29 vs 28.25"
     adjudicated_by: John
     adjudicated_utc: "2026-08-26"
+    status: proposed
+
+
+  # ---------------------------------------------------------------------------
+  # KD-024..027 — water-coil return I/O "O" on the Terra lines (2026-09-22 template).
+  #
+  # The refreshed CWC/HWC sheets split the old "I/O" row into I / O / S / R. Their O row
+  # is `CH - 3.25` (Terra H) / `CH - 2.75` (Terra V): the stubout position measured from
+  # the OPPOSITE datum. The drawing callout `slot.O2` is the same physical position from
+  # the header side and prints the I/O value (John 2026-07-29 — all seven seeded water
+  # references read O == I; `CH - x` printed 34.5 where 2.75 belongs). Two valid
+  # conventions for one dimension, so `both_defensible`; band-less because the delta is
+  # CH-dependent. Whether the callout itself should be redefined is an open John decision
+  # (NEXT, 2026-09-22); until then the row is amber, never silently green.
+  # ---------------------------------------------------------------------------
+  - id: KD-024
+    coil_category: CWC
+    product_family: TERRA_H
+    terra_variant: TERRA_H_C
+    unit_size_scope: "*"
+    slot: slot.O2
+    verdict: both_defensible
+    reason: >-
+      Sheet O = CH - 3.25 (CWC!C28, opposite-datum form);
+      drawn O = I = 3.25 (R-061, header-side callout; 7/7 seeded
+      water references read O == I, John 2026-07-29). Same position, two datums. Open
+      decision whether the callout follows the sheet.
+    evidence_refs:
+      - "CHK:CWC!C28 (2026-09-22)"
+      - "RULE:R-061"
+      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+
+  - id: KD-025
+    coil_category: HWC
+    product_family: TERRA_H
+    terra_variant: TERRA_H_C
+    unit_size_scope: "*"
+    slot: slot.O2
+    verdict: both_defensible
+    reason: >-
+      Sheet O = CH - 3.25 when INSTALLED ON DP (HWC!C32, opposite-datum form);
+      drawn O = I = 3.25 (R-061, header-side callout; 7/7 seeded
+      water references read O == I, John 2026-07-29). Same position, two datums. Open
+      decision whether the callout follows the sheet.
+    evidence_refs:
+      - "CHK:HWC!C32 (2026-09-22)"
+      - "RULE:R-061"
+      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+
+  - id: KD-026
+    coil_category: CWC
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.O2
+    verdict: both_defensible
+    reason: >-
+      Sheet O = CH - 2.75 (CWC!C28, opposite-datum form);
+      drawn O = I = 2.75 (R-061v, header-side callout; 7/7 seeded
+      water references read O == I, John 2026-07-29). Same position, two datums. Open
+      decision whether the callout follows the sheet.
+    evidence_refs:
+      - "CHK:CWC!C28 (2026-09-22)"
+      - "RULE:R-061v"
+      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
+    status: proposed
+
+  - id: KD-027
+    coil_category: HWC
+    product_family: TERRA_V
+    terra_variant: TERRA_V
+    unit_size_scope: "*"
+    slot: slot.O2
+    verdict: both_defensible
+    reason: >-
+      Sheet O = CH - 2.75 when INSTALLED ON DP (HWC!C32, opposite-datum form);
+      drawn O = I = 2.75 (R-061v, header-side callout; 7/7 seeded
+      water references read O == I, John 2026-07-29). Same position, two datums. Open
+      decision whether the callout follows the sheet.
+    evidence_refs:
+      - "CHK:HWC!C32 (2026-09-22)"
+      - "RULE:R-061v"
+      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
+    adjudicated_by: John
+    adjudicated_utc: "2026-09-22"
     status: proposed

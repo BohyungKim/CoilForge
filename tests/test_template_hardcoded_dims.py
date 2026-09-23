@@ -61,11 +61,12 @@ _KNOWN_OPEN: dict[tuple[str, str], str] = {
     ("coilmaster_hgrh_lh_header3", "5.63 SL5"): "seed inputs not reconstructible",
     ("coilmaster_hgrh_lh_header4", "5.50 SL7"): "seed inputs not reconstructible",
     ("coilmaster_hgrh_rh_header4", "5.38 SL7"): "seed inputs not reconstructible",
-    # Ventum+ Header 1 supply SL: the reference prints 5.69 (the geometric position) but
-    # the engine emits 6 -- John's single-feed SL1 ruling (RP-002 / KD-006..009). Redacting
-    # changes the drawn value, which is his call to make, not a side effect of this pass.
-    ("coilmaster_vplus_hgrh_lh_header1", "5.69 SL1"): "open SL1=6 vs 5.69 ruling",
-    ("coilmaster_vplus_hgrh_rh_header1", "5.69 SL1"): "open SL1=6 vs 5.69 ruling",
+    # Ventum+ Header 1 supply SL: the reference prints 5.69, which the slot layer's
+    # `6 + D/2 - S1` (= 6 - 0.625/2) reproduces since the 2026-09-22 checklist (the old
+    # single-feed 6 is gone). Redacting the callout is still a separate DO-NOT-TOUCH
+    # template approval, not a side effect of this pass.
+    ("coilmaster_vplus_hgrh_lh_header1", "5.69 SL1"): "redaction needs its own template approval",
+    ("coilmaster_vplus_hgrh_rh_header1", "5.69 SL1"): "redaction needs its own template approval",
     # Water HD1/SL1: the engine's water branch did not reproduce the seeded 4.00 / 8.00 /
     # 10.00 under the inputs recovered from `seed_evidence.json`, and water coils are
     # outside the HGRH multi-header scope this pass was approved for.

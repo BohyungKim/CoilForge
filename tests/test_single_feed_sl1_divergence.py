@@ -1,16 +1,19 @@
-"""The single-feed HGRH SL1 divergence must stay VISIBLE.
+"""The HGRH supply SL1 disagreement, before and after the 2026-09-22 template refresh.
 
-CoilForge now draws 6 where checklist HGRH!C58 computes 3 (John 2026-08-06). That
-disagreement is real and the compare must keep reporting it -- the registry only re-labels
-the row from red to amber with the reasoning attached. Suppressing it inside `_match`, or
-writing 6 into the sheet through the overrides channel, would both hide a divergence the
-engineer is entitled to see (and the second would forge provenance: that channel means
-"a human typed this on the drawing", and no human did).
+Until 2026-09-22 CoilForge drew 6 where checklist HGRH!C58 computed 3 for a single feed
+(John 2026-08-06), and KD-006..009 re-labelled that row amber with a delta_band of exactly
+3 so multi-feed rows could never be silenced by a ruling made about a different case.
 
-The `delta_band` is the load-bearing part. The registry identity has no feed-count axis,
-so a band-less ruling would silence SL1 for EVERY Nova/Terra H/Ventum+ HGRH coil --
-including multi-feed ones, where CoilForge and the sheet agree today and any future
-disagreement would be a genuine regression.
+The refreshed template dropped C58's single-feed arm -- SL1 is `6 + D/2 - S1` for every
+line and feed count -- and John ruled the checklist wins, so CoilForge computes the same
+formula and KD-006..009 were RETIRED. What this file pins now:
+
+* the comparator still calls a real disagreement a mismatch (unchanged);
+* no SL1 ruling exists for the Nova / Ventum H / Terra H / Ventum+ lines any more -- a
+  hypothetical 6-vs-3 row stays RED, because nothing has been adjudicated for it;
+* Terra V's SL1 IS covered (KD-028, band-less): its residual gap is the CD gap (KD-001);
+* the delta_band mechanism itself still re-escalates, exercised on a banded ruling that
+  still exists (KD-010, Omnia TF, band exactly -0.375).
 """
 from __future__ import annotations
 
@@ -31,16 +34,16 @@ from coilforge.review.divergence import (  # noqa: E402
 )
 
 
-def _review(coilforge, checklist, tag="RHHGRC-1"):
+def _review(coilforge, checklist, tag="RHHGRC-1", category="HGRH", slot="slot.SL1", label="SL1"):
     return {
         "sheets": [
             {
                 "tag": tag,
-                "category": "HGRH",
+                "category": category,
                 "comparisons": [
                     {
-                        "slot": "slot.SL1",
-                        "label": "SL1",
+                        "slot": slot,
+                        "label": label,
                         "coilforge": coilforge,
                         "checklist": checklist,
                         "verdict": _match(coilforge, checklist),
@@ -51,8 +54,8 @@ def _review(coilforge, checklist, tag="RHHGRC-1"):
     }
 
 
-def _identities(family, variant="-"):
-    return {"RHHGRC-1": ("HGRH", family, variant, "V20")}
+def _identities(family, variant="-", size="V20"):
+    return {"RHHGRC-1": ("HGRH", family, variant, size)}
 
 
 def test_single_feed_sl1_is_reported_as_a_mismatch_not_hidden():
@@ -72,7 +75,9 @@ def test_single_feed_sl1_is_reported_as_a_mismatch_not_hidden():
         ("VENTUM_PLUS", "-"),
     ],
 )
-def test_every_ruled_line_is_annotated_amber_with_its_reasoning(family, variant):
+def test_the_retired_single_feed_ruling_no_longer_labels_anything(family, variant):
+    """KD-006..009 are gone (2026-09-22): both sides now compute `6 + D/2 - S1`, so a
+    6-vs-3 row can only mean a genuine regression and must stay RED, not amber."""
     review = annotate_known_divergences(
         _review(6, 3),
         identities=_identities(family, variant),
@@ -80,37 +85,44 @@ def test_every_ruled_line_is_annotated_amber_with_its_reasoning(family, variant)
     )
     row = review["sheets"][0]["comparisons"][0]
     note = row.get("divergence")
-    assert note is not None, f"{family} SL1 divergence was never adjudicated"
-    assert note["applies"] is True
-    assert note["verdict"] == "checklist_wrong"
-    assert note["severity"] == "known_gap"          # amber, not red
-    assert "SL1" in note["reason"] or "SL1=6" in note["reason"]
-    assert row["verdict"] == "mismatch"             # the verdict itself is untouched
+    assert note is None or note["applies"] is False, f"{family}: a retired SL1 ruling still applies"
+    assert row["verdict"] == "mismatch"
 
 
-def test_terra_v_sl1_is_not_covered_by_the_ruling():
-    """Terra V has no C26 add-headers branch and its SL1 (5) did not move, so nothing was
-    ruled on. Registering it would silence a genuine future disagreement."""
+def test_terra_v_sl1_is_covered_by_the_cd_ruling_family():
+    """Terra V SL1 follows the same formula on both sides; its residual gap is the CD gap
+    (KD-001), so it is registered band-less alongside S1/S3 (KD-028) and stands or falls
+    with that ruling."""
     review = annotate_known_divergences(
-        _review(5, 3),
-        identities={"RHHGRC-1": ("HGRH", "TERRA_V", "TERRA_V", "012")},
-        registry=load_registry(),
-    )
-    row = review["sheets"][0]["comparisons"][0]
-    note = row.get("divergence")
-    assert note is None or note["applies"] is False
-
-
-def test_a_delta_outside_the_band_re_escalates():
-    """The band pins the ruling to the single-feed case (6 - 3 = 3). A multi-feed SL1
-    that ever disagreed would land at a different delta and must NOT be silenced by a
-    ruling made about a different configuration."""
-    review = annotate_known_divergences(
-        _review(5.6875, 3),                          # multi-feed CoilForge value vs 3
-        identities=_identities("VENTUM_PLUS"),
+        _review(7.6875, 7.3125),                     # live fill RHHGRC-1 TV072, 2026-09-22
+        identities={"RHHGRC-1": ("HGRH", "TERRA_V", "TERRA_V", "072")},
         registry=load_registry(),
     )
     note = review["sheets"][0]["comparisons"][0].get("divergence")
+    assert note is not None and note["applies"] is True
+    assert note["id"] == "KD-028"
+    assert note["verdict"] == "checklist_wrong" and note["severity"] == "known_gap"
+    assert "KD-001" in note["reason"]
+
+
+def test_a_delta_outside_the_band_re_escalates():
+    """The delta_band mechanism, exercised on a banded ruling that still exists: KD-010
+    (Omnia DX TF, sheet 1.0 vs CoilForge 0.625, band exactly -0.375). Inside the band the
+    row is amber; any other magnitude is a different question and re-escalates."""
+    inside = annotate_known_divergences(
+        _review(0.625, 1.0, tag="CDXC-1", category="DX", slot="slot.TF", label="TF"),
+        identities={"CDXC-1": ("DX", "OMNIA", "-", "OW060")},
+        registry=load_registry(),
+    )
+    note = inside["sheets"][0]["comparisons"][0].get("divergence")
+    assert note is not None and note["applies"] is True and note["id"] == "KD-010"
+
+    outside = annotate_known_divergences(
+        _review(0.625, 1.5, tag="CDXC-1", category="DX", slot="slot.TF", label="TF"),
+        identities={"CDXC-1": ("DX", "OMNIA", "-", "OW060")},
+        registry=load_registry(),
+    )
+    note = outside["sheets"][0]["comparisons"][0].get("divergence")
     assert note is not None
     assert note["applies"] is False
     assert note["severity"] == "re_escalated"

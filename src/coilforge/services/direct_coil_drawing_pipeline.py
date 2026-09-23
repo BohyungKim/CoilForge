@@ -101,8 +101,16 @@ def build_header_request(
     hgrh_conn_size: float | None = None,
     hot_gas_bypass: bool | None = None,
     terra_variant: str | None = None,
+    inlet_conn_size: float | None = None,
+    outlet_conn_size: float | None = None,
+    installed_on_drain_pan: bool | None = None,
 ) -> HeaderPrepopulateRequest:
     """Map coil inputs to a HeaderPrepopulateRequest.
+
+    ``inlet_conn_size`` / ``outlet_conn_size`` feed the water-coil CD connection term
+    (R-071, 2026-09-22 checklist) and ``installed_on_drain_pan`` the HWC Terra pan branch
+    (R-014h / R-061). All three are optional and default to None, which reproduces the
+    pre-2026-09-22 request exactly for every existing caller.
 
     product_type/unit_size are not on the Direct Coil form (they come from the
     submittal/unit context); the caller supplies them.
@@ -141,6 +149,9 @@ def build_header_request(
         with_hgrh=with_hgrh,
         hgrh_conn_size=hgrh_conn_size,
         hot_gas_bypass=hot_gas_bypass,
+        inlet_conn_size=inlet_conn_size,
+        outlet_conn_size=outlet_conn_size,
+        installed_on_drain_pan=installed_on_drain_pan,
     )
 
 
@@ -300,12 +311,20 @@ def build_drawing_slots(
     tag: str | None = None,
     ez_json: dict[str, Any] | None = None,
     terra_variant: str | None = None,
+    inlet_conn_size: float | None = None,
+    outlet_conn_size: float | None = None,
+    installed_on_drain_pan: bool | None = None,
 ) -> tuple[dict[str, Any], HeaderPrepopulateResponse]:
     """Resolve EVERY dimension slot from mechanical values (engine/formula/JSON).
 
+    ``inlet_conn_size`` / ``outlet_conn_size`` / ``installed_on_drain_pan`` are passed
+    THROUGH to the engine only (water CD connection term R-071; HWC Terra pan branch
+    R-014h) — the slot layer's own water S/R/O computation is unchanged by them.
+
     ``terra_variant`` ("TERRA_V" etc.) is threaded so the slot layer can apply the
-    Terra V drawing specials (DX S = CD - Rn, HGRH supply SL = 5, CWC return O = CH -
-    2.75) and stop the generic R-022 safety net from leaking into Terra V. If omitted,
+    Terra V drawing special (DX S = CD - Rn) and stop the generic R-022 safety net from
+    leaking into Terra V. (The former HGRH supply SL = 5 and CWC return O = CH - 2.75
+    specials are gone: 2026-09-22 and 2026-07-29 respectively.) If omitted,
     ``build_header_request`` still derives it from a "TERRA V" product label.
     """
     # HGRH return spacing R (R-052) consumes `conn_size`. The frozen template path
@@ -326,6 +345,8 @@ def build_drawing_slots(
         application=application, header_count=header_count,
         with_hgrh=with_hgrh, hgrh_conn_size=hgrh_conn_size,
         terra_variant=terra_variant,
+        inlet_conn_size=inlet_conn_size, outlet_conn_size=outlet_conn_size,
+        installed_on_drain_pan=installed_on_drain_pan,
     )
     response = prepopulate(request)
     slots: dict[str, Any] = {}
@@ -497,66 +518,30 @@ def build_drawing_slots(
                     # distributor centre to the nearest 1/8 (CD=5.5, n=2 -> 1.875 /
                     # 3.625, NOT 1.8333 / 3.6667). Rounding per-k, not once: the eighths
                     # are not proportional (2 x 1.875 != 3.625). John 2026-07-23.
+                    # The sheet's n is C18 = QTY CONN/HEADER; `circuits` here equals it on
+                    # the submittal path (checklist/from_workflow: circuits = CoilMaster
+                    # prose count, else qty_conn_per_header — John 2026-07-01), so the two
+                    # only differ when the prose states a count the header table does not.
                     slots[f"slot.S{supply_id}"] = round_eighth(k * cd / (circuits + 1))
                 else:
                     # Safety net for a category outside DX/HGRH/CWC/HWC (none today —
                     # water takes the connection-size branch above).
                     slots[f"slot.S{supply_id}"] = round(k * cd / (circuits + 1), 4)
-                # HGRH supply-side (odd) SL = stub POSITION:
-                # Terra V -> 5 (SOP); single feed/circuit -> 6; else 6 + return_conn/2 - S.
-                # The even SL (length) stays the return_sl clearance.
-                if is_hgrh and conn_size is not None:
-                    if is_terra_v:
-                        # Terra V HGRH: all Supply SL = 5 (SOP), not the position formula.
-                        slots[f"slot.SL{supply_id}"] = 5
-                    elif (feeds if feeds is not None else circuits) == 1:
-                        # SINGLE FEED = 6, not the 3 in checklist HGRH!C58 (John 2026-08-06).
-                        #
-                        # The sheet states this dimension TWICE and disagrees with itself.
-                        # C58's dimension row computes 3; C26 (NOTES) emits an "Add Headers
-                        # & Stubouts" instruction whenever C14 = 1 -- and all THREE of its
-                        # product branches spell out "SL1=6" literally. A single-feed coil
-                        # has no supply header of its own, so the header on the drawing IS
-                        # the added one, and 6 is that header's dimension.
-                        #
-                        # Every other source agrees with the note, and only C58 dissents:
-                        #   CHK HGRH!C26   "... SupConnAngle=LAS. S1=<C46>. SL1=6. ..." x3
-                        #   R-044a         supply_sl = 6  (HGRH NOVA/VENTUM_H, MEDIUM)
-                        #   R-044c         supply_sl = 6  (HGRH VENTUM_PLUS, HIGH)
-                        #   EZC-0002 / EZC-0010 as-built notes (json_drawing_link_rules)
-                        # The engine has been emitting the right number all along -- see
-                        # test_engine_supply_sl_agrees_with_slot_layer_single_feed, which
-                        # exists so the two can never silently drift apart again.
-                        #
-                        # This diverges from the sheet on purpose; the divergence is
-                        # registered (KD-006..009), not hidden, so the checklist compare
-                        # still shows it and John's ruling is what re-labels it.
-                        #
-                        # Keyed on the SAME value the checklist's "FEEDS/CIRCUITS" cell
-                        # holds (feeds, else circuits — see checklist/mapping.py) so the
-                        # BRANCH still matches the sheet even where the value no longer
-                        # does; a submittal stating only one of the two lands identically.
-                        slots[f"slot.SL{supply_id}"] = 6
-                    else:
-                        # Multi-feed keeps CHK HGRH!C58's position formula unchanged.
-                        slots[f"slot.SL{supply_id}"] = round(
-                            6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
-                        )
-            if (
-                is_hgrh
-                and not is_terra_v
-                and (feeds if feeds is not None else circuits) == 1
-                and f"slot.SL{supply_id}" not in slots
-            ):
-                # The single-feed 6 is a CONSTANT -- it needs neither the casing depth nor
-                # the connection size. But it lived inside `elif cd is not None:` and
-                # behind `conn_size is not None`, so a coil whose CD never resolved lost
-                # SL1 entirely and silently: no value, no blocked_reason, just absent.
+                # HGRH supply-side (odd) SL = stub POSITION, one formula for every line:
+                # 6 + return_conn/2 - S (CHK HGRH!C58, R-044a / R-044c). The even SL
+                # (length) stays the return_sl clearance.
                 #
-                # `not in slots` makes this a strict no-op whenever the branch above
-                # already ran, so it can only ADD a value where one was missing -- it can
-                # never overwrite the position formula or Terra V's 5.
-                slots[f"slot.SL{supply_id}"] = 6
+                # Until 2026-09-22 two arms sat in front of this: Terra V -> 5 (SOP R-046)
+                # and single feed -> 6 (John 2026-08-06, KD-006..009, over the sheet's
+                # then-3). The refreshed Coil Checklist removed BOTH of its own arms —
+                # C58 is `=6+C15/2-C46` for every product line and every feed count — and
+                # John ruled 2026-09-22 that the checklist wins. Both CoilForge arms and
+                # the KD-006..009 registrations went with them; the Ventum+ header-1 seed
+                # that prints 5.69 (= 6 - 0.625/2) is reproduced by the formula.
+                if is_hgrh and conn_size is not None:
+                    slots[f"slot.SL{supply_id}"] = round(
+                        6 + conn_size / 2 - slots[f"slot.S{supply_id}"], 4
+                    )
             if hdr_o is not None:
                 # Return I/O = the engine's io value, for EVERY product line including
                 # Terra V (John 2026-07-29).

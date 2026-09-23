@@ -308,12 +308,13 @@ def test_terra_v_unit_size_set_diverges_from_terra_h() -> None:
 
 def test_terra_v_has_own_casing_dims_independent_of_terra_h() -> None:
     """Terra V (vertical) has its OWN R-074 casing table (TERRA_V|INTEGRATED|<size>),
-    distinct from Terra H, for all 13 sizes incl. the V-only 060/072/084/100. Values
-    transcribed from the Terra Vertical Overall Dimensions sheet (John 2026-06-30):
-    Unit Width -> casing_width, Unit Height -> casing_height (review-required, MEDIUM)."""
+    distinct from Terra H, for all 13 sizes incl. the V-only 060/072/084/100. Values =
+    the Coil Checklist Units sheet Terra V block (Units!A56:C68, 2026-09-22 template;
+    John: apply the Units tab) -- W -> casing_width, H -> casing_height (review-required,
+    MEDIUM). They replaced the 2026-06-30 Overall-Dimensions heights, which were 4" taller."""
     expect = {  # representative sizes across the 5 sheet groups (incl. V-only 060/100)
-        "006": (30, 51), "024": (44, 62), "048": (48, 78),
-        "060": (69, 78), "100": (77, 80),
+        "006": (30, 47), "024": (44, 58), "048": (48, 74),
+        "060": (69, 74), "100": (77, 76),
     }
     for size, (w, h) in expect.items():
         r = prepopulate(_req(CoilType.DX, ProductFamily.TERRA, size,
@@ -375,9 +376,9 @@ def test_t08_hgrh_nova_c20() -> None:
     assert r.values["return_bend"].value == 1.5
     # No coating input -> no coating note (R-081 coating_set, John 2026-07-15).
     assert r.values["notes"].value == ["Copper Straps Required."]
-    # supply_sl is MEDIUM (R-044a) -> suggestion only.
-    assert r.suggestions["supply_sl"].value == 6
-    assert "supply_sl" not in r.values
+    # supply_sl is a formula (R-044a: 6 + D/2 - S1) evaluated in the slot layer since the
+    # 2026-09-22 checklist -- the engine emits nothing for it (no stale constant to drift).
+    assert "supply_sl" not in r.values and "supply_sl" not in r.suggestions
 
 
 def test_t09_hgrh_ventum_plus_v20() -> None:
@@ -387,11 +388,9 @@ def test_t09_hgrh_ventum_plus_v20() -> None:
     assert r.values["return_sl"].value == 10
     assert r.values["hd"].value == 3.5
     assert r.values["supply_io"].value == 2
-    # supply_sl=6 confirmed by John for Ventum+ (R-044c), promoted MEDIUM->HIGH
-    # 2026-07-06 (auto-drawn). Nova/Ventum H rule R-044a stays MEDIUM (see t08).
-    assert r.values["supply_sl"].value == 6
-    assert r.values["supply_sl"].confidence == Confidence.HIGH
-    assert "supply_sl" not in r.suggestions
+    # supply_sl is a formula (R-044c: 6 + D/2 - S1 = 6 - D/2 for Ventum+) evaluated in
+    # the slot layer since the 2026-09-22 checklist; the engine emits nothing for it.
+    assert "supply_sl" not in r.values and "supply_sl" not in r.suggestions
 
 
 def test_r048_hgrh_positions_multi_circuit() -> None:
@@ -461,16 +460,16 @@ def test_t10_hgrh_terra_12_gate() -> None:
 
 
 def test_hgrh_terra_h_supply_io_resolves() -> None:
-    """R-040b: TERRA H / Terra H C HGRH supply I/O = 2 (HIGH). Terra V uses its own
-    SOP value (R-046, supply I/O = 2.75), John 2026-06-28 SOP-confirmed."""
+    """R-040b: TERRA H / Terra H C HGRH supply I/O = 2 (HIGH). Terra V (R-046) is also 2
+    since the 2026-09-22 checklist (HGRH!C33 = 2 for every line; supersedes the SOP's
+    2.75) and its supply SL is the R-044a formula, no longer a constant 5."""
     for variant in (TerraVariant.TERRA_H, TerraVariant.TERRA_H_C):
         r = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "024", terra_variant=variant))
         assert r.values["supply_io"].value == 2  # R-040b HIGH
         assert r.values["supply_io"].review_required is False
-    # Terra V: R-046 SOP values now HIGH (supply I/O=2.75, supply SL=5, return SL=12).
     rv = prepopulate(_req(CoilType.HGRH, ProductFamily.TERRA, "024", terra_variant=TerraVariant.TERRA_V))
-    assert rv.values["supply_io"].value == 2.75
-    assert rv.values["supply_sl"].value == 5
+    assert rv.values["supply_io"].value == 2
+    assert "supply_sl" not in rv.values and "supply_sl" not in rv.suggestions
     assert rv.values["return_sl"].value == 12
 
 
@@ -488,7 +487,7 @@ def test_t11_hgrh_nova_single_feed() -> None:
 
 def test_t12_cwc_nova_a16_feeds_absent() -> None:
     r = prepopulate(_req(CoilType.CWC, ProductFamily.NOVA, "A16"))
-    assert r.values["return_bend"].value == 1.875  # R-006 rule-of-thumb (John 2026-06-29; was 2.25)
+    assert r.values["return_bend"].value == 2.25  # R-006 (2026-09-22 checklist: 2.25 unless Terra V / Ventum+)
     assert r.values["header_flange"].value == 1.5
     assert r.values["return_flange"].value == 1.5
     assert r.values["sl"].value == 8
@@ -508,7 +507,7 @@ def test_t13_cwc_ventum_plus_v30() -> None:
     r = prepopulate(_req(CoilType.CWC, ProductFamily.VENTUM_PLUS, "V30"))
     assert r.values["top_flange"].value == 1
     assert r.values["bottom_flange"].value == 1
-    assert r.values["return_bend"].value == 1.875  # R-006 rule-of-thumb (John 2026-06-29; was 2.25)
+    assert r.values["return_bend"].value == 1.875  # R-006p (2026-09-22 checklist: Ventum+ -> 1.875)
     assert r.values["sl"].value == 10
     # Per John (2026-06-11): feeds absent -> io/hd are MEDIUM suggestions,
     # consistent with T12 (not T13's literal "Confidence=High").
@@ -517,12 +516,13 @@ def test_t13_cwc_ventum_plus_v30() -> None:
 
 
 def test_t14_hwc_ventum_plus_single_feed() -> None:
+    # The single-feed specials (R-064-*: SL 14, I/O "TBD", HD "N/A") were RETIRED with the
+    # 2026-09-22 checklist, which has no single-feed arm: feeds = 1 resolves like feeds > 1.
     r = prepopulate(_req(CoilType.HWC, ProductFamily.VENTUM_PLUS, "V60", feeds=1))
-    assert r.values["sl"].value == 14
-    assert r.suggestions["io"].value == "TBD"
-    assert r.suggestions["io"].review_required is True
-    assert r.suggestions["hd"].value == "N/A"
-    assert r.suggestions["hd"].review_required is True
+    assert r.values["sl"].value == 10                 # R-063b family constant
+    assert r.values["io"].value == 2.3125             # R-060, HIGH
+    assert r.values["hd"].value == 4                  # R-062, HIGH
+    assert "io" not in r.suggestions and "hd" not in r.suggestions
 
 
 def test_t15_hwc_nova_multi_feed_cd() -> None:
@@ -537,7 +537,7 @@ def test_t15_hwc_nova_multi_feed_cd() -> None:
 
 def test_t16_cwc_terra_18_gate() -> None:
     r = prepopulate(_req(CoilType.CWC, ProductFamily.TERRA, "018"))
-    assert r.values["return_bend"].value == 1.875  # R-006 rule-of-thumb (John 2026-06-29; was 2.25)
+    assert r.values["return_bend"].value == 2.25  # R-006 (2026-09-22 checklist; Terra H is not Terra V)
     assert r.values["header_flange"].value == 1.5
     assert r.values["notes"].value[0].startswith("Vent & Drain installed")
     # CWC/HWC have no coating process -> no coating note appended.

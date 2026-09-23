@@ -1,5 +1,7 @@
 # RP-002 — Reconcile the Coil Checklist's two answers for single-feed HGRH `SL1`
 
+> **SUPERSEDED by the 2026-09-22 template refresh.** HGRH!C58 is now `=6+C15/2-C46` for every line and feed count (both the single-feed 3 and the Terra V 5 arms are gone) and John ruled 2026-09-22 that the checklist wins; CoilForge's slot layer computes the same formula and KD-006..009 are retired. Kept for history only.
+
 **Status:** proposed · **Target:** Oxygen8's `Coil Checklist Template.xlsx`, not CoilForge
 **Raised by:** KD-006 … KD-009 (`src/coilforge/rules/known_divergences.yaml`)
 **Adjudicated:** 2026-08-06 · John

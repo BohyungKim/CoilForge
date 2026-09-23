@@ -116,7 +116,8 @@ def test_the_supply_and_return_io_now_agree_on_every_header() -> None:
 
     I2 used to be blank beside a filled O2 (R-046 covers Supply 1, R-042v covers every
     return), and the panel carried a paragraph saying why. John ruled I1 = I2 = I3, so
-    both sides now carry 2.75 and the explanation was removed with the blank.
+    every supply header carries the one value (2 since the 2026-09-22 checklist; the
+    return keeps 2.75) and the explanation was removed with the blank.
     """
     from coilforge.services.drawing_param_resolver import (
         parameter_set_from_template_drawing,
@@ -124,7 +125,7 @@ def test_the_supply_and_return_io_now_agree_on_every_header() -> None:
 
     result = derive_coil_template_drawing({**_BASE, "feeds": 2, "circuits": 2})
     by_key = parameter_set_from_template_drawing(result, circuits=2).model_dump()["parameters"]
-    assert by_key["I2"]["value"] == 2.75
+    assert by_key["I2"]["value"] == 2
     assert by_key["O2"]["value"] == 2.75
     assert not by_key["I2"]["blocked_reason"], by_key["I2"]["blocked_reason"]
 

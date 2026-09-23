@@ -59,7 +59,10 @@ def test_terra_v_hgrh_supply_io_is_written_on_every_header():
     header, which overrides that SOP wording for Terra V and is recorded as his ruling.
     """
     slots = _slots()
-    assert slots["slot.I1"] == 2.75, "R-046 Supply 1 I/O is SOP-confirmed and must stay"
+    # 2 since 2026-09-22: the refreshed checklist sets HGRH!C33 I1 = 2 for every line
+    # (the SOP's Terra V 2.75 is superseded; John ruled the checklist wins). The measured
+    # 3025 Bauducco reference prints 2.00, which now agrees.
+    assert slots["slot.I1"] == 2, "R-046 supply I/O = 2 (checklist 2026-09-22)"
     assert slots["slot.I3"] == slots["slot.I1"], "supply I/O is one value for all headers"
 
 
@@ -74,7 +77,9 @@ def test_the_rest_of_the_terra_v_hgrh_geometry_is_untouched():
     assert slots["slot.R2"] == 0.875
     assert slots["slot.R4"] == 3.25
     assert slots["slot.O2"] == 2.75 and slots["slot.O4"] == 2.75
-    assert slots["slot.SL1"] == 5 and slots["slot.SL2"] == 12
+    # Supply SL = 6 + D/2 - S1 for every line since 2026-09-22 (the SOP's Terra V 5 is
+    # superseded by HGRH!C58, which has no Terra V arm): 6 + 0.4375 - (-1.25) = 7.6875.
+    assert slots["slot.SL1"] == 7.6875 and slots["slot.SL2"] == 12
     assert slots["slot.OAL"] == 59.0 and slots["slot.CH"] == 40.25
 
 
@@ -137,7 +142,7 @@ def test_terra_v_hgrh_supply_s_matches_the_measured_coilmaster_reference():
     assert slots["slot.S1"] == 1.875           # printed 1.88
     assert slots["slot.R2"] == 0.625           # printed 0.63
     assert round(slots["slot.CD"] - slots["slot.R2"] - slots["slot.S1"], 4) == 1.25
-    assert slots["slot.I1"] == 2.75            # R-046; the drawing's 2.00 is its own deviation
+    assert slots["slot.I1"] == 2               # printed 2.00 -- agrees since the 2026-09-22 checklist (I1 = 2)
 
 
 def test_terra_v_hgrh_supply_s_now_agrees_with_the_other_cd_formula_lines():
@@ -196,7 +201,7 @@ def test_no_terra_v_hgrh_header_value_is_withheld_any_more():
     params = _panel(_slots(circuits=6)).parameters
     by_key = {p.key: p for p in params} if isinstance(params, list) else params
 
-    for key, expected in (("I2", 2.75), ("S2", -1.25)):
+    for key, expected in (("I2", 2), ("S2", -1.25)):
         row = by_key[key]
         assert row.value == expected, (key, row.value)
         assert not row.blocked_reason, (key, row.blocked_reason)

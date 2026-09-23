@@ -45,24 +45,19 @@ def _to_unit(product_label: str | None) -> str | None:
 def _to_size(unit: str | None, size_token: str | None) -> Any:
     """CoilForge R-076 token -> the checklist SIZE dropdown value, per UNIT.
 
-    NOVA / VENTUM identity; TERRA H '009' -> 9 (numeric); TERRA V '084' -> 'TV084'.
+    NOVA / VENTUM identity; TERRA H '009' -> 9 and TERRA V '084' -> 84 (both numeric
+    dropdowns since the 2026-09-22 template; Terra V was 'TV084' before).
     Returns None if it cannot be matched to a dropdown option (caller flags it).
     """
     if not unit or size_token in (None, ""):
         return None
     token = str(size_token).strip()
-    if unit == "TERRA H":
+    if unit in ("TERRA H", "TERRA V"):
         try:
             n = int(token)
         except ValueError:
             return None
-        return n if n in T.SIZE_OPTIONS["TERRA H"] else None
-    if unit == "TERRA V":
-        try:
-            cand = f"TV{int(token):03d}"
-        except ValueError:
-            cand = token.upper()
-        return cand if cand in T.SIZE_OPTIONS["TERRA V"] else None
+        return n if n in T.SIZE_OPTIONS[unit] else None
     opts = T.SIZE_OPTIONS.get(unit, ())
     return token if token in opts else None
 
@@ -101,17 +96,25 @@ _DIM_BASE = {
 _DIM_NUM = re.compile(r"^(O|R|HD|SL|S|I)(\d+)$")
 
 
+# Water-sheet (CWC/HWC) bare labels -> the header-1 slot they mirror. A water coil is
+# always 1HD with one supply and one return, so "I"/"S" are the supply header (odd id 1)
+# and "O"/"R"/"HD"/"SL" the return header (even id 2). The CoilForge column is the DRAWN
+# slot value on purpose: the sheet's own formulas for O (Terra: CH - x), S (CWC: IN/2 + 3)
+# and R (OUT) are NOT mirrored here -- a mirror of the same inputs through the same
+# formula would always "match" and hide the drawing-vs-sheet difference the comparison
+# exists to show. Where the two conventions differ structurally, the known-divergence
+# registry re-labels the row amber with the reason (KD water entries).
+_WATER_BARE = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2",
+               "HD": "slot.HD2", "SL": "slot.SL2"}
+
+
 def _dim_slot(label: str) -> str | None:
     """Map a checklist dim label to the engine slot key it mirrors (or None)."""
     lab = T.normalize_label(label)
     if lab in _DIM_BASE:
         return _DIM_BASE[lab]
-    if lab == "I/O":
-        return "slot.O2"
-    if lab == "HD":
-        return "slot.HD2"
-    if lab == "SL":
-        return "slot.SL2"
+    if lab in _WATER_BARE:
+        return _WATER_BARE[lab]
     m = _DIM_NUM.match(lab)
     if m:
         pfx, n = m.group(1), int(m.group(2))
@@ -139,6 +142,7 @@ def _resolve_engine(
     *,
     with_hgrh: bool | None = None,
     hgrh_conn_size: float | None = None,
+    installed_on_drain_pan: bool | None = None,
 ) -> tuple[dict[str, Any], Any]:
     """Run the slot layer (dims) + an application-aware engine pass (casing) for one coil.
 
@@ -152,6 +156,11 @@ def _resolve_engine(
     engine's with-HGRH casing-depth branch (R-072), matching the checklist's
     ``DX!C24 IF(C6=TRUE,...)`` formula so the CoilForge compare column agrees with
     the sheet (else a reheat-paired DX shows CD=7.5 vs the sheet's 8).
+
+    ``installed_on_drain_pan`` is the same predicate the sheet's INSTALLED ON DP cell
+    is written from (a partner coil exists); the HWC sheet branches its Terra TF/BF and
+    I/O on it (R-014h / R-061), so the engine must see the same value the cell gets.
+    The water inlet/outlet connection sizes ride along for the CD term (R-071).
     """
     from coilforge.services.direct_coil_drawing_pipeline import (
         build_drawing_slots,
@@ -170,6 +179,9 @@ def _resolve_engine(
         suction_conn_size=coil.get("suction_conn_size"), conn_size=coil.get("conn_size"),
         qty_conn_per_header=coil.get("qty_conn_per_header"),
         with_hgrh=with_hgrh, hgrh_conn_size=hgrh_conn_size,
+        inlet_conn_size=coil.get("inlet_conn_size"),
+        outlet_conn_size=coil.get("outlet_conn_size"),
+        installed_on_drain_pan=installed_on_drain_pan,
     )
     try:
         slots, _ = build_drawing_slots(
@@ -306,8 +318,10 @@ def _install_widths(
 
     Reuses ``mechanical_fit._drain_pan_row`` (R-077). The sheet's INSTALL FIT formula
     compares against INSTALL WIDTH for VENTUM+ and DRAIN PAN WIDTH otherwise, so both
-    cells are filled with the right R-077 columns. Returns (None, None) when unresolved
-    (Terra H without a readable D-option; Terra V at all) — never invented.
+    cells are filled with the right R-077 columns. Terra V (size-keyed since the
+    2026-09-22 template) has only a drain-pan width, so INSTALL WIDTH stays blank for it
+    by design. Returns (None, None) when unresolved (Terra H without a readable D-option,
+    an unlisted size) — never invented.
     """
     from coilforge.compatibility.mechanical_fit import _drain_pan_row
 
@@ -328,13 +342,14 @@ def _install_width_blocked_note(unit: str | None, drain_pan_option: str | None) 
     """Why INSTALL/DRAIN PAN WIDTH is blank for THIS unit.
 
     Split by cause so the engineer is not sent after a value that would not help:
-    Terra V cannot be unblocked by any option, and a Terra H that still blocks after the
-    model code was read has a different problem from one whose code was never found.
+    Terra V cannot be unblocked by any option (its pan is size-keyed), and a Terra H that
+    still blocks after the model code was read has a different problem from one whose
+    code was never found.
     """
     if (unit or "").upper() == "TERRA V":
         return (
             "Terra V drain-pan width is keyed by unit size and the Install sheet has no "
-            "Terra V rows yet — it deliberately does not borrow the Terra H widths"
+            "row for this size — it deliberately does not borrow the Terra H widths"
         )
     if (unit or "").upper() == "TERRA H" and not drain_pan_option:
         return (
@@ -378,8 +393,18 @@ def _build_sheet(
         if _dx_partner and _category_of(_dx_partner) == "HGRH":
             dx_with_hgrh = True
             dx_hgrh_conn = _dx_partner.get("conn_size")
+    # INSTALLED ON DP is written further down from `partner is not None` (HGRH/HWC
+    # sheets). The HWC sheet branches Terra TF/BF and I/O on that same cell (R-014h /
+    # R-061, 2026-09-22 template), so the engine gets the identical predicate — a
+    # CoilForge column derived from a different pan state than the cell would compare
+    # the sheet against a coil it was not filled as. DX/CWC sheets have no such cell
+    # and pass None (the engine keeps its Terra values, flagged for review).
+    dp_installed: bool | None = None
+    if category in ("HGRH", "HWC"):
+        dp_installed = _partner(coil, coils) is not None
     slots, response = _resolve_engine(
-        coil, application, with_hgrh=dx_with_hgrh, hgrh_conn_size=dx_hgrh_conn
+        coil, application, with_hgrh=dx_with_hgrh, hgrh_conn_size=dx_hgrh_conn,
+        installed_on_drain_pan=dp_installed,
     )
     engine_ok = response is not None
     # The comparison's CoilForge column is resolved with the checklist's OWN product
@@ -568,17 +593,23 @@ def _build_sheet(
                 cells.append(CellFill(lbl, None, "number", "blocked", "engine:R-077",
                                       note=_install_width_blocked_note(unit, drain_pan_option)))
 
-    # --- RB (return bend): a direct-coil INPUT value, not a computed dim (John
-    # 2026-07-01). CoilForge's rule value is authoritative (R-005 DX/HGRH=1.5,
-    # R-006 CWC/HWC=1.875); the template's formula (1.75/2.25) is the old SOP. So
-    # we WRITE RB (overwriting the stale formula in the copy) — OAL, which is still
-    # a formula referencing RB, then recomputes from the correct value.
-    rb = dim_slots.get("slot.RB")
-    if rb is not None:
-        cells.append(CellFill("RB", rb, "number", "ready", "engine:slot.RB (direct-coil value)"))
-    else:
-        cells.append(CellFill("RB", None, "number", "blocked", "engine:slot.RB",
-                              note="return bend unresolved"))
+    # --- RB (return bend) on the DX/HGRH sheets: a direct-coil INPUT value, not a
+    # computed dim (John 2026-07-01). CoilForge's rule value is authoritative (R-005
+    # DX/HGRH=1.5); the template's `=1.75` is the old SOP. So we WRITE RB (overwriting
+    # the stale formula in the copy) — OAL, which is still a formula referencing RB, then
+    # recomputes from the correct value.
+    # The WATER sheets are different since the 2026-09-22 template: CWC!C26 / HWC!C30
+    # now carry a real rule (`IF(OR(TERRA V,VENTUM+),1.875,2.25)`) and R-006/R-006v/R-006p
+    # mirror it, so RB is left as the sheet's formula and COMPARED like any other dim —
+    # overwriting it would erase the one cross-check the sheet's rule now affords.
+    rb_written = category in ("DX", "HGRH")
+    if rb_written:
+        rb = dim_slots.get("slot.RB")
+        if rb is not None:
+            cells.append(CellFill("RB", rb, "number", "ready", "engine:slot.RB (direct-coil value)"))
+        else:
+            cells.append(CellFill("RB", None, "number", "blocked", "engine:slot.RB",
+                                  note="return bend unresolved"))
 
     # --- Lower dimensional matrix: NOT written (these are Excel FORMULAS that
     # compute from the inputs above). We capture CoilForge's engine value for each
@@ -591,8 +622,8 @@ def _build_sheet(
     matched_slots: set[str] = set()
     compare: list[DimCompare] = []
     for label in spec["dims"]:
-        if T.normalize_label(label) == "RB":
-            continue  # RB is written as an input above, not compared as a formula
+        if rb_written and T.normalize_label(label) == "RB":
+            continue  # DX/HGRH RB is written as an input above, not compared as a formula
         slot = _dim_slot(label)
         if not slot:  # DIST ORIENTATION / ASC / ASC ORIENTATION — no CoilForge analog
             continue

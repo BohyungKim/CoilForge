@@ -120,9 +120,9 @@ def _drain_pan_row(
 ) -> dict | None:
     """Look up the R-077 drain-pan/install width row.
 
-    TERRA is keyed by the drain-pan OPTION (D1/D2/D3), not unit size; every other
-    family is keyed by unit size. Returns ``None`` when the key is absent (Terra V
-    is TBD, Terra H C without an option, or an unknown size).
+    TERRA (H) is keyed by the drain-pan OPTION (D1/D2/D3), not unit size; Terra V and
+    every other family are keyed by unit size. Returns ``None`` when the key is absent
+    (Terra H C without an option, or an unknown size).
     """
     lookup = _rule_index()[_R077]["lookup"]
     # Terra V FIRST, and inside this helper rather than at either call site. Both callers
@@ -131,12 +131,15 @@ def _drain_pan_row(
     # and the checklist path is the dangerous one, because its number is WRITTEN to the
     # workbook that ships with the order.
     #
-    # R-077's `TERRA|D1..D3` rows are Terra **H** widths. Terra V's pan is keyed by unit
-    # SIZE and that data is still TBD, so there is nothing to look up — and its model code
-    # does carry a two-digit token at the D-option position, which is exactly why the
-    # refusal has to be explicit rather than relying on the option coming back empty.
+    # Terra V's pan is keyed by unit SIZE (`TERRA_V|<size>`, Install sheet rows filled
+    # in the 2026-09-22 template) and ONLY by size: it never falls through to the coarse
+    # TERRA branch below, whose `TERRA|D1..D3` rows are Terra **H** widths — the D-option
+    # can still arrive by payload even though model_code.py refuses to parse one for
+    # Terra V, so the refusal to borrow has to live here. An unlisted size returns None.
     if product_family == ProductFamily.TERRA_V.value:
-        return None
+        if not unit_size:
+            return None
+        return lookup.get(f"TERRA_V|{unit_size}")
     if _coarse_terra_family(product_family) == ProductFamily.TERRA.value:
         if not drain_pan_option:
             return None
@@ -152,17 +155,21 @@ def _fit_clearance_row(
     """Look up the R-078 clearance row for ``coil_type``/family/size_class.
 
     NOVA splits on the R-075 size_class (NOVA_1IN/NOVA_2IN); every other family
-    is keyed by the family token directly. Returns ``None`` when the key is
-    absent (e.g. NOVA without a resolved size_class) so the caller can degrade to
-    CANNOT_EVALUATE.
+    is keyed by the family token directly. Terra V has its OWN rows since 2026-09-22
+    (the checklist's Terra V FIT arms: width vs OAL, height = FH cap by size band);
+    the coarse ``TERRA`` row is only a fallback for a split family with no row of its
+    own. Returns ``None`` when the key is absent (e.g. NOVA without a resolved
+    size_class) so the caller can degrade to CANNOT_EVALUATE.
     """
+    table = _rule_index()[_R078]["lookup"]
     if product_family == ProductFamily.NOVA.value:
         if not size_class:
             return None
-        cls = size_class
-    else:
-        cls = _coarse_terra_family(product_family)
-    return _rule_index()[_R078]["lookup"].get(f"{coil_type}|{cls}")
+        return table.get(f"{coil_type}|{size_class}")
+    own = table.get(f"{coil_type}|{product_family}")
+    if own is not None:
+        return own
+    return table.get(f"{coil_type}|{_coarse_terra_family(product_family)}")
 
 
 def _evaluate_dimension(
@@ -237,6 +244,44 @@ def _evaluate_dimension(
     )
 
 
+def _fh_cap_height_fit(
+    *, unit_size: str | None, fh: float | None, review_required: bool
+) -> FitCheck:
+    """Terra V HEIGHT FIT (2026-09-22 checklist): FH <= cap(unit size), casing height
+    unused. ``available`` carries the cap so the card reads like the other rows."""
+    caps = _rule_index()[_R078].get("fh_max_by_size", {})
+    cap = caps.get(str(unit_size)) if unit_size else None
+    if cap is None:
+        return FitCheck(
+            dimension="height", verdict="CANNOT_EVALUATE", casing_dimension=None,
+            available=None, required=fh, margin=None, basis="FH", clearance=None,
+            half=False, review_required=True,
+            detail=(
+                f"Terra V height fit is a finned-height cap per unit size (R-078 "
+                f"fh_max_by_size) and size {unit_size!r} has no cap — cannot evaluate"
+            ),
+        )
+    if fh is None:
+        return FitCheck(
+            dimension="height", verdict="CANNOT_EVALUATE", casing_dimension=None,
+            available=cap, required=None, margin=None, basis="FH", clearance=None,
+            half=False, review_required=True,
+            detail=f"FH unresolved — Terra V cap for size {unit_size} is {cap}, nothing to compare",
+        )
+    margin = round(cap - fh, 4)
+    verdict: FitVerdict = "PASS" if margin >= 0 else "FAIL"
+    return FitCheck(
+        dimension="height", verdict=verdict, casing_dimension=None, available=cap,
+        required=fh, margin=margin, basis="FH", clearance=None, half=False,
+        review_required=review_required,
+        detail=(
+            f"Terra V height fit = FH <= {cap} for size {unit_size} (checklist size band; "
+            f"casing height not used); FH={fh}; margin {margin} "
+            f"({'fits' if margin >= 0 else 'DOES NOT FIT'})"
+        ),
+    )
+
+
 def evaluate_coil_fit(
     *,
     coil_type: str,
@@ -248,6 +293,7 @@ def evaluate_coil_fit(
     fh: float | None,
     ch: float | None,
     oal: float | None,
+    unit_size: str | None = None,
 ) -> CoilFitResult:
     """Evaluate WIDTH and HEIGHT fit for a single coil.
 
@@ -255,7 +301,8 @@ def evaluate_coil_fit(
     (``DX``/``HGRH``/``CWC``/``HWC`` and ``NOVA``/``TERRA``/``VENTUM_H``/
     ``VENTUM_PLUS``). ``size_class`` is the R-075 token for NOVA (else ``None``).
     Casing dims and FH/FL/CH/OAL are the resolved review-aid values (or ``None``
-    when unresolved upstream).
+    when unresolved upstream). ``unit_size`` is needed only by rows whose height
+    check is a per-size finned-height cap (Terra V, ``h_kind: fh_max_by_size``).
     """
     evidence = tuple(_rule_index()[_R078]["evidence_refs"])
     row = _fit_clearance_row(coil_type, product_family, size_class)
@@ -309,15 +356,18 @@ def evaluate_coil_fit(
         required=fl if width_basis == "FL" else oal,
         review_required=True,
     )
-    height = _evaluate_dimension(
-        dimension="height",
-        casing_dimension=casing_height,
-        clearance=row["h_sub"],
-        half=bool(row["h_half"]),
-        basis=height_basis,
-        required=fh if height_basis == "FH" else ch,
-        review_required=True,
-    )
+    if row.get("h_kind") == "fh_max_by_size":
+        height = _fh_cap_height_fit(unit_size=unit_size, fh=fh, review_required=True)
+    else:
+        height = _evaluate_dimension(
+            dimension="height",
+            casing_dimension=casing_height,
+            clearance=row["h_sub"],
+            half=bool(row["h_half"]),
+            basis=height_basis,
+            required=fh if height_basis == "FH" else ch,
+            review_required=True,
+        )
     return CoilFitResult(
         coil_type=coil_type,
         product_family=product_family,
@@ -463,6 +513,7 @@ def build_coil_fit(
         casing_width=casing_width,
         casing_height=casing_height,
         fl=fl, fh=fh, ch=ch, oal=oal,
+        unit_size=unit_size,
     )
     return CoilFitEntry(
         tag=tag, coil_type=engine_coil_type, product_family=family,
@@ -721,9 +772,9 @@ def evaluate_drain_pan_fit(
         # unfollowable instruction is worse than saying nothing.
         if product_family == ProductFamily.TERRA_V.value:
             reason = (
-                "Terra V drain-pan width is keyed by unit size, and the Install sheet has "
-                "no Terra V rows yet — blocked pending that data. It deliberately does NOT "
-                "borrow the Terra H D1/D2/D3 widths"
+                f"Terra V drain-pan width is keyed by unit size and the Install sheet has "
+                f"no row for size {unit_size!r} — blocked. It deliberately does NOT borrow "
+                "the Terra H D1/D2/D3 widths"
             )
         elif _coarse_terra_family(product_family) == ProductFamily.TERRA.value and not drain_pan_option:
             # Prefer the reader's account. "No option" is not one situation: the code may
@@ -740,8 +791,8 @@ def evaluate_drain_pan_fit(
                 reason = f"Terra drain-pan width is keyed by option D1/D2/D3: {reason}"
         else:
             reason = (
-                f"no drain-pan width for {product_family}|{unit_size} "
-                "(e.g. Terra V is TBD in the Install sheet) — blocked"
+                f"no drain-pan width for {product_family}|{unit_size} in the Install "
+                "sheet (R-077) — blocked"
             )
         return result("CANNOT_EVALUATE", [], reason)
 
