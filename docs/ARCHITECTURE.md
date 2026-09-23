@@ -51,7 +51,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 130 |
+| `tests` | 133 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 1 |
@@ -184,6 +184,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_ambient_quote_request_pdf.py` | Phase 5 — the Ambient quote-request PDF (builder + /api/ambient/quote-request-pdf) |
 | `tests/test_ambient_range_provider.py` | Phase 3 wiring — the Coil-Utilities range provider drives real acceptance verdicts |
 | `tests/test_ambient_web.py` | Phase 5 — /api/ambient/* route contract (TestClient; parsing monkeypatched) |
+| `tests/test_blocked_state_unblock.py` | Un-blocking a coil whose Drawing Parameters are empty (John 2026-09-22) |
 | `tests/test_capture_ledger.py` | Capture ledger (1a): every coil selection's (inputs -> proposal -> correction) |
 | `tests/test_capture_observe.py` | Capture-ledger observability (1d): run_dedup view, /api/capture/health, the |
 | `tests/test_capture_retrieve.py` | Case retrieval (Stage 2.0): masked-Gower nearest-neighbor over the ledger |
@@ -192,6 +193,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_ccsi_compare.py` | CCSI-vs-CoilForge compare core (Phase 3): reuses the checklist comparator, so a |
 | `tests/test_ccsi_export_audit.py` | Offline CCSI-export audit (`ccsi/export_audit.py`) |
 | `tests/test_ccsi_field_map.py` | Contract guard for the CCSI Direct Coil autofill field map |
+| `tests/test_checklist_adopt.py` | Adopt from Coil Checklist (John 2026-09-22) |
 | `tests/test_checklist_cache.py` | Bounded sha1 memoization of the Coil Checklist fill (_run_or_reuse_checklist) |
 | `tests/test_checklist_compare.py` | Phase 3 — adapter + comparison tests (pure; no Excel, no PDF) |
 | `tests/test_checklist_excel_writer.py` | Phase 2 — Excel writer integration test (Windows + Excel only) |
@@ -208,9 +210,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_coilmaster_drawing_extract.py` | Tests for CoilMaster drawing + cover-page extraction (synthetic text) |
 | `tests/test_condensing_mirror_fields.py` | Source-contract guards for the condensing (RHHGRC/HGRH) mirror in web/app.js |
 | `tests/test_copper_strap_pricing.py` | Copper-strap price adder: $25/strap over the R-090 strap count |
-| `tests/test_copper_strap_rule.py` | R-090 copper-strap rule: deterministic straps-per-header by coil type |
-| `tests/test_coverage_dashboard_generator.py` | The coverage-dashboard generator must reflect the LIVE catalog, not a snapshot |
 
-_296 source files, 206 with a header comment. 56 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_299 source files, 209 with a header comment. 59 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

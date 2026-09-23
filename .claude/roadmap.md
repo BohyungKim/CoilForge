@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
+> 마지막 갱신: 2026-09-23 (**[HITL 막힘 해제 트랙]** — John: "CWC/HWC 데이터를 못 가져오면 도면 파라미터가 하나도 안 채워져 완전히 막힌다". 막힘의 실체는 데이터 부재가 아니라 **레버가 사라지는 3개 상태**였다: ①Terra 물코일 게이트(`_omit_drawing`→`template_found=False`)가 fill plan을 비우고 product 피커까지 숨김 ②도면 경로 예외가 맨 `{"error"}`로 떨어져 "Template not registered" 막다른 길 ③거부된 `/derive` 스텁이 정상 페이지를 덮어써 재분석 전까지 벽돌. 레버를 도면과 분리해 전부 복구 + **critical 등급**(CD·CH·HD/HDx·S·I, 입력 레버 product/size/hand/conn — `DrawingParameter.criticality` computed field) 굵은 빨강·인라인 편집·reason 커밋 시 자동 derive + Tier-A/피커 값 확정 즉시 재생성 + **체크리스트 채택**(입력 먼저→엔진 재계산, 빈 행에만 시트 결과, 새 verdict `adopted`) + 물코일 inlet/outlet 레버(사람이 친 값만 R-071 트리거). 브라우저 fill store를 **누적 merge**로 바꿔 자동 derive가 앞선 채움을 지우던 구조 결함도 해소. plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 1740 green, headless Chrome 실페이지 스모크 통과. 이전 갱신 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
 > 멀티헤더 결함 4건. 도면이 **시드 코일의 as-built을 인쇄**(`-0.25 S1`; slot_map에 없어 치환 대상조차 아님),
 > 9abe5a7의 Terra V 가드가 **실제 PDF 경로에서 死**(R-052의 `qty or circuits` 무언 대체), 그 결과 **S 음수 발산**,
 > 패널 I2/O2 비대칭 미설명. 조사 중 결론이 한 번 뒤집혔다 — 참조를 **그 입력으로 재구성**하면 우리 공식이
@@ -547,6 +547,7 @@
 > 커밋은 hunk 격리 필요. 이전: **2단계 Case Retrieval Phase 2.0 구축·커밋·푸시(66087fd)**: Gower kNN 엔진 + corpus 게이지 + `/api/capture/similar` + CLI, gated n≥50 + **rule_id→3자뷰 배선**. 코퍼스 46/50·**교정 0**(실 submittal 12개 배치 분석=feature-only). ▶️ 지금 = 2단계 원장 채우기 — 실사용으로 **교정** 축적이 진짜 관건(개수보다 이게 핵심). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
+- [x] **[HITL 막힘 해제 트랙] 빈 도면 파라미터에서 완전히 막히던 3개 상태 해제 + critical 강조·자동 재생성 + 체크리스트 채택 (2026-09-23, John 요청)** — 플랜 `~/.claude/plans/when-tender-curry.md`(Phase 0→2→3→1). ①**레버는 도면과 독립**: withheld는 배너일 뿐 `build_manual_fill_plan`이 항목을 계속 조립, hand 레버는 `svg`가 아니라 분류 기준, 분류 실패 시에만 coil type 공급 레버(J-0a 재분류는 범위 밖), 예외 시 `_error_shell_template_drawing`(값 0개, hand는 LH 기본값 금지) + `ctx` 호이스트(ctx 빌더 실패가 UnboundLocalError로 analyze 전체를 500시키던 구멍) + 코팅 노트가 shell에 값을 새기던 것 가드, `/derive` 오류 스텁은 절대 persist 안 함. ②**critical**: 레지스트리 `required`(preview 게이트)는 재사용 안 함 — 별개 축. 빈 critical 행은 manual mode 없이 편집 → 값 커밋이 reason 칸을 열고 reason 커밋이 derive(API의 reason 필수 규칙 불변). ③**누적 fill store**(`mergeManualFills`, 호출 시점 커밋·거부 시 롤백) + latest-wins는 **페이지 단위·인터랙티브만**(전역 카운터였으면 헤드리스 재적용 N−1개를 버림), stale 응답은 렌더도 persist도 안 함. 피커 선택이 체크리스트 UNIT/SIZE까지 도달. ④**물코일 inlet/outlet**: 트리거 키는 사람이 친 값만(`pick(…, extracted)` 폴백이면 모든 물코일 derive가 R-071을 켜고 유령 ManualOverride를 남김), 추출값은 비트리거 키 `water_conn_extracted`로 표시만. ⑤**채택**: 공통 신호는 reason 접두어 `ADOPTED_REASON_PREFIX` 하나(JS=Python 테스트 고정), compare verdict `adopted`(match·mismatch·overridden 어디에도 안 셈), KD 판정이 채택 행을 amber로 칠하지 않음, Excel 오류값(큰 음수)은 채택 불가. 신규 테스트 46개, **1740 green**, frozen 무접촉, 전 값 review_required·`export_allowed` False. 다른 세션의 app.js/style.css 미커밋 hunk는 격리.
 - [x] **체크리스트 리프레시 2026-09-22 (ee7ef30)** — 6탭 back-crack → 22건 반영(Terra V SIZE 숫자·케이싱·드레인팬·FIT 자체 행, DX H05/H10 DIST EXT 17, HGRH Terra V I1=2 + supply SL 공식, 물코일 I/O/S/R·CD 접속경·RB 가족별·single-feed 폐기·HWC DP tri-state·V/D ConnEnd), Terra H/V 물코일 도면 vacant, KD 정리(004·006..009 은퇴 / 005·022..029 추가), RP-003. 1694 green + 라이브 Excel 채움 확인. 미채택 3건은 ⬜ 앞으로의 John 결정 항목
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
 - [x] 22개 템플릿 시드 완료 — per-hand 실참조 + 4HD(DX/HGRH LH+RH), 미러 생성 없음
@@ -1103,6 +1104,7 @@
   🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
+- [ ] **[TR-13] HITL 막힘 해제·critical·채택 브라우저 눈확인 (John)** — ⚠️ `run_server.bat` 재시작 + 강력 새로고침(`index.html`의 app.js `?v=` 문자열은 다른 세션 편집 중이라 미갱신). 물코일 제출물(Terra 물코일 = withheld 경로)로: 보류 배너 아래 product/size/hand 피커·fill 항목이 보이는지 → hand 변경 즉시 재생성 → 빈 critical 행 값+reason → 체크리스트 refill 후 "↙ use checklist" 채택 → 비교열 `adopted` 중립 표시 → release 복원. headless Chrome 스모크는 통과(페이지 오류 0).
 - [ ] **[TR-12] Deliverable 파일링 로그 + 폴더 열기 버튼 눈확인 (John)** — 0779c46의 절반.
   사이드바 승인 버튼은 같은 날 승인됐으나 이 둘은 **서버 재시작 전이라 확인 불가**였다
   (`run_server.bat`에 `--reload` 없음 + `pdfCoilPages`는 브라우저 캐시 → 재시작 후 **재분석 필수**).
@@ -1263,6 +1265,7 @@
   확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
   ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
+- [ ] **[HITL 막힘 해제 트랙] John 결정 J-1b — 체크리스트 IN/OUT CONN SZ 채택 허용 여부 (2026-09-23)** — 그 채택은 새 사실이 아니라 추출값을 사람 입력으로 재라벨해 **코일별로 R-071을 켜는** 것. 결정 전까지 일괄 채택에서 제외(채움 패널 직접 입력은 동작). 권고: 허용 + "adopted" 접두어 원장 기록. 관련 J-3a(무채움 경로 R-071 자동 적용, 골든 재베이스 필요)는 계속 보류.
 - [ ] **[딜리버러블 트랙] finalize의 남은 미포장 OSError 2곳 + 프런트 가드 (2026-09-22)** —
   `commit_placements`의 **bytes 분기**(`write_bytes`)는 `OSError`가 안 감싸여 잠긴 대상 PDF가
   **이름 없는 500**이 된다(같은 함수의 copyfile 분기만 409로 명명 — 비대칭). `plan_placements`의

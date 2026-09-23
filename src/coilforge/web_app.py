@@ -1891,7 +1891,10 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
         # kill switch has to strip its input too -- otherwise the refresh keeps running
         # with COILFORGE_MANUAL_FILL=0 and the env var stops being a whole-feature lever.
         clean.pop("candidate", None)
-        for key in ("application", "header_count", "qty_conn_per_header"):
+        for key in (
+            "application", "header_count", "qty_conn_per_header",
+            "inlet_conn_size", "outlet_conn_size", "coil_category",
+        ):
             clean.pop(key, None)
         return clean, errors
 
@@ -1922,7 +1925,11 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
         if value < 0:
             errors.append(f"{key}: value must not be negative")
             continue
-        valid_overrides.append({**item, "key": key, "value": value})
+        source = str(item.get("source") or "engineer").strip()
+        if source not in ("engineer", "checklist"):
+            errors.append(f"{key}: unknown override source {item.get('source')!r}")
+            continue
+        valid_overrides.append({**item, "key": key, "value": value, "source": source})
     if "param_overrides" in clean:
         clean["param_overrides"] = valid_overrides
 
@@ -1965,6 +1972,23 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
                 clean.pop(key, None)
             else:
                 clean[key] = int(coerced)
+    # Water connection sizes (engineer-typed Tier-A levers; R-071's connection term).
+    for key in ("inlet_conn_size", "outlet_conn_size"):
+        if clean.get(key) is not None:
+            coerced = _coerce_float(clean.get(key))
+            if coerced is None or coerced <= 0:
+                errors.append(f"{key}: must be a positive number (got {clean.get(key)!r})")
+                clean.pop(key, None)
+            else:
+                clean[key] = coerced
+    # Coil category is SUPPLY-only (J-0a): one of the four catalog codes, else dropped.
+    if clean.get("coil_category") not in (None, ""):
+        category = str(clean["coil_category"]).strip().upper()
+        if category in ("DX", "HGRH", "CWC", "HWC"):
+            clean["coil_category"] = category
+        else:
+            errors.append(f"coil_category: unknown coil type {clean['coil_category']!r}")
+            clean.pop("coil_category", None)
     return clean, errors
 
 
@@ -1986,8 +2010,17 @@ async def coil_drawing_derive(request: dict[str, Any] = Body(default_factory=dic
         result = await asyncio.to_thread(derive_coil_template_drawing, clean)
     except (UnknownCoilInputError, ValidationError) as exc:
         # Never 500 on a fill: return a minimal payload naming what to fix.
+        # Carries `error` + the coil identity so the browser can tell this apart from a
+        # derived drawing and NEVER persists it over the coil page (it used to replace a
+        # good page with this stub, bricking the coil until a full re-analyze).
         return jsonable_encoder(
             {
+                "error": str(exc),
+                "tag": clean.get("tag"),
+                "extracted": {
+                    "coil_category": clean.get("coil_category"),
+                    "tag": clean.get("tag"),
+                },
                 "manual_fill_plan": {"items": [], "withheld_reason": None},
                 "manual_fill_errors": errors + [str(exc)],
                 "export_allowed": False,

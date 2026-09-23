@@ -774,7 +774,10 @@ def _flag_defaulted_coil_hand(
     way round — an as-built-LH coil is flagged too — and that direction is the safe one
     (it asks the engineer to confirm a hand that is in fact correct, rather than letting a
     silent guess through)."""
-    if not isinstance(result, dict) or not result.get("svg"):
+    # Gated on a resolved hand, NOT on artwork (2026-09-23): a withheld drawing (Terra
+    # water re-seed, unseeded Ventum+ DX) had its hand assumed exactly the same way, and
+    # its hand lever is still offered — so the assumption must be labelled there too.
+    if not isinstance(result, dict) or "error" in result:
         return result
     if (ctx or {}).get("coil_hand"):
         return result
@@ -1150,6 +1153,8 @@ def _rerun_slots_with_manual_inputs(
             finned_height=ex.get("finned_height"),
             finned_length=ex.get("finned_length"),
             tag=ex.get("tag"),
+            inlet_conn_size=_coerce_float(spec.get("inlet_conn_size")),
+            outlet_conn_size=_coerce_float(spec.get("outlet_conn_size")),
         )
     except (UnknownCoilInputError, ValueError):
         return None
@@ -1321,6 +1326,7 @@ def _reflect_param_overrides_into_slots(
                 "previous_mode": base.mode if base is not None else None,
                 "new_value": ov.value,
                 "override_reason": ov.override_reason,
+                "source": ov.source,
                 "source_evidence": [se.model_dump() for se in ov.source_evidence],
             }
         )
@@ -1485,6 +1491,13 @@ def _attach_recomputed_engine_provenance(
 # Engine-input keys carried on a /derive spec that feed the rule engine (Tier A).
 _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "application", "header_count", "qty_conn_per_header",
+    # Water inlet/outlet connection sizes (R-071's connection term, 2026-09-23). They reach
+    # the spec ONLY when the engineer typed them (`engineInputs`, no extracted fallback):
+    # a key in this tuple both TRIGGERS the Tier-A re-run and WRITES a ManualOverride
+    # audit row, so an extracted value arriving here would apply R-071 to every water-coil
+    # derive and log a correction nobody made. What intake extracted rides separately under
+    # the non-trigger key `water_conn_extracted`.
+    "inlet_conn_size", "outlet_conn_size",
 )
 
 
@@ -1575,6 +1588,10 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "panel": spec.get("panel"),
     }
     result = pdf_text_to_template_drawing("", cover_text="", header_context=ctx)
+    # Round-trip of the display-only extracted water connection sizes (non-trigger key;
+    # the frozen result never carries it, so the caller copies it across).
+    if isinstance(spec.get("water_conn_extracted"), dict):
+        result["water_conn_extracted"] = spec["water_conn_extracted"]
 
     # Tier-A un-gate (1.1a): only when a genuinely-dropped engine input was supplied —
     # keeps non-manual-fill coils byte-for-byte unchanged (H4). Keeps the engine
@@ -1805,6 +1822,14 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
             candidate, "connections", "qty_connections_per_header"
         ),
     }
+    if category in ("CWC", "HWC"):
+        # Display-only for the fill panel's water connection levers. Deliberately NOT
+        # `inlet_conn_size`/`outlet_conn_size`: those names are Tier-A triggers on /derive
+        # (_MANUAL_ENGINE_INPUT_KEYS) and must only ever carry an engineer's typed value.
+        inlet = _candidate_field_value(candidate, "connections", "inlet_connection_size")
+        outlet = _candidate_field_value(candidate, "connections", "outlet_connection_size")
+        if inlet not in (None, "") or outlet not in (None, ""):
+            ctx["water_conn_extracted"] = {"inlet": inlet, "outlet": outlet}
     if hand_raw:
         ctx["coil_hand"] = "RH" if _normalize_handing(str(hand_raw)) == "Right" else "LH"
     if _detect_hgbp(coil_type, item_note, options_blob):
@@ -2049,6 +2074,11 @@ def _apply_coating_note_to_drawing(result: dict[str, Any], coating: Any) -> None
     in ``slot_map.json`` so the worst case is that sentinel rather than a raw
     ``{{slot.COATING_NOTE}}`` placeholder.
     """
+    # A shell result (the frozen path raised) carries no values at all — writing the
+    # coating note into it would make `slot_values` truthy and flip the panel/schematic
+    # branch selection downstream on an accident of the coating field (R1 MAJOR-2).
+    if not isinstance(result, dict) or "error" in result:
+        return
     note = _coating_drawing_note(coating)
     slot_values = result.get("slot_values")
     if isinstance(slot_values, dict):
@@ -2213,6 +2243,47 @@ def _hgrh_partner_conn_for(selected_candidate, candidates) -> Any:
     return _candidate_connection_size(partner)
 
 
+def _error_shell_template_drawing(exc: Exception, ctx: dict[str, Any]) -> dict[str, Any]:
+    """The template-drawing result for a coil whose frozen drawing path RAISED.
+
+    Carries the classification intake already resolved (so the product/size/hand levers
+    and the fill panel can render) and NOTHING the engine would have produced:
+    ``slot_values`` is empty, ``svg`` is blank, and the hand is whatever the submittal
+    stated — ``None`` when it stated nothing, never the frozen path's ``"LH"`` default.
+    The ``error`` key is what every post-processor already guards on, so none of them
+    writes into it."""
+    ctx = ctx or {}
+    circuits = ctx.get("circuits") or 1
+    special = ctx.get("special_feature")
+    return {
+        "error": str(exc),
+        "extracted": {
+            "coil_category": ctx.get("coil_category"),
+            "hand": ctx.get("coil_hand"),
+            "circuits": circuits,
+            "header_type": None if special else f"Header {circuits}",
+            "special_feature": special,
+            "rows": ctx.get("rows"),
+            "feeds": ctx.get("feeds"),
+            "finned_height": ctx.get("finned_height"),
+            "finned_length": ctx.get("finned_length"),
+            "tag": ctx.get("tag"),
+            "return_conn_size": ctx.get("suction_conn_size"),
+        },
+        "product_type": ctx.get("product_type"),
+        "unit_size": ctx.get("unit_size"),
+        "panel": ctx.get("panel") or {},
+        "template_id": None,
+        "template_found": False,
+        "generation_allowed": False,
+        "header_engine_used": False,
+        "svg": "",
+        "slot_values": {},
+        "review_items": [],
+        "export_allowed": False,
+    }
+
+
 def _run_candidate_to_drawing_payload(
     selected_candidate,
     *,
@@ -2273,6 +2344,10 @@ def _run_candidate_to_drawing_payload(
     # submittal intake already resolved (coil type / hand / header qty / HGBP),
     # rather than the as-built model-number parse a submittal does not satisfy.
     template_drawing: dict[str, Any]
+    # Bound BEFORE the try: the lines after the except read `ctx`, so a context-builder
+    # failure used to surface as an UnboundLocalError that 500'd the whole analyze — for
+    # exactly the coils with the worst intake (R1 MAJOR-1).
+    ctx: dict[str, Any] = {}
     try:
         from coilforge.submittal.pdf_to_template_drawing import (
             pdf_text_to_template_drawing,
@@ -2285,7 +2360,16 @@ def _run_candidate_to_drawing_payload(
             header_context=ctx,
         )
     except Exception as exc:  # never break the workflow on extraction issues
-        template_drawing = {"error": str(exc)}
+        # A classified shell instead of a bare {"error"}: the bare form rendered as
+        # "Template not registered" with no picker and no fill panel — a dead end. The
+        # shell carries only what intake already read (never a drawn value).
+        template_drawing = _error_shell_template_drawing(exc, ctx or notes_ctx)
+    if isinstance(template_drawing, dict):
+        # What intake extracted for the water connections — a NON-trigger key (see
+        # _MANUAL_ENGINE_INPUT_KEYS) so the fill panel can show it without applying it.
+        water_conn = (ctx or notes_ctx).get("water_conn_extracted")
+        if water_conn:
+            template_drawing["water_conn_extracted"] = water_conn
 
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)
@@ -2330,11 +2414,17 @@ def _run_candidate_to_drawing_payload(
     # single source of truth the drawing renders), so the panel and the drawing
     # never diverge. Fall back to the static-default parameter set only when no
     # template/slots are available.
-    if isinstance(template_drawing, dict) and template_drawing.get("slot_values"):
+    if isinstance(template_drawing, dict) and (
+        template_drawing.get("slot_values") or "error" in template_drawing
+    ):
         from coilforge.services.drawing_param_resolver import (
             parameter_set_from_template_drawing,
         )
 
+        # The shell (frozen path raised) is built EXPLICITLY, not via slot_values
+        # truthiness: every row comes back `blocked` with the "pick a product line"
+        # reason and therefore becomes a fill item, instead of the static preview
+        # defaults that would present demo numbers as this coil's.
         panel_parameter_set = parameter_set_from_template_drawing(
             template_drawing, circuits=ctx.get("circuits")
         )
@@ -2345,7 +2435,7 @@ def _run_candidate_to_drawing_payload(
     # drawing" on the very first analyze (before any /derive). Built from the
     # template drawing's review_items + the panel's blocked params (no engine
     # response here — the resolver falls back to the review_items strings).
-    if isinstance(template_drawing, dict) and "error" not in template_drawing:
+    if isinstance(template_drawing, dict):
         from coilforge.services.drawing_param_resolver import build_manual_fill_plan
 
         template_drawing["manual_fill_plan"] = build_manual_fill_plan(

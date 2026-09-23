@@ -884,6 +884,78 @@ body.is-init-stage .primary-intake-panel {
   color: var(--danger-text);
 }
 
+/* CRITICAL dimension with no value (John 2026-09-22: CD / CH / HD / HDx / S / I). Outranks
+   the ordinary --empty red in the border chain: a thicker edge plus a halo, so the rows a
+   drawing cannot be trusted without are found first. Defined tokens only (both themes). */
+.dc-control.dc-control--critical-empty {
+  background: var(--danger-bg);
+  border: 2px solid var(--status-blocked);
+  box-shadow: 0 0 0 2px var(--danger-border);
+  color: var(--danger-text);
+  font-weight: 700;
+}
+
+.dc-dimension-row .dc-dimension-critical {
+  color: var(--status-blocked);
+  font-size: 10.5px;
+  font-weight: 700;
+  grid-column: 1 / -1;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.dc-dimension-row .dc-inline-reason {
+  background: var(--bg-field);
+  border: 1px solid var(--status-blocked);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  grid-column: 1 / -1;
+  padding: 3px 6px;
+}
+
+/* "Adopt from Coil Checklist" — neutral on purpose: an adopted value is a copy of the
+   sheet, never an agreement with it, so it must not look like the green match state. */
+.dc-adopt,
+.dc-release {
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent-link);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+  justify-self: start;
+  padding: 1px 6px;
+}
+
+.dc-dimension-row .dc-adopt {
+  grid-column: 1 / -1;
+}
+
+.dc-adopt:hover,
+.dc-release:hover {
+  border-color: var(--accent-hover);
+}
+
+.checklist-adopt-bar {
+  align-items: center;
+  background: var(--bg-inset);
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+}
+
+.checklist-adopt-bar .dc-dimension-note {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 .dc-dimension-reason {
   color: var(--status-blocked);
   font-size: 10.5px;
@@ -2522,6 +2594,30 @@ h4 {
 .manual-fill-reason {
   color: var(--text-muted);
   font-size: 0.76rem;
+}
+
+/* Critical fill levers (product / size / hand / connection sizes / category). */
+.manual-fill-row.is-critical .manual-fill-key {
+  color: var(--status-blocked);
+  font-weight: 700;
+}
+
+.manual-fill-row.is-critical input,
+.manual-fill-row.is-critical select {
+  border: 2px solid var(--status-blocked);
+}
+
+.manual-fill-critical {
+  color: var(--status-blocked);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* The product / unit-size picker while either is still missing: the headline lever. */
+.coil-drawing-picker.is-critical {
+  border: 2px solid var(--status-blocked);
+  box-shadow: 0 0 0 2px var(--danger-border);
 }
 
 .manual-fill-errors {

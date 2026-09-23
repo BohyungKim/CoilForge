@@ -31,6 +31,10 @@ const state = {
   // key and the checklist's label disagree about which dimension they name (the panel's
   // logical O2 is the sheet's O4), and a name join would flag the wrong row.
   checklistBySlot: null,
+  // The checklist's written INPUT cells per coil (Map<tag, Map<label, cell>>), for the
+  // "adopt from Coil Checklist" lever: inputs first (the engine then recomputes), formula
+  // results only for rows still blank afterwards.
+  checklistInputsByTag: null,
   // True while a re-fill is queued/in flight after a manual correction. A row is only
   // treated as stale on THIS explicit signal — never by comparing the two CoilForge
   // numbers, which can differ permanently (the checklist resolves its own product line).
@@ -2558,7 +2562,11 @@ function renderImportSummary(uiState) {
 }
 
 function renderDrawingPreview(uiState) {
-  if (uiState.template_drawing && !uiState.template_drawing.error) {
+  // Any CLASSIFIED result — including the shell the backend builds when the drawing path
+  // raised — goes to the template renderer, which carries the product/size/hand levers
+  // and the fill panel. The legacy "Template not registered" path had neither, so an
+  // errored coil was a dead end (and that message misdiagnosed it).
+  if (uiState.template_drawing && uiState.template_drawing.extracted) {
     renderTemplateDrawingPreview(uiState.template_drawing);
     return;
   }
@@ -2609,9 +2617,11 @@ function renderTemplateDrawingPreview(templateDrawing) {
     elements.previewStatus.textContent = chip;
     elements.previewStatus.className = `status-chip ${rendered ? "status-review-required" : "status-blocked"}`;
   }
+  const focus = snapshotFocus(elements.drawingPreview);
   elements.drawingPreview.innerHTML = `
     <div class="template-drawing-preview">
       <div class="template-drawing-caption">${templateDrawingCaption(templateDrawing)}</div>
+      ${templateDrawingErrorBanner(templateDrawing)}
       ${renderSpecEditPanel(templateDrawing)}
       ${templateDrawingPicker(templateDrawing)}
       ${renderManualFillPanel(templateDrawing)}
@@ -2628,6 +2638,51 @@ function renderTemplateDrawingPreview(templateDrawing) {
   attachCoilDrawingPicker(templateDrawing);
   attachManualFillPanel(templateDrawing);
   attachSpecEditPanel(templateDrawing);
+  restoreFocus(elements.drawingPreview, focus);
+}
+
+// The drawing path RAISED for this coil (backend shell: `error` + the classification
+// intake read). Said plainly, with the way out — the levers below still work.
+function templateDrawingErrorBanner(templateDrawing) {
+  if (!templateDrawing || !templateDrawing.error) return "";
+  return `<div class="drawing-orientation-warning">⚠ Drawing could not be produced — ${escapeHtml(
+    String(templateDrawing.error),
+  )}. Pick the product line / unit size / hand below to retry; every value stays review-required.</div>`;
+}
+
+// A panel re-render (a derive landing, the checklist refill flag) rebuilds the inputs with
+// innerHTML, which used to throw away whatever the engineer was typing in another field.
+// Snapshot the focused fill/param/reason input by its data key and put it back.
+function snapshotFocus(root) {
+  const el = document.activeElement;
+  if (!root || !el || !root.contains(el) || !el.dataset) return null;
+  for (const attr of ["manualFill", "drawingParam", "inlineReasonFor"]) {
+    if (el.dataset[attr]) {
+      return {
+        attr: `data-${attr.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`,
+        key: el.dataset[attr],
+        value: el.value,
+        start: typeof el.selectionStart === "number" ? el.selectionStart : null,
+        end: typeof el.selectionEnd === "number" ? el.selectionEnd : null,
+      };
+    }
+  }
+  return null;
+}
+
+function restoreFocus(root, snap) {
+  if (!root || !snap) return;
+  const el = root.querySelector(`[${snap.attr}="${CSS.escape(snap.key)}"]`);
+  if (!el) return;
+  // Only refill a field that came back EMPTY — never type over a value a derive just set.
+  if (!el.value && snap.value) el.value = snap.value;
+  if (el.hidden) el.hidden = false;
+  el.focus();
+  try {
+    if (snap.start !== null) el.setSelectionRange(snap.start, snap.end);
+  } catch (_) {
+    /* number inputs have no selection API */
+  }
 }
 
 // NOTE: the per-coil "Drawing package (steps 9-12)" card (single-coil
@@ -2687,7 +2742,11 @@ async function ensureProductOptions() {
 }
 
 function templateDrawingPicker(templateDrawing) {
-  if (!templateDrawing.template_found) {
+  // Offered for every classified coil, WITH OR WITHOUT artwork (2026-09-23). Gating it on
+  // `template_found` removed the picker from every withheld coil (the Terra H/V water
+  // re-seed gate sets template_found=false) — the one place picking the product line is
+  // the only way forward, and the only way to undo a wrong pick.
+  if (!templateDrawing.extracted?.coil_category && !templateDrawing.manual_fill_plan) {
     return "";
   }
   const options = state.productOptions && state.productOptions.product_lines;
@@ -2719,11 +2778,15 @@ function templateDrawingPicker(templateDrawing) {
   const derivedHint = templateDrawing.product_size_auto_detected
     ? "Auto-detected product line + unit size from the model code — review and override if needed:"
     : "Dimensions logic-derived for the selected product line + unit size:";
+  const withheld = templateDrawing.not_registered_reason
+    ? ` Drawing withheld — ${templateDrawing.not_registered_reason} Changing the product line re-evaluates it.`
+    : "";
+  const critical = curProduct && curSize ? "" : " is-critical";
   return `
-    <div class="coil-drawing-picker ${derived ? "is-derived" : "is-pending"}">
+    <div class="coil-drawing-picker ${derived ? "is-derived" : "is-pending"}${critical}">
       <span class="coil-picker-hint">${derived
         ? escapeHtml(derivedHint)
-        : "Pick a product line + unit size to derive the header dimensions (rule engine):" + escapeHtml(suggestion)}</span>
+        : "Pick a product line + unit size to derive the header dimensions (rule engine):" + escapeHtml(suggestion)}${escapeHtml(withheld)}</span>
       <label>Product line
         <select id="coil-product-line">${productOpts}</select>
       </label>
@@ -2780,7 +2843,9 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
   const pick = (key, fallback) =>
     engineInputs[key] !== undefined && engineInputs[key] !== "" ? engineInputs[key] : fallback;
   return {
-    coil_category: ex.coil_category,
+    // Supply-only (J-0a): the lever is offered only when classification failed, so the
+    // fallback is the extracted category for every coil that has one.
+    coil_category: pick("coil_category", ex.coil_category),
     // A manually picked hand must beat the extracted one: when the submittal states no
     // handing the frozen path silently defaults to LH, and the hand selects the LH vs RH
     // template — i.e. it mirrors the whole drawing. Hardcoding ex.hand here meant the
@@ -2803,6 +2868,14 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
     application: engineInputs.application,
     header_count: engineInputs.header_count,
     qty_conn_per_header: engineInputs.qty_conn_per_header,
+    // Water connection sizes (R-071 connection term). Typed values ONLY — never
+    // `pick(..., extracted)`: on the backend these names both trigger the Tier-A re-run and
+    // write a ManualOverride audit row, so an extracted fallback would apply R-071 to every
+    // water-coil derive and log a correction nobody made (plan-review R1 BLOCKER-2).
+    inlet_conn_size: engineInputs.inlet_conn_size,
+    outlet_conn_size: engineInputs.outlet_conn_size,
+    // What intake extracted, display-only (the fill panel's "read:" hint). Non-trigger key.
+    water_conn_extracted: templateDrawing.water_conn_extracted,
     // NOT the lever above: the connections-per-header the SUBMITTAL stated, stamped by
     // analyze and round-tripped so the header-count conflict banner survives a re-derive
     // done for any unrelated reason. Cross-check input only — never an engine input.
@@ -2839,7 +2912,7 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
 // from page.workflow via workflowToUiState) reproduces the fills without re-hitting the
 // engine. Also stashes the fills for re-apply after a full re-analyze. An explicit page
 // is passed (never the shared active index) so a concurrent headless fan-out can't race.
-function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
+function persistDerivedToPage(page, updated) {
   if (!page || !page.workflow) return;
   page.workflow.template_drawing = updated;
   if (updated.drawing_parameter_set) {
@@ -2853,13 +2926,100 @@ function persistDerivedToPage(page, updated, fills, productLine, unitSize) {
     page.workflow.readiness_report = updated.readiness_report;
     page.workflow.direct_coil_input_draft = updated.direct_coil_input_draft;
   }
-  if (fills && (Object.keys(fills.engineInputs || {}).length || (fills.paramOverrides || []).length)) {
-    page.manualFills = { ...fills, productLine, unitSize };
+  // The manual-fill store is NOT written here any more: deriveCoilDrawing commits the
+  // cumulative store (mergeManualFills) at call time, so a second derive fired before the
+  // first returns still carries the first one's fills.
+}
+
+// ONE cumulative manual-fill store per coil page (plan-review R1 BLOCKER-3).
+//
+// It used to be REPLACED by each derive's own fills, while an applied Tier-B override
+// leaves the fill panel (its row turns `manual`) and the backend reflects only the
+// overrides sent in THIS request. So "type CD -> derive -> change the hand -> auto-derive"
+// silently dropped CD from the drawing, the panel and the filed checklist. Every derive
+// now sends the merged set; an edit patches it; `releaseKeys` removes Tier-B keys; an
+// engine input set to "" is removed.
+//
+// productLine/unitSize are recorded only when the engineer actually CHOSE something that
+// differs from what the drawing already resolved (see pickedValue) — otherwise every
+// derive would stamp the auto-detected product as a manual UNIT/SIZE override on the sheet.
+function mergeManualFills(prev, fills, productLine, unitSize) {
+  const base = prev || {};
+  const f = fills || {};
+  const engineInputs = { ...(base.engineInputs || {}) };
+  for (const [key, value] of Object.entries(f.engineInputs || {})) {
+    if (value === null || value === undefined || value === "") delete engineInputs[key];
+    else engineInputs[key] = value;
   }
+  const params = new Map((base.paramOverrides || []).map((o) => [o.key, o]));
+  for (const o of f.paramOverrides || []) params.set(o.key, o);
+  for (const key of f.releaseKeys || []) params.delete(key);
+  const specs = new Map((base.specOverrides || []).map((o) => [o.field_key, o]));
+  for (const o of f.specOverrides || []) specs.set(o.field_key, o);
+  return {
+    engineInputs,
+    paramOverrides: [...params.values()],
+    specOverrides: [...specs.values()],
+    reason: f.reason || base.reason || null,
+    productLine: productLine || base.productLine || "",
+    unitSize: unitSize || base.unitSize || "",
+  };
+}
+
+function manualFillsEmpty(fills) {
+  const f = fills || {};
+  return !Object.keys(f.engineInputs || {}).length
+    && !(f.paramOverrides || []).length
+    && !(f.specOverrides || []).length
+    && !f.productLine && !f.unitSize;
+}
+
+// The picker value counts as an engineer CHOICE only when it differs from what the drawing
+// already resolved (auto-detected or previously chosen).
+function pickedValue(value, resolved) {
+  return value && value !== (resolved || "") ? value : "";
+}
+
+function currentProductLine(templateDrawing) {
+  return document.querySelector("#coil-product-line")?.value || templateDrawing?.product_type || "";
+}
+
+function currentUnitSize(templateDrawing) {
+  return document.querySelector("#coil-unit-size")?.value || templateDrawing?.unit_size || "";
 }
 
 async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, options) {
   const opts = options || {};
+  // Headless (background re-apply) targets an explicit page; interactive persists to
+  // the active page. Never rely on the shared active index during a concurrent fan-out.
+  const targetPage = opts.page || state.pdfCoilPages[state.activePdfCoilPageIndex];
+  // Commit the merged fill store at CALL time (not on success): a second derive fired
+  // before this one returns must already carry this one's fills. Reverted below if the
+  // backend rejects the derive outright, so a bad input cannot poison later derives.
+  const prevStore = targetPage ? targetPage.manualFills || null : null;
+  const merged = mergeManualFills(
+    prevStore, fills,
+    pickedValue(productLine, templateDrawing.product_type),
+    pickedValue(unitSize, templateDrawing.unit_size),
+  );
+  const committed = !manualFillsEmpty(merged);
+  if (targetPage && committed) targetPage.manualFills = merged;
+  const storeChanged =
+    JSON.stringify(prevStore || null) !== JSON.stringify(committed ? merged : prevStore || null);
+  const revertStore = () => {
+    if (targetPage && targetPage.manualFills === merged) targetPage.manualFills = prevStore;
+  };
+  // Latest-wins, PER PAGE and INTERACTIVE ONLY (plan-review R1 BLOCKER-1 / R2 MAJOR-1). A
+  // session-wide counter would discard N-1 of the headless re-apply fan-out's N coils; a
+  // stale interactive response is dropped entirely — neither rendered NOR persisted — so
+  // the page store can never hold an older drawing than the one on screen. Nothing is lost:
+  // the newer request carried the merged set, a superset of the stale one.
+  let seq = 0;
+  if (targetPage && !opts.headless) {
+    targetPage.deriveSeq = (targetPage.deriveSeq || 0) + 1;
+    seq = targetPage.deriveSeq;
+  }
+  const isStale = () => Boolean(!opts.headless && targetPage && seq !== targetPage.deriveSeq);
   // The candidate that rebuilds the Direct Coil review surfaces must be THIS coil's.
   // A headless re-analyze fan-out runs one derive per coil concurrently, so it reads the
   // explicitly targeted page — the shared active index would hand coil A's candidate to
@@ -2868,7 +3028,10 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
   const candidate = opts.page
     ? opts.page.workflow?.candidates?.[0] || null
     : activePdfCandidate();
-  const spec = deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, candidate);
+  const spec = deriveSpecFromTemplate(
+    templateDrawing, productLine || merged.productLine, unitSize || merged.unitSize, merged,
+    candidate,
+  );
   if (elements.previewStatus && !opts.headless) {
     elements.previewStatus.textContent = "Deriving…";
   }
@@ -2877,10 +3040,23 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
       method: "POST",
       body: JSON.stringify(spec),
     });
-    // Headless (background re-apply) targets an explicit page; interactive persists to
-    // the active page. Never rely on the shared active index during a concurrent fan-out.
-    const targetPage = opts.page || state.pdfCoilPages[state.activePdfCoilPageIndex];
-    persistDerivedToPage(targetPage, updated, fills, productLine, unitSize);
+    // A rejected derive (unknown product / invalid input) comes back as a 200 stub with
+    // `error` and no drawing_parameter_set. It must NEVER be persisted over the coil page
+    // — that used to replace a good page with the stub and brick the coil until a full
+    // re-analyze. Keep the page, surface the reason on the drawing panel.
+    if (updated.error || !updated.drawing_parameter_set) {
+      revertStore();
+      const errs = (updated.manual_fill_errors || []).length
+        ? updated.manual_fill_errors
+        : [String(updated.error || "the derive returned no drawing")];
+      if (opts.headless) throw new Error(errs.join("; "));  // counted as failed by the fan-out
+      if (isStale()) return null;
+      renderTemplateDrawingPreview({ ...templateDrawing, manual_fill_errors: errs });
+      if (elements.previewStatus) elements.previewStatus.textContent = "Fill rejected";
+      return null;
+    }
+    if (isStale()) return null;
+    persistDerivedToPage(targetPage, updated);
     if (opts.headless) {
       return updated;  // background re-apply: store only, caller re-renders the active coil once
     }
@@ -2911,13 +3087,16 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
       refreshMechanicalFit([fitInput]);
     }
     // The Coil Checklist is derived from the submittal, so a manual correction leaves it
-    // stating the pre-override value until it is re-filled (John 2026-07-29).
-    if (fills && (Object.keys(fills.engineInputs || {}).length || (fills.paramOverrides || []).length)) {
+    // stating the pre-override value until it is re-filled (John 2026-07-29). Keyed on the
+    // STORE changing, so a picker-only product/size choice re-fills the sheet too.
+    if (storeChanged) {
       scheduleChecklistRefill();
     }
     return updated;
   } catch (error) {
+    revertStore();
     if (opts.headless) throw error;  // let the fan-out aggregate the failure
+    if (isStale()) return null;
     if (elements.drawingTemplateStatus) {
       elements.drawingTemplateStatus.innerHTML = `
         <strong>Could not derive dimensions</strong>
@@ -2944,44 +3123,58 @@ function renderManualFillPanel(templateDrawing) {
   if (!plan) {
     return errorHtml ? `<div class="manual-fill-panel">${errorHtml}</div>` : "";
   }
-  if (plan.withheld_reason) {
-    return `
-      <div class="manual-fill-panel is-withheld">
-        <span class="manual-fill-title">Drawing withheld</span>
-        <span class="manual-fill-hint">${escapeHtml(plan.withheld_reason)}</span>
-        ${errorHtml}
-      </div>`;
-  }
+  // Withheld is a BANNER, not a stop (2026-09-23): the gate withholds the artwork, but the
+  // levers below still update the parameters and the Coil Checklist — and the product
+  // line is exactly what decides which gate applies.
+  const withheldHtml = plan.withheld_reason
+    ? `<span class="manual-fill-title">Drawing withheld</span>
+       <span class="manual-fill-hint">${escapeHtml(plan.withheld_reason)} The fields below still update the drawing parameters and the Coil Checklist.</span>`
+    : "";
   const items = (plan.items || []).filter(
     (it) => it.key !== "product_type" && it.key !== "unit_size",
   );
-  if (!items.length && !errors.length) return "";
+  if (!items.length && !errors.length && !withheldHtml) return "";
+  // Values the engineer already entered (the cumulative store) render as VALUES, so a
+  // re-render never wipes a committed-but-not-yet-derived input. What intake read is only
+  // a hint — preselecting it would make every Apply resend it as a manual fill.
+  const stored = activePdfCoilPage()?.manualFills?.engineInputs || {};
   const rows = items
     .map((it) => {
       const opts = it.allowed || [];
+      const storedValue = stored[it.key];
+      const read = it.current_value === null || it.current_value === undefined || it.current_value === ""
+        ? "" : String(it.current_value);
+      // Engine inputs + template inputs regenerate the drawing on commit (no Apply click);
+      // Tier-B dimension rows still need a logged reason, so they keep the Apply button.
+      const auto = it.kind === "engine_input" || it.kind === "template_input" ? ` data-auto-derive="1"` : "";
       let control;
       if (opts.length) {
-        control = `<select data-manual-fill="${escapeHtml(it.key)}" data-fill-kind="${escapeHtml(it.kind)}">
-            <option value="">—</option>
-            ${opts.map((o) => `<option value="${escapeHtml(String(o))}">${escapeHtml(String(o))}</option>`).join("")}
+        control = `<select data-manual-fill="${escapeHtml(it.key)}" data-fill-kind="${escapeHtml(it.kind)}"${auto}>
+            <option value="">${read ? `— (read: ${escapeHtml(read)}) —` : "—"}</option>
+            ${opts.map((o) => `<option value="${escapeHtml(String(o))}"${
+              storedValue !== undefined && String(storedValue) === String(o) ? " selected" : ""
+            }>${escapeHtml(String(o))}</option>`).join("")}
           </select>`;
       } else {
         const isText = it.key === "application";
-        control = `<input data-manual-fill="${escapeHtml(it.key)}" data-fill-kind="${escapeHtml(it.kind)}"
+        control = `<input data-manual-fill="${escapeHtml(it.key)}" data-fill-kind="${escapeHtml(it.kind)}"${auto}
             data-unit="${escapeHtml(it.unit || "in")}" type="${isText ? "text" : "number"}" step="0.01"
-            placeholder="${escapeHtml(String(it.current_value ?? ""))}" />`;
+            value="${escapeHtml(String(storedValue ?? ""))}"
+            placeholder="${escapeHtml(read ? `read: ${read}` : "")}" />`;
       }
       return `
-        <label class="manual-fill-row">
-          <span class="manual-fill-key">${escapeHtml(it.label)}</span>
+        <label class="manual-fill-row${it.critical ? " is-critical" : ""}">
+          <span class="manual-fill-key">${escapeHtml(it.label)}${it.critical ? ` <span class="manual-fill-critical">CRITICAL</span>` : ""}</span>
           ${control}
           <span class="manual-fill-reason">${escapeHtml(it.reason)}</span>
         </label>`;
     })
     .join("");
   return `
-    <div class="manual-fill-panel">
+    <div class="manual-fill-panel${plan.withheld_reason ? " is-withheld" : ""}">
+      ${withheldHtml}
       <span class="manual-fill-title">Fill these to complete the drawing</span>
+      <span class="manual-fill-hint">Engine inputs and pickers regenerate the drawing as soon as you commit a value; dimension rows need a reason and the Apply button.</span>
       ${rows}
       <label class="manual-fill-row">
         <span class="manual-fill-key">Reason</span>
@@ -2993,9 +3186,41 @@ function renderManualFillPanel(templateDrawing) {
 }
 
 function attachManualFillPanel(templateDrawing) {
+  // `change`, never `input`: a derive per keystroke would race the engineer's typing.
+  document.querySelectorAll("[data-manual-fill][data-auto-derive]").forEach((el) => {
+    el.addEventListener("change", () => scheduleAutoDerive(templateDrawing, el));
+  });
   const applyBtn = document.querySelector("#manual-fill-apply");
   if (!applyBtn) return;
   applyBtn.addEventListener("click", () => submitManualFills(templateDrawing));
+}
+
+// Tier-A / template-input auto-regenerate (John 2026-09-22): committing an engine input or
+// a picker re-derives without an Apply click. Pending edits are accumulated so two fields
+// committed inside the debounce window both land; a <select> fires at once. No reason is
+// required here — these are engine INPUTS, not dimension overrides, and the backend's
+// reason requirement for Tier-B overrides is untouched.
+let _autoDeriveTimer = null;
+let _autoDerivePending = {};
+
+function scheduleAutoDerive(templateDrawing, el) {
+  const key = el.dataset.manualFill;
+  const raw = (el.value || "").trim();
+  _autoDerivePending[key] = raw === ""
+    ? ""
+    : _MANUAL_NUMERIC_INPUTS.has(key) ? numberOrFallback(raw, raw) : raw;
+  const fire = () => {
+    _autoDeriveTimer = null;
+    const engineInputs = _autoDerivePending;
+    _autoDerivePending = {};
+    deriveCoilDrawing(
+      templateDrawing, currentProductLine(templateDrawing), currentUnitSize(templateDrawing),
+      { engineInputs },
+    );
+  };
+  if (_autoDeriveTimer) clearTimeout(_autoDeriveTimer);
+  if (el.tagName === "SELECT") fire();
+  else _autoDeriveTimer = setTimeout(fire, 400);
 }
 
 // True when the engineer actually changed a drawing-param value. Numeric compare with a
@@ -3062,6 +3287,7 @@ function syncManualParamActions() {
 
 const _MANUAL_NUMERIC_INPUTS = new Set([
   "header_count", "qty_conn_per_header", "rows", "feeds", "circuits",
+  "inlet_conn_size", "outlet_conn_size",
 ]);
 
 async function submitManualFills(templateDrawing) {
@@ -3115,6 +3341,9 @@ function coilClassificationSummary(templateDrawing) {
 
 function templateDrawingLabel(templateDrawing) {
   const summary = coilClassificationSummary(templateDrawing);
+  if (templateDrawing.error) {
+    return `${summary || "Coil"} — drawing could not be produced (use the levers below)`;
+  }
   if (!templateDrawing.template_found) {
     return summary
       ? `${summary} — no matching drawing template registered`
@@ -3133,6 +3362,10 @@ function templateDrawingLabel(templateDrawing) {
 }
 
 function templateDrawingReason(templateDrawing) {
+  if (templateDrawing.error) {
+    return `The drawing path failed for this coil (${templateDrawing.error}). It is not a missing `
+      + "template: pick the product line / unit size / hand to retry. Review-aid only.";
+  }
   if (templateDrawing.not_registered_reason) {
     return `${templateDrawing.not_registered_reason} Review-aid only.`;
   }
@@ -3360,7 +3593,10 @@ function templateDrawingBody(templateDrawing, rendered) {
   // hands are disabled (each hand must be seeded from its own PDF) and separately
   // tracked product lines (e.g. Ventum Plus) have no template yet — both surface
   // here as "template not registered" rather than borrowing another hand/line's art.
-  const message = templateDrawing.not_registered_reason
+  const message = (templateDrawing.error
+    ? `Drawing could not be produced — ${templateDrawing.error}. Use the product line / unit size / hand levers above to retry.`
+    : "")
+    || templateDrawing.not_registered_reason
     || "Template not registered for this coil — a seeded template (this hand / product line) "
        + "is required before a drawing can be generated. The classification below links it to the catalog.";
   const slots = templateDrawing.slot_values || {};
@@ -3443,6 +3679,7 @@ function manualOverrideBanner(templateDrawing) {
 
 function renderDrawingParameters(uiState) {
   const parameters = uiState.drawing_parameters?.parameters || {};
+  const focus = snapshotFocus(elements.drawingParameters);
   // Stamp the coil's special feature onto the container so the CCSI userscript's
   // DOM-scraped "Send to CCSI" path can read HGBP (the clipboard path reads state directly).
   elements.drawingParameters.dataset.specialFeature =
@@ -3481,6 +3718,8 @@ function renderDrawingParameters(uiState) {
       `,
     )
     .join("");
+  restoreFocus(elements.drawingParameters, focus);
+  renderChecklistAdoptBar(parameters);
   syncManualParamActions();
 }
 
@@ -3498,6 +3737,12 @@ function renderParameterRow(parameter) {
           "No value — not derived from the source or the rule engine.",
       );
   const emptyControl = hasValue ? "" : " dc-control--empty";
+  // A CRITICAL dimension with no value (John 2026-09-22: CD / CH / HD / HDx / S / I, at
+  // every header index — DrawingParameter.criticality) gets a stronger highlight than an
+  // ordinary blank, and is editable in place: type the value, then a reason, and the
+  // drawing regenerates. An empty row has nothing to protect, so it is not read-only.
+  const criticalEmpty =
+    !hasValue && parameter.criticality === "critical" ? " dc-control--critical-empty" : "";
 
   // CCSI compare verdict (Phase 3): after "Compare vs CCSI", each field carries a
   // verdict. Match -> green edge; mismatch -> red edge + both values inline so a
@@ -3533,11 +3778,16 @@ function renderParameterRow(parameter) {
   // An ADJUDICATED divergence (amber `--adjudicated`) arrives in the same slot: it is
   // still a statement about our own value, so it still outranks CCSI — it has simply
   // stopped being an open question and no longer competes with the red rows.
-  const borderClass = emptyControl || chkView.controlClass || compareClass;
+  const borderClass = criticalEmpty || emptyControl || chkView.controlClass || compareClass;
 
   // Badges stack (both spans already span the full row), so nothing is hidden by
   // something else. Order: why it's blank -> what the checklist says -> what CCSI says.
+  const criticalBadge = criticalEmpty
+    ? `<span class="dc-dimension-critical">CRITICAL — needed to draw · type a value, then a reason</span>`
+    : "";
   const badges = [
+    criticalBadge,
+    checklistAdoptHtml(parameter, chk, hasValue),
     chkView.badge,
     mismatchBadge,
     reason ? `<span class="dc-dimension-reason">⚠ ${reason}</span>` : "",
@@ -3565,8 +3815,13 @@ function renderParameterRow(parameter) {
         step="0.01"
         value="${parameter.value ?? ""}"
         ${titleAttr ? `title="${titleAttr}"` : ""}
-        ${state.manualDrawingMode ? "" : "readonly"}
+        ${state.manualDrawingMode || criticalEmpty ? "" : "readonly"}
+        ${criticalEmpty ? `data-critical-inline="1"` : ""}
       />
+      ${criticalEmpty
+        ? `<input class="dc-inline-reason" type="text" data-inline-reason-for="${escapeHtml(parameter.key)}"
+            placeholder="Reason (logged) — Enter to apply" hidden />`
+        : ""}
       ${badges}
     </label>
   `;
@@ -3625,10 +3880,24 @@ function checklistRowView(entry, parameter) {
     };
   }
 
-  if (entry.verdict === "missing_one") {
+  // Adopted FROM the sheet (compare verdict `adopted`, John 2026-09-22): the drawn value is a
+  // copy of the sheet's own result, so it is neither an agreement nor a disagreement. The
+  // row already says "adopted" (checklistAdoptHtml); no second badge.
+  if (entry.verdict === "adopted") {
     return {
       controlClass: "",
-      badge: `<span class="dc-dimension-note">checklist has no value for this dim</span>`,
+      badge: "",
+      title: `Adopted from the checklist's own formula (${cl}) — a copy, not an independent agreement`,
+    };
+  }
+
+  if (entry.verdict === "missing_one") {
+    const sheetOnly = cf === "—";
+    return {
+      controlClass: "",
+      badge: sheetOnly
+        ? `<span class="dc-dimension-note">checklist computed ${escapeHtml(String(cl))}; CoilForge has no value</span>`
+        : `<span class="dc-dimension-note">checklist has no value for this dim</span>`,
       title: `Checklist ${cl} vs CoilForge ${cf}`,
     };
   }
@@ -3688,6 +3957,253 @@ function checklistRowView(entry, parameter) {
   return none;
 }
 
+// --- Adopt from Coil Checklist (John 2026-09-22) ---------------------------------------
+//
+// When intake could not read a coil, the Coil Checklist may still have computed its
+// dimensions (e.g. it inherited the unit's product line/size from the partner coil). These
+// levers copy those values in — INPUTS first, so the rule engine recomputes and the two
+// independent implementations can still disagree; the sheet's formula RESULTS only for rows
+// still blank afterwards. Every adopted value is a Tier-B/Tier-A manual fill: review-
+// required, logged with the reason prefix below, and scored `adopted` (never `match`) by
+// the checklist compare. Water IN/OUT CONN SZ is deliberately NOT adopted: doing so would
+// switch R-071 on per coil, which is John's open decision J-1b.
+
+// Must equal checklist/overrides.py::ADOPTED_REASON_PREFIX (pinned by a test).
+const ADOPTED_REASON_PREFIX = "adopted from Coil Checklist";
+
+// Inverse of checklist/template_map.py::UNIT_BY_PRODUCT (many-to-one; this picks the
+// picker's own spelling — Omnia / Terra H C cannot be recovered from the sheet's UNIT).
+const CHECKLIST_UNIT_TO_PRODUCT = {
+  NOVA: "NOVA",
+  "VENTUM H": "VENTUM_H",
+  "VENTUM+": "VENTUM_PLUS",
+  "TERRA H": "TERRA H",
+  "TERRA V": "TERRA V",
+};
+
+// Inverse of checklist/mapping.py::_to_size: Terra sizes are numeric on the sheet (9) and
+// three-digit tokens in the picker ("009"); every other line is identity.
+function checklistSizeToPickerToken(unit, size) {
+  if (size === null || size === undefined || size === "") return "";
+  if (unit === "TERRA H" || unit === "TERRA V") {
+    const n = Number(size);
+    return Number.isInteger(n) && n > 0 ? String(n).padStart(3, "0") : "";
+  }
+  return String(size);
+}
+
+// A value the sheet actually computed. Excel COM hands an error cell (#N/A, #VALUE!) back as
+// a large NEGATIVE integer, so "finite and non-negative" also keeps those out.
+function isAdoptableChecklistValue(value) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") {
+    return false;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0;
+}
+
+function checklistAdoptHtml(parameter, chk, hasValue) {
+  if (parameter.source === "checklist") {
+    return `<span class="dc-dimension-note">↙ adopted from Coil Checklist
+      <button type="button" class="dc-release" data-release-key="${escapeHtml(parameter.key)}"
+        title="Remove the adopted value; the engine value (or the blank) returns">✕ release</button></span>`;
+  }
+  if (hasValue || !chk || state.checklistRefillPending) return "";
+  if (!isAdoptableChecklistValue(chk.checklist)) return "";
+  const value = Number(chk.checklist);
+  return `<button type="button" class="dc-adopt" data-adopt-key="${escapeHtml(parameter.key)}"
+      data-adopt-value="${escapeHtml(String(value))}" data-adopt-label="${escapeHtml(String(chk.label || parameter.key))}"
+      data-adopt-unit="${escapeHtml(parameter.unit || "in")}"
+      title="Copy the Coil Checklist's own formula result onto this blank row (logged, review-required)">↙ use checklist ${escapeHtml(String(value))}</button>`;
+}
+
+function activeTemplateDrawing() {
+  return activePdfCoilPage()?.workflow?.template_drawing || state.lastTemplateDrawing;
+}
+
+// What adopting would do for the active coil: Tier-A inputs the DRAWING lacks and the sheet
+// has, then Tier-B sheet results for panel rows that are blank.
+function checklistAdoptionPlan(parameters) {
+  const out = { inputs: [], dims: [], productLine: "", unitSize: "", engineInputs: {} };
+  const tag = activeCoilTag();
+  const td = activeTemplateDrawing();
+  if (!tag || !td) return out;
+  const cells = state.checklistInputsByTag?.get(tag);
+  const cellValue = (label) => {
+    const cell = cells?.get(label);
+    return cell && cell.value !== null && cell.value !== undefined && cell.value !== ""
+      ? cell.value : null;
+  };
+  if (cells) {
+    if (!(td.product_type && td.unit_size)) {
+      const unit = cellValue("UNIT");
+      const product = unit !== null ? CHECKLIST_UNIT_TO_PRODUCT[String(unit)] : undefined;
+      const size = product ? checklistSizeToPickerToken(String(unit), cellValue("SIZE")) : "";
+      if (product && size) {
+        out.productLine = product;
+        out.unitSize = size;
+        out.inputs.push({ label: "UNIT / SIZE" });
+      }
+    }
+    const hand = cellValue("HANDING");
+    if (hand !== null && td.coil_hand_defaulted) {
+      out.engineInputs.coil_hand = String(hand).toUpperCase().startsWith("R") ? "Right" : "Left";
+      out.inputs.push({ label: "HANDING" });
+    }
+    const rows = cellValue("ROWS");
+    const drawnRows = td.extracted?.rows;
+    if (rows !== null && (drawnRows === null || drawnRows === undefined) && isAdoptableChecklistValue(rows)) {
+      out.engineInputs.rows = Number(rows);
+      out.inputs.push({ label: "ROWS" });
+    }
+  }
+  const bySlot = state.checklistBySlot?.get(tag);
+  if (bySlot) {
+    for (const p of Object.values(parameters || {})) {
+      const hasValue = p.value !== null && p.value !== undefined && p.value !== "";
+      if (hasValue || !p.slot) continue;
+      const entry = bySlot.get(p.slot);
+      if (entry && isAdoptableChecklistValue(entry.checklist)) {
+        out.dims.push({
+          key: p.key, value: Number(entry.checklist), label: entry.label || p.key,
+          unit: p.unit || "in",
+        });
+      }
+    }
+  }
+  return out;
+}
+
+async function adoptChecklistDims(templateDrawing, dims) {
+  if (!templateDrawing || !dims.length) return null;
+  const tag = activeCoilTag() || "";
+  const paramOverrides = dims.map((d) => ({
+    key: d.key,
+    value: d.value,
+    unit: d.unit || "in",
+    source: "checklist",
+    override_reason: `${ADOPTED_REASON_PREFIX} ${tag} ${d.label} (sheet formula result)`,
+  }));
+  return deriveCoilDrawing(
+    templateDrawing, currentProductLine(templateDrawing), currentUnitSize(templateDrawing),
+    { paramOverrides },
+  );
+}
+
+// Inputs first (one derive — the engine may now fill rows itself), then sheet results only
+// for the rows that are STILL blank in that derive's response.
+async function adoptAllFromChecklist() {
+  const td = activeTemplateDrawing();
+  if (!td) return;
+  const plan = checklistAdoptionPlan(state.ui?.drawing_parameters?.parameters || {});
+  if (plan.inputs.length) {
+    const tag = activeCoilTag() || "";
+    const updated = await deriveCoilDrawing(
+      td,
+      plan.productLine || currentProductLine(td),
+      plan.unitSize || currentUnitSize(td),
+      {
+        engineInputs: plan.engineInputs,
+        reason: `${ADOPTED_REASON_PREFIX} ${tag} inputs (${plan.inputs.map((i) => i.label).join(", ")})`,
+      },
+    );
+    if (!updated) return;
+    const stillBlank = checklistAdoptionPlan(updated.drawing_parameter_set?.parameters || {}).dims;
+    if (stillBlank.length) await adoptChecklistDims(updated, stillBlank);
+    return;
+  }
+  await adoptChecklistDims(td, plan.dims);
+}
+
+function renderChecklistAdoptBar(parameters) {
+  const grid = elements.drawingParameters;
+  if (!grid) return;
+  let bar = document.querySelector("#checklist-adopt-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "checklist-adopt-bar";
+    bar.className = "checklist-adopt-bar";
+    grid.insertAdjacentElement("afterend", bar);
+  }
+  const plan = checklistAdoptionPlan(parameters);
+  const n = plan.inputs.length + plan.dims.length;
+  if (!n || state.checklistRefillPending) {
+    bar.hidden = true;
+    bar.innerHTML = "";
+    return;
+  }
+  bar.hidden = false;
+  const inputs = plan.inputs.map((i) => i.label).join(", ");
+  bar.innerHTML = `
+    <button type="button" class="dc-adopt dc-adopt-all" data-adopt-all="1">↙ Adopt ${n} blank value${n === 1 ? "" : "s"} from Coil Checklist</button>
+    <span class="dc-dimension-note">${inputs ? `Inputs first (${escapeHtml(inputs)}) so the engine recomputes; then` : "The"}
+      sheet's own results for rows still blank. Adopted values stay review-required, are logged, and show as "adopted" (never "match") in the checklist compare.</span>`;
+}
+
+// One delegated listener set for the Drawing Parameters panel: rows are re-rendered
+// constantly (every derive, every checklist refill), so per-element listeners would leak.
+(function initDrawingParamDelegation() {
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const td = activeTemplateDrawing();
+    const adoptAll = target.closest("[data-adopt-all]");
+    if (adoptAll) {
+      event.preventDefault();
+      adoptAllFromChecklist();
+      return;
+    }
+    const adopt = target.closest(".dc-adopt[data-adopt-key]");
+    if (adopt && td) {
+      event.preventDefault();
+      adoptChecklistDims(td, [{
+        key: adopt.dataset.adoptKey,
+        value: Number(adopt.dataset.adoptValue),
+        label: adopt.dataset.adoptLabel,
+        unit: adopt.dataset.adoptUnit,
+      }]);
+      return;
+    }
+    const release = target.closest(".dc-release[data-release-key]");
+    if (release && td) {
+      event.preventDefault();
+      deriveCoilDrawing(td, currentProductLine(td), currentUnitSize(td), {
+        releaseKeys: [release.dataset.releaseKey],
+      });
+    }
+  });
+  document.addEventListener("change", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || !target.closest("#drawing-parameters")) return;
+    // Step 1: a value committed on a blank CRITICAL row opens that row's reason field.
+    if (target.matches("input[data-critical-inline]")) {
+      const key = target.dataset.drawingParam;
+      const reason = document.querySelector(`[data-inline-reason-for="${CSS.escape(key)}"]`);
+      if (reason && (target.value || "").trim() !== "") {
+        reason.hidden = false;
+        reason.focus();
+      }
+      return;
+    }
+    // Step 2: committing the reason regenerates the drawing (Tier-B override, logged). The
+    // backend's reason requirement is unchanged — this only removes the separate Apply click.
+    if (target.matches(".dc-inline-reason")) {
+      const key = target.dataset.inlineReasonFor;
+      const reasonText = (target.value || "").trim();
+      const input = document.querySelector(`[data-drawing-param="${CSS.escape(key)}"]`);
+      const value = input ? numberOrFallback((input.value || "").trim(), null) : null;
+      const td = activeTemplateDrawing();
+      if (!reasonText || value === null || !td) return;
+      deriveCoilDrawing(td, currentProductLine(td), currentUnitSize(td), {
+        paramOverrides: [{
+          key, value, unit: input.dataset.unit || "in", override_reason: reasonText,
+          source: "engineer",
+        }],
+      });
+    }
+  });
+})();
+
 function currentDrawingTemplateState(uiState) {
   const surface = uiState.direct_coil_paste_ready;
   const fieldsByLabel = surface ? buildDirectCoilFieldLookup(uiState, surface) : new Map();
@@ -3719,7 +4235,7 @@ function drawingTemplateState(uiState, fieldsByLabel) {
 
 function renderDcEmbeddedDrawingPreview(uiState, fieldsByLabel) {
   const templateDrawing = uiState.template_drawing;
-  if (templateDrawing && !templateDrawing.error) {
+  if (templateDrawing && templateDrawing.extracted) {
     const rendered = Boolean(templateDrawing.generation_allowed && templateDrawing.svg);
     return `
       <section class="dc-coil-drawing-panel">
@@ -4169,6 +4685,7 @@ function hydratePdfWorkflow(workflow, statusText) {
   // rather than left to be overwritten: the checklist re-fill is async and best-effort,
   // and it may never arrive (auto-fill off, or Excel unavailable).
   state.checklistBySlot = null;
+  state.checklistInputsByTag = null;
   state.checklistRefillPending = false;
   state.ccsiVerdictsByTag = {};
   setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
@@ -4192,7 +4709,9 @@ async function reapplyManualFills(priorFillsByTag) {
   for (const page of state.pdfCoilPages) {
     const fills = page.tag ? priorFillsByTag.get(page.tag) : null;
     const td = (page.workflow || {}).template_drawing;
-    if (!fills || !td || td.error) continue;
+    // An errored coil (backend shell) is re-applied like any other: its fills are exactly
+    // what may un-block it. Only a result with no classification at all is skipped.
+    if (!fills || !td || !td.extracted) continue;
     page.manualFills = fills;  // restore so a subsequent re-analyze keeps them
     jobs.push(
       deriveCoilDrawing(
@@ -5228,7 +5747,13 @@ function collectChecklistOverrides() {
   for (const page of state.pdfCoilPages || []) {
     const fills = page.manualFills;
     if (!page.tag || !fills) continue;
-    const engineInputs = fills.engineInputs || {};
+    // The supply-only classification lever has no checklist input (plan-review R2 MINOR-3);
+    // forwarding it would raise an "ignored key" warning on every fill.
+    const { coil_category: _category, ...engineInputs } = fills.engineInputs || {};
+    // A picker CHOICE reaches the sheet's UNIT / SIZE cells too (R1 MINOR-4): otherwise the
+    // filed .xlsx keeps the pre-pick detection while the drawing follows the pick.
+    if (fills.productLine) engineInputs.product_type = fills.productLine;
+    if (fills.unitSize) engineInputs.unit_size = fills.unitSize;
     const paramOverrides = fills.paramOverrides || [];
     if (!Object.keys(engineInputs).length && !paramOverrides.length) continue;
     out.push({
@@ -5260,7 +5785,11 @@ function activeCoilTag() {
 //   * both_missing       — neither side has a value; nothing to disagree about
 function ingestChecklistReview(review) {
   const byTag = new Map();
+  const inputsByTag = new Map();
   for (const sheet of review?.sheets || []) {
+    inputsByTag.set(
+      sheet.tag, new Map((sheet.inputs || []).map((cell) => [cell.label, cell])),
+    );
     const bySlot = new Map();
     for (const row of sheet.comparisons || []) {
       if (!row.slot) continue;
@@ -5271,6 +5800,7 @@ function ingestChecklistReview(review) {
     byTag.set(sheet.tag, bySlot);
   }
   state.checklistBySlot = byTag;
+  state.checklistInputsByTag = inputsByTag;
   state.checklistRefillPending = false;
   // Repaint the panel in place. The review arrives seconds after the panel first
   // rendered (Excel COM), and it carries EVERY sheet, so there is no "which coil was
