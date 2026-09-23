@@ -113,6 +113,54 @@ def test_pdf_intake_surfaces_project_context_without_raw_pdf_storage() -> None:
     assert result.summary.raw_pdf_stored is False
 
 
+def _project_number_from_text(lines: list[str]) -> str | None:
+    return extract_coil_candidate_from_pdf_bytes(
+        _make_text_pdf([*lines, "Tag CDXC-1", "Coil Quantity 1", "Handing Right"]),
+        source_filename=None,
+    ).summary.project_number
+
+
+def test_project_number_is_the_token_not_the_rest_of_the_line() -> None:
+    """The label patterns capture to end of line; the number is only its head.
+
+    Both lines below are printed by real Oxygen8 submittals — the second on EVERY
+    page. Carrying the tail through made the PO-folder prefix lookup match nothing,
+    which surfaced as "no project folder under '02 - POs' starting with 2727 / Rev".
+    """
+    assert _project_number_from_text(["Project Number: 2727"]) == "2727"
+    assert _project_number_from_text(["Version 1.0.0.9 Project #2727 / Rev"]) == "2727"
+    assert (
+        _project_number_from_text(
+            ["Project Number: 3186 - BodyRock 300 W. Ship To Revision No.: 0"]
+        )
+        == "3186"
+    )
+
+
+def test_project_number_keeps_a_split_release_letter_suffix() -> None:
+    """2025a / 2131b are real PO folders — the suffix is part of the number."""
+    assert _project_number_from_text(["Project Number: 2131a"]) == "2131a"
+
+
+def test_project_number_skips_a_foreign_number_and_keeps_looking() -> None:
+    """A rep prints its own project number, often before ours.
+
+    Taking the first label match meant that number won and every lookup failed. It
+    is refused on width rather than truncated — a silent cut to "223060" would be a
+    plausible-looking wrong answer.
+    """
+    assert (
+        _project_number_from_text(
+            ["Project Number: 223060028", "Project Number: 2862"]
+        )
+        == "2862"
+    )
+
+
+def test_project_number_is_none_when_no_label_carries_a_number() -> None:
+    assert _project_number_from_text(["Project Number: Bowie State Tubman"]) is None
+
+
 def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() -> None:
     page = _TextPage(
         page_number=2,

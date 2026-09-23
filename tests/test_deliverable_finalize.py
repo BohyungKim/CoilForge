@@ -89,8 +89,44 @@ def test_resolve_creates_only_the_directcoil_leaf(tmp_path: Path) -> None:
 def test_resolve_fails_loudly_when_project_folder_absent(tmp_path: Path) -> None:
     base = tmp_path / "02 - POs"
     base.mkdir()
-    with pytest.raises(FinalizeError, match="starting with 2572"):
+    # The value is quoted so a trailing tail (or a trailing space) is visible.
+    with pytest.raises(FinalizeError, match="starting with '2572'"):
         resolve_directcoil_folder("2572", base_dir=str(base))
+
+
+def test_resolve_names_the_near_miss_when_the_number_carries_extra_text(
+    tmp_path: Path,
+) -> None:
+    """A polluted project number must not read as a missing folder.
+
+    ``Project #2727 / Rev`` in a page footer used to be extracted whole, and the
+    lookup then reported "no project folder" — pointing the engineer at SharePoint
+    when the defect was upstream in the extraction.
+    """
+    base = _po_base(tmp_path, "2727 - O8 - Fairbanks DPS")
+    with pytest.raises(FinalizeError) as exc:
+        resolve_directcoil_folder("2727 / Rev #3", base_dir=str(base))
+    message = str(exc.value)
+    assert "'2727 / Rev #3'" in message
+    assert "2727 - O8 - Fairbanks DPS" in message
+    assert "carries extra text" in message
+
+
+def test_resolve_stays_terse_when_the_number_is_clean(tmp_path: Path) -> None:
+    """A genuinely absent folder gets no near-miss noise: there is no near miss."""
+    base = _po_base(tmp_path, "2727 - O8 - Fairbanks DPS")
+    with pytest.raises(FinalizeError) as exc:
+        resolve_directcoil_folder("3999", base_dir=str(base))
+    assert "alone matches" not in str(exc.value)
+
+
+def test_resolve_near_miss_is_skipped_when_the_value_has_no_digits(
+    tmp_path: Path,
+) -> None:
+    base = _po_base(tmp_path, "2727 - O8 - Fairbanks DPS")
+    with pytest.raises(FinalizeError) as exc:
+        resolve_directcoil_folder("Bowie State", base_dir=str(base))
+    assert "alone matches" not in str(exc.value)
 
 
 def test_resolve_fails_loudly_when_accessory_order_forms_absent(tmp_path: Path) -> None:
@@ -192,6 +228,24 @@ def test_overwrite_replaces_the_conflicting_file(tmp_path: Path) -> None:
     plans = plan_placements(tmp_path, [("quote.pdf", b"a revision")])
     commit_placements(plans, overwrite=True)
     assert (tmp_path / "quote.pdf").read_bytes() == b"a revision"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="MAX_PATH is a Win32 limit")
+def test_a_path_over_max_path_stops_the_whole_deliverable_before_writing(
+    tmp_path: Path,
+) -> None:
+    """3219 SPCA Cincinnati: the checklist's full path came to exactly 260 chars.
+
+    It used to be discovered at commit time — the two PDFs (written first) landed,
+    then copyfile failed with a bare "[Errno 2] No such file or directory" naming
+    the DirectCoil folder that plainly existed. Now the plan refuses and names it.
+    """
+    long_name = "x" * (300 - len(str(tmp_path))) + " - Coil Checklist.xlsx"
+    with pytest.raises(FinalizeError, match="over the Windows limit"):
+        plan_placements(
+            tmp_path, [("quote.pdf", b"q"), (long_name, b"checklist")]
+        )
+    assert not (tmp_path / "quote.pdf").exists()
 
 
 def test_path_payload_is_moved_not_copied(tmp_path: Path) -> None:
@@ -427,6 +481,39 @@ def test_finalize_endpoint_moves_the_checklist_out_of_downloads(
     assert (directcoil / sheet.name).read_bytes() == b"xlsx bytes"
     assert not sheet.exists()  # moved, not copied
     assert {e["name"]: e["status"] for e in body["downloads_cleanup"]}[sheet.name] == "moved"
+
+
+def test_finalize_endpoint_files_the_checklist_under_the_short_project_name(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """John 2026-09-22: the Downloads name is the WHOLE submittal stem, and under a
+    long project folder that ran past the Windows path limit (3219 was exactly 260).
+    The sheet is filed as ``<number> - Coil Checklist.xlsx``; Downloads is untouched
+    apart from the move itself."""
+    from fastapi.testclient import TestClient
+
+    web_app, directcoil, _ = _stub_endpoint(monkeypatch, tmp_path)
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    sheet = downloads / (
+        "2572 - Oxygen8 Submittal - Rep Firm - 2572 - Bowie State Tubman - Rev4"
+        " - Coil Checklist.xlsx"
+    )
+    sheet.write_bytes(b"xlsx bytes")
+    _stub_checklist(monkeypatch, web_app, sheet)
+
+    body = TestClient(web_app.app).post(
+        "/api/deliverable/finalize", json={**_BODY, "skip_draft": True}
+    ).json()
+
+    filed = directcoil / "2572 - Coil Checklist.xlsx"
+    assert body["checklist_status"] == "ok"
+    assert filed.read_bytes() == b"xlsx bytes"
+    assert not (directcoil / sheet.name).exists()
+    assert not sheet.exists()  # still a move
+    checklist_doc = next(d for d in body["documents"] if d["kind"] == "checklist")
+    assert checklist_doc["name"] == filed.name and checklist_doc["filed"] is True
+    assert {e["name"]: e["status"] for e in body["downloads_cleanup"]}[filed.name] == "moved"
 
 
 def test_finalize_endpoint_says_already_filed_when_the_sheet_was_moved_earlier(

@@ -1424,6 +1424,19 @@ _DELIVERABLE_CC = "David Newton"
 _REVISED_DOWNLOAD_WAIT_S = 5.0
 
 
+# Where the project number came from, phrased for the engineer reading a failed
+# filing. Unknown sources say nothing rather than guess.
+_PROJECT_SOURCE_LABELS = {
+    "pdf_text_label": "a label in the submittal's PDF text",
+    "source_filename": "the submittal filename",
+}
+
+
+def _project_source_note(source: str | None) -> str:
+    label = _PROJECT_SOURCE_LABELS.get(source or "")
+    return f" — the project number was read from {label}." if label else ""
+
+
 def _b64_to_bytes(value, field: str) -> bytes:
     import base64
 
@@ -1496,10 +1509,15 @@ async def deliverable_finalize(request: Request):
     summary = result.get("pdf_intake_summary") or {}
     project_number = summary.get("project_number")
     project_name = summary.get("project_name")
+    project_source = summary.get("project_context_source")
     if not project_number:
         raise HTTPException(
             status_code=400,
-            detail="No project number found in the submittal — cannot locate the PO folder.",
+            detail=(
+                "No project number found in the submittal — cannot locate the PO folder. "
+                "Neither a 'Project Number:' / 'Job No.:' label in the PDF text nor a "
+                "leading '<number> - …' in the filename carried one."
+            ),
         )
 
     # Reuse the Coil Checklist auto-generated on analyze (best-effort — surfaced,
@@ -1539,7 +1557,13 @@ async def deliverable_finalize(request: Request):
     try:
         folder = resolve_directcoil_folder(project_number)
     except FinalizeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # Where the number came from decides WHICH end to fix — a bad label read off
+        # the PDF text and a bad filename are different problems with the same
+        # symptom. `resolve_directcoil_folder` is deliberately not told about
+        # extraction sources, so the provenance is appended here.
+        raise HTTPException(
+            status_code=409, detail=f"{exc}{_project_source_note(project_source)}"
+        ) from exc
 
     subject = deliverable_subject(project_number, project_name)
     revised_name = f"{Path(quote_name).stem}_Revised.pdf"
@@ -1550,7 +1574,14 @@ async def deliverable_finalize(request: Request):
     # INVARIANT: the checklist is only "ok" when it is actually in `items` (and therefore
     # in `files_written`). Every other outcome names its own cause -- there is no branch
     # left that can leave the status at a default while the .xlsx quietly stays behind.
-    checklist_name = Path(checklist_path).name if checklist_path else None
+    # Filed under a SHORT name, not the Downloads one (John 2026-09-22). The Downloads
+    # copy is "<whole submittal stem> - Coil Checklist.xlsx", and under a long project
+    # folder that ran past the Windows 260-char path limit (3219 SPCA Cincinnati was
+    # exactly 260) -- the move failed on every such project. Every later use of the
+    # name below (already-filed check, cleanup, documents[]) means the FILED name.
+    checklist_name = (
+        f"{project_number} - Coil Checklist.xlsx" if checklist_path else None
+    )
     if checklist_path and Path(checklist_path).exists():
         items.append((checklist_name or "", checklist_path))
         checklist_status = "ok"
@@ -1573,7 +1604,10 @@ async def deliverable_finalize(request: Request):
 
     # All-or-nothing: decide every destination first, and if any of them holds
     # DIFFERENT content under the same name, write nothing and hand the list back.
-    placements = plan_placements(folder, items)
+    try:
+        placements = plan_placements(folder, items)
+    except FinalizeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     conflicts = [p for p in placements if p.is_conflict]
     if conflicts and not overwrite:
         return {

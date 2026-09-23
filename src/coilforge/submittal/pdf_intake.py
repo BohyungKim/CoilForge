@@ -940,6 +940,7 @@ def _project_context_from_pdf_text(pages: list[_TextPage]) -> dict[str, str | No
                 r"\bProject\s*(?:Number|No\.?|#)\s*[:#-]?\s*(?P<value>[^\n\r]+)",
                 r"\bJob\s*(?:Number|No\.?|#)\s*[:#-]?\s*(?P<value>[^\n\r]+)",
             ),
+            value_filter=_project_number_token,
         ),
         "project_name": _first_label_value(
             text,
@@ -951,14 +952,47 @@ def _project_context_from_pdf_text(pages: list[_TextPage]) -> dict[str, str | No
     }
 
 
-def _first_label_value(text: str, patterns: tuple[str, ...]) -> str | None:
+def _project_number_token(value: str | None) -> str | None:
+    """The leading project-number token of a cleaned label value, else ``None``.
+
+    The label patterns capture to end of line, and a submittal prints the number on
+    lines that carry more than the number: the per-page footer
+    ``Version 1.0.0.9 Project #2727 / Rev``, and cover lines that run the project
+    name on after it (``Project Number: 3186 - BodyRock 300 W.``). The tail is not
+    part of the number, and the PO-folder lookup is a PREFIX match -- so carrying it
+    through matches no folder at all. That is the deliverable filing failing with
+    "no project folder under '02 - POs' starting with 2727 / Rev #3".
+
+    Returning ``None`` rather than a guess is what lets the caller keep looking: a
+    rep's own ``Project Number: 223060028`` is refused by the trailing-digit guard,
+    so Oxygen8's number printed further down the document still wins.
+    """
+    if value is None:
+        return None
+    match = _PROJECT_NUMBER_TOKEN_RE.match(value.strip())
+    return match.group(1) if match else None
+
+
+def _first_label_value(
+    text: str,
+    patterns: tuple[str, ...],
+    *,
+    value_filter: Callable[[str | None], str | None] | None = None,
+) -> str | None:
+    """The first usable label value in ``text``, pattern by pattern.
+
+    EVERY match of a pattern is considered, not just the first. With a
+    ``value_filter`` an early match can legitimately yield nothing (a foreign
+    project number), and stopping there would discard the real value printed
+    further down the same document.
+    """
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match is None:
-            continue
-        value = _clean_project_context_value(match.group("value"))
-        if value:
-            return value
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            value = _clean_project_context_value(match.group("value"))
+            if value_filter is not None:
+                value = value_filter(value)
+            if value:
+                return value
     return None
 
 
@@ -987,6 +1021,14 @@ def _project_context_from_filename(source_filename: str | None) -> dict[str, str
         "project_number": _clean_project_context_value(project_number),
         "project_name": _clean_project_context_value(project_name),
     }
+
+
+# Oxygen8 project numbers are 4 digits (the live PO folders run 1901..3250) with an
+# optional letter suffix for split releases (2025a, 2131a/b, 2281a/b). The width is
+# kept loose at 3-6, but `(?!\d)` refuses a longer run outright rather than
+# truncating it -- that is what keeps a rep's own 9-digit project number from being
+# silently cut down to something that looks like ours.
+_PROJECT_NUMBER_TOKEN_RE = re.compile(r"^([A-Za-z]{0,2}\d{3,6}[A-Za-z]?)(?!\d)")
 
 
 def _clean_project_context_value(value: str | None) -> str | None:

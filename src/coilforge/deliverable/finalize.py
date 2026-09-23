@@ -55,6 +55,13 @@ _AOF_NAMES = {"accessoryorderforms", "accessoryorderform"}
 _DIRECTCOIL_NAMES = {"directcoil"}
 _DIRECTCOIL_CANONICAL = "DirectCoil"
 _NORM_RE = re.compile(r"[\s_\-]+")
+# How many near-miss project folders a failed lookup names back. Enough to recognise
+# the right one, few enough that the message stays a sentence.
+_NEAR_MISS_LIMIT = 5
+# Longest full file path Win32 accepts without long-path support (MAX_PATH is 260
+# INCLUDING the terminating NUL). Past it, open/copy fail with a bare "[Errno 2] No
+# such file or directory" naming a folder that plainly exists.
+_WIN_MAX_PATH_CHARS = 259
 
 
 class FinalizeError(RuntimeError):
@@ -149,6 +156,36 @@ def _rename_to_canonical(found: Path, target: Path) -> Path:
     return target
 
 
+def _no_project_folder_message(num: str, folders: list[Path]) -> str:
+    """Name the value that failed to match, AND what it nearly matched.
+
+    The number is read off the submittal, so a lookup miss is far more often a
+    polluted extraction than a genuinely absent folder — and the bare message could
+    not tell the two apart. Quoting the value shows a trailing tail (or trailing
+    space) that is otherwise invisible in a sentence, and re-scanning on just the
+    leading digit run finds the folder the engineer was expecting. Reported only:
+    picking one of these would be inventing the project.
+    """
+    base_msg = f"no project folder under '02 - POs' starting with {num!r}"
+    digits = re.match(r"\d+", num)
+    if digits is None or digits.group(0) == num:
+        return base_msg
+    near = sorted(p.name for p in folders if p.name.startswith(digits.group(0)))
+    if not near:
+        return base_msg
+    shown = ", ".join(near[:_NEAR_MISS_LIMIT])
+    more = (
+        f" (+{len(near) - _NEAR_MISS_LIMIT} more)"
+        if len(near) > _NEAR_MISS_LIMIT
+        else ""
+    )
+    return (
+        f"{base_msg} — but {digits.group(0)} alone matches: {shown}{more}. "
+        "The project number read off the submittal carries extra text; "
+        "it is the quoted value above that has to be fixed, not the folder."
+    )
+
+
 def resolve_directcoil_folder(
     project_number: str | None,
     *,
@@ -171,11 +208,10 @@ def resolve_directcoil_folder(
     if not base.is_dir():
         raise FinalizeError(f"PO base folder not found: {base}")
 
-    matches = [p for p in base.iterdir() if p.is_dir() and p.name.startswith(num)]
+    folders = [p for p in base.iterdir() if p.is_dir()]
+    matches = [p for p in folders if p.name.startswith(num)]
     if not matches:
-        raise FinalizeError(
-            f"no project folder under '02 - POs' starting with {num}"
-        )
+        raise FinalizeError(_no_project_folder_message(num, folders))
     if len(matches) > 1:
         # Prefer a folder where the number is a whole leading token ("2572 - …"),
         # not just a prefix ("25720…"), before giving up as ambiguous.
@@ -259,6 +295,14 @@ def plan_placements(
     for filename, payload in items:
         safe = Path(filename).name  # strip any path components from the client name
         dest = target / safe
+        if os.name == "nt" and len(str(dest)) > _WIN_MAX_PATH_CHARS:
+            # Refused HERE, in the planning pass, so nothing is written: finding out
+            # at commit time left the two PDFs filed and the checklist missing.
+            raise FinalizeError(
+                f"cannot file '{safe}': the full path would be {len(str(dest))} "
+                f"characters, over the Windows limit of {_WIN_MAX_PATH_CHARS} "
+                f"({len(str(dest)) - _WIN_MAX_PATH_CHARS} too many). Nothing was filed."
+            )
         data: bytes | None = None
         src_path: Path | None = None
         if isinstance(payload, (bytes, bytearray)):
