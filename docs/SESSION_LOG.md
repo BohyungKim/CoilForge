@@ -5,6 +5,28 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-09-23 (Toronto) · base f008979..38bc5fb · claude/ambient-supplier
+### ✅ 구현/결정된 것
+- **빈 도면 파라미터에서 "완전히 막히던" 3개 상태 해제** — 막힘의 실체는 데이터 부재가 아니라 레버 소멸: Terra 물코일 게이트(`_omit_drawing`)가 fill plan·product 피커를 지움 / 도면 경로 예외가 맨 `{"error"}` / 거부된 `/derive` 스텁이 페이지를 덮어씀. 셋 다 복구(`_error_shell_template_drawing`, withheld=배너, hand 레버는 분류 기준, 오류 payload 비저장). (근거: 1d56078, `tests/test_blocked_state_unblock.py` 25)
+- **critical 등급 + 자동 재생성** — `DrawingParameter.criticality`(computed, CD·CH·HD/HDx·S·I; O/R standard = John 결정). 빈 critical 행 굵은 빨강·인라인 편집·reason 커밋 시 derive, Tier-A/피커는 값 확정 즉시. 브라우저 fill store를 누적 merge로(자동 derive가 앞선 채움을 지우던 구조 결함). (근거: 1d56078, `tests/test_param_criticality.py` 7)
+- **체크리스트 채택** — 입력 먼저→엔진 재계산, 빈 행에만 시트 결과, compare verdict `adopted`(John 결정), KD 판정 제외, 물코일 inlet/outlet은 사람이 친 값만 R-071 트리거. (근거: 1d56078 + 38bc5fb 아이콘, `tests/test_checklist_adopt.py` 15)
+- **CCSI 물코일 Drain and Vent Location = `Hdr Side In Airflow Dir.`** (전 제품군, 미러 기본값 + fill 시 옵션-텍스트 선택). R-066 `ConnEnd`는 별개 어휘로 유지(John 결정). (근거: 38bc5fb, `tests/test_ccsi_drain_vent_location.py` 10)
+- **발견·수정: userscript가 `{strategy:"css"}` 셀렉터를 못 읽어 8월 캡처한 `#DrawingNotes`가 한 번도 해석되지 않음** → Tampermonkey 경로 Notes 푸시 무동작이었음을 커밋본으로 재현("selector not found")·수정. (근거: 38bc5fb, 헤드리스 모의 CCSI 폼)
+- plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 전체 1740 green(HITL 커밋 시점), 인덱스 export 검증으로 다른 세션 hunk 격리 커밋.
+- TR-13 눈확인 스크린샷 11장 아티팩트: https://claude.ai/artifact/UrK6YxyJ1vvEn9t61BaUsz (대화 중 공유, git 밖)
+
+### ⏭️ 다음 스텝
+- [ ] **Terra H/V CWC 새 SVG 템플릿 시딩** — John이 착수 지시(2026-09-23). 실 참조 PDF(Terra H/V × CWC × LH/RH) 필요, 템플릿 편집은 DO-NOT-TOUCH라 버킷별 John 승인, 시더는 커밋본과 발산(스크래치 재생성 diff 먼저). 체크리스트 결정 ②(CWC S 콜아웃)·③(물코일 O 콜아웃)이 리댁션할 슬롯을 정하므로 가능하면 먼저.
+- [ ] **🔴 Coil Checklist 템플릿 Excel 접근 불가** — OneDrive/SharePoint 파일을 Excel COM이 "cannot access"(12:59 수정 이후). 잠금/동기화 확인 후 `pytest tests/test_checklist_excel_writer.py`(현재 11 skip). 실사용 자동채움도 영향.
+- [ ] **TR-14** CCSI 로그인 상태 물코일 fill → DVL 드롭다운 + Drawing Notes 실제 채움 확인, select `#id` 캡처 후 `selector_verified:true` 플립.
+- [ ] **TR-13 잔여** — 켜진 자동채움에서 재채움 후 `adopted` 표시, 실 Terra 물코일 제출물로 확인(로컬 submittals/에 없음).
+- [ ] **John 결정** J-1b(체크리스트 IN/OUT CONN SZ 채택 = 코일별 R-071 opt-in), 체크리스트 리프레시 ①②③, J-0a/J-3a는 보류 유지.
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: 38bc5fb94bc62e2ce828d1f90ce8df0de7ec44ac · 미커밋(다른 세션 소유, 건드리지 말 것): src/coilforge/capture/db.py, capture/observe.py, tests/test_capture_ledger.py, web/app.js·style.css·ccsi/ccsi_autofill.user.js 일부 hunk, web/index.html
+- 핵심 경로: `services/drawing_param_resolver.py::build_manual_fill_plan`, `workflows/submittal_to_drawing.py::_error_shell_template_drawing`, `web/app.js::{mergeManualFills,deriveCoilDrawing,checklistAdoptionPlan,ccsiDrainVentLocation}`, `web/ccsi/ccsi_autofill.user.js::{resolve,fillOne,optionByText}`
+- 관련: 플랜 `~/.claude/plans/when-tender-curry.md`(DVL 현재 + HITL 이전), 로드맵 TR-13/TR-14/환경 항목
+
 ## 2026-09-23 (Toronto) · base a0a88b8..f008979 · claude/ambient-supplier
 > 체크리스트 리프레시 세션. 같은 트리의 `capture/*`·`web/*` 미커밋 편집은 **다른 세션**의 것.
 
