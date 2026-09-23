@@ -686,6 +686,8 @@ body.is-init-stage .project-search {
    own (theme-neutral rgba, like the rows above) tint rather than borrowing either. */
 .checklist-overridden { background: rgba(120, 110, 220, 0.18); }
 .checklist-overridden .checklist-verdict { color: #7b6fdc; }
+/* Adopted from the sheet onto a blank row: neutral (a copy is not an agreement). */
+.checklist-adopted .checklist-verdict { color: var(--accent-link); font-weight: 700; }
 .checklist-override-badge { color: #7b6fdc; cursor: help; }
 
 .quote-package-section .quote-package {

@@ -199,3 +199,9 @@ def test_water_connection_sizes_are_not_adopted_pending_j1b():
     plan = _APP_JS.split("function checklistAdoptionPlan(")[1].split("\nasync function ")[0]
     assert "CONN SZ" not in plan
     assert "inlet_conn_size" not in plan and "outlet_conn_size" not in plan
+
+
+def test_the_checklist_table_marks_an_adopted_row():
+    """Found in the TR-13 eyeball: the '=' column was blank for `adopted`."""
+    icon = _APP_JS.split("function _verdictIcon(")[1].split("\nfunction ")[0]
+    assert 'adopted: "↙"' in icon

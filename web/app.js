@@ -1523,7 +1523,7 @@ function renderWaterCoilScreenMirror(coilFormat, fieldsByLabel) {
           ["Coil Hand", "select"],
           ["Air Flow Direction", "select", null, "Horizontal"],
           ["Drain and Vent", "select", null, "1/8\""],
-          ["Drain and Vent Location", "select", null, "Stub/Connection"],
+          ["Drain and Vent Location", "select", null, CCSI_WATER_DRAIN_VENT_LOCATION],
           ...(isHotWater ? [] : [["Drain Pan Type", "select"], ["Drain Pan Material", "select"]]),
           ["Drawing Notes", "input"],
         ], fieldsByLabel),
@@ -2012,6 +2012,14 @@ function fallbackCopyText(text) {
 // reads and fills. The selectors come from a same-origin field map so the
 // userscript itself is generic; CCSI markup changes touch only the JSON.
 const CCSI_AUTOFILL_SCHEMA = "coilforge.ccsi.autofill/1";
+
+// CCSI "Drain and Vent Location" for every CWC / HWC, all product lines (John 2026-09-23).
+// ONE value for both the Direct Coil mirror's default and the CCSI autofill push; the
+// userscript and the Claude-in-Chrome skill carry a copy, pinned equal by a test.
+// Deliberately NOT the engine's R-066 `vent_drain = ConnEnd`: that is the EZ Coil /
+// Coil Checklist vocabulary for a different field, and John keeps the two separate.
+const CCSI_WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
+const CCSI_WATER_CATEGORIES = new Set(["CWC", "HWC"]);
 // Single source of truth for the scoped keys: the same 13 the panel lays out.
 const CCSI_DRAWING_PARAM_KEYS = DRAWING_PARAM_COLUMNS.flat();
 
@@ -2117,7 +2125,31 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
     // a base or multi-header dimension key. Its selector WAS captured live on 2026-08-05
     // (`#DrawingNotes`), so the fill now lands as well as travels.
     drawing_notes: ccsiDrawingNotes(uiState),
+    // CCSI "Drain and Vent Location" select — water coils only. Another SEPARATE top-level
+    // key for the same reason as the notes: `fields` is contract-tested to hold dimensions.
+    drain_vent_location: ccsiDrainVentLocation(
+      uiState.template_drawing?.extracted?.coil_category,
+    ),
     fields,
+  };
+}
+
+// The CCSI select is chosen by OPTION TEXT (`match: "option_text"`): the option values are
+// CCSI's own codes and have never been captured. The select's id has not been captured
+// either, so the target is found by its label and marked `selector_verified: false` — the
+// filler panel then shows exactly which element it would write, for John to confirm, until
+// a live capture pins a `#id` (the Drawing Notes Phase F procedure). Null for non-water coils.
+function ccsiDrainVentLocation(coilCategory) {
+  if (!CCSI_WATER_CATEGORIES.has(String(coilCategory || "").toUpperCase())) return null;
+  return {
+    ccsi_label: "Drain and Vent Location",
+    value: CCSI_WATER_DRAIN_VENT_LOCATION,
+    status: "review_required",
+    type: "select",
+    match: "option_text",
+    selectors: [{ strategy: "labelText", text: "Drain and Vent Location" }],
+    selector_verified: false,
+    blocked_reason: null,
   };
 }
 
@@ -3684,6 +3716,10 @@ function renderDrawingParameters(uiState) {
   // DOM-scraped "Send to CCSI" path can read HGBP (the clipboard path reads state directly).
   elements.drawingParameters.dataset.specialFeature =
     uiState.template_drawing?.extracted?.special_feature || "";
+  // Same DOM-scraped path: the coil category decides whether the CCSI "Drain and Vent
+  // Location" select is pushed (water coils only).
+  elements.drawingParameters.dataset.coilCategory =
+    uiState.template_drawing?.extracted?.coil_category || "";
   const casing = DRAWING_PARAM_COLUMNS[0];
   const header1 = DRAWING_PARAM_COLUMNS[1];
   // Mirror the CCSI Direct Coil form: a casing column, then one column per header
@@ -5666,7 +5702,9 @@ function _checklistCell(value) {
 
 function _verdictIcon(verdict) {
   return (
-    { match: "✓", mismatch: "✗", missing_one: "·", both_missing: "—", overridden: "✎" }[
+    // `adopted`: a CoilForge value copied FROM the sheet onto a blank row — neither an
+    // agreement (✓) nor a correction (✎), so it gets its own mark.
+    { match: "✓", mismatch: "✗", missing_one: "·", both_missing: "—", overridden: "✎", adopted: "↙" }[
       verdict
     ] || ""
   );

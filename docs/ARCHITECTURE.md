@@ -51,7 +51,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 133 |
+| `tests` | 134 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 1 |
@@ -191,6 +191,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_case_prefill.py` | PO Release board case prefill (?case= deep link) |
 | `tests/test_case_tuning.py` | Case-retrieval weight tuning harness (Stage 2, Part A5) |
 | `tests/test_ccsi_compare.py` | CCSI-vs-CoilForge compare core (Phase 3): reuses the checklist comparator, so a |
+| `tests/test_ccsi_drain_vent_location.py` | CCSI "Drain and Vent Location" for water coils (John 2026-09-23) |
 | `tests/test_ccsi_export_audit.py` | Offline CCSI-export audit (`ccsi/export_audit.py`) |
 | `tests/test_ccsi_field_map.py` | Contract guard for the CCSI Direct Coil autofill field map |
 | `tests/test_checklist_adopt.py` | Adopt from Coil Checklist (John 2026-09-22) |
@@ -209,8 +210,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_coil_utilities.py` | Phase 3 — Coil Utilities internal table (geometry engine + capacity-range charts) |
 | `tests/test_coilmaster_drawing_extract.py` | Tests for CoilMaster drawing + cover-page extraction (synthetic text) |
 | `tests/test_condensing_mirror_fields.py` | Source-contract guards for the condensing (RHHGRC/HGRH) mirror in web/app.js |
-| `tests/test_copper_strap_pricing.py` | Copper-strap price adder: $25/strap over the R-090 strap count |
 
-_299 source files, 209 with a header comment. 59 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_300 source files, 210 with a header comment. 60 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->
