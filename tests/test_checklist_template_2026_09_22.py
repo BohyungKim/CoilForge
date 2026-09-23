@@ -86,8 +86,8 @@ def test_water_compare_rows_carry_the_drawn_slot_values():
 
     Since 2026-09-23 the DRAWING itself follows the sheet for water S/R (John: CWC S =
     IN/2 + 3, R = OUT; HWC S = IN, R = OUT), so the drawn value and the sheet agree by a
-    decision, not by mirroring. O is still drawn as I (R-060), unlike the sheet's CH - x --
-    that difference stays visible (KD-024..027 amber)."""
+    decision, not by mirroring. O is drawn as I (R-060) on the header-side artwork; the
+    Terra O datum is covered by test_water_o_is_one_position_in_two_datums_...."""
     for cat in ("HWC", "CWC"):
         sheet = build_checklist_fill([_water(cat, "NOVA", "C24")]).sheets[0]
         d = _dims(sheet)
@@ -259,15 +259,70 @@ def test_dx_distributor_extension_is_17_only_on_ventum_h_h05_h10(product, size, 
 # --------------------------------------------------------------------------- #
 # Deliberately NOT moved by the refresh (John decisions the refresh did not cover)
 # --------------------------------------------------------------------------- #
-def test_terra_v_water_o_callout_stays_level_with_i_and_is_registered_as_a_divergence():
-    slots, _ = build_drawing_slots(
-        coil_type="CWC", product_type="TERRA V", unit_size="024", rows=2, feeds=2,
-        circuits=1, finned_height=20.0, conn_size=1.0,
-    )
-    assert slots["slot.O2"] == slots["slot.I1"] == 2.75        # NOT CH - 2.75
+def _review_of(sheet, computed):
+    from coilforge.checklist.compare import build_review
+    from coilforge.checklist.model import ChecklistFill
+
+    review = build_review(ChecklistFill(sheets=(sheet,)),
+                          {"sheets": [{"tag": sheet.sheet_tag, "computed_dims": computed}]})
+    return {r["label"]: r for r in review["sheets"][0]["comparisons"]}
+
+
+def test_water_o_is_one_position_in_two_datums_and_compares_as_a_match():
+    """The sheet's Terra O row (CH - 2.75) and the drawn O measure ONE stubout position
+    from opposite ends (John 2026-09-23). Terra CWC now draws on its own opposite-datum
+    artwork (O = CH - I); both sides are re-expressed from the header end before
+    matching, so the row matches -- KD-024..027 are retired, not suppressing it."""
+    sheet = build_checklist_fill([_water("CWC", "TERRA V", "024")]).sheets[0]
+    o = _dims(sheet)["O"]
+    ch = _dims(sheet)["CH"].coilforge_value
+    assert (o.coilforge_datum, o.sheet_datum) == ("opposite", "opposite")
+    assert o.coilforge_value == round(ch - 2.75, 4)
+    rows = _review_of(sheet, {"CH": ch, "O": ch - 2.75, "I": 2.75})
+    assert rows["O"]["verdict"] == "match"
+    assert rows["O"]["checklist"] == ch - 2.75            # raw value kept for the ledger
+    assert rows["O"]["compared_from_header_end"]["checklist"] == 2.75
+    assert rows["O"]["compared_from_header_end"]["checklist_as_drawn"] == ch - 2.75
+    # A genuinely different stubout position still fails.
+    assert _review_of(sheet, {"CH": ch, "O": ch - 3.25})["O"]["verdict"] == "mismatch"
+
     entries = yaml.safe_load(_KD.read_text(encoding="utf-8"))["divergences"]
-    o2 = {(e["coil_category"], e["product_family"]) for e in entries if e["slot"] == "slot.O2"}
-    assert {("CWC", "TERRA_V"), ("HWC", "TERRA_V"), ("CWC", "TERRA_H"), ("HWC", "TERRA_H")} <= o2
+    assert not [e for e in entries if e["slot"] == "slot.O2"
+                and e["coil_category"] in ("CWC", "HWC")]
+
+
+def test_hwc_terra_o_converts_only_on_the_drain_pan():
+    """HWC is still drawn header-side (no Terra HWC artwork yet), so O == I; the sheet's
+    O is opposite-datum only when INSTALLED ON DP."""
+    on_pan = build_checklist_fill(
+        [_water("HWC", "TERRA V", "024"), _water("CWC", "TERRA V", "024")]
+    ).sheets
+    hwc = next(s for s in on_pan if s.category == "HWC")
+    o = _dims(hwc)["O"]
+    assert (o.coilforge_datum, o.sheet_datum) == ("header_side", "opposite")
+    ch = _dims(hwc)["CH"].coilforge_value
+    i1 = _dims(hwc)["I"].coilforge_value
+    assert o.coilforge_value == i1
+    rows = _review_of(hwc, {"CH": ch, "O": ch - i1})
+    assert rows["O"]["verdict"] == "match"
+    # "use checklist" must copy the sheet's O in the DRAWING's datum, never the raw CH - x.
+    assert rows["O"]["compared_from_header_end"]["checklist_as_drawn"] == i1
+
+    off_pan = build_checklist_fill([_water("HWC", "TERRA V", "024")]).sheets[0]
+    o = _dims(off_pan)["O"]
+    assert (o.coilforge_datum, o.sheet_datum) == ("header_side", "header_side")
+    assert "compared_from_header_end" not in _review_of(off_pan, {"O": 2.3125})["O"]
+
+
+def test_water_o_conversion_needs_a_ch_and_never_guesses_one():
+    sheet = build_checklist_fill([_water("CWC", "TERRA V", "024")]).sheets[0]
+    assert _review_of(sheet, {"O": 20.0})["O"]["verdict"] == "missing_one"
+
+
+def test_non_terra_water_o_is_unchanged():
+    for cat in ("CWC", "HWC"):
+        o = _dims(build_checklist_fill([_water(cat, "NOVA", "C24")]).sheets[0])["O"]
+        assert (o.coilforge_datum, o.sheet_datum) == ("header_side", "header_side")
 
 
 def test_terra_v_hgrh_cd_stays_rows_based_pending_kd_001():
@@ -280,3 +335,24 @@ def test_terra_v_hgrh_cd_stays_rows_based_pending_kd_001():
     ids = {e["id"] for e in entries}
     assert "KD-001" in ids and "KD-004" not in ids and not ids & {"KD-006", "KD-007", "KD-008", "KD-009"}
     assert {"KD-005", "KD-022", "KD-023"} <= ids       # Terra V O4/O6/O8 = 2 is a sheet defect
+
+
+def test_water_o_compare_uses_the_ch_each_side_stood_on_after_a_ch_override():
+    """A CH override is written into the sheet AFTER the read-back, and the sheet's O
+    (a dependent) is re-read on the NEW CH, while `computed["CH"]` keeps the formula's
+    own value. The sheet side must therefore convert with the override, not the stale
+    CH -- else every CH override on a Terra water coil reads as an O mismatch."""
+    from coilforge.checklist.model import DimCompare, OverrideNote, SheetFill
+
+    sheet = SheetFill(
+        category="CWC", source_sheet="CWC", sheet_tag="CCWC-1",
+        compare_dims=(
+            DimCompare("CH", "slot.CH", 20.0, override=OverrideNote("CH", 19.25, "test")),
+            DimCompare("O", "slot.O2", 17.25, coilforge_datum="opposite",
+                       sheet_datum="opposite"),
+        ),
+    )
+    rows = _review_of(sheet, {"CH": 19.25, "O": 20.0 - 2.75})
+    assert rows["CH"]["verdict"] == "overridden"
+    assert rows["O"]["verdict"] == "match"
+    assert rows["O"]["compared_from_header_end"]["checklist"] == 2.75

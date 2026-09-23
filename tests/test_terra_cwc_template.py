@@ -112,7 +112,42 @@ def test_a_terra_cwc_renders_coilforge_values_into_the_terra_art(product):
     svg, slots = out["svg"], out["slot_values"]
     assert "{{slot." not in svg, "no placeholder left unfilled"
     assert slots["slot.S1"] == 3.5 and slots["slot.R2"] == 1.0   # CWC S = IN/2 + 3, R = OUT
+    # The Terra art dimensions O from the opposite end (seed 16.50 = CH 19.25 - I 2.75).
+    assert slots["slot.O2"] == round(slots["slot.CH"] - slots["slot.I1"], 4)
+    if product == "TERRA V":
+        assert (slots["slot.CH"], slots["slot.I1"], slots["slot.O2"]) == (19.25, 2.75, 16.5)
     assert out["export_allowed"] is False
+
+
+def _terra_v_cwc(**extra):
+    return dict(
+        coil_category="CWC", coil_hand="Left", circuits=1, product_type="TERRA V",
+        unit_size="006", rows=6, finned_height=18.0, finned_length=36.0,
+        suction_conn_size=1.0, water_conn_extracted={"inlet": 1.0, "outlet": 1.0}, **extra,
+    )
+
+
+def _ov(key, value):
+    return {"key": key, "value": value, "override_reason": "test"}
+
+
+def test_a_manual_ch_or_i_carries_the_opposite_datum_o_with_it():
+    ch = derive_coil_template_drawing(_terra_v_cwc(param_overrides=[_ov("CH", 20.0)]))
+    assert ch["slot_values"]["slot.O2"] == 17.25                # 20 - 2.75
+    i = derive_coil_template_drawing(_terra_v_cwc(param_overrides=[_ov("I", "3")]))
+    assert i["slot_values"]["slot.O2"] == 16.25                 # 19.25 - 3
+    # An O the engineer typed wins over the recompute.
+    both = derive_coil_template_drawing(
+        _terra_v_cwc(param_overrides=[_ov("CH", 20.0), _ov("O", 15.0)])
+    )
+    assert both["slot_values"]["slot.O2"] == 15.0
+
+
+def test_an_unresolved_ch_leaves_the_terra_o_blank_instead_of_printing_i():
+    out = derive_coil_template_drawing(dict(_terra_v_cwc(), finned_height=None))
+    assert "slot.O2" not in out["slot_values"]
+    reason = out["drawing_parameter_set"]["parameters"]["O"]["blocked_reason"]
+    assert "opposite end" in reason
 
 
 # --- water CD / S / R from the checklist, every path ------------------------------------

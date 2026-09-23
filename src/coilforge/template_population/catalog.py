@@ -151,6 +151,19 @@ TEMPLATE_BUCKET_COUNT = (
     _SHARED_BUCKET_COUNT + len(VENTUM_PLUS_TEMPLATES) + len(TERRA_TEMPLATES)
 )
 
+# Datum of each artwork's water return-stubout callout `slot.O2` (John 2026-09-23).
+# Every bucket defaults to "header_side": O is measured from the header end, so it
+# prints the same number as I (all seven shared water seeds read O == I). The Terra CWC
+# artwork measures O from the OPPOSITE end -- both seeds print CH 19.25, I1 2.75,
+# O2 16.50 = CH - I (seed_evidence.json) -- which is also how the Coil Checklist writes
+# the Terra O row (CH - 3.25 / CH - 2.75). The datum belongs to the artwork, not to a
+# rule: the same stubout position is a different number on a differently-drawn sheet.
+# Add a Terra HWC bucket here only after reading ITS seed's O2.
+TEMPLATE_O_DATUM: dict[str, str] = {
+    "coilmaster_terra_cwc_lh": "opposite",
+    "coilmaster_terra_cwc_rh": "opposite",
+}
+
 
 def _active_entry(
     template_id: str,
@@ -196,6 +209,8 @@ class DrawingTemplateEntry:
     blocked_reason: str | None = None
     # None = shared/product-agnostic bucket; a family string = dedicated to that family.
     product_family: str | None = None
+    # Datum of the water `slot.O2` callout on this artwork (see TEMPLATE_O_DATUM).
+    o_datum: str = "header_side"
 
 
 @dataclass(frozen=True)
@@ -380,6 +395,7 @@ def _build_family_entries(
                 source_case_id=source,
                 reference_status=ref_status,
                 product_family=family,
+                o_datum=TEMPLATE_O_DATUM.get(template_id, "header_side"),
             )
         )
     return entries
@@ -484,6 +500,26 @@ def _known_source_case(category: str, header_number: int, hand: str) -> str | No
     if category == "hgrh" and header_number == 2 and hand == "LH":
         return "EZC-0008"
     return None
+
+
+def water_o_datum(coil_category: str | None, product_family: str | None) -> str:
+    """Datum the drawn water ``slot.O2`` is measured from for this category + line.
+
+    "opposite" only when the line has a DEDICATED bucket for the category whose artwork
+    declares it (today: Terra CWC, both hands); "header_side" otherwise -- including a
+    line that falls back to the shared artwork, which is header-side by construction.
+    Pure catalog lookup, so the slot layer, the checklist and the drawing agree.
+    """
+    category = _normalize_category(coil_category or "")
+    family = _normalize_product_family(product_family)
+    if category not in ("CWC", "HWC") or family is None:
+        return "header_side"
+    datums = {
+        entry.o_datum
+        for entry in load_drawing_template_catalog().entries
+        if entry.coil_category == category and entry.product_family == family
+    }
+    return "opposite" if datums == {"opposite"} else "header_side"
 
 
 def _normalize_product_family(value: str | None) -> str | None:

@@ -20,7 +20,7 @@ plus "SUPPLY V/D ANGLE" (LAS) and "VENT & DRAIN" (ConnEnd), CD gained a connecti
 I/O TBD, HD N/A — R-064-*) was removed, and the HWC sheet branches Terra TF/BF and I/O on
 INSTALLED ON DP (R-014h). Terra V gained its own WIDTH FIT (`(W−OAL) ≥ 9.75` DX/HGRH, `≥ 8.75`
 water) and HEIGHT FIT (FH ≤ 24/42/45/48 by size band) arms (R-078). NOT adopted, by John's
-separate rulings: the water `O = CH−x` (drawn O = I, KD-024..027) and the Terra V HGRH CD
+separate rulings: the water `O = CH−x` (resolved 2026-09-23 as a datum difference — KD-024..027 retired, see R-061 row) and the Terra V HGRH CD
 (rows-based, KD-001) — see `known_divergences.yaml`. **Adopted 2026-09-23 (John):** water S/R
 on every line — CWC `S = IN/2+3` (C27), `R = OUT` (C28); HWC `S = IN` (C31), `R = OUT` (C32) —
 replacing the drawn `S = conn, R = S`; and the R-071 CD term is now applied from the
@@ -123,7 +123,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | Rule ID | Type of Coil | Product Type | Unit Size / Size Pattern | Required Header Information | Evidence Source | Confidence | Review Required | Notes |
 |---|---|---|---|---|---|---|---|---|
 | R-060 | CWC, HWC | NOVA, VENTUM H, VENTUM+ | * | I/O = 2.3125 (multi-feed) | SOP §CWC/HWC "Update all I/Os to 2.3125″"; CHK `IF(TERRA,3.25,2.3125)` | High | No | Single feed → TBD (CHK) → R-064 |
-| R-061 / R-061v / R-014h | CWC, HWC | TERRA | * | I/O = 3.25 (Terra H) / 2.75 (Terra V); HWC off the drain pan → 2.3125 and TF/BF = 1/1 (2026-09-22) | CHK CWC!C27 / HWC!C31 `IF(C20=FALSE,2.3125,IF(TERRA H,3.25,IF(TERRA V,2.75,2.3125)))`, HWC!C28:C29 | High | No | The sheet's O row = CH−3.25 / CH−2.75 (opposite datum) is NOT mirrored: drawn O = I (John 2026-07-29), registered as KD-024..027 pending John's NEXT decision |
+| R-061 / R-061v / R-014h | CWC, HWC | TERRA | * | I/O = 3.25 (Terra H) / 2.75 (Terra V); HWC off the drain pan → 2.3125 and TF/BF = 1/1 (2026-09-22) | CHK CWC!C27 / HWC!C31 `IF(C20=FALSE,2.3125,IF(TERRA H,3.25,IF(TERRA V,2.75,2.3125)))`, HWC!C28:C29 | High | No | The sheet's O row = CH−3.25 / CH−2.75 is the same stubout from the opposite end. Drawn O follows the artwork's datum (2026-09-23): Terra CWC art is opposite-datum → O = CH − I; all other water art header-side → O = I. The checklist compare matches both from the header end; KD-024..027 retired |
 | R-062 | CWC, HWC | * | * | HD = 4 (multi-feed); reduce if fit issue | SOP §CWC/HWC; CHK `IF(feeds=1,"N/A",4)` | High | No | Needs feeds input to decide N/A vs 4 |
 | R-063 | CWC, HWC | NOVA, VENTUM H → 8; VENTUM+ → 10 | * | SL | SOP §CWC/HWC; CHK SL formula matches exactly for these platforms | High | No | TERRA→10 in CHK but SOP only specifies Terra V = 12 → Terra is Medium/review (R-065) |
 | R-064 | CWC, HWC | * | * | RETIRED 2026-09-22 — no single-feed special (SL = family constant, I/O = 2.3125, HD = 4 for any stated feed count) | CHK CWC!C33:C34 / HWC!C37:C38 (2026-09-22): no `C14=1` arm; John 2026-09-22 | — | — | YAML entries kept `deprecated: true`; feeds ABSENT still leaves I/O and HD MEDIUM (the sheet blanks them) |

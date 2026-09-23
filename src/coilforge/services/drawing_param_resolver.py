@@ -126,7 +126,15 @@ _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
 # dimension", which reads as a bug on a value withheld on SOP grounds — and Phase C
 # then paints it red with no explanation. Keyed on the base letter so every header
 # index (I2/I3/I4) inherits the same reason.
-_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {}
+_WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {
+    # Terra CWC artwork dimensions O from the opposite end (O = CH - I, 2026-09-23);
+    # `apply_water_o_datum` blanks O rather than print I on that dimension line.
+    ("CWC", variant, "O"): (
+        "On the Terra CWC drawing O is measured from the opposite end (O = CH − I), so it "
+        "needs CH (finned height + flanges) and I — left blank rather than printing I."
+    )
+    for variant in ("TERRA_H", "TERRA_H_C", "TERRA_V")
+}
 
 _KEY_BASE_RE = re.compile(r"^([A-Za-z]+)")
 

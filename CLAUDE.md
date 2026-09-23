@@ -151,7 +151,7 @@ means editing BOTH the engine rule/helper AND the slot layer, and threading `ter
 into `build_drawing_slots` where a variant-specific drawing formula is needed (the generic-R
 safety net is guarded `and not is_terra_v` so Terra V never borrows Terra H's spacing).
 
-**Water S / R / CD follow the Coil Checklist (John 2026-09-23); `O = I` stays.** Every
+**Water S / R / CD follow the Coil Checklist (John 2026-09-23); O follows the artwork's datum.** Every
 product line: CWC `S = IN/2 + 3` (`CWC!C27`), `R = OUT` (`C28`); HWC `S = IN` (`HWC!C31`),
 `R = OUT` (`C32`); CD = `MAX(base, 1.5·(IN+OUT)+1.5)` HWC / `MAX(base, 1.5·OUT+IN+4.5)` CWC
 (R-071). This superseded 2026-07-29's `S = conn`, `R = S` (which matched the seven seeded
@@ -164,8 +164,16 @@ assumption). The frozen analyze path never passes IN/OUT, so the non-frozen
 `water_conn_applied`, which `_attach_recomputed_engine_provenance` mirrors (else the corrected
 CD reads as drift). Extracted sizes are **submittal data, never a ManualOverride** — only the
 typed Tier-A keys (`_MANUAL_ENGINE_INPUT_KEYS`) write an audit row. Real effect: 2857 HHWC-1 CD
-3.375 → 3.75. **O is still drawn as `O = I`** (the sheet's Terra `O = CH − 3.25/2.75` is the
-same stubout from the opposite datum); that row stays amber via KD-024..027 (`both_defensible`).
+3.375 → 3.75. **Water O is a DATUM question, not a rule (John 2026-09-23).** The sheet's Terra
+`O = CH − 3.25/2.75` and the drawn `O = I` are one stubout measured from opposite ends. The datum
+belongs to the ARTWORK: `catalog.TEMPLATE_O_DATUM` marks the Terra CWC buckets `opposite` (their
+seeds print 16.50 = CH 19.25 − I 2.75); every other water bucket is `header_side` (O = I).
+`apply_water_o_datum` (step 3b of `build_drawing_slots`, and again after a manual CH/I in
+`_reflect_param_overrides_into_slots`) prints `CH − I` on opposite art — and **blanks** O when CH
+is unresolved rather than printing I there. The checklist tags the O row with both datums
+(`mapping._with_water_o_datum`) and `compare.py` matches both from the header end; "use
+checklist" adopts `checklist_as_drawn`, never the raw sheet number. KD-024..027 are retired.
+When Terra HWC is seeded, read ITS seed's O2 before adding it to `TEMPLATE_O_DATUM`.
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):

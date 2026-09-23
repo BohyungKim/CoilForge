@@ -185,7 +185,9 @@ def test_unit_inverse_covers_every_sheet_unit():
 def test_adoption_is_offered_only_on_blank_rows_and_never_while_refilling():
     fn = _APP_JS.split("function checklistAdoptHtml(")[1].split("\nfunction ")[0]
     assert "if (hasValue || !chk || state.checklistRefillPending) return \"\";" in fn
-    assert "isAdoptableChecklistValue(chk.checklist)" in fn
+    # The adopted number is the sheet's value in the DRAWING's datum (water O, 2026-09-23).
+    assert "checklistValueAsDrawn(chk)" in fn
+    assert "isAdoptableChecklistValue(sheetValue)" in fn
 
 
 def test_inputs_are_adopted_before_sheet_results():

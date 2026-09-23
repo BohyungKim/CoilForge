@@ -473,93 +473,12 @@ divergences:
 
 
   # ---------------------------------------------------------------------------
-  # KD-024..027 — water-coil return I/O "O" on the Terra lines (2026-09-22 template).
-  #
-  # The refreshed CWC/HWC sheets split the old "I/O" row into I / O / S / R. Their O row
-  # is `CH - 3.25` (Terra H) / `CH - 2.75` (Terra V): the stubout position measured from
-  # the OPPOSITE datum. The drawing callout `slot.O2` is the same physical position from
-  # the header side and prints the I/O value (John 2026-07-29 — all seven seeded water
-  # references read O == I; `CH - x` printed 34.5 where 2.75 belongs). Two valid
-  # conventions for one dimension, so `both_defensible`; band-less because the delta is
-  # CH-dependent. Whether the callout itself should be redefined is an open John decision
-  # (NEXT, 2026-09-22); until then the row is amber, never silently green.
+  # KD-024..027 (water return O on the Terra lines) RETIRED 2026-09-23 (John).
+  # The sheet's Terra O row (CH - 3.25 / CH - 2.75; on HWC only on the drain pan) and
+  # the drawn O measured the SAME stubout position from opposite ends. The difference
+  # was datum, not value: checklist/compare.py now re-expresses both sides from the
+  # header end before matching (`_with_water_o_datum` / `_from_header_end`), and the
+  # Terra CWC artwork -- whose own O dimension line is opposite-datum (seed 16.50 =
+  # CH 19.25 - I 2.75) -- now prints CH - I (`catalog.TEMPLATE_O_DATUM`). The rows
+  # match, so there is nothing left to rule on.
   # ---------------------------------------------------------------------------
-  - id: KD-024
-    coil_category: CWC
-    product_family: TERRA_H
-    terra_variant: TERRA_H_C
-    unit_size_scope: "*"
-    slot: slot.O2
-    verdict: both_defensible
-    reason: >-
-      Sheet O = CH - 3.25 (CWC!C28, opposite-datum form);
-      drawn O = I = 3.25 (R-061, header-side callout; 7/7 seeded
-      water references read O == I, John 2026-07-29). Same position, two datums. Open
-      decision whether the callout follows the sheet.
-    evidence_refs:
-      - "CHK:CWC!C28 (2026-09-22)"
-      - "RULE:R-061"
-      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
-    adjudicated_by: John
-    adjudicated_utc: "2026-09-22"
-    status: proposed
-
-  - id: KD-025
-    coil_category: HWC
-    product_family: TERRA_H
-    terra_variant: TERRA_H_C
-    unit_size_scope: "*"
-    slot: slot.O2
-    verdict: both_defensible
-    reason: >-
-      Sheet O = CH - 3.25 when INSTALLED ON DP (HWC!C32, opposite-datum form);
-      drawn O = I = 3.25 (R-061, header-side callout; 7/7 seeded
-      water references read O == I, John 2026-07-29). Same position, two datums. Open
-      decision whether the callout follows the sheet.
-    evidence_refs:
-      - "CHK:HWC!C32 (2026-09-22)"
-      - "RULE:R-061"
-      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
-    adjudicated_by: John
-    adjudicated_utc: "2026-09-22"
-    status: proposed
-
-  - id: KD-026
-    coil_category: CWC
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.O2
-    verdict: both_defensible
-    reason: >-
-      Sheet O = CH - 2.75 (CWC!C28, opposite-datum form);
-      drawn O = I = 2.75 (R-061v, header-side callout; 7/7 seeded
-      water references read O == I, John 2026-07-29). Same position, two datums. Open
-      decision whether the callout follows the sheet.
-    evidence_refs:
-      - "CHK:CWC!C28 (2026-09-22)"
-      - "RULE:R-061v"
-      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
-    adjudicated_by: John
-    adjudicated_utc: "2026-09-22"
-    status: proposed
-
-  - id: KD-027
-    coil_category: HWC
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.O2
-    verdict: both_defensible
-    reason: >-
-      Sheet O = CH - 2.75 when INSTALLED ON DP (HWC!C32, opposite-datum form);
-      drawn O = I = 2.75 (R-061v, header-side callout; 7/7 seeded
-      water references read O == I, John 2026-07-29). Same position, two datums. Open
-      decision whether the callout follows the sheet.
-    evidence_refs:
-      - "CHK:HWC!C32 (2026-09-22)"
-      - "RULE:R-061v"
-      - "JOHN:2026-07-29 water O == I (7/7 seeds)"
-    adjudicated_by: John
-    adjudicated_utc: "2026-09-22"
-    status: proposed

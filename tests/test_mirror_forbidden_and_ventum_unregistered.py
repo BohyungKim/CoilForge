@@ -149,9 +149,11 @@ def test_terra_v_water_carries_terra_v_drawing_parameters() -> None:
     v_slots, h_slots = v["slot_values"], h["slot_values"]
     # 2026-09-23: both now draw on the ONE shared Terra CWC artwork (values differ).
     assert v["template_id"] == h["template_id"] == "coilmaster_terra_cwc_lh"
-    assert v_slots["slot.O2"] == 2.75                    # R-061v Terra V
-    assert v_slots["slot.O2"] != h_slots.get("slot.O2")  # Terra H = 3.25 (R-061)
-    assert v_slots["slot.O2"] == v_slots["slot.I1"]      # supply/return stubouts level
+    assert v_slots["slot.I1"] == 2.75                    # R-061v Terra V
+    assert v_slots["slot.I1"] != h_slots.get("slot.I1")  # Terra H = 3.25 (R-061)
+    # The Terra CWC artwork dimensions O from the opposite end (2026-09-23): O = CH - I.
+    for sl in (v_slots, h_slots):
+        assert sl["slot.O2"] == round(sl["slot.CH"] - sl["slot.I1"], 4)
 
 
 def test_terra_v_dx_and_hgrh_still_generate() -> None:

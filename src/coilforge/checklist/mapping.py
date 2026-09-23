@@ -103,7 +103,10 @@ _DIM_NUM = re.compile(r"^(O|R|HD|SL|S|I)(\d+)$")
 # and R (OUT) are NOT mirrored here -- a mirror of the same inputs through the same
 # formula would always "match" and hide the drawing-vs-sheet difference the comparison
 # exists to show. Where the two conventions differ structurally, the known-divergence
-# registry re-labels the row amber with the reason (KD water entries).
+# registry re-labels the row amber with the reason (KD water entries). The Terra O row
+# is the exception: it differs only in DATUM (which end the stubout is measured from),
+# so compare.py re-expresses both sides from the header end instead (2026-09-23,
+# `_with_water_o_datum`; KD-024..027 retired).
 _WATER_BARE = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2",
                "HD": "slot.HD2", "SL": "slot.SL2"}
 
@@ -357,6 +360,49 @@ def _install_width_blocked_note(unit: str | None, drain_pan_option: str | None) 
             "from the unit model code on this submittal"
         )
     return "drain-pan/install width not found in R-077 for this unit and size"
+
+
+def _with_water_o_datum(
+    compare: list[DimCompare], category: str, unit: str | None, dp_installed: bool | None
+) -> list[DimCompare]:
+    """Tag the water "O" row with the datum each side measures from (2026-09-23).
+
+    Sheet: the Terra O row is ``CH - 3.25`` / ``CH - 2.75`` (on the HWC sheet only on the
+    drain pan; off the pan it is the plain 2.3125), i.e. the OPPOSITE end; every other
+    line prints the header-side value. CoilForge: the datum of the artwork it draws on
+    (``water_o_datum``). When the drawn O is opposite-datum and the engineer overrode CH
+    or I but not O, the drawn O followed them (``apply_water_o_datum``), so the CoilForge
+    column is recomputed the same way -- otherwise it would still hold the engine's
+    ``CH - I`` from before the override.
+    """
+    from coilforge.services.direct_coil_drawing_pipeline import apply_water_o_datum
+    from coilforge.template_population.catalog import water_o_datum
+
+    terra = unit in ("TERRA H", "TERRA V")
+    sheet_datum = (
+        "opposite" if terra and (category == "CWC" or dp_installed is True) else "header_side"
+    )
+    cf_datum = water_o_datum(category, unit)
+    by_label = {d.label: d for d in compare}
+    out: list[DimCompare] = []
+    for dim in compare:
+        if dim.label != "O":
+            out.append(dim)
+            continue
+        cf_value = dim.coilforge_value
+        ch, i_row = by_label.get("CH"), by_label.get("I")
+        followed = any(r is not None and r.override is not None for r in (ch, i_row))
+        if cf_datum == "opposite" and dim.override is None and followed:
+            probe = {
+                "slot.CH": ch.coilforge_value if ch else None,
+                "slot.I1": i_row.coilforge_value if i_row else None,
+            }
+            cf_value = apply_water_o_datum(probe, coil_type=category, product_type=unit).get(
+                "slot.O2"
+            )
+        out.append(replace(dim, coilforge_value=cf_value, coilforge_datum=cf_datum,
+                           sheet_datum=sheet_datum))
+    return out
 
 
 def _build_sheet(
@@ -643,6 +689,9 @@ def _build_sheet(
             matched_slots.add(slot)
         compare.append(DimCompare(label=label, slot=slot, coilforge_value=cf_value,
                                   override=dim_override))
+
+    if category in ("CWC", "HWC"):
+        compare = _with_water_o_datum(compare, category, unit, dp_installed)
 
     # Never drop an override in silence: a param with no slot at all (ZD) or one whose
     # slot has no row on THIS category's sheet is surfaced for review.

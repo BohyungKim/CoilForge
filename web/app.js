@@ -4030,6 +4030,20 @@ function checklistSizeToPickerToken(unit, size) {
 
 // A value the sheet actually computed. Excel COM hands an error cell (#N/A, #VALUE!) back as
 // a large NEGATIVE integer, so "finite and non-negative" also keeps those out.
+function _datumTitle(c) {
+  const fmt = (v) => (v === null || v === undefined ? "—" : String(v));
+  return `Compared from the header end: CoilForge ${fmt(c.coilforge)} (drawn ${c.coilforge_datum}), `
+    + `checklist ${fmt(c.checklist)} (sheet ${c.checklist_datum}) — same stubout, measured from opposite ends`;
+}
+
+// The sheet's value in the drawing's own datum. Only the water O row differs: the sheet
+// measures the Terra stubout from the opposite end (CH - x), so adopting the raw number
+// would print it on the wrong dimension line (compare.py `checklist_as_drawn`, 2026-09-23).
+function checklistValueAsDrawn(entry) {
+  const c = entry && entry.compared_from_header_end;
+  return c ? c.checklist_as_drawn : entry && entry.checklist;
+}
+
 function isAdoptableChecklistValue(value) {
   if (value === null || value === undefined || value === "" || typeof value === "boolean") {
     return false;
@@ -4045,8 +4059,9 @@ function checklistAdoptHtml(parameter, chk, hasValue) {
         title="Remove the adopted value; the engine value (or the blank) returns">✕ release</button></span>`;
   }
   if (hasValue || !chk || state.checklistRefillPending) return "";
-  if (!isAdoptableChecklistValue(chk.checklist)) return "";
-  const value = Number(chk.checklist);
+  const sheetValue = checklistValueAsDrawn(chk);
+  if (!isAdoptableChecklistValue(sheetValue)) return "";
+  const value = Number(sheetValue);
   return `<button type="button" class="dc-adopt" data-adopt-key="${escapeHtml(parameter.key)}"
       data-adopt-value="${escapeHtml(String(value))}" data-adopt-label="${escapeHtml(String(chk.label || parameter.key))}"
       data-adopt-unit="${escapeHtml(parameter.unit || "in")}"
@@ -4099,9 +4114,9 @@ function checklistAdoptionPlan(parameters) {
       const hasValue = p.value !== null && p.value !== undefined && p.value !== "";
       if (hasValue || !p.slot) continue;
       const entry = bySlot.get(p.slot);
-      if (entry && isAdoptableChecklistValue(entry.checklist)) {
+      if (entry && isAdoptableChecklistValue(checklistValueAsDrawn(entry))) {
         out.dims.push({
-          key: p.key, value: Number(entry.checklist), label: entry.label || p.key,
+          key: p.key, value: Number(checklistValueAsDrawn(entry)), label: entry.label || p.key,
           unit: p.unit || "in",
         });
       }
@@ -5739,7 +5754,11 @@ function renderChecklistSheet(sheet) {
   const comps = (sheet.comparisons || [])
     .map(
       (c) => `<tr class="checklist-${c.verdict}"${
-        c.override ? ` title="${escapeHtml(_overrideTitle(c.override))}"` : ""
+        c.override
+          ? ` title="${escapeHtml(_overrideTitle(c.override))}"`
+          : c.compared_from_header_end
+            ? ` title="${escapeHtml(_datumTitle(c.compared_from_header_end))}"`
+            : ""
       }>
         <td>${escapeHtml(c.label)}</td>
         <td>${_checklistCell(c.coilforge)}</td>

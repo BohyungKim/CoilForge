@@ -1426,6 +1426,18 @@ def _reflect_param_overrides_into_slots(
             slot_values[slot] = ov.value
             merged_any = True
 
+    # On an opposite-datum water artwork (Terra CWC) the drawn O is CH - I, so a manual
+    # CH or I must carry O with it -- unless O itself was overridden, which wins.
+    overridden_slots = {e["slot"] for e in events if e["slot"]}
+    if overridden_slots & {"slot.CH", "slot.I1"} and "slot.O2" not in overridden_slots:
+        from coilforge.services.direct_coil_drawing_pipeline import apply_water_o_datum
+
+        apply_water_o_datum(
+            slot_values,
+            coil_type=(result.get("extracted") or {}).get("coil_category"),
+            product_type=result.get("product_type"),
+        )
+
     if events:
         result["manual_override_events"] = events
         result["manual_override_keys"] = keys

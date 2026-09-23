@@ -35,6 +35,7 @@ from coilforge.services.json_drawing_link import engine_slot_bridge
 from coilforge.template_population.catalog import (
     TemplateSelectionRequest,
     select_drawing_template,
+    water_o_datum,
 )
 from coilforge.template_population.slot_population import populate_template_slots
 
@@ -301,6 +302,38 @@ def _water_end(specific: float | None, *fallbacks: float | None) -> float | None
             except (TypeError, ValueError):
                 continue
     return None
+
+
+def apply_water_o_datum(
+    slots: dict[str, Any], *, coil_type: str | None, product_type: str | None
+) -> dict[str, Any]:
+    """Re-express the water return O (``slot.O2``) in the artwork's own datum, in place.
+
+    The engine's ``io`` is the stubout distance from the HEADER end, and every shared
+    water artwork dimensions O from that end, so ``O2 = I`` there (2026-07-29). The
+    Terra CWC artwork dimensions O from the OPPOSITE end: its seeds print
+    ``O2 = CH - I`` (16.50 = 19.25 - 2.75), the same form the Coil Checklist uses for the
+    Terra O row. Same physical position, other datum -- so on that artwork O is
+    ``CH - I1``.
+
+    If CH or I1 is unresolved on an opposite-datum artwork, O2 is REMOVED rather than
+    left at I: a header-side number on an opposite-datum dimension line is exactly the
+    defect this fixes. Also called after a manual CH/I override so the drawn O follows.
+    """
+    if water_o_datum(coil_type, product_type) != "opposite":
+        return slots
+    def _num(value: Any) -> float | None:  # a manual override may arrive as text
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    ch, i1 = _num(slots.get("slot.CH")), _num(slots.get("slot.I1"))
+    if ch is not None and i1 is not None:
+        slots["slot.O2"] = round(ch - i1, 4)
+    else:
+        slots.pop("slot.O2", None)
+    return slots
 
 
 def build_drawing_slots(
@@ -572,6 +605,10 @@ def build_drawing_slots(
                 # across CH 17.00 to 38.75, so it is not a coincidence of one geometry.
                 # Terra V was also the ONLY line whose O diverged from its own I.
                 # Invisible until 2026-07-28 because the Terra V water drawing was gated.
+                #
+                # 2026-09-23: that holds for HEADER-SIDE artwork. The dedicated Terra CWC
+                # artwork dimensions O from the opposite end, and step 3b
+                # (`apply_water_o_datum`) re-expresses O there as CH - I.
                 slots[f"slot.O{return_id}"] = hdr_o
             if hdr_hd is not None:
                 slots[f"slot.HD{return_id}"] = hdr_hd
@@ -603,13 +640,20 @@ def build_drawing_slots(
                 )
 
     # 3. EZ JSON as-built override for per-header positions (exact; multi-circuit).
+    ez_o2 = False
     if ez_json:
         from coilforge.services.ez_json_drawing_loader import slots_from_ez_json
 
         json_slots, _ = slots_from_ez_json(ez_json)
+        ez_o2 = "slot.O2" in json_slots
         for slot in _SLOT_EZ_OVERRIDE:
             if slot in json_slots:
                 slots[slot] = json_slots[slot]
+
+    # 3b. Water return O on an opposite-datum artwork (Terra CWC, John 2026-09-23).
+    # Runs after the EZ override so an exact as-built O2 is never recomputed.
+    if not ez_o2:
+        apply_water_o_datum(slots, coil_type=coil_type, product_type=product_type)
 
     # 4. OAL = FL + RB + HD2 (return/suction header depth) — John 2026-06-29, all coils.
     # Computed from the FINAL drawn slot values (after the per-header loop and the EZ

@@ -494,7 +494,12 @@ def test_water_return_io_mirrors_supply_io_on_every_product_line() -> None:
     That is the same physical position measured from the OPPOSITE datum — a datum
     mismatch, not a different value. Every one of the seven seeded water references
     reads O{even} == I{odd}; none reads CH - 2.75. Terra V was the only line whose O
-    diverged from its own I, which is the tell."""
+    diverged from its own I, which is the tell.
+
+    2026-09-23: that holds on HEADER-SIDE artwork, which is every water bucket except
+    the dedicated Terra CWC one -- its own O dimension line runs from the opposite end
+    (seed 16.50 = CH 19.25 - I 2.75), so there O = CH - I is the correct number. The
+    Ferguson coil was an HWC, which stays header-side."""
     common = dict(rows=1, circuits=1, feeds=2, conn_size=1.0, suction_conn_size=1.0,
                   finned_height=36.0, finned_length=33.0)
     for coil_type in ("CWC", "HWC"):
@@ -504,6 +509,9 @@ def test_water_return_io_mirrors_supply_io_on_every_product_line() -> None:
                 coil_type=coil_type, product_type=product, unit_size=unit_size, **common
             )
             i1, o2, ch = slots.get("slot.I1"), slots.get("slot.O2"), slots.get("slot.CH")
+            if coil_type == "CWC" and product.startswith("TERRA"):
+                assert o2 == round(ch - i1, 4), (coil_type, product, i1, o2, ch)
+                continue
             assert o2 == i1, (coil_type, product, i1, o2)
             # The stubout callout is a small dimension — never a casing-height-scale one.
             assert ch is None or o2 < ch / 2, (coil_type, product, o2, ch)
@@ -579,13 +587,13 @@ def test_terra_v_drawing_slots_use_sop_specials() -> None:
 
     cwc, _ = build_drawing_slots(coil_type="CWC", product_type="TERRA V", **common)
     assert cwc["slot.I1"] == 2.75                           # supply I/O = 2.75
-    # Return I/O prints the SAME stubout dimension as the supply (John 2026-07-29). The
-    # old expectation here was `CH - 2.75`, which is that same position measured from the
-    # opposite datum — writing it into the stubout callout printed 34.5 where ~2.75
-    # belongs. All seven seeded water references read O{even} == I{odd}, and none reads
-    # CH - 2.75 (checked across CH 17.00-38.75).
-    assert cwc["slot.O2"] == 2.75
-    assert cwc["slot.O2"] == cwc["slot.I1"]
+    # Return O on the dedicated Terra CWC artwork is measured from the OPPOSITE end
+    # (seed 16.50 = CH 19.25 - I 2.75, John 2026-09-23), so it prints CH - I. The
+    # header-side water artwork (HWC here, and every non-Terra line) still prints O == I
+    # (John 2026-07-29) -- see test_water_return_io_mirrors_supply_io_on_every_product_line.
+    assert cwc["slot.O2"] == round(cwc["slot.CH"] - cwc["slot.I1"], 4)
+    hwc, _ = build_drawing_slots(coil_type="HWC", product_type="TERRA V", **common)
+    assert hwc["slot.O2"] == hwc["slot.I1"] == 2.75
     assert cwc["slot.SL2"] == 12
 
 
