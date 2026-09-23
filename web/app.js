@@ -4001,8 +4001,10 @@ function checklistRowView(entry, parameter) {
 // independent implementations can still disagree; the sheet's formula RESULTS only for rows
 // still blank afterwards. Every adopted value is a Tier-B/Tier-A manual fill: review-
 // required, logged with the reason prefix below, and scored `adopted` (never `match`) by
-// the checklist compare. Water IN/OUT CONN SZ is deliberately NOT adopted: doing so would
-// switch R-071 on per coil, which is John's open decision J-1b.
+// the checklist compare. Water IN/OUT CONN SZ is adopted only for an end the drawing has
+// neither read nor been typed (J-1b, John 2026-09-23): the sheet's cell falls back to the
+// submittal's generic Supply/Return size, the drawing's extraction does not, so adopting
+// it switches R-071 on for THIS coil only, as a logged Tier-A fill -- never silently.
 
 // Must equal checklist/overrides.py::ADOPTED_REASON_PREFIX (pinned by a test).
 const ADOPTED_REASON_PREFIX = "adopted from Coil Checklist";
@@ -4106,6 +4108,23 @@ function checklistAdoptionPlan(parameters) {
     if (rows !== null && (drawnRows === null || drawnRows === undefined) && isAdoptableChecklistValue(rows)) {
       out.engineInputs.rows = Number(rows);
       out.inputs.push({ label: "ROWS" });
+    }
+    const category = String(td.extracted?.coil_category || "").toUpperCase();
+    if (category === "CWC" || category === "HWC") {
+      const typed = activePdfCoilPage()?.manualFills?.engineInputs || {};
+      const read = td.water_conn_extracted || {};
+      for (const [label, key, end] of [
+        ["IN CONN SZ", "inlet_conn_size", "inlet"],
+        ["OUT CONN SZ", "outlet_conn_size", "outlet"],
+      ]) {
+        const value = cellValue(label);
+        const known = typed[key] ?? read[end];
+        const blank = known === null || known === undefined || known === "";
+        if (value !== null && blank && isAdoptableChecklistValue(value)) {
+          out.engineInputs[key] = Number(value);
+          out.inputs.push({ label });
+        }
+      }
     }
   }
   const bySlot = state.checklistBySlot?.get(tag);

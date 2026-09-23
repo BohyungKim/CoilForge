@@ -51,6 +51,25 @@ def _adopted(key="CD", value=6.0):
     }
 
 
+def test_adopted_water_connection_sizes_switch_r071_on_for_that_coil():
+    """J-1b (John 2026-09-23): IN/OUT CONN SZ adopted from the sheet arrive as Tier-A
+    engine inputs with the adopted prefix -- R-071's connection term applies to THIS
+    coil, and the audit row says where the number came from."""
+    reason = f"{ADOPTED_REASON_PREFIX} HHWC-1 inputs (IN CONN SZ, OUT CONN SZ)"
+    before = derive_coil_template_drawing(_water())
+    after = derive_coil_template_drawing(
+        _water(inlet_conn_size=2.5, outlet_conn_size=2.5, override_reason=reason)
+    )
+    # HWC R-071: MAX(rows base 3.375, 1.5 * (2.5 + 2.5) + 1.5 = 9.0)
+    assert before["slot_values"]["slot.CD"] < 9.0
+    assert after["slot_values"]["slot.CD"] == 9.0
+    audit = {m["target_field"]: m for m in after["manual_overrides"]}
+    assert {"inlet_conn_size", "outlet_conn_size"} <= set(audit)
+    assert all(is_adopted_reason(audit[k]["override_reason"])
+               for k in ("inlet_conn_size", "outlet_conn_size"))
+    assert after["export_allowed"] is False
+
+
 # --- provenance on the wire ---------------------------------------------------------
 def test_adopted_override_source_rides_on_the_wire_and_in_the_events():
     result = derive_coil_template_drawing(_water(param_overrides=[_adopted()]))
@@ -196,12 +215,21 @@ def test_inputs_are_adopted_before_sheet_results():
     assert 'source: "checklist"' in _APP_JS.split("async function adoptChecklistDims(")[1]
 
 
-def test_water_connection_sizes_are_not_adopted_pending_j1b():
-    """Adopting IN/OUT CONN SZ would switch R-071 on per coil — John's open decision J-1b."""
+def test_water_connection_sizes_are_adopted_only_where_the_drawing_has_none():
+    """J-1b (John 2026-09-23): allow, per coil. The sheet's IN/OUT cell falls back to the
+    submittal's generic Supply/Return size; the drawing's extraction does not. Adopting it
+    is a Tier-A engine input (R-071 on for that coil only), water-only, and never over an
+    end the drawing already READ (`water_conn_extracted`) or the engineer TYPED."""
     plan = _APP_JS.split("function checklistAdoptionPlan(")[1].split("\nasync function ")[0]
-    assert "CONN SZ" not in plan
-    assert "inlet_conn_size" not in plan and "outlet_conn_size" not in plan
-
+    assert '["IN CONN SZ", "inlet_conn_size", "inlet"]' in plan
+    assert '["OUT CONN SZ", "outlet_conn_size", "outlet"]' in plan
+    assert 'category === "CWC" || category === "HWC"' in plan
+    assert "manualFills?.engineInputs" in plan and "td.water_conn_extracted" in plan
+    assert "typed[key] ?? read[end]" in plan
+    # Tier A = engine input, so it rides the ONE inputs-first derive with the adopted prefix.
+    assert "out.engineInputs[key] = Number(value)" in plan
+    # The backend treats these keys as engine inputs on /derive (the R-071 trigger).
+    assert "inlet_conn_size: engineInputs.inlet_conn_size" in _APP_JS
 
 def test_the_checklist_table_marks_an_adopted_row():
     """Found in the TR-13 eyeball: the '=' column was blank for `adopted`."""
