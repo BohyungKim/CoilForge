@@ -1280,10 +1280,11 @@
   타임아웃·중복클릭 가드가 없어 Excel COM이 길어지면 멈춘 것처럼 보이고 재클릭이 두 번째 finalize를
   띄운다. 셋 다 실사용 빈도는 낮음. 또 옛 긴 이름으로 파일링된 프로젝트를 다시 돌리면 `already filed`로
   안 잡히고 짧은 이름으로 한 번 더 파일링된다(중복 1개, 무해).
-- [ ] **[체크리스트 리프레시 트랙] John 결정 3건 — 구현과 분리해 열어 둠 (2026-09-22)** — ① KD-001 Terra V HGRH CD 재판정
-  (rows-based 실측 RHHGRC-3 3.75 vs 시트 else-branch 4.125; 시트는 리프레시 후에도 Terra V arm 없음) ② CWC 도면 S 콜아웃을 시트
-  `IN/2+3`으로 바꿀지(seed 7/7이 S=conn) ③ ~~물코일 O 콜아웃~~ → **2026-09-23 datum으로 종결**(위 항목).
-  셋 다 현재는 체크리스트 비교열에 red/amber로 정직하게 드러남. 결정 전 코드 변경 없음.
+- [x] **[체크리스트 리프레시 트랙] John 결정 3건 — 전부 종결 (2026-09-23)** — ① **KD-001 Terra V HGRH CD = 체크리스트**
+  (John: "항상 coil checklist 데이터에서") → `_hgrh_cd_multi`가 Terra V에도 else-branch `MAX(rows base, (n+1)·D+(n−1)·1.5)` 적용,
+  실측 RHHGRC-3 3.75 대신 시트 4.125. 그 결과 supply S = −D(else-term이 이길 때), SL1 = 6 + D/2 − S. KD-001/002/003/028/029 은퇴
+  (15개 남음), 메커니즘 테스트는 존속하는 KD-005로 이전. 3025 Bauducco(n=1)는 rows base가 이겨 실측과 계속 일치.
+  ② CWC S 콜아웃 `IN/2+3` → d8c2c42에서 이미 채택. ③ 물코일 O → 7b562f1 datum으로 종결.
 - [x] **[체크리스트 리프레시 트랙] Terra H/V CWC/HWC 새 SVG 템플릿 시딩 (John 소유)** — 그때까지 도면 vacant
   (`submittal_to_drawing._TERRA_WATER_WITHHELD_FAMILIES`; 시드 후 집합을 비우면 게이트 해제). Direct Coil 경로는 게이트 밖(범위 외). → **2026-09-23 CWC·HWC 모두 시딩, 게이트 해제.**
 - [ ] **[체크리스트 리프레시 트랙] 시트 버그 3건을 Oxygen8에 전달 (RP-003)** — HGRH Terra V O4/O6/O8=2(O2 2.75), HGRH SL5/SL7→C47,

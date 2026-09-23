@@ -328,15 +328,21 @@ def test_non_terra_water_o_is_unchanged():
         assert (o.coilforge_datum, o.sheet_datum) == ("header_side", "header_side")
 
 
-def test_terra_v_hgrh_cd_stays_rows_based_pending_kd_001():
+def test_terra_v_hgrh_cd_follows_the_checklist_else_branch():
+    """John 2026-09-23: "Terra V HGRH CD is always taken from the Coil Checklist".
+    HGRH!C27 has no Terra V arm, so the sheet computes MAX(rows base, (n+1)*D + (n-1)*1.5)
+    and CoilForge now does too. KD-001 and the four rows that stood or fell with it
+    (S1/S3, SL1/SL3) are retired; the O4/O6/O8 sheet defect (KD-005/022/023) is not."""
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="TERRA V", unit_size="072",
         rows=2, circuits=2, conn_size=0.875, qty_conn_per_header=2,
     )
-    assert slots["slot.CD"] == 3.75      # not the sheet's else-branch 4.125
+    assert slots["slot.CD"] == 4.125     # the sheet's else-branch, not the rows base 3.75
+    assert slots["slot.S1"] == slots["slot.S3"] == -0.875   # = -D, exactly as the sheet
     entries = yaml.safe_load(_KD.read_text(encoding="utf-8"))["divergences"]
     ids = {e["id"] for e in entries}
-    assert "KD-001" in ids and "KD-004" not in ids and not ids & {"KD-006", "KD-007", "KD-008", "KD-009"}
+    assert not ids & {"KD-001", "KD-002", "KD-003", "KD-028", "KD-029"}
+    assert "KD-004" not in ids and not ids & {"KD-006", "KD-007", "KD-008", "KD-009"}
     assert {"KD-005", "KD-022", "KD-023"} <= ids       # Terra V O4/O6/O8 = 2 is a sheet defect
 
 

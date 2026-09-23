@@ -33,94 +33,27 @@ version: 1
 
 divergences:
   # ---------------------------------------------------------------------------
-  # KD-001..003, KD-005 (+ KD-022/023, KD-028/029) — Terra V HGRH rows where the sheet and CoilForge
+  # KD-005 (+ KD-022/023) — Terra V HGRH return I/O rows where the sheet and CoilForge
   # still disagree after the 2026-09-22 template refresh.
   #
   # Traced 2026-08-04 (plan rev.3 Phase B/D4); re-read against the 2026-09-22 template.
   # The refreshed sheet gained Terra V arms for O2 (2.75), TF/BF, SL2 (12) and the FIT
-  # rows — KD-004 (O2) is therefore RETIRED (the sheet now agrees). CD (HGRH!C27) and the
-  # supply spacing (C46) still have NO Terra V arm and fall through to the NOVA / VENTUM H
-  # else-branch, so KD-001..003 stand; and the new O4/O6/O8 arms give 2 where O2 gives
-  # 2.75, which John ruled a sheet defect on 2026-09-22 (KD-005, KD-022, KD-023).
-  # The I3 disagreement that was ours (CoilForge asserted 2.75 on Supply 2+) was FIXED in
-  # commit 9abe5a7 and is deliberately NOT registered: a defect we repaired is not a known
-  # gap, and leaving it here would suppress a real regression if it ever came back.
+  # rows — KD-004 (O2) is therefore RETIRED (the sheet now agrees). The new O4/O6/O8 arms
+  # give 2 where O2 gives 2.75, which John ruled a sheet defect on 2026-09-22 (KD-005,
+  # KD-022, KD-023; RP-003). The I3 disagreement that was ours (CoilForge asserted 2.75 on
+  # Supply 2+) was FIXED in commit 9abe5a7 and is deliberately NOT registered: a defect we
+  # repaired is not a known gap, and leaving it here would suppress a real regression.
   #
-  # These are structural, hence no delta_band. Whatever number the else-branch produces
-  # is wrong regardless of how far it lands from ours, so a magnitude band would be
-  # describing the wrong thing. NOTE (2026-09-22): the CD ruling itself is open for
-  # re-adjudication — the measured RHHGRC-3 reference prints the rows-based 3.75, not the
-  # sheet's 4.125, which is why CoilForge keeps KD-001 rather than adopting the sheet
-  # when "the checklist wins" elsewhere. Until John rules, this entry stands.
+  # Structural, hence no delta_band. Scope is `*` (every Terra V size) BY DECLARATION.
   #
-  # Scope is `*` (every Terra V size) BY DECLARATION: the missing branch is a property of
-  # the template, not of any one unit size. Recorded as `status: proposed` — promoting the
-  # file is not the same as John signing off on the engineering, and the badge says so
-  # until he flips it.
-  #
-  # The fix lives on the Excel side, not ours: see rule_proposal RP-001, which drafts the
-  # TERRA V arm for HGRH!C27/C33/C37/C46. We do not apply it; the sheet is Oxygen8's.
-  - id: KD-001
-    coil_category: HGRH
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.CD
-    verdict: checklist_wrong
-    reason: >-
-      The checklist HGRH sheet (still, in the 2026-09-22 template) has no TERRA V arm in
-      C27, so a Terra V coil computes its casing depth through the NOVA / VENTUM H
-      else-branch `(H+1)*D + (H-1)*1.5`. CoilForge keeps the rows-based CD (R-070), which
-      the measured RHHGRC-3 reference prints (3.75, not the sheet's 4.125). Structural,
-      not numeric. Open for re-adjudication (John, NEXT decision 2026-09-22).
-    evidence_refs:
-      - "SOP:2024018#HGRH-TNVH"
-      - "RULE:R-074"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-04"
-    status: proposed
-    rule_proposal: RP-001
-
-  - id: KD-002
-    coil_category: HGRH
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.S1
-    verdict: checklist_wrong
-    reason: >-
-      Supply-1 spacing. The sheet has no Terra V arm in C46 (2026-09-22 template
-      included); CoilForge has used the SAME general formula `CD - ((n+2)*D + (n-1)*1.5)`
-      since 2026-09-09, so the residual disagreement is entirely the CD it is subtracted
-      from (KD-001): the sheet's else-branch CD yields `S = -conn_size`, ours yields the
-      measured value (RHHGRC-3: -1.25; 3025 Bauducco: 1.875). Stands or falls with KD-001.
-    evidence_refs:
-      - "SOP:2024018#HGRH-TNVH"
-      - "RULE:R-046"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-04"
-    status: proposed
-    rule_proposal: RP-001
-
-  - id: KD-003
-    coil_category: HGRH
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.S3
-    verdict: checklist_wrong
-    reason: >-
-      Supply-3 spacing, same cause as KD-002 (one fixed supply position on every odd
-      header since 2026-09-09, so S3 == S1 and inherits the CD difference). Stands or
-      falls with KD-001.
-    evidence_refs:
-      - "SOP:2024018#HGRH-TNVH"
-      - "RULE:R-046"
-    adjudicated_by: John
-    adjudicated_utc: "2026-08-04"
-    status: proposed
-    rule_proposal: RP-001
-
+  # KD-001 (CD), KD-002/003 (S1/S3) and KD-028/029 (SL1/SL3) RETIRED 2026-09-23. John:
+  # "Terra V HGRH CD is always taken from the Coil Checklist". HGRH!C27 still has no
+  # Terra V arm, so the sheet computes Terra V through the NOVA / VENTUM H else-branch
+  # `MAX(rows base, (n+1)*D + (n-1)*1.5)`, and `_hgrh_cd_multi` now does the same (it used
+  # to exclude Terra V and keep the rows base, on the measured RHHGRC-3 reference that
+  # prints 3.75 where the sheet gives 4.125). S1/S3 (= CD - ((n+2)*D + (n-1)*1.5)) and
+  # SL1/SL3 (= 6 + D/2 - S) only ever differed through that CD, so all five rows match.
+  # RP-001's CD arm is moot for CoilForge; the sheet remains Oxygen8's to change.
   # KD-004 (slot.O2) RETIRED 2026-09-22: HGRH!C37 now has a Terra V arm (2.75) that
   # agrees with R-042v, so the row matches and there is nothing to rule on.
 
@@ -187,47 +120,6 @@ divergences:
     adjudicated_utc: "2026-09-22"
     status: proposed
     rule_proposal: RP-003
-
-  - id: KD-028
-    coil_category: HGRH
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.SL1
-    verdict: checklist_wrong
-    reason: >-
-      Supply-1 stub SL1 = 6 + D/2 - S1 on BOTH sides since the 2026-09-22 template (the
-      sheet dropped its Terra V = 5 arm and CoilForge followed), so the residual
-      disagreement is entirely S1's (KD-002), i.e. the CD difference (KD-001): live fill
-      RHHGRC-1 TV072 reads CoilForge 7.6875 vs sheet 7.3125 = the 0.375 CD gap. Stands or
-      falls with KD-001.
-    evidence_refs:
-      - "CHK:HGRH!C58 (2026-09-22) =6+C15/2-C46 every line"
-      - "RULE:R-044a"
-      - "KD:KD-001"
-    adjudicated_by: John
-    adjudicated_utc: "2026-09-22"
-    status: proposed
-    rule_proposal: RP-001
-
-  - id: KD-029
-    coil_category: HGRH
-    product_family: TERRA_V
-    terra_variant: TERRA_V
-    unit_size_scope: "*"
-    slot: slot.SL3
-    verdict: checklist_wrong
-    reason: >-
-      Supply-3 stub SL3, same cause as KD-028 (SL3 = 6 + D/2 - S3 and S3 == S1). Stands
-      or falls with KD-001.
-    evidence_refs:
-      - "CHK:HGRH!C60 (2026-09-22)"
-      - "RULE:R-044a"
-      - "KD:KD-001"
-    adjudicated_by: John
-    adjudicated_utc: "2026-09-22"
-    status: proposed
-    rule_proposal: RP-001
 
   # ---------------------------------------------------------------------------
   # KD-006..009 (single-feed HGRH supply SL1, 6 vs the sheet's 3) RETIRED 2026-09-22.
@@ -470,7 +362,6 @@ divergences:
     adjudicated_by: John
     adjudicated_utc: "2026-08-26"
     status: proposed
-
 
   # ---------------------------------------------------------------------------
   # KD-024..027 (water return O on the Terra lines) RETIRED 2026-09-23 (John).

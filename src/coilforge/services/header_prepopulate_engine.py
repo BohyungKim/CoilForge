@@ -695,16 +695,14 @@ def _hgrh_cd_multi(request) -> float | None:  # type: ignore[no-untyped-def]
     form — so this only ever RAISES CD above the rows-based base, never blanks or
     lowers it (the failure mode that got R-073 disabled).
 
-    Terra V is excluded: its CD stays rows-based. The original reason (its S = CD - Rn)
-    lapsed on 2026-09-09 (Terra V HGRH S now takes the general CD formula); what keeps
-    the exclusion is the MEASURED reference (RHHGRC-3 prints CD 3.75, not the sheet's
-    else-branch 4.125 — `tests/test_terra_v_hgrh_headers.py`) and John's KD-001 ruling
-    (2026-08-04, `checklist_wrong`). The 2026-09-22 template still has no Terra V arm in
-    HGRH!C27, so nothing has changed on the sheet side; re-adjudication is John's call.
+    Terra V takes the sheet's else-branch like Nova / Ventum H (John 2026-09-23: "Terra V
+    HGRH CD is always taken from the Coil Checklist"). HGRH!C27 has no Terra V arm, so the
+    sheet computes Terra V through `(n+1)*D + (n-1)*1.5`; CoilForge now does the same.
+    This re-adjudicates KD-001 (2026-08-04, which kept the rows-based CD because the
+    measured RHHGRC-3 reference prints 3.75 where the sheet gives 4.125): the checklist
+    is the source of truth for CD, so the reference no longer overrides it.
     ``n`` follows the R-052 idiom (qty_conn_per_header, else circuits); ``conn`` is
     the HGRH connection size (``conn_size``)."""
-    if request.terra_variant == TerraVariant.TERRA_V:
-        return None
     conn = request.conn_size
     n = request.qty_conn_per_header or request.circuits
     if conn is None or n is None:
@@ -748,8 +746,8 @@ def _emit_casing_depth(request, place, add_missing) -> None:  # type: ignore[no-
             # of truth for CD/S/SL). The MAX form is the fix for the earlier R-073 bug:
             # the old code REPLACED base with the multi term, which for a single circuit
             # was a non-physical 1.0"/1.25" that blanked slot.CD and corrupted Terra V's
-            # S = CD - Rn. As a floor-preserving MAX it can only raise CD above base, and
-            # ``_hgrh_cd_multi`` returns None for Terra V, so Terra V CD stays rows-based.
+            # S = CD - Rn. As a floor-preserving MAX it can only raise CD above base. Terra V
+            # takes the sheet's else-branch too (John 2026-09-23, KD-001 re-adjudicated).
             multi = _hgrh_cd_multi(request)
             place(
                 "casing_depth",

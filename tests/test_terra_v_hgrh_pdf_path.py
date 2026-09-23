@@ -80,8 +80,12 @@ def test_supply_spacing_is_one_position_and_may_be_negative() -> None:
     `Supply 1/2/3/etc.`, and the SOP states outright that "Supply S/R values may be
     negative". The value follows the stated connections-per-header, not the circuit count:
     4 connections put the supply behind the casing face, 2 put it 0.25" inside.
+
+    2026-09-23: Terra V HGRH CD follows the checklist's else-branch (KD-001
+    re-adjudicated), so with 4 connections CD = MAX(3.75, 5*0.5 + 3*1.5 = 7.0) = 7.0 and
+    S = 7.0 - (6*0.5 + 3*1.5) = -D = -0.5. With 2 the rows base (3.75) still wins.
     """
-    for extra, expected in (({}, -3.75), ({"stated_qty_conn_per_header": 2}, 0.25)):
+    for extra, expected in (({}, -0.5), ({"stated_qty_conn_per_header": 2}, 0.25)):
         slots = _slots(**extra)
         supply = {
             key: value for key, value in slots.items()
@@ -94,7 +98,7 @@ def test_supply_spacing_is_one_position_and_may_be_negative() -> None:
 def test_every_supply_header_is_drawn_and_none_drifts_from_the_first() -> None:
     """The DX even-spacing net (`k*CD/(circuits+1)`) would both blank and scale these."""
     slots = _slots()
-    assert [slots.get(f"slot.S{2 * k - 1}") for k in range(1, 5)] == [-3.75] * 4
+    assert [slots.get(f"slot.S{2 * k - 1}") for k in range(1, 5)] == [-0.5] * 4
 
 
 def test_the_supply_spacing_panel_row_carries_a_number_not_a_reason() -> None:
@@ -107,7 +111,7 @@ def test_the_supply_spacing_panel_row_carries_a_number_not_a_reason() -> None:
     result = derive_coil_template_drawing({**_BASE})
     params = parameter_set_from_template_drawing(result, circuits=4).model_dump()
     s3 = params["parameters"]["S3"]
-    assert s3["value"] == -3.75
+    assert s3["value"] == -0.5
     assert not s3["blocked_reason"], s3["blocked_reason"]
 
 

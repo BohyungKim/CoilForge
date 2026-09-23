@@ -698,9 +698,12 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   R-066a; R-067 "HDR ENDS" retired). Water RB is family-branched (R-006 2.25, R-006v Terra V
   1.875, R-006p Ventum+-class 1.875) and the Terra V casing heights follow the Units tab
   (47/58/74/74/76). What genuinely stays gated: `R-082` Terra mounting holes (LOW, and its
-  only source — the checklist clause — was removed on 2026-09-22) and the Terra V HGRH CD,
-  which stays rows-based against the sheet's else-branch on John's KD-001 ruling and the
-  measured RHHGRC-3 (open for re-adjudication, NEXT ① 2026-09-22). Supply I/O is ONE value on
+  only source — the checklist clause — was removed on 2026-09-22). The Terra V HGRH CD
+  **follows the checklist** since 2026-09-23 (John: "always taken from the Coil Checklist"):
+  HGRH!C27 has no Terra V arm, so `_hgrh_cd_multi` gives Terra V the NOVA / VENTUM H
+  else-branch `MAX(rows base, (n+1)·D + (n−1)·1.5)` — even though the measured RHHGRC-3
+  reference prints the rows base 3.75 (sheet 4.125). Supply S therefore comes out `−D` when
+  the else-term wins; KD-001/002/003/028/029 are retired. Supply I/O is ONE value on
   every odd header (John 2026-09-09, `I1 = I2 = I3`) and supply S is one fixed position per
   coil — neither is blanked any more (pinned by `tests/test_terra_v_hgrh_headers.py`). The
   sheet's own Terra V `O4/O6/O8 = 2` (while `O2 = 2.75`) is a sheet defect (John 2026-09-22,

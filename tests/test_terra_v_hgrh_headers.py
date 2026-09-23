@@ -69,17 +69,20 @@ def test_terra_v_hgrh_supply_io_is_written_on_every_header():
 def test_the_rest_of_the_terra_v_hgrh_geometry_is_untouched():
     """The blanking must not disturb the values the checklist already agreed with."""
     slots = _slots()
-    assert slots["slot.CD"] == 3.75           # rows-based (SOP); NOT the checklist 4.125
-    # One SOP position for every supply header: CD - [(n+2)*D + (n-1)*1.5] with
-    # n = qty_conn_per_header = 2, D = 0.875 -> 3.75 - 5.0. Negative is legitimate.
-    assert slots["slot.S1"] == -1.25
+    # CD follows the Coil Checklist (John 2026-09-23, KD-001 re-adjudicated): HGRH!C27
+    # has no Terra V arm, so MAX(rows base 3.75, (n+1)*D + (n-1)*1.5 = 4.125) = 4.125.
+    # The measured RHHGRC-3 CoilMaster drawing prints 3.75; the checklist wins.
+    assert slots["slot.CD"] == 4.125
+    # One position for every supply header: CD - [(n+2)*D + (n-1)*1.5] with n = 2,
+    # D = 0.875 -> 4.125 - 5.0 = -D. Negative is legitimate.
+    assert slots["slot.S1"] == -0.875
     assert slots["slot.S3"] == slots["slot.S1"]
     assert slots["slot.R2"] == 0.875
     assert slots["slot.R4"] == 3.25
     assert slots["slot.O2"] == 2.75 and slots["slot.O4"] == 2.75
     # Supply SL = 6 + D/2 - S1 for every line since 2026-09-22 (the SOP's Terra V 5 is
-    # superseded by HGRH!C58, which has no Terra V arm): 6 + 0.4375 - (-1.25) = 7.6875.
-    assert slots["slot.SL1"] == 7.6875 and slots["slot.SL2"] == 12
+    # superseded by HGRH!C58, which has no Terra V arm): 6 + 0.4375 - (-0.875) = 7.3125.
+    assert slots["slot.SL1"] == 7.3125 and slots["slot.SL2"] == 12
     assert slots["slot.OAL"] == 59.0 and slots["slot.CH"] == 40.25
 
 
@@ -118,7 +121,7 @@ def test_terra_v_hgrh_supply_spacing_is_one_fixed_position_on_every_header():
     supply = {k: v for k, v in slots.items()
               if k.startswith("slot.S") and k[len("slot.S"):].isdigit()}
     assert len(supply) == 6, supply
-    assert set(supply.values()) == {-1.25}, (
+    assert set(supply.values()) == {-0.875}, (
         "every supply header must share the one SOP position; a k-scaled value means the "
         f"DX even-spacing net leaked onto a reheat coil: {supply}"
     )
@@ -201,7 +204,7 @@ def test_no_terra_v_hgrh_header_value_is_withheld_any_more():
     params = _panel(_slots(circuits=6)).parameters
     by_key = {p.key: p for p in params} if isinstance(params, list) else params
 
-    for key, expected in (("I2", 2), ("S2", -1.25)):
+    for key, expected in (("I2", 2), ("S2", -0.875)):
         row = by_key[key]
         assert row.value == expected, (key, row.value)
         assert not row.blocked_reason, (key, row.blocked_reason)
@@ -209,7 +212,7 @@ def test_no_terra_v_hgrh_header_value_is_withheld_any_more():
     # S3 is no longer withheld (2026-09-09): the SOP formula defines it, so the panel
     # shows a number instead of a reason. Pinned so a regression to blanking is loud.
     s3 = by_key["S3"]
-    assert s3.value == -1.25, s3.value
+    assert s3.value == -0.875, s3.value
     assert not s3.blocked_reason, s3.blocked_reason
 
 

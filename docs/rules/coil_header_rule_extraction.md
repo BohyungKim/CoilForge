@@ -21,7 +21,8 @@ I/O TBD, HD N/A — R-064-*) was removed, and the HWC sheet branches Terra TF/BF
 INSTALLED ON DP (R-014h). Terra V gained its own WIDTH FIT (`(W−OAL) ≥ 9.75` DX/HGRH, `≥ 8.75`
 water) and HEIGHT FIT (FH ≤ 24/42/45/48 by size band) arms (R-078). NOT adopted, by John's
 separate rulings: the water `O = CH−x` (resolved 2026-09-23 as a datum difference — KD-024..027 retired, see R-061 row) and the Terra V HGRH CD
-(rows-based, KD-001) — see `known_divergences.yaml`. **Adopted 2026-09-23 (John):** water S/R
+(was rows-based under KD-001; **adopted 2026-09-23** — Terra V takes HGRH!C27's else-branch
+`MAX(rows base, (n+1)·D + (n−1)·1.5)`, KD-001/002/003/028/029 retired) — see `known_divergences.yaml`. **Adopted 2026-09-23 (John):** water S/R
 on every line — CWC `S = IN/2+3` (C27), `R = OUT` (C28); HWC `S = IN` (C31), `R = OUT` (C32) —
 replacing the drawn `S = conn, R = S`; and the R-071 CD term is now applied from the
 submittal's extracted inlet/outlet sizes on the analyze path too (`_apply_water_connection_slots`). Sheet

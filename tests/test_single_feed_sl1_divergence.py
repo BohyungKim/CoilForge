@@ -11,7 +11,8 @@ formula and KD-006..009 were RETIRED. What this file pins now:
 * the comparator still calls a real disagreement a mismatch (unchanged);
 * no SL1 ruling exists for the Nova / Ventum H / Terra H / Ventum+ lines any more -- a
   hypothetical 6-vs-3 row stays RED, because nothing has been adjudicated for it;
-* Terra V's SL1 IS covered (KD-028, band-less): its residual gap is the CD gap (KD-001);
+* Terra V's SL1 is no longer covered: KD-028 went with KD-001 on 2026-09-23 when Terra V
+  HGRH CD began following the sheet, so both sides now agree and a gap would be RED;
 * the delta_band mechanism itself still re-escalates, exercised on a banded ruling that
   still exists (KD-010, Omnia TF, band exactly -0.375).
 """
@@ -89,20 +90,19 @@ def test_the_retired_single_feed_ruling_no_longer_labels_anything(family, varian
     assert row["verdict"] == "mismatch"
 
 
-def test_terra_v_sl1_is_covered_by_the_cd_ruling_family():
-    """Terra V SL1 follows the same formula on both sides; its residual gap is the CD gap
-    (KD-001), so it is registered band-less alongside S1/S3 (KD-028) and stands or falls
-    with that ruling."""
+def test_terra_v_sl1_gap_is_no_longer_ruled_away():
+    """KD-028 (Terra V SL1) stood or fell with KD-001 (CD). Both retired 2026-09-23: John
+    ruled Terra V HGRH CD is always the checklist's, so SL1 = 6 + D/2 - S1 agrees on both
+    sides. The old live-fill gap (7.6875 vs 7.3125) must now read RED if it ever returns."""
     review = annotate_known_divergences(
-        _review(7.6875, 7.3125),                     # live fill RHHGRC-1 TV072, 2026-09-22
+        _review(7.6875, 7.3125),                     # the 2026-09-22 RHHGRC-1 TV072 gap
         identities={"RHHGRC-1": ("HGRH", "TERRA_V", "TERRA_V", "072")},
         registry=load_registry(),
     )
-    note = review["sheets"][0]["comparisons"][0].get("divergence")
-    assert note is not None and note["applies"] is True
-    assert note["id"] == "KD-028"
-    assert note["verdict"] == "checklist_wrong" and note["severity"] == "known_gap"
-    assert "KD-001" in note["reason"]
+    row = review["sheets"][0]["comparisons"][0]
+    note = row.get("divergence")
+    assert note is None or note["applies"] is False, "a retired Terra V SL1 ruling still applies"
+    assert row["verdict"] == "mismatch"
 
 
 def test_a_delta_outside_the_band_re_escalates():
