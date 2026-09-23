@@ -30,7 +30,12 @@ from coilforge.template_population.catalog import (  # noqa: E402
 )
 from coilforge.workflows.submittal_to_drawing import derive_coil_template_drawing  # noqa: E402
 
-_CWC_DIR = ROOT / "templates" / "drawing" / "coilmaster" / "cwc"
+_TEMPLATE_ROOT = ROOT / "templates" / "drawing" / "coilmaster"
+
+
+def _dir(template_id):
+    """Terra water buckets live under their own category folder (cwc/ or hwc/)."""
+    return _TEMPLATE_ROOT / TERRA_TEMPLATES[template_id][0] / template_id
 
 
 def _select(family, hand, category="CWC"):
@@ -55,23 +60,32 @@ def test_terra_cwc_selects_its_dedicated_template(family, hand, expected):
     assert sel.entry.product_family == TERRA_FAMILY
 
 
-def test_other_lines_and_terra_hwc_do_not_borrow_the_terra_cwc_art():
+def test_other_lines_do_not_borrow_the_terra_water_art():
     assert _select("NOVA", "LH").template_id == "coilmaster_cwc_lh"
     assert _select(None, "RH").template_id == "coilmaster_cwc_rh"
-    # Terra HWC has no dedicated bucket yet: it falls back to the SHARED one here, and
-    # the workflow gate is what keeps that drawing withheld (tests/test_terra_water_...).
-    assert _select("TERRA_V", "LH", "HWC").template_id == "coilmaster_hwc_lh"
+    assert _select("NOVA", "LH", "HWC").template_id == "coilmaster_hwc_lh"
+    assert _select("VENTUM_H", "RH", "HWC").template_id == "coilmaster_hwc_rh"
 
 
-def test_bucket_count_includes_the_two_terra_templates():
-    assert len(TERRA_TEMPLATES) == 2
+@pytest.mark.parametrize("family", ["TERRA_H", "TERRA_V", "TERRA H C"])
+@pytest.mark.parametrize("hand, expected", [("LH", "coilmaster_terra_hwc_lh"),
+                                            ("RH", "coilmaster_terra_hwc_rh")])
+def test_terra_hwc_selects_its_dedicated_template(family, hand, expected):
+    # Seeded 2026-09-23 from John's TERRA_HWC_LH/RH (HW-A-F-03-11-15.00x22.50-L/R).
+    sel = _select(family, hand, "HWC")
+    assert sel.found and sel.template_id == expected
+    assert sel.entry.product_family == TERRA_FAMILY
+
+
+def test_bucket_count_includes_the_four_terra_templates():
+    assert len(TERRA_TEMPLATES) == 4
     assert len(load_drawing_template_catalog().entries) == TEMPLATE_BUCKET_COUNT
 
 
 # --- the seeded artwork ------------------------------------------------------------------
 @pytest.mark.parametrize("template_id", sorted(TERRA_TEMPLATES))
 def test_the_artwork_carries_no_baked_dimension(template_id):
-    svg = (_CWC_DIR / template_id / "template.svg").read_text(encoding="utf-8")
+    svg = (_dir(template_id) / "template.svg").read_text(encoding="utf-8")
     texts = re.findall(r"<tspan[^>]*>([^<]*)</tspan>", svg)
     baked = [t for t in texts if re.fullmatch(r"\s*-?\d+(\.\d+)?\s+[A-Z][A-Za-z]{0,3}\d?\s*", t)]
     assert baked == [], baked
@@ -82,7 +96,7 @@ def test_the_artwork_carries_no_baked_dimension(template_id):
 @pytest.mark.parametrize("template_id", sorted(TERRA_TEMPLATES))
 def test_every_placeholder_is_registered_in_the_slot_map(template_id):
     """An unregistered placeholder renders literally (`{{slot.X}}`) -- the redaction gotcha."""
-    folder = _CWC_DIR / template_id
+    folder = _dir(template_id)
     used = set(re.findall(r"\{\{(slot\.[A-Z0-9_]+)\}\}", (folder / "template.svg").read_text(encoding="utf-8")))
     registered = {s["slot_id"] for s in json.loads((folder / "slot_map.json").read_text(encoding="utf-8"))["slots"]}
     assert used <= registered, used - registered
@@ -90,11 +104,13 @@ def test_every_placeholder_is_registered_in_the_slot_map(template_id):
 
 def test_each_hand_is_its_own_seed_not_a_mirror():
     meta = {
-        t: json.loads((_CWC_DIR / t / "template_metadata.json").read_text(encoding="utf-8"))
+        t: json.loads((_dir(t) / "template_metadata.json").read_text(encoding="utf-8"))
         for t in TERRA_TEMPLATES
     }
     assert meta["coilmaster_terra_cwc_lh"]["coil_hand"] == "LH"
     assert meta["coilmaster_terra_cwc_rh"]["coil_hand"] == "RH"
+    assert meta["coilmaster_terra_hwc_lh"]["coil_hand"] == "LH"
+    assert meta["coilmaster_terra_hwc_rh"]["coil_hand"] == "RH"
     for m in meta.values():
         assert m["seed_method"].startswith("vectorised_from_provided_ez_drawing_pdf")
         assert m["export_allowed"] is False and m["production_approved"] is False
@@ -117,6 +133,33 @@ def test_a_terra_cwc_renders_coilforge_values_into_the_terra_art(product):
     if product == "TERRA V":
         assert (slots["slot.CH"], slots["slot.I1"], slots["slot.O2"]) == (19.25, 2.75, 16.5)
     assert out["export_allowed"] is False
+
+
+@pytest.mark.parametrize("product", ["TERRA H", "TERRA V"])
+@pytest.mark.parametrize("hand, expected", [("Left", "coilmaster_terra_hwc_lh"),
+                                            ("Right", "coilmaster_terra_hwc_rh")])
+def test_a_terra_hwc_renders_into_its_own_art(product, hand, expected):
+    out = derive_coil_template_drawing(dict(
+        coil_category="HWC", coil_hand=hand, circuits=1, product_type=product,
+        unit_size="006", rows=3, finned_height=15.0, finned_length=22.5,
+        suction_conn_size=1.25, water_conn_extracted={"inlet": 1.25, "outlet": 1.25},
+    ))
+    assert out["template_id"] == expected
+    assert out.get("unregistered_terra_water") is not True
+    svg, slots = out["svg"], out["slot_values"]
+    assert svg and "{{slot." not in svg
+    assert slots["slot.S1"] == 1.25 and slots["slot.R2"] == 1.25   # HWC S = IN, R = OUT
+    # Opposite-datum art (seed O2 13.50 = CH 16.25 - I1 2.75, both hands).
+    assert slots["slot.O2"] == round(slots["slot.CH"] - slots["slot.I1"], 4)
+    assert out["export_allowed"] is False
+
+
+def test_terra_hwc_seed_evidence_is_opposite_datum():
+    for t in ("coilmaster_terra_hwc_lh", "coilmaster_terra_hwc_rh"):
+        ev = json.loads((_dir(t) / "seed_evidence.json").read_text(encoding="utf-8"))
+        vals = {e["slot_id"]: float(e["value"]) for e in ev["slot_evidence"]
+                if e["slot_id"] in ("slot.CH", "slot.I1", "slot.O2")}
+        assert vals == {"slot.CH": 16.25, "slot.I1": 2.75, "slot.O2": 13.5}, t
 
 
 def _terra_v_cwc(**extra):

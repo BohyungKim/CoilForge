@@ -291,27 +291,30 @@ def test_water_o_is_one_position_in_two_datums_and_compares_as_a_match():
                 and e["coil_category"] in ("CWC", "HWC")]
 
 
-def test_hwc_terra_o_converts_only_on_the_drain_pan():
-    """HWC is still drawn header-side (no Terra HWC artwork yet), so O == I; the sheet's
-    O is opposite-datum only when INSTALLED ON DP."""
+def test_hwc_terra_o_matches_on_and_off_the_drain_pan():
+    """Terra HWC draws on its own opposite-datum art (seed 13.50 = CH 16.25 - I 2.75).
+    The sheet's O is opposite-datum only when INSTALLED ON DP; off the pan it prints the
+    plain header-side 2.3125 -- the same stubout either way, so both rows match."""
     on_pan = build_checklist_fill(
         [_water("HWC", "TERRA V", "024"), _water("CWC", "TERRA V", "024")]
     ).sheets
     hwc = next(s for s in on_pan if s.category == "HWC")
-    o = _dims(hwc)["O"]
-    assert (o.coilforge_datum, o.sheet_datum) == ("header_side", "opposite")
-    ch = _dims(hwc)["CH"].coilforge_value
-    i1 = _dims(hwc)["I"].coilforge_value
-    assert o.coilforge_value == i1
+    o, ch, i1 = _dims(hwc)["O"], _dims(hwc)["CH"].coilforge_value, _dims(hwc)["I"].coilforge_value
+    assert (o.coilforge_datum, o.sheet_datum) == ("opposite", "opposite")
+    assert o.coilforge_value == round(ch - i1, 4)
     rows = _review_of(hwc, {"CH": ch, "O": ch - i1})
     assert rows["O"]["verdict"] == "match"
-    # "use checklist" must copy the sheet's O in the DRAWING's datum, never the raw CH - x.
-    assert rows["O"]["compared_from_header_end"]["checklist_as_drawn"] == i1
+    assert rows["O"]["compared_from_header_end"]["checklist_as_drawn"] == ch - i1
 
     off_pan = build_checklist_fill([_water("HWC", "TERRA V", "024")]).sheets[0]
-    o = _dims(off_pan)["O"]
-    assert (o.coilforge_datum, o.sheet_datum) == ("header_side", "header_side")
-    assert "compared_from_header_end" not in _review_of(off_pan, {"O": 2.3125})["O"]
+    o, ch, i1 = (_dims(off_pan)["O"], _dims(off_pan)["CH"].coilforge_value,
+                 _dims(off_pan)["I"].coilforge_value)
+    assert (o.coilforge_datum, o.sheet_datum) == ("opposite", "header_side")
+    rows = _review_of(off_pan, {"CH": ch, "O": i1})
+    assert rows["O"]["verdict"] == "match"
+    # "use checklist" must copy the sheet's O in the DRAWING's datum (CH - I), never the
+    # raw header-side number, which would land on the opposite-datum dimension line.
+    assert rows["O"]["compared_from_header_end"]["checklist_as_drawn"] == round(ch - i1, 4)
 
 
 def test_water_o_conversion_needs_a_ch_and_never_guesses_one():

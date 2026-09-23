@@ -135,9 +135,8 @@ VENTUM_PLUS_TEMPLATES: dict[
 }
 
 # Dedicated Terra buckets (same tuple shape as VENTUM_PLUS_TEMPLATES). Seeded 2026-09-23
-# from John's own CoilMaster drawings of one CWC in each hand (scripts/seed_templates_from
-# _pdf.py TERRA_BUCKETS). Terra HWC is not seeded yet, so a Terra HWC coil still finds no
-# dedicated bucket -- and the workflow gate keeps its drawing withheld until one lands.
+# from John's own CoilMaster drawings of one CWC and one HWC in each hand
+# (scripts/seed_templates_from_pdf.py TERRA_BUCKETS).
 TERRA_TEMPLATES: dict[
     str, tuple[str, str, str, str | None, str | None, str | None, str]
 ] = {
@@ -145,6 +144,10 @@ TERRA_TEMPLATES: dict[
         "cwc", "CWC", "LH", "Header 1", None, "TERRA-CWC-JOHN-2026-09-23-L", _SEEDED),
     "coilmaster_terra_cwc_rh": (
         "cwc", "CWC", "RH", "Header 1", None, "TERRA-CWC-JOHN-2026-09-23-R", _SEEDED),
+    "coilmaster_terra_hwc_lh": (
+        "hwc", "HWC", "LH", "Header 1", None, "TERRA-HWC-JOHN-2026-09-23-L", _SEEDED),
+    "coilmaster_terra_hwc_rh": (
+        "hwc", "HWC", "RH", "Header 1", None, "TERRA-HWC-JOHN-2026-09-23-R", _SEEDED),
 }
 
 TEMPLATE_BUCKET_COUNT = (
@@ -158,10 +161,13 @@ TEMPLATE_BUCKET_COUNT = (
 # O2 16.50 = CH - I (seed_evidence.json) -- which is also how the Coil Checklist writes
 # the Terra O row (CH - 3.25 / CH - 2.75). The datum belongs to the artwork, not to a
 # rule: the same stubout position is a different number on a differently-drawn sheet.
-# Add a Terra HWC bucket here only after reading ITS seed's O2.
+# The Terra HWC seeds read the same way (O2 13.50 = CH 16.25 - I1 2.75, both hands).
+# A new bucket goes here only after reading ITS seed's O2.
 TEMPLATE_O_DATUM: dict[str, str] = {
     "coilmaster_terra_cwc_lh": "opposite",
     "coilmaster_terra_cwc_rh": "opposite",
+    "coilmaster_terra_hwc_lh": "opposite",
+    "coilmaster_terra_hwc_rh": "opposite",
 }
 
 

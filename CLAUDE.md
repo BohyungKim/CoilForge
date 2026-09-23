@@ -166,14 +166,15 @@ CD reads as drift). Extracted sizes are **submittal data, never a ManualOverride
 typed Tier-A keys (`_MANUAL_ENGINE_INPUT_KEYS`) write an audit row. Real effect: 2857 HHWC-1 CD
 3.375 → 3.75. **Water O is a DATUM question, not a rule (John 2026-09-23).** The sheet's Terra
 `O = CH − 3.25/2.75` and the drawn `O = I` are one stubout measured from opposite ends. The datum
-belongs to the ARTWORK: `catalog.TEMPLATE_O_DATUM` marks the Terra CWC buckets `opposite` (their
-seeds print 16.50 = CH 19.25 − I 2.75); every other water bucket is `header_side` (O = I).
+belongs to the ARTWORK: `catalog.TEMPLATE_O_DATUM` marks the Terra CWC and Terra HWC buckets
+`opposite` (seeds: 16.50 = CH 19.25 − I 2.75; 13.50 = CH 16.25 − I 2.75); every shared water
+bucket is `header_side` (O = I).
 `apply_water_o_datum` (step 3b of `build_drawing_slots`, and again after a manual CH/I in
 `_reflect_param_overrides_into_slots`) prints `CH − I` on opposite art — and **blanks** O when CH
 is unresolved rather than printing I there. The checklist tags the O row with both datums
 (`mapping._with_water_o_datum`) and `compare.py` matches both from the header end; "use
 checklist" adopts `checklist_as_drawn`, never the raw sheet number. KD-024..027 are retired.
-When Terra HWC is seeded, read ITS seed's O2 before adding it to `TEMPLATE_O_DATUM`.
+A future water bucket goes into `TEMPLATE_O_DATUM` only after reading ITS seed's O2.
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):
@@ -570,11 +571,12 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   untouched) + threaded at `direct_coil_drawing_pipeline`. (Ventum+ was first un-blocked
   2026-07-03 — `_UNREGISTERED_PRODUCT_LINES` emptied — to reuse shared templates; the fork
   then gave it its own seeded set so the R-032 UP geometry is captured from the reference.)
-  That same submittal gate (`_gate_unregistered_product_line`) **withholds Terra H and Terra
-  V HWC drawings** (`_TERRA_WATER_WITHHELD_FAMILIES` × `_TERRA_WATER_WITHHELD_CATEGORIES =
-  {"HWC"}`; John 2026-09-22: "keep the drawing template vacant for now"). **Terra CWC was
-  released 2026-09-23**: `coilmaster_terra_cwc_{lh,rh}` were seeded from John's own CoilMaster
-  references (one artwork for Terra H AND Terra V — `catalog.TERRA_TEMPLATES`, bucket family
+  That same submittal gate (`_gate_unregistered_product_line`) withheld Terra H and Terra V
+  water drawings (`_TERRA_WATER_WITHHELD_FAMILIES` × `_TERRA_WATER_WITHHELD_CATEGORIES`; John
+  2026-09-22: "keep the drawing template vacant for now"). **Both are released 2026-09-23 and
+  the category set is EMPTY** (the gate is an inert extension point, re-armed by monkeypatch in
+  tests): `coilmaster_terra_{cwc,hwc}_{lh,rh}` were seeded from John's own CoilMaster
+  references (one artwork per category for Terra H AND Terra V — `catalog.TERRA_TEMPLATES`, bucket family
   `TERRA`, with `TEMPLATE_FAMILY_ALIAS` folding `TERRA_H`/`TERRA_V`/`TERRA_H_C`/`"TERRA H C"`
   onto it), and `_prefer_dedicated_family_template` swaps the shared artwork for them. The gate
   must stay category-level: it runs BEFORE the dedicated-family step, which needs an SVG.
@@ -587,7 +589,7 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   `not_registered_reason` naming the re-seed) while `slot_values`, the parameter panel and
   the Coil Checklist are still produced — Terra V and Terra H water still resolve DIFFERENT
   `slot.O2` (pinned by `test_terra_v_water_carries_terra_v_drawing_parameters` and
-  `tests/test_terra_water_drawing_gated.py`). Empty the set once the new templates land. The
+  `tests/test_terra_water_drawing_gated.py`). The
   Direct Coil pipeline does not pass this gate (out of scope 2026-09-22). Caveat carried
   over: the shared water templates still have un-redacted as-built dims (see *Template
   hardcoded dims deferred*), which are Nova-shaped for every line that borrows them.
@@ -888,6 +890,9 @@ column. The rules that keep it legible — and the precedent for any future view
   **Approved addition, 2026-09-23 (John: "새로운 chill water coil template 피딩" + plan
   approval):** two NEW buckets `coilmaster_terra_cwc_{lh,rh}` seeded into new folders from
   `Case/feed/terra_cwc_{lh,rh}/` — no existing `template.svg` was regenerated or edited.
+  **Approved addition, 2026-09-23 (John: "A 시딩 지금 해주고 … Terra 전용"):** two NEW buckets
+  `coilmaster_terra_hwc_{lh,rh}` seeded into new folders from `Case/feed/terra_hwc_{lh,rh}/`
+  (`TERRA_HWC_LH/RH.pdf`, `HW-A-F-03-11-15.00x22.50-L/R`) — again no existing template touched.
 - The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
   at render time by `drawing/label_authority.py::direct_coil_label` (applied in
   `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded

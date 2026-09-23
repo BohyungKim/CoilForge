@@ -117,25 +117,23 @@ def test_non_ventum_line_is_not_gated() -> None:
     assert out["svg"]
 
 
-def test_terra_v_water_drawing_is_withheld_while_templates_are_reseeded() -> None:
-    # John 2026-07-28 released Terra V CWC/HWC onto the SHARED Nova/Ventum-H water
-    # template. John 2026-09-22 withdrew that ("keep the drawing template vacant for
-    # now"): the Terra H/V water SVG templates are being re-seeded, so the shared artwork
-    # must not stand in meanwhile. The drawing is blanked loudly; the values still resolve.
-    # 2026-09-23: Terra CWC got its own seeded templates, so only HWC is still withheld
-    # (CWC routing is pinned in tests/test_terra_water_drawing_gated.py).
-    for category in ("HWC",):
-        out = derive_coil_template_drawing(
-            dict(coil_category=category, coil_hand="Left", circuits=1,
-                 product_type="TERRA V", unit_size="024", rows=4,
-                 finned_height=12, finned_length=15, suction_conn_size=0.625)
-        )
-        assert not out["svg"], category
-        assert out["template_found"] is False, category
-        assert out["generation_allowed"] is False, category
-        assert out.get("unregistered_terra_water") is True, category
-        assert "re-seeded" in (out.get("not_registered_reason") or ""), category
-        assert out["export_allowed"] is False, category
+def test_terra_water_gate_still_withholds_a_listed_category(monkeypatch) -> None:
+    # John 2026-09-22 withheld Terra water art while its templates were re-seeded; both
+    # pairs landed 2026-09-23, so the category set is empty. The mechanism stays as the
+    # extension point -- re-armed here, it must still blank the drawing loudly.
+    import coilforge.workflows.submittal_to_drawing as std
+
+    monkeypatch.setattr(std, "_TERRA_WATER_WITHHELD_CATEGORIES", {"HWC"})
+    out = derive_coil_template_drawing(
+        dict(coil_category="HWC", coil_hand="Left", circuits=1,
+             product_type="TERRA V", unit_size="024", rows=4,
+             finned_height=12, finned_length=15, suction_conn_size=0.625)
+    )
+    assert not out["svg"]
+    assert out["template_found"] is False and out["generation_allowed"] is False
+    assert out.get("unregistered_terra_water") is True
+    assert "re-seeded" in (out.get("not_registered_reason") or "")
+    assert out["export_allowed"] is False
 
 
 def test_terra_v_water_carries_terra_v_drawing_parameters() -> None:
@@ -168,23 +166,24 @@ def test_terra_v_dx_and_hgrh_still_generate() -> None:
         assert out["svg"], category
 
 
-def test_terra_h_water_is_withheld_too_and_other_lines_are_not() -> None:
-    # Terra H (resolved H C) HWC is withheld on the same 2026-09-22 instruction (its CWC
-    # was released 2026-09-23 with the seeded Terra CWC pair); a Nova water coil and a
-    # Terra DX/HGRH are untouched by the gate.
+def test_terra_h_hwc_draws_on_its_own_art_and_other_lines_are_untouched() -> None:
+    # Terra H (resolved H C) HWC draws on the dedicated Terra HWC artwork seeded
+    # 2026-09-23; a Nova water coil still draws on the shared one.
     out = derive_coil_template_drawing(
         dict(coil_category="HWC", coil_hand="Left", circuits=1,
              product_type="TERRA H", unit_size="024", rows=4,
              finned_height=12, finned_length=15, suction_conn_size=0.625)
     )
-    assert out["generation_allowed"] is False and not out["svg"]
-    assert out.get("unregistered_terra_water") is True
+    assert out["generation_allowed"] is True and out["svg"]
+    assert out["template_id"] == "coilmaster_terra_hwc_lh"
+    assert out.get("unregistered_terra_water") is None
     nova = derive_coil_template_drawing(
         dict(coil_category="CWC", coil_hand="Left", circuits=1,
              product_type="NOVA", unit_size="C24", rows=4,
              finned_height=12, finned_length=15, suction_conn_size=0.625)
     )
     assert nova["generation_allowed"] is True and nova["svg"]
+    assert nova["template_id"] == "coilmaster_cwc_lh"
     assert nova.get("unregistered_terra_water") is None
 
 

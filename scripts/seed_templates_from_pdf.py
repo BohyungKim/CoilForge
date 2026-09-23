@@ -669,7 +669,7 @@ VPLUS_BUCKETS: list[tuple] = [
 ]
 
 
-# Dedicated Terra CWC buckets (John 2026-09-23): ONE artwork shared by Terra H and Terra V
+# Dedicated Terra water buckets (CWC + HWC, John 2026-09-23): ONE artwork shared by Terra H and Terra V
 # (the catalog aliases both families onto `TERRA`); every printed value is CoilForge's own,
 # filled per coil. Seeded from John's own CoilMaster drawings of the same coil in each hand
 # (`CW-A-F-06-10-18.00x36.00-L/R`, created 2026-09-23) -- each hand its own seed, no mirror.
@@ -687,6 +687,15 @@ TERRA_BUCKETS: list[tuple] = [
      _WATER_SUPPLY_CALLOUTS),
     ("coilmaster_terra_cwc_rh", "cwc", "CWC", "RH", "Header 1", None,
      "Case/feed/terra_cwc_rh/TERRA_CCWC_RH.pdf", "TERRA-CWC-JOHN-2026-09-23-R", None,
+     _WATER_SUPPLY_CALLOUTS),
+    # Terra HWC (John 2026-09-23): same artwork family, John's own CoilMaster drawings of
+    # one HWC in each hand (`HW-A-F-03-11-15.00x22.50-L/R`, tag PHWC-1). Same supply
+    # callouts (`4.00 HD1`, `12.00`/`10.00 SL1`) -> the return-side slots.
+    ("coilmaster_terra_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
+     "Case/feed/terra_hwc_lh/TERRA_HWC_LH.pdf", "TERRA-HWC-JOHN-2026-09-23-L", None,
+     _WATER_SUPPLY_CALLOUTS),
+    ("coilmaster_terra_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
+     "Case/feed/terra_hwc_rh/TERRA_HWC_RH.pdf", "TERRA-HWC-JOHN-2026-09-23-R", None,
      _WATER_SUPPLY_CALLOUTS),
 ]
 

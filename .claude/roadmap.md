@@ -1270,7 +1270,7 @@
   확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
   ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
-- [ ] **[Terra 물코일 트랙] Terra HWC 템플릿 시딩** — 참조 `TERRA_HWC_LH/RH.pdf`가 바탕화면에 준비됨. CWC와 같은 절차(`TERRA_BUCKETS` + `extra_callouts`, `TERRA_TEMPLATES`, `_TERRA_WATER_WITHHELD_CATEGORIES`에서 HWC 제거 → 빈 집합이면 게이트 비활성). **시드 시 그 참조의 O2가 CH − I인지 읽고 `catalog.TEMPLATE_O_DATUM`에 등록할지 결정**(안 하면 header_side = O = I). 커버리지 대시보드에 Terra 섹션도 추가(현재 shared + Ventum+만 모델링, `--check`는 shared만 검사).
+- [x] **[Terra 물코일 트랙] Terra HWC 템플릿 시딩 (2026-09-23, John 승인, 미커밋)** — 바탕화면 `TERRA_HWC_LH/RH.pdf`(`HW-A-F-03-11-15.00x22.50-L/R`) → `Case/feed/terra_hwc_*` → `coilmaster_terra_hwc_{lh,rh}` 각 hand 자체 시드(35 slot, 박힌 치수 0). seed O2 13.50 = CH 16.25 − I 2.75 → **HWC도 반대편 datum**, `TEMPLATE_O_DATUM` 등록. `_TERRA_WATER_WITHHELD_CATEGORIES` = 빈 집합(게이트 비활성, 테스트는 monkeypatch로 재무장해 경로 유지). 카탈로그 37 버킷. 남은 것: 커버리지 대시보드 Terra 섹션(`--check`는 shared만 검사 — drift 없음), 브라우저 눈확인.
 - [x] **[Terra 물코일 트랙] 물코일 O = datum 문제로 종결 (2026-09-23, John "1+2 둘 다", 미커밋)** — 시트 O(`CH − x`)와 도면 O(`= I`)는 **한 스텁을 반대편 끝에서 잰 것**. datum을 규칙이 아니라 **아트워크 속성**(`catalog.TEMPLATE_O_DATUM`)으로 선언 → Terra CWC만 `O2 = CH − I`(seed 16.50 재현), CH 미해결이면 I를 찍지 않고 **공란**+사유, 수동 CH/I가 O를 끌고 감. 체크리스트는 양쪽을 헤더 끝 datum으로 맞춰 비교(`compared_from_header_end`), "use checklist"는 `checklist_as_drawn`만 채택. KD-024..027 은퇴. plan-review APPROVE-WITH-CHANGES(M1·M2 반영) + invariant-guard 위반 0, **1776 green**. 남은 것: 브라우저 눈확인, 라이브 워크북 수식 재대조(Excel 잠금).
 - [ ] **[HITL 막힘 해제 트랙] John 결정 J-1b — 체크리스트 IN/OUT CONN SZ 채택 허용 여부 (2026-09-23)** — 그 채택은 새 사실이 아니라 추출값을 사람 입력으로 재라벨해 **코일별로 R-071을 켜는** 것. 결정 전까지 일괄 채택에서 제외(채움 패널 직접 입력은 동작). 권고: 허용 + "adopted" 접두어 원장 기록. 관련 J-3a(무채움 경로 R-071 자동 적용, 골든 재베이스 필요)는 계속 보류.
 - [ ] **[딜리버러블 트랙] finalize의 남은 미포장 OSError 2곳 + 프런트 가드 (2026-09-22)** —
@@ -1284,8 +1284,8 @@
   (rows-based 실측 RHHGRC-3 3.75 vs 시트 else-branch 4.125; 시트는 리프레시 후에도 Terra V arm 없음) ② CWC 도면 S 콜아웃을 시트
   `IN/2+3`으로 바꿀지(seed 7/7이 S=conn) ③ ~~물코일 O 콜아웃~~ → **2026-09-23 datum으로 종결**(위 항목).
   셋 다 현재는 체크리스트 비교열에 red/amber로 정직하게 드러남. 결정 전 코드 변경 없음.
-- [ ] **[체크리스트 리프레시 트랙] Terra H/V CWC/HWC 새 SVG 템플릿 시딩 (John 소유)** — 그때까지 도면 vacant
-  (`submittal_to_drawing._TERRA_WATER_WITHHELD_FAMILIES`; 시드 후 집합을 비우면 게이트 해제). Direct Coil 경로는 게이트 밖(범위 외).
+- [x] **[체크리스트 리프레시 트랙] Terra H/V CWC/HWC 새 SVG 템플릿 시딩 (John 소유)** — 그때까지 도면 vacant
+  (`submittal_to_drawing._TERRA_WATER_WITHHELD_FAMILIES`; 시드 후 집합을 비우면 게이트 해제). Direct Coil 경로는 게이트 밖(범위 외). → **2026-09-23 CWC·HWC 모두 시딩, 게이트 해제.**
 - [ ] **[체크리스트 리프레시 트랙] 시트 버그 3건을 Oxygen8에 전달 (RP-003)** — HGRH Terra V O4/O6/O8=2(O2 2.75), HGRH SL5/SL7→C47,
   CWC NOTES C327 오타. 라이브 검증 후 `/wiki-lint`로 R-046/R-067/R-077 drift 정리.
 - [ ] **[3179 트랙] RHHGRC `X` 치수 — 배선 STOP. 게이트는 `X`의 정의 확보 (John 2026-09-05)**

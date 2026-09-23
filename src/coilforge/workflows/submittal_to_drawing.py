@@ -645,8 +645,10 @@ _TERRA_WATER_WITHHELD_FAMILIES = {"TERRA_H", "TERRA_V"}
 # ...but only for the water categories that do not yet have their own Terra artwork.
 # CWC was released on 2026-09-23 when `coilmaster_terra_cwc_{lh,rh}` were seeded from
 # John's references (the dedicated-family step then swaps the shared artwork for them);
-# HWC stays withheld until the Terra HWC pair is seeded. Empty this set once it is.
-_TERRA_WATER_WITHHELD_CATEGORIES = {"HWC"}
+# HWC followed the same day when `coilmaster_terra_hwc_{lh,rh}` were seeded, so the set is
+# now empty and the gate is inert -- kept as the extension point for a future Terra water
+# category that lands without its own artwork.
+_TERRA_WATER_WITHHELD_CATEGORIES: set[str] = set()
 # Families that draw on the dedicated Ventum+ template set and carry its R-032 UP
 # distributor (John 2026-08-25: Omnia = Ventum+ rules and templates, TF/BF aside).
 _VENTUM_PLUS_CLASS = {"VENTUM_PLUS", "OMNIA"}
