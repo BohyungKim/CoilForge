@@ -5,6 +5,35 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-09-23 (Toronto) · base a0a88b8..f008979 · claude/ambient-supplier
+> 체크리스트 리프레시 세션. 같은 트리의 `capture/*`·`web/*` 미커밋 편집은 **다른 세션**의 것.
+
+### ✅ 구현/결정된 것
+- 2026-09-22 Coil Checklist 6탭 리프레시를 셀 단위 back-crack → CoilForge 반영 (`ee7ef30`): Terra V SIZE 숫자·케이싱
+  47/58/74/74/76·드레인팬 28/29/32·FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 캡 24/42/45/48)·DX H05/H10 DIST EXT 17·
+  HGRH Terra V I1=2 + supply SL `6+D/2−S` 전 라인·물코일 I/O/S/R 행·CD 접속경 항·RB 가족별·single-feed 특례 폐기·
+  HWC Terra DP tri-state(R-014h)·V/D ConnEnd/LAS (근거: `coil_header_rules.yaml`, 1694 green, 라이브 Excel 채움에서
+  Terra V CASING·INSTALL FIT 산출 확인)
+- John 판정: 체크리스트 5건 승 / Terra H/V 물코일 도면 vacant(`_TERRA_WATER_WITHHELD_FAMILIES`) / Terra V O4+=2는
+  시트 버그(KD-005/022/023)
+- 의도적 미채택 3건 KD amber: Terra V HGRH CD(KD-001), CWC S=IN/2+3, 물 O=CH−x(KD-024..027); KD-004·006..009 은퇴,
+  KD-028/029 추가 — 시트 미러는 순환 match를 만들어 금지(plan-review 2R)
+- 시트 버그 3건 `docs/rule_proposals/RP-003`; 로드맵 갱신 (`f008979`)
+
+### ⏭️ 다음 스텝
+- [ ] `run_server.bat` 재시작 → 2755·3095 재분석 눈검증 (재시작 없으면 옛 코드가 돈다)
+- [ ] John 결정 3건: KD-001 재판정 / CWC S 콜아웃 / 물 O 콜아웃 (결정 전 코드 불변)
+- [ ] Terra H/V CWC/HWC 새 SVG 시드 후 `_TERRA_WATER_WITHHELD_FAMILIES` 비우기
+- [ ] RP-003 시트 버그 Oxygen8 전달; `/wiki-lint`로 R-046/R-067/R-077 drift 정리
+- [ ] invariant-guard 검토 미실행(세션 한도 429) — `ee7ef30` 대상 1회
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: f0089796fbf951b16a13b07bef3ca0a1f43581d6 · 미커밋: `capture/db.py`,
+  `capture/observe.py`, `tests/test_capture_ledger.py`, `web/{app.js,index.html,style.css,ccsi/…}` (다른 세션)
+- 핵심 경로: `checklist/mapping.py`, `services/header_prepopulate_engine.py`, `compatibility/mechanical_fit.py`,
+  `rules/known_divergences.yaml` · plan: `~/.claude/plans/coil-checklist-logic-hsa-cheerful-engelbart.md` ·
+  메모리 `checklist_template_refresh_2026_09_22.md` · 롤백 `git revert f008979 ee7ef30`
+
 ## 2026-09-22 (Toronto) · base d9dc812..a0a88b8 · claude/ambient-supplier
 > 이번 세션의 커밋은 `a0a88b8` 하나. 트리에 함께 있는 체크리스트 리프레시(6탭) 작업은
 > **다른 세션**의 것이며 커밋하지 않았다.
