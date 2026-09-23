@@ -1,9 +1,12 @@
-"""Terra H / Terra V CWC and HWC drawings are withheld while their SVG templates are
+"""Terra H / Terra V water drawings were withheld while their SVG templates were
 re-seeded (John 2026-09-22: "keep the drawing template vacant for now").
 
-Scope of the gate, pinned in both directions: Terra water only. Terra DX/HGRH, every other
-line's water coil (shared Nova/Ventum-H templates, dedicated Ventum+ templates) and the
-parameter/checklist values of the withheld coils are untouched.
+2026-09-23: the Terra CWC pair was seeded from John's references (coilmaster_terra_cwc_
+{lh,rh}, one artwork for Terra H and Terra V), so the gate now withholds **HWC only**.
+
+Scope pinned in both directions: Terra HWC is withheld; Terra CWC draws on its own
+dedicated template (never the shared Nova-shaped one); Terra DX/HGRH and every other
+line's water coil are untouched; the withheld coils' values still resolve.
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 pytest.importorskip("yaml")
 
 from coilforge.workflows.submittal_to_drawing import (  # noqa: E402
+    _TERRA_WATER_WITHHELD_CATEGORIES,
     _TERRA_WATER_WITHHELD_FAMILIES,
     derive_coil_template_drawing,
 )
@@ -34,8 +38,26 @@ def test_the_gate_names_exactly_the_two_terra_families():
     assert _TERRA_WATER_WITHHELD_FAMILIES == {"TERRA_H", "TERRA_V"}
 
 
+def test_only_hwc_is_still_withheld():
+    """CWC was released when its Terra templates were seeded (2026-09-23)."""
+    assert _TERRA_WATER_WITHHELD_CATEGORIES == {"HWC"}
+
+
 @pytest.mark.parametrize("product", ["TERRA H", "TERRA V"])
-@pytest.mark.parametrize("category", ["CWC", "HWC"])
+@pytest.mark.parametrize("hand, expected", [("Left", "coilmaster_terra_cwc_lh"),
+                                            ("Right", "coilmaster_terra_cwc_rh")])
+def test_terra_cwc_draws_on_its_own_dedicated_template(product, hand, expected):
+    out = _derive("CWC", product, "024", hand)
+    assert out["svg"] and out["generation_allowed"] is True
+    assert out["template_id"] == expected
+    assert out.get("unregistered_terra_water") is None
+    # values are still the Terra variant's own (I/O = 3.25 Terra H, 2.75 Terra V)
+    assert out["slot_values"]["slot.I1"] == (3.25 if product == "TERRA H" else 2.75)
+    assert out["export_allowed"] is False
+
+
+@pytest.mark.parametrize("product", ["TERRA H", "TERRA V"])
+@pytest.mark.parametrize("category", ["HWC"])
 @pytest.mark.parametrize("hand", ["Left", "Right"])
 def test_terra_water_is_withheld_with_a_reason_and_keeps_its_values(product, category, hand):
     out = _derive(category, product, "024", hand)

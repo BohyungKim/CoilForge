@@ -291,6 +291,18 @@ def _hgrh_supply_s(request, cd: float, conn: float) -> float:  # type: ignore[no
     return round(cd - ((n + 2) * conn + (n - 1) * 1.5), 4)
 
 
+def _water_end(specific: float | None, *fallbacks: float | None) -> float | None:
+    """One end's water connection size: the specific inlet/outlet value when supplied,
+    else the first single connection size given (the no-split assumption), else None."""
+    for value in (specific, *fallbacks):
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 def build_drawing_slots(
     *,
     coil_type: str,
@@ -317,9 +329,10 @@ def build_drawing_slots(
 ) -> tuple[dict[str, Any], HeaderPrepopulateResponse]:
     """Resolve EVERY dimension slot from mechanical values (engine/formula/JSON).
 
-    ``inlet_conn_size`` / ``outlet_conn_size`` / ``installed_on_drain_pan`` are passed
-    THROUGH to the engine only (water CD connection term R-071; HWC Terra pan branch
-    R-014h) — the slot layer's own water S/R/O computation is unchanged by them.
+    ``inlet_conn_size`` / ``outlet_conn_size`` feed BOTH the engine (water CD connection
+    term R-071) and the slot layer's water S/R, which follow the Coil Checklist since
+    2026-09-23 (John): CWC ``S = IN/2 + 3``, ``R = OUT``; HWC ``S = IN``, ``R = OUT``.
+    ``installed_on_drain_pan`` is engine-only (HWC Terra pan branch R-014h).
 
     ``terra_variant`` ("TERRA_V" etc.) is threaded so the slot layer can apply the
     Terra V drawing special (DX S = CD - Rn) and stop the generic R-022 safety net from
@@ -409,7 +422,8 @@ def build_drawing_slots(
     )
     is_dx = str(coil_type or "").strip().upper() == "DX"
     is_hgrh = str(coil_type or "").strip().upper() == "HGRH"
-    is_cwc_hwc = str(coil_type or "").strip().upper() in ("CWC", "HWC")
+    coil_type_u = str(coil_type or "").strip().upper()
+    is_cwc_hwc = coil_type_u in ("CWC", "HWC")
     is_terra_v = request.terra_variant == TerraVariant.TERRA_V
     hdr_i = val(field_map["i"]) if "i" in field_map else None
     hdr_hdx = val(field_map["hdx"]) if "hdx" in field_map else None
@@ -442,26 +456,24 @@ def build_drawing_slots(
             if hdr_hdx is not None:
                 slots[f"slot.HDx{supply_id}"] = hdr_hdx
             if is_cwc_hwc:
-                # CWC/HWC supply spacing S = the connection size (John 2026-07-29), and R
-                # mirrors it below. This is the SAME shape the rest of the rule family
-                # already takes for a SINGLE-connection header -- DX R-022 gives R1 = D and
-                # HGRH R-052 gives R = D at n = 1 -- and a water coil is always 1HD with one
-                # supply and one return, so it is that case, not a new convention.
+                # Water supply spacing S follows the Coil Checklist (John 2026-09-23, closing
+                # the 2026-09-22 open decision "should the CWC S callout follow the sheet"):
+                #   CWC  S = IN/2 + 3   (CWC!C27 `=IF(C27="","",C15/2 + 3)`, C15 = IN CONN SZ)
+                #   HWC  S = IN         (HWC!C31 `=IF(C31="","",C15)`)
+                # It replaces "S = the connection size" (2026-07-29), which matched the seven
+                # seeded references but not the sheet; the sheet is the source of truth.
                 #
-                # It replaces an even-spacing fallback (`k*CD/(circuits+1)`) whose own
-                # comment admitted there was "no equation to mirror": the checklist sheets
-                # carry no S row for water. That fallback matched NONE of the seven seeded
-                # water references and printed CD/2 (1.6875 on 2949 Ferguson HHWC-1, where
-                # the connection is 1"). It also reconciles SOP R-068 ("leave all S/R as
-                # EZ Coil default values") -- the EZ default for a single connection IS the
-                # connection size, so honouring the rule and computing this agree.
+                # IN is `inlet_conn_size`. A caller that has no inlet/outlet split (the Direct
+                # Coil pipeline, older callers) passes one connection size; it is used for
+                # BOTH ends -- the same single-connection assumption the previous rule made,
+                # stated here rather than hidden. No connection at all -> S stays blank.
                 #
-                # NOTE this is deliberately OUTSIDE the `cd is not None` block below: S no
-                # longer needs the casing depth, so a coil whose CD has not resolved still
-                # gets S (and therefore R).
-                water_conn = conn_size if conn_size is not None else suction_conn_size
-                if water_conn is not None:
-                    slots[f"slot.S{supply_id}"] = round(water_conn, 4)
+                # Deliberately OUTSIDE the `cd is not None` block below: S does not need the
+                # casing depth, so a coil whose CD has not resolved still gets S (and R).
+                water_in = _water_end(inlet_conn_size, conn_size, suction_conn_size)
+                if water_in is not None:
+                    s_value = water_in / 2 + 3 if coil_type_u == "CWC" else water_in
+                    slots[f"slot.S{supply_id}"] = round(s_value, 4)
             elif cd is not None:
                 if (
                     is_terra_v
@@ -570,24 +582,15 @@ def build_drawing_slots(
                 # is removed — the return callout shows the true return_sl again (2026-07-03).
                 slots[f"slot.SL{return_id}"] = hdr_sl
             if is_cwc_hwc:
-                # CWC/HWC return spacing R = supply spacing S (John 2026-07-28). A water
-                # coil's supply and return headers are symmetric: ALL SEVEN seeded water
-                # references read R{even} == S{odd} (and O == I with them) --
-                # coilmaster_{hwc,cwc}_{lh,rh} + the three vplus water buckets. There is no
-                # `return_spacing` rule for water (R-022/R-023 are DX, R-052 is HGRH), and
-                # the generic R-022 safety net below both excludes Terra V and keys off the
-                # DX-named suction_conn_size, so water R was left blank on every product
-                # line. Guarded on slot.S existing: S needs the connection size, and a coil
-                # without one must leave R blank rather than raise. Documented here rather
-                # than as a YAML rule because the water S it mirrors is itself a slot-layer
-                # value the engine never emits -- same placement as the Terra V
-                # `S = CD - Rn` special above.
+                # Water return spacing R = OUT CONN SZ on both sheets (John 2026-09-23):
+                # CWC!C28 `=IF(C28="","",C16)`, HWC!C32 `=IF(C32="","",C16)`, C16 = OUT.
+                # It no longer mirrors S (the 2026-07-28 rule): on a CWC the two now differ
+                # by construction (S = IN/2 + 3). Same single-connection fallback as S.
                 # This branch OWNS water R: it deliberately does not fall through to the
-                # generic R-022 net below, which would otherwise hand a water coil an
-                # R with no S beside it (a value whose supply twin is blank has no basis).
-                supply_s = slots.get(f"slot.S{supply_id}")
-                if supply_s is not None:
-                    slots[f"slot.R{return_id}"] = supply_s
+                # generic R-022 net below (DX-shaped, and excluded for Terra V).
+                water_out = _water_end(outlet_conn_size, conn_size, suction_conn_size)
+                if water_out is not None:
+                    slots[f"slot.R{return_id}"] = round(water_out, 4)
             elif isinstance(return_spacing, list) and k <= len(return_spacing):
                 slots[f"slot.R{return_id}"] = round(return_spacing[k - 1], 4)
             elif suction_conn_size is not None and not is_terra_v:

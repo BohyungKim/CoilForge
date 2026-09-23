@@ -108,15 +108,13 @@ _BLANK_REASON_AFTER_PRODUCT: dict[str, str] = {
     "R": "Needs the return connection size — not found in the submittal extract.",
 }
 
-# Per-(coil category, key) override. The generic R message names the connection size, which
-# is right for DX/HGRH but was a MISDIAGNOSIS on water coils (John 2026-07-28): a water
-# coil's connection size IS extracted (Inlet/Outlet Conn. Size), and water R mirrors the
-# supply spacing S rather than the connection size at all. Sending the engineer to hunt for
-# a value that is already present is worse than saying nothing.
+# Per-(coil category, key) override. The generic R message names the RETURN connection,
+# which is right for DX/HGRH; a water coil's R is the OUTLET connection size (Coil
+# Checklist CWC!C28 / HWC!C32, John 2026-09-23), so the message names that field.
 _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
     (category, "R"): (
-        "Water-coil R mirrors the supply spacing S, and S is the connection size — "
-        "no connection size was read from the submittal."
+        "Water-coil R is the outlet connection size (Coil Checklist) — no outlet or "
+        "connection size was read from the submittal."
     )
     for category in ("CWC", "HWC")
 }
@@ -675,8 +673,8 @@ def criticality_for_param_key(key: str) -> Literal["critical", "standard"]:
 
 
 _WATER_CONN_REASON = (
-    "R-071: water CD = max(rows base, connection term) — the Coil Checklist applies the "
-    "connection term, the drawing does not until both connection sizes are supplied here."
+    "Coil Checklist: CD = max(rows base, connection term) (R-071), CWC S = IN/2 + 3, "
+    "HWC S = IN, R = OUT. Uses the submittal's sizes; type here only to correct them."
 )
 
 
@@ -866,10 +864,9 @@ def build_manual_fill_plan(
     # Water inlet/outlet connection sizes. R-071 never lists them in `missing_inputs`
     # ("with either absent the base stands alone"), so the loop above can never surface
     # them — offered explicitly for every water coil. `current_value` shows what intake
-    # extracted (round-tripped under the NON-trigger key `water_conn_extracted`); the
-    # lever only fires when the engineer actually types a value (R2 BLOCKER-2 — the
-    # extracted value must never reach the spec on its own, or every water-coil derive
-    # would apply R-071 and log a ManualOverride nobody made).
+    # extracted (`water_conn_extracted`, which already drives CD/S/R since 2026-09-23);
+    # the lever is a CORRECTION: it fires only when the engineer types a value, and only
+    # that typed value is written to the manual-override audit trail.
     if coil_category in ("CWC", "HWC"):
         extracted_conn = td.get("water_conn_extracted") or {}
         for key, side in (("inlet_conn_size", "inlet"), ("outlet_conn_size", "outlet")):

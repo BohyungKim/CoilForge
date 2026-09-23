@@ -122,7 +122,9 @@ def test_terra_v_water_drawing_is_withheld_while_templates_are_reseeded() -> Non
     # template. John 2026-09-22 withdrew that ("keep the drawing template vacant for
     # now"): the Terra H/V water SVG templates are being re-seeded, so the shared artwork
     # must not stand in meanwhile. The drawing is blanked loudly; the values still resolve.
-    for category in ("CWC", "HWC"):
+    # 2026-09-23: Terra CWC got its own seeded templates, so only HWC is still withheld
+    # (CWC routing is pinned in tests/test_terra_water_drawing_gated.py).
+    for category in ("HWC",):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
                  product_type="TERRA V", unit_size="024", rows=4,
@@ -145,7 +147,8 @@ def test_terra_v_water_carries_terra_v_drawing_parameters() -> None:
     v = derive_coil_template_drawing(dict(spec, product_type="TERRA V"))
     h = derive_coil_template_drawing(dict(spec, product_type="TERRA H"))
     v_slots, h_slots = v["slot_values"], h["slot_values"]
-    assert v["template_id"] is None and h["template_id"] is None   # both withheld
+    # 2026-09-23: both now draw on the ONE shared Terra CWC artwork (values differ).
+    assert v["template_id"] == h["template_id"] == "coilmaster_terra_cwc_lh"
     assert v_slots["slot.O2"] == 2.75                    # R-061v Terra V
     assert v_slots["slot.O2"] != h_slots.get("slot.O2")  # Terra H = 3.25 (R-061)
     assert v_slots["slot.O2"] == v_slots["slot.I1"]      # supply/return stubouts level
@@ -164,10 +167,11 @@ def test_terra_v_dx_and_hgrh_still_generate() -> None:
 
 
 def test_terra_h_water_is_withheld_too_and_other_lines_are_not() -> None:
-    # Terra H (resolved H C) water is withheld on the same 2026-09-22 instruction; a
-    # Nova water coil and a Terra DX/HGRH are untouched by the gate.
+    # Terra H (resolved H C) HWC is withheld on the same 2026-09-22 instruction (its CWC
+    # was released 2026-09-23 with the seeded Terra CWC pair); a Nova water coil and a
+    # Terra DX/HGRH are untouched by the gate.
     out = derive_coil_template_drawing(
-        dict(coil_category="CWC", coil_hand="Left", circuits=1,
+        dict(coil_category="HWC", coil_hand="Left", circuits=1,
              product_type="TERRA H", unit_size="024", rows=4,
              finned_height=12, finned_length=15, suction_conn_size=0.625)
     )

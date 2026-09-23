@@ -88,7 +88,21 @@ VENTUM_PLUS_FAMILY = "VENTUM_PLUS"
 # Omnia draws on the dedicated Ventum+ set (John 2026-08-25: same drawing template);
 # nothing is seeded under its own name, so a selection asked for OMNIA is answered from
 # the VENTUM_PLUS buckets. The bucket count is unchanged.
-TEMPLATE_FAMILY_ALIAS = {"OMNIA": VENTUM_PLUS_FAMILY}
+# Terra H and Terra V share ONE dedicated water-coil artwork (John 2026-09-23); only the
+# printed values differ, and those come from the engine per variant. Every spelling a
+# Terra coil can arrive under is folded onto the one bucket family: the split tokens
+# `resolve_product_line` emits (TERRA_H / TERRA_V / TERRA_H_C) and the raw picker label
+# "TERRA H C", which `resolve_product_line` passes through unnormalised.
+TERRA_FAMILY = "TERRA"
+TEMPLATE_FAMILY_ALIAS = {
+    "OMNIA": VENTUM_PLUS_FAMILY,
+    "TERRA_H": TERRA_FAMILY,
+    "TERRA_V": TERRA_FAMILY,
+    "TERRA_H_C": TERRA_FAMILY,
+    "TERRA H": TERRA_FAMILY,
+    "TERRA V": TERRA_FAMILY,
+    "TERRA H C": TERRA_FAMILY,
+}
 VENTUM_PLUS_TEMPLATES: dict[
     str, tuple[str, str, str, str | None, str | None, str | None, str]
 ] = {
@@ -120,7 +134,22 @@ VENTUM_PLUS_TEMPLATES: dict[
         "cwc", "CWC", "LH", "Header 1", None, "VPLUS-2773-PAIZA", _SEEDED),
 }
 
-TEMPLATE_BUCKET_COUNT = _SHARED_BUCKET_COUNT + len(VENTUM_PLUS_TEMPLATES)
+# Dedicated Terra buckets (same tuple shape as VENTUM_PLUS_TEMPLATES). Seeded 2026-09-23
+# from John's own CoilMaster drawings of one CWC in each hand (scripts/seed_templates_from
+# _pdf.py TERRA_BUCKETS). Terra HWC is not seeded yet, so a Terra HWC coil still finds no
+# dedicated bucket -- and the workflow gate keeps its drawing withheld until one lands.
+TERRA_TEMPLATES: dict[
+    str, tuple[str, str, str, str | None, str | None, str | None, str]
+] = {
+    "coilmaster_terra_cwc_lh": (
+        "cwc", "CWC", "LH", "Header 1", None, "TERRA-CWC-JOHN-2026-09-23-L", _SEEDED),
+    "coilmaster_terra_cwc_rh": (
+        "cwc", "CWC", "RH", "Header 1", None, "TERRA-CWC-JOHN-2026-09-23-R", _SEEDED),
+}
+
+TEMPLATE_BUCKET_COUNT = (
+    _SHARED_BUCKET_COUNT + len(VENTUM_PLUS_TEMPLATES) + len(TERRA_TEMPLATES)
+)
 
 
 def _active_entry(
@@ -316,14 +345,23 @@ def _build_catalog_entries() -> list[DrawingTemplateEntry]:
         for hand in ("LH", "RH"):
             entries.append(_entry_for_water_category(category, hand))
     entries.extend(_build_ventum_plus_entries())
+    entries.extend(_build_family_entries(TERRA_TEMPLATES, TERRA_FAMILY))
     return entries
 
 
 def _build_ventum_plus_entries() -> list[DrawingTemplateEntry]:
     """Dedicated Ventum+ buckets (product_family=VENTUM_PLUS), one per seeded id in
     VENTUM_PLUS_TEMPLATES. Empty until a real Ventum+ reference is seeded."""
+    return _build_family_entries(VENTUM_PLUS_TEMPLATES, VENTUM_PLUS_FAMILY)
+
+
+def _build_family_entries(
+    templates: dict[str, tuple[str, str, str, str | None, str | None, str | None, str]],
+    family: str,
+) -> list[DrawingTemplateEntry]:
+    """Dedicated per-family buckets, one per seeded id (shared by the Ventum+ and Terra forks)."""
     entries: list[DrawingTemplateEntry] = []
-    for template_id, spec in VENTUM_PLUS_TEMPLATES.items():
+    for template_id, spec in templates.items():
         cat_dir, coil_category, hand, header_type, special_feature, source, ref_status = spec
         folder = f"templates/drawing/coilmaster/{cat_dir}/{template_id}"
         entries.append(
@@ -341,7 +379,7 @@ def _build_ventum_plus_entries() -> list[DrawingTemplateEntry]:
                 metadata_path=f"{folder}/template_metadata.json",
                 source_case_id=source,
                 reference_status=ref_status,
-                product_family=VENTUM_PLUS_FAMILY,
+                product_family=family,
             )
         )
     return entries

@@ -79,20 +79,24 @@ def test_water_sheets_list_the_new_rows_and_map_them_to_header_1_slots():
     )
 
 
-def test_water_compare_rows_carry_the_drawn_slot_values_not_a_sheet_mirror():
-    """The CoilForge column for O / S / R is the DRAWN slot (O = I, S = conn, R = S).
+def test_water_compare_rows_carry_the_drawn_slot_values():
+    """The CoilForge column for O / S / R is the DRAWN slot value -- never a separate copy
+    of the sheet's formula made only for the comparison (that would always `match` and
+    hide a real drawing-vs-sheet difference).
 
-    Mirroring the sheet's own formulas (O = CH - x, CWC S = IN/2 + 3, R = OUT) through
-    the same inputs would always `match` and hide exactly the drawing-vs-sheet difference
-    the comparison exists to show; the structural cases are amber via the KD registry."""
+    Since 2026-09-23 the DRAWING itself follows the sheet for water S/R (John: CWC S =
+    IN/2 + 3, R = OUT; HWC S = IN, R = OUT), so the drawn value and the sheet agree by a
+    decision, not by mirroring. O is still drawn as I (R-060), unlike the sheet's CH - x --
+    that difference stays visible (KD-024..027 amber)."""
     for cat in ("HWC", "CWC"):
         sheet = build_checklist_fill([_water(cat, "NOVA", "C24")]).sheets[0]
         d = _dims(sheet)
         assert {"I", "O", "S", "R", "HD", "SL"} <= set(d)
         assert d["I"].coilforge_value == d["O"].coilforge_value == 2.3125   # O == I (R-060)
-        assert d["S"].coilforge_value == 1.25                                # S = conn (drawn)
-        assert d["R"].coilforge_value == d["S"].coilforge_value              # R = S (drawn)
-        assert d["S"].coilforge_value != 1.5 / 2 + 3, "no CWC IN/2+3 sheet mirror"
+        # fixture: IN 1.5, OUT 1.25 (unequal, so the two ends cannot be confused)
+        expected_s = 1.5 / 2 + 3 if cat == "CWC" else 1.5
+        assert d["S"].coilforge_value == expected_s, cat
+        assert d["R"].coilforge_value == 1.25, cat
 
 
 def test_water_rb_is_compared_not_written_and_dx_rb_is_still_written():

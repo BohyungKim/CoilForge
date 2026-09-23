@@ -151,21 +151,21 @@ means editing BOTH the engine rule/helper AND the slot layer, and threading `ter
 into `build_drawing_slots` where a variant-specific drawing formula is needed (the generic-R
 safety net is guarded `and not is_terra_v` so Terra V never borrows Terra H's spacing).
 
-**CWC/HWC `S = conn`, `R = S`, `O = I` (John 2026-07-28/29)** — a water coil's supply and
-return headers are symmetric: **all seven** seeded water references read `R{even} == S{odd}`
-and `O == I`. The slot layer's water branch **owns** S/R (S = the connection size, R mirrors
-it) and does not fall through to the generic R-022 net. **The 2026-09-22 Coil Checklist
-disagrees on three of these rows and CoilForge deliberately does NOT mirror it in the drawn
-slots:** the sheet's `S` is `IN CONN SZ` (HWC) / `IN/2 + 3` (CWC), its `R` is `OUT CONN SZ`,
-and its Terra `O` is `CH − 3.25` / `CH − 2.75` (the same stubout position from the opposite
-datum — feeding it into the callout printed 34.5 where 2.75 belongs). The checklist compare
-column for O/S/R therefore shows the DRAWN slot value and the rows go honestly red; the
-structural Terra-O case is amber via KD-024..027 (`both_defensible`). Mirroring the sheet's
-formula from the same inputs would always `match` and hide the difference. Whether the CWC S
-callout and the water O callout should follow the sheet are open John decisions (NEXT ②/③,
-2026-09-22). The sheet's water **CD** connection term IS adopted (R-071: `MAX(base,
-1.5·(IN+OUT)+1.5)` HWC / `MAX(base, 1.5·OUT+IN+4.5)` CWC), which is why `inlet_conn_size` /
-`outlet_conn_size` now ride the engine request.
+**Water S / R / CD follow the Coil Checklist (John 2026-09-23); `O = I` stays.** Every
+product line: CWC `S = IN/2 + 3` (`CWC!C27`), `R = OUT` (`C28`); HWC `S = IN` (`HWC!C31`),
+`R = OUT` (`C32`); CD = `MAX(base, 1.5·(IN+OUT)+1.5)` HWC / `MAX(base, 1.5·OUT+IN+4.5)` CWC
+(R-071). This superseded 2026-07-29's `S = conn`, `R = S` (which matched the seven seeded
+references but not the sheet — John: "CD는 무조건 coil checklist … source of truth").
+The slot layer's water branch **owns** S/R (no fall-through to the generic R-022 net); a
+caller without an inlet/outlet split uses its single connection size for both ends (stated
+assumption). The frozen analyze path never passes IN/OUT, so the non-frozen
+`_apply_water_connection_slots` re-runs the slot layer with the submittal's
+`water_conn_extracted` (both analyze and derive; typed `inlet/outlet_conn_size` win) and stamps
+`water_conn_applied`, which `_attach_recomputed_engine_provenance` mirrors (else the corrected
+CD reads as drift). Extracted sizes are **submittal data, never a ManualOverride** — only the
+typed Tier-A keys (`_MANUAL_ENGINE_INPUT_KEYS`) write an audit row. Real effect: 2857 HHWC-1 CD
+3.375 → 3.75. **O is still drawn as `O = I`** (the sheet's Terra `O = CH − 3.25/2.75` is the
+same stubout from the opposite datum); that row stays amber via KD-024..027 (`both_defensible`).
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):
@@ -563,8 +563,15 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   2026-07-03 — `_UNREGISTERED_PRODUCT_LINES` emptied — to reuse shared templates; the fork
   then gave it its own seeded set so the R-032 UP geometry is captured from the reference.)
   That same submittal gate (`_gate_unregistered_product_line`) **withholds Terra H and Terra
-  V CWC/HWC drawings again since 2026-09-22** (`_TERRA_WATER_WITHHELD_FAMILIES`; John: "keep
-  the drawing template vacant for now" — their water SVG templates are being re-seeded).
+  V HWC drawings** (`_TERRA_WATER_WITHHELD_FAMILIES` × `_TERRA_WATER_WITHHELD_CATEGORIES =
+  {"HWC"}`; John 2026-09-22: "keep the drawing template vacant for now"). **Terra CWC was
+  released 2026-09-23**: `coilmaster_terra_cwc_{lh,rh}` were seeded from John's own CoilMaster
+  references (one artwork for Terra H AND Terra V — `catalog.TERRA_TEMPLATES`, bucket family
+  `TERRA`, with `TEMPLATE_FAMILY_ALIAS` folding `TERRA_H`/`TERRA_V`/`TERRA_H_C`/`"TERRA H C"`
+  onto it), and `_prefer_dedicated_family_template` swaps the shared artwork for them. The gate
+  must stay category-level: it runs BEFORE the dedicated-family step, which needs an SVG.
+  The references print the supply header's `HD1`/`SL1`, which `_DIM_LABELS` lacks; the seeder's
+  per-bucket `extra_callouts` maps them to `slot.HD2`/`slot.SL2` for these water buckets only.
   History: Terra V water was gated until John released it 2026-07-28 onto the shared
   Nova/Ventum-H water template (same shape whichever AHU it ships in, only the printed
   values are Terra-V-specific); the 2026-09-22 instruction re-gates BOTH Terra families,
@@ -870,6 +877,9 @@ column. The rules that keep it legible — and the precedent for any future view
   approval = `coilmaster_hgrh_{lh,rh}_header2`, `coilmaster_hgrh_rh_header3`,
   `coilmaster_vplus_hgrh_rh_header2` (commit `27d1ef9`). It does NOT extend to the 14 callouts
   left in place, nor to any future template edit — each needs its own approval.
+  **Approved addition, 2026-09-23 (John: "새로운 chill water coil template 피딩" + plan
+  approval):** two NEW buckets `coilmaster_terra_cwc_{lh,rh}` seeded into new folders from
+  `Case/feed/terra_cwc_{lh,rh}/` — no existing `template.svg` was regenerated or edited.
 - The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
   at render time by `drawing/label_authority.py::direct_coil_label` (applied in
   `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded

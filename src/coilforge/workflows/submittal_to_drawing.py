@@ -642,6 +642,11 @@ _UNREGISTERED_PRODUCT_LINES: set[str] = set()
 # are re-seeded (John 2026-09-22, "keep the drawing template vacant for now"). Empty this
 # set (or remove the family) once the new templates land. See _gate_unregistered_product_line.
 _TERRA_WATER_WITHHELD_FAMILIES = {"TERRA_H", "TERRA_V"}
+# ...but only for the water categories that do not yet have their own Terra artwork.
+# CWC was released on 2026-09-23 when `coilmaster_terra_cwc_{lh,rh}` were seeded from
+# John's references (the dedicated-family step then swaps the shared artwork for them);
+# HWC stays withheld until the Terra HWC pair is seeded. Empty this set once it is.
+_TERRA_WATER_WITHHELD_CATEGORIES = {"HWC"}
 # Families that draw on the dedicated Ventum+ template set and carry its R-032 UP
 # distributor (John 2026-08-25: Omnia = Ventum+ rules and templates, TF/BF aside).
 _VENTUM_PLUS_CLASS = {"VENTUM_PLUS", "OMNIA"}
@@ -685,10 +690,13 @@ def _gate_unregistered_product_line(result: dict[str, Any]) -> dict[str, Any]:
     # Checklist are still produced -- only the drawing is blanked. Terra DX/HGRH and every
     # other line's water coil are untouched. (This re-gates the 2026-07-28 release.)
     category = str((result.get("extracted") or {}).get("coil_category") or "").upper()
-    if family in _TERRA_WATER_WITHHELD_FAMILIES and category in ("CWC", "HWC"):
+    if (
+        family in _TERRA_WATER_WITHHELD_FAMILIES
+        and category in _TERRA_WATER_WITHHELD_CATEGORIES
+    ):
         _omit_drawing(
             result,
-            "Terra H/V water-coil templates are being re-seeded (John 2026-09-22) — "
+            f"Terra H/V {category} template is being re-seeded (John 2026-09-22) — "
             "drawing withheld; checklist and parameter panel still produced.",
         )
         result["unregistered_terra_water"] = True
@@ -945,6 +953,88 @@ def _apply_stated_qty_conn_per_header(
             result["missing_required_slots"] = list(repop.missing_required_slots)
 
 
+def _water_conn_for(spec_or_ctx: dict[str, Any] | None) -> dict[str, Any]:
+    """The water inlet/outlet connection sizes to compute with: an engineer-typed value
+    (``inlet_conn_size`` / ``outlet_conn_size``) wins over the submittal's extracted one
+    (``water_conn_extracted``). Either end may be None."""
+    source = spec_or_ctx or {}
+    extracted = source.get("water_conn_extracted") or {}
+    if not isinstance(extracted, dict):
+        extracted = {}
+    return {
+        "inlet": source.get("inlet_conn_size")
+        if source.get("inlet_conn_size") is not None else extracted.get("inlet"),
+        "outlet": source.get("outlet_conn_size")
+        if source.get("outlet_conn_size") is not None else extracted.get("outlet"),
+    }
+
+
+def _apply_water_connection_slots(result: dict[str, Any], water: dict[str, Any] | None) -> None:
+    """Water coils: re-run the slot layer with the submittal's inlet/outlet connection sizes.
+
+    The Coil Checklist is the source of truth for a water coil's CD, S and R (John
+    2026-09-23): CD = MAX(rows base, connection term) via R-071, CWC S = IN/2 + 3, HWC
+    S = IN, R = OUT. All three need the inlet/outlet split, which the frozen
+    ``derive_slot_values`` never passes -- so, like :func:`_apply_hgrh_pairing_cd`, the
+    non-frozen caller re-runs ``build_drawing_slots`` with them and merges the result.
+
+    These are SUBMITTAL values, not manual fills: nothing is written to the manual
+    override audit trail (that is reserved for what an engineer typed). No-op for a
+    non-water coil, an unresolved product/size, or when neither size is known -- in which
+    case the drawing keeps the single-connection fallback the slot layer already applied.
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return
+    ex = result.get("extracted") or {}
+    category = str(ex.get("coil_category") or "").strip().upper()
+    if category not in ("CWC", "HWC"):
+        return
+    product = result.get("product_type")
+    unit_size = result.get("unit_size")
+    inlet = (water or {}).get("inlet")
+    outlet = (water or {}).get("outlet")
+    if not (product and unit_size) or (inlet is None and outlet is None):
+        return
+    from coilforge.services.direct_coil_drawing_pipeline import (
+        UnknownCoilInputError,
+        build_drawing_slots,
+    )
+    from coilforge.services.drawing_param_resolver import _coerce_float
+
+    try:
+        slots, _resp = build_drawing_slots(
+            coil_type=category,
+            product_type=product,
+            unit_size=unit_size,
+            rows=ex.get("rows"),
+            feeds=ex.get("feeds"),
+            circuits=ex.get("circuits") or 1,
+            suction_conn_size=_coerce_float(ex.get("return_conn_size")),
+            finned_height=ex.get("finned_height"),
+            finned_length=ex.get("finned_length"),
+            tag=ex.get("tag"),
+            inlet_conn_size=_coerce_float(inlet),
+            outlet_conn_size=_coerce_float(outlet),
+        )
+    except (UnknownCoilInputError, ValueError):
+        return
+    merged = result.setdefault("slot_values", {})
+    merged.update(slots)
+    # Stamped so the provenance reconstruction reproduces THIS call, not the frozen one
+    # (otherwise the corrected CD reads as engine drift) -- same contract as
+    # `stated_qty_conn_per_header_applied`.
+    result["water_conn_applied"] = {"inlet": _coerce_float(inlet), "outlet": _coerce_float(outlet)}
+    template_id = result.get("template_id")
+    if template_id and result.get("svg"):
+        from coilforge.template_population.slot_population import populate_template_slots
+
+        repop = populate_template_slots(template_id, merged)
+        if repop.svg:
+            result["svg"] = repop.svg
+            result["populated_slots"] = list(repop.populated_slots)
+            result["missing_required_slots"] = list(repop.missing_required_slots)
+
+
 def _prefer_dedicated_family_template(result: dict[str, Any]) -> dict[str, Any]:
     """When a dedicated per-family template is seeded for this coil's (family, category,
     hand, header, special), re-select + re-populate the drawing from it instead of the
@@ -1153,8 +1243,9 @@ def _rerun_slots_with_manual_inputs(
             finned_height=ex.get("finned_height"),
             finned_length=ex.get("finned_length"),
             tag=ex.get("tag"),
-            inlet_conn_size=_coerce_float(spec.get("inlet_conn_size")),
-            outlet_conn_size=_coerce_float(spec.get("outlet_conn_size")),
+            # Typed sizes win; otherwise the extracted ones (water coils only have them).
+            inlet_conn_size=_coerce_float(_water_conn_for(spec)["inlet"]),
+            outlet_conn_size=_coerce_float(_water_conn_for(spec)["outlet"]),
         )
     except (UnknownCoilInputError, ValueError):
         return None
@@ -1449,6 +1540,11 @@ def _attach_recomputed_engine_provenance(
         applied_qty = result.get("stated_qty_conn_per_header_applied")
         if applied_qty is not None:
             kwargs["qty_conn_per_header"] = applied_qty
+        # Same for the water inlet/outlet sizes `_apply_water_connection_slots` used.
+        applied_water = result.get("water_conn_applied")
+        if isinstance(applied_water, dict):
+            kwargs["inlet_conn_size"] = applied_water.get("inlet")
+            kwargs["outlet_conn_size"] = applied_water.get("outlet")
         slots, response = build_drawing_slots(
             coil_type=coil_type,
             product_type=product,
@@ -1494,9 +1590,10 @@ _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     # Water inlet/outlet connection sizes (R-071's connection term, 2026-09-23). They reach
     # the spec ONLY when the engineer typed them (`engineInputs`, no extracted fallback):
     # a key in this tuple both TRIGGERS the Tier-A re-run and WRITES a ManualOverride
-    # audit row, so an extracted value arriving here would apply R-071 to every water-coil
-    # derive and log a correction nobody made. What intake extracted rides separately under
-    # the non-trigger key `water_conn_extracted`.
+    # audit row, so an extracted value arriving here would log a correction nobody made.
+    # What intake extracted rides separately under `water_conn_extracted`, which since
+    # 2026-09-23 DOES drive the checklist's CD/S/R (`_apply_water_connection_slots`) --
+    # as submittal data, without an audit row. A typed value here wins over it.
     "inlet_conn_size", "outlet_conn_size",
 )
 
@@ -1588,8 +1685,9 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "panel": spec.get("panel"),
     }
     result = pdf_text_to_template_drawing("", cover_text="", header_context=ctx)
-    # Round-trip of the display-only extracted water connection sizes (non-trigger key;
-    # the frozen result never carries it, so the caller copies it across).
+    # Round-trip of the extracted water connection sizes (submittal data driving the
+    # checklist's CD/S/R; not a manual-fill trigger). The frozen result never carries
+    # them, so the caller copies them across.
     if isinstance(spec.get("water_conn_extracted"), dict):
         result["water_conn_extracted"] = spec["water_conn_extracted"]
 
@@ -1608,6 +1706,12 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         # 2026-07-30, caught on the real 2901). The partner's connection size comes from
         # the caller because derive resolves ONE coil and cannot see its siblings.
         _apply_hgrh_pairing_cd(result, _partner_conn_from_spec(spec))
+        # Water coils: the checklist's CD / S / R from the inlet/outlet sizes -- extracted
+        # (round-tripped as `water_conn_extracted`) unless the engineer typed one. Here only
+        # (not after a Tier-A re-run, which carries the sizes itself: a second re-run
+        # afterwards would drop the Tier-A inputs, the trap `_apply_hgrh_pairing_cd`
+        # documents).
+        _apply_water_connection_slots(result, _water_conn_for(spec))
         # Same submittal-stated qty as analyze. Confined to this `else` branch ON
         # PURPOSE: when the engineer DID supply a Tier-A input, `_rerun_slots_with_
         # manual_inputs` already passed `spec['qty_conn_per_header']`, and re-running
@@ -1823,9 +1927,11 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         ),
     }
     if category in ("CWC", "HWC"):
-        # Display-only for the fill panel's water connection levers. Deliberately NOT
-        # `inlet_conn_size`/`outlet_conn_size`: those names are Tier-A triggers on /derive
-        # (_MANUAL_ENGINE_INPUT_KEYS) and must only ever carry an engineer's typed value.
+        # The submittal's own inlet/outlet sizes: they drive the Coil Checklist's CD/S/R
+        # (`_apply_water_connection_slots`, John 2026-09-23) and show as the fill panel's
+        # "read:" hint. Deliberately NOT `inlet_conn_size`/`outlet_conn_size`: those names
+        # are Tier-A triggers on /derive (_MANUAL_ENGINE_INPUT_KEYS) that also write a
+        # ManualOverride audit row, so they must only ever carry an engineer's typed value.
         inlet = _candidate_field_value(candidate, "connections", "inlet_connection_size")
         outlet = _candidate_field_value(candidate, "connections", "outlet_connection_size")
         if inlet not in (None, "") or outlet not in (None, ""):
@@ -2365,8 +2471,9 @@ def _run_candidate_to_drawing_payload(
         # shell carries only what intake already read (never a drawn value).
         template_drawing = _error_shell_template_drawing(exc, ctx or notes_ctx)
     if isinstance(template_drawing, dict):
-        # What intake extracted for the water connections — a NON-trigger key (see
-        # _MANUAL_ENGINE_INPUT_KEYS) so the fill panel can show it without applying it.
+        # What intake extracted for the water connections (see _MANUAL_ENGINE_INPUT_KEYS
+        # for why it is not stored under the Tier-A trigger names). Applied below by
+        # `_apply_water_connection_slots` and round-tripped by the browser.
         water_conn = (ctx or notes_ctx).get("water_conn_extracted")
         if water_conn:
             template_drawing["water_conn_extracted"] = water_conn
@@ -2390,6 +2497,10 @@ def _run_candidate_to_drawing_payload(
         # pairing helper (DX-only) never runs, so the two cannot fight. BEFORE the
         # provenance block, whose contract is that it describes the slots actually drawn.
         _apply_stated_qty_conn_per_header(template_drawing, ctx)
+        # Water coils: the Coil Checklist's CD / S / R from the extracted inlet/outlet
+        # sizes (John 2026-09-23). BEFORE the provenance block, which must describe the
+        # slots actually drawn.
+        _apply_water_connection_slots(template_drawing, _water_conn_for(ctx or notes_ctx))
         # 1c': the frozen path discards its engine response, so reconstruct which rules
         # fired. AFTER the pairing correction — the CD this coil actually draws is the
         # one that helper just re-derived, and reproducing the frozen call instead would

@@ -431,23 +431,36 @@ def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
     assert s["slot.HDx1"] == 4        # supply header depth = hd
 
 
-def test_water_supply_and_return_spacing_are_the_connection_size() -> None:
-    """CWC/HWC S = R = the connection size (John 2026-07-29).
+def test_water_supply_and_return_spacing_follow_the_coil_checklist() -> None:
+    """Water S/R = the Coil Checklist, every product line (John 2026-09-23):
+    CWC S = IN/2 + 3 (CWC!C27), R = OUT (C28); HWC S = IN (HWC!C31), R = OUT (C32).
 
-    Same shape the rest of the family already takes for a single-connection header —
-    DX R-022 gives R1 = D, HGRH R-052 gives R = D at n = 1 — and a water coil is always
-    1HD with one supply and one return. Replaces an even-spacing fallback (CD/2) that
-    matched none of the seven seeded water references. Product-line-independent."""
-    common = dict(rows=4, circuits=1, feeds=1,
-                  conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
-    for coil_type in ("CWC", "HWC"):
-        for product, unit_size in (("TERRA V", "012"), ("TERRA H", "012"),
-                                   ("NOVA", "C24"), ("VENTUM_H", "H15")):
-            slots, _ = build_drawing_slots(
-                coil_type=coil_type, product_type=product, unit_size=unit_size, **common
-            )
-            assert slots["slot.S1"] == 0.625, (coil_type, product)
-            assert slots["slot.R2"] == slots["slot.S1"], (coil_type, product)
+    Supersedes "S = R = the connection size" (2026-07-29), which matched the seeded
+    references but not the sheet; John rules the sheet the source of truth. IN != OUT on
+    purpose so a formula that confuses the two ends fails."""
+    common = dict(rows=4, circuits=1, feeds=1, inlet_conn_size=1.25, outlet_conn_size=1.0,
+                  finned_height=20.0)
+    for product, unit_size in (("TERRA V", "012"), ("TERRA H", "012"),
+                               ("NOVA", "C24"), ("VENTUM_H", "H15")):
+        cwc, _ = build_drawing_slots(coil_type="CWC", product_type=product,
+                                     unit_size=unit_size, **common)
+        assert cwc["slot.S1"] == 1.25 / 2 + 3, product      # 3.625
+        assert cwc["slot.R2"] == 1.0, product
+        hwc, _ = build_drawing_slots(coil_type="HWC", product_type=product,
+                                     unit_size=unit_size, **common)
+        assert hwc["slot.S1"] == 1.25, product
+        assert hwc["slot.R2"] == 1.0, product
+
+
+def test_water_spacing_single_connection_fallback_uses_it_for_both_ends() -> None:
+    """A caller with no inlet/outlet split (Direct Coil pipeline, older callers) passes one
+    connection size; it is used for BOTH ends -- the stated single-connection assumption."""
+    common = dict(rows=4, circuits=1, feeds=1, conn_size=0.625, suction_conn_size=0.625,
+                  finned_height=20.0)
+    cwc, _ = build_drawing_slots(coil_type="CWC", product_type="NOVA", unit_size="C24", **common)
+    assert cwc["slot.S1"] == 0.625 / 2 + 3 and cwc["slot.R2"] == 0.625
+    hwc, _ = build_drawing_slots(coil_type="HWC", product_type="NOVA", unit_size="C24", **common)
+    assert hwc["slot.S1"] == 0.625 and hwc["slot.R2"] == 0.625
 
 
 def test_water_spacing_resolves_from_the_suction_named_connection_too() -> None:

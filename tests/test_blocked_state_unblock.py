@@ -199,16 +199,30 @@ def test_water_conn_sizes_reach_r071_on_derive():
     }
 
 
-def test_extracted_water_conn_alone_changes_nothing_and_logs_nothing():
-    """The shape the browser sends when the engineer typed nothing: the extracted values
-    ride under the NON-trigger key. No Tier-A re-run, no phantom ManualOverride."""
+def test_extracted_water_conn_drives_the_checklist_values_but_is_never_a_manual_fill():
+    """The shape the browser sends when the engineer typed nothing: the extracted sizes ride
+    under the non-trigger key `water_conn_extracted`. Since 2026-09-23 they are SUBMITTAL
+    inputs to the checklist formulas (John: CD via R-071, S, R) -- but they are still not
+    a manual fill, so no ManualOverride audit row is written for them."""
     plain = derive_coil_template_drawing(_nova_water())
     with_extracted = derive_coil_template_drawing(
         _nova_water(water_conn_extracted={"inlet": 1.5, "outlet": 1.5})
     )
-    assert with_extracted["slot_values"] == plain["slot_values"]
+    slots = with_extracted["slot_values"]
+    assert slots["slot.S1"] == 1.5 and slots["slot.R2"] == 1.5          # HWC S = IN, R = OUT
+    assert slots["slot.CD"] == max(plain["slot_values"]["slot.CD"], 6.0)  # R-071 HWC term
     assert with_extracted["manual_overrides"] == []
+    assert with_extracted["water_conn_applied"] == {"inlet": 1.5, "outlet": 1.5}
     assert with_extracted["water_conn_extracted"] == {"inlet": 1.5, "outlet": 1.5}
+
+
+def test_a_typed_water_conn_wins_over_the_extracted_one_and_is_audited():
+    out = derive_coil_template_drawing(
+        _nova_water(water_conn_extracted={"inlet": 1.5, "outlet": 1.5}, inlet_conn_size=1.0)
+    )
+    assert out["slot_values"]["slot.S1"] == 1.0                   # typed IN
+    assert out["slot_values"]["slot.R2"] == 1.5                   # extracted OUT kept
+    assert [m["target_field"] for m in out["manual_overrides"]] == ["inlet_conn_size"]
 
 
 def test_water_conn_fill_items_offered_for_water_only():

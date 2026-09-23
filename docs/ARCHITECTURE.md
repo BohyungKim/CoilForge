@@ -51,7 +51,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 134 |
+| `tests` | 135 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 1 |
@@ -211,6 +211,6 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_coilmaster_drawing_extract.py` | Tests for CoilMaster drawing + cover-page extraction (synthetic text) |
 | `tests/test_condensing_mirror_fields.py` | Source-contract guards for the condensing (RHHGRC/HGRH) mirror in web/app.js |
 
-_300 source files, 210 with a header comment. 60 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_301 source files, 211 with a header comment. 61 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

@@ -165,8 +165,26 @@ def _pick_drawing_page(doc: "fitz.Document") -> "fitz.Page":
     return best
 
 
-def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
+def seed_pdf(
+    pdf_path: Path,
+    page_index: int | None = None,
+    extra_callouts: dict[str, str] | None = None,
+) -> SeedResult:
+    """``extra_callouts`` maps a callout LABEL absent from ``_DIM_LABELS`` to the slot it
+    means FOR THIS BUCKET (e.g. a water sheet's ``SL1`` -> ``slot.SL2``). It is per-bucket
+    on purpose: the same label means a different slot on another category (on HGRH, SL1 is
+    the supply stub position), which is exactly why SL1/HD1 were never added globally.
+    Without it such a callout stays a literal number and prints on every coil."""
     doc = fitz.open(pdf_path)
+    extra_re = (
+        re.compile(
+            r"^(-?[\d.]+)\s+("
+            + "|".join(re.escape(k) for k in sorted(extra_callouts, key=len, reverse=True))
+            + r")$"
+        )
+        if extra_callouts
+        else None
+    )
     # Multi-coil project PDFs hold many drawing pages, so a specific page must be named;
     # single-coil EZ exports omit it and fall back to the callout-density auto-pick.
     page = doc[page_index] if page_index is not None else _pick_drawing_page(doc)
@@ -187,6 +205,14 @@ def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
             xy = _first_xy(t.group(1)) if t else None
             x, y = (xy if xy else (0.0, 0.0))
             return f"<text{keep}><tspan x=\"{x:.2f}\" y=\"{y:.2f}\">{text}</tspan></text>"
+
+        # 0) Bucket-specific callout label (see `extra_callouts`).
+        em = extra_re.match(content) if extra_re else None
+        if em:
+            slot = extra_callouts[em.group(2)]
+            used.add(slot)
+            ref.setdefault(slot, em.group(1))
+            return single(f"{{{{{slot}}}}} {em.group(2)}")
 
         # 1) Drawing-area dimension callout: "VALUE LABEL".
         cm = _CALLOUT_RE.match(content)
@@ -643,6 +669,28 @@ VPLUS_BUCKETS: list[tuple] = [
 ]
 
 
+# Dedicated Terra CWC buckets (John 2026-09-23): ONE artwork shared by Terra H and Terra V
+# (the catalog aliases both families onto `TERRA`); every printed value is CoilForge's own,
+# filled per coil. Seeded from John's own CoilMaster drawings of the same coil in each hand
+# (`CW-A-F-06-10-18.00x36.00-L/R`, created 2026-09-23) -- each hand its own seed, no mirror.
+# Sources are staged under Case/feed/terra_cwc_* (gitignored). 10th element = the
+# bucket's extra callout map: the references print the supply header's `4.00 HD1` and
+# `10.00 SL1`, which `_DIM_LABELS` does not know, so without it both numbers would be
+# baked into the artwork and printed on every Terra CWC. On a water coil the supply and
+# return headers are symmetric (reference: HD1 = HD2 = 4, SL1 = SL2 = 10), so they
+# render the return-side slots -- the same mapping `label_authority` applies to a water
+# sheet's SL1 at render time.
+_WATER_SUPPLY_CALLOUTS = {"HD1": "slot.HD2", "SL1": "slot.SL2"}
+TERRA_BUCKETS: list[tuple] = [
+    ("coilmaster_terra_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
+     "Case/feed/terra_cwc_lh/TERRA_CCWC_LH.pdf", "TERRA-CWC-JOHN-2026-09-23-L", None,
+     _WATER_SUPPLY_CALLOUTS),
+    ("coilmaster_terra_cwc_rh", "cwc", "CWC", "RH", "Header 1", None,
+     "Case/feed/terra_cwc_rh/TERRA_CCWC_RH.pdf", "TERRA-CWC-JOHN-2026-09-23-R", None,
+     _WATER_SUPPLY_CALLOUTS),
+]
+
+
 def _slot_map(template_id: str, slot_ids: set[str]) -> dict:
     slots = []
     for sid in sorted(slot_ids):
@@ -670,9 +718,11 @@ def build_bucket(spec: tuple) -> set[str]:
     template_id, cat_dir, coil_cat, hand, header_type, special, src, case_id = spec[:8]
     # Optional 9th element = explicit page index for multi-coil project PDFs (Ventum+).
     page_index = spec[8] if len(spec) > 8 else None
+    # Optional 10th element = bucket-specific callout labels (see seed_pdf).
+    extra_callouts = spec[9] if len(spec) > 9 else None
     out_dir = REPO_ROOT / "templates" / "drawing" / "coilmaster" / cat_dir / template_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    res = seed_pdf(REPO_ROOT / src, page_index)
+    res = seed_pdf(REPO_ROOT / src, page_index, extra_callouts)
     (out_dir / "template.svg").write_text(finalize(res.svg, template_id), encoding="utf-8")
     src_folder = str(Path(src).parent).replace("\\", "/")
     page_count = fitz.open(REPO_ROOT / src).page_count
@@ -757,7 +807,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "build-one":
         sys.path.insert(0, str(REPO_ROOT / "src"))
         target = sys.argv[2]
-        spec = next((s for s in (*BUCKETS, *VPLUS_BUCKETS) if s[0] == target), None)
+        spec = next((s for s in (*BUCKETS, *VPLUS_BUCKETS, *TERRA_BUCKETS) if s[0] == target), None)
         if spec is None:
             raise SystemExit(f"unknown template_id: {target}")
         ids = build_bucket(spec)

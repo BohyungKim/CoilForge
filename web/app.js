@@ -2906,7 +2906,7 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
     // water-coil derive and log a correction nobody made (plan-review R1 BLOCKER-2).
     inlet_conn_size: engineInputs.inlet_conn_size,
     outlet_conn_size: engineInputs.outlet_conn_size,
-    // What intake extracted, display-only (the fill panel's "read:" hint). Non-trigger key.
+    // What intake extracted: drives the checklist CD/S/R server-side (not a manual fill).
     water_conn_extracted: templateDrawing.water_conn_extracted,
     // NOT the lever above: the connections-per-header the SUBMITTAL stated, stamped by
     // analyze and round-tripped so the header-count conflict banner survives a re-derive

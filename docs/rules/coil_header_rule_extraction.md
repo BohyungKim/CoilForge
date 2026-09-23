@@ -20,8 +20,11 @@ plus "SUPPLY V/D ANGLE" (LAS) and "VENT & DRAIN" (ConnEnd), CD gained a connecti
 I/O TBD, HD N/A — R-064-*) was removed, and the HWC sheet branches Terra TF/BF and I/O on
 INSTALLED ON DP (R-014h). Terra V gained its own WIDTH FIT (`(W−OAL) ≥ 9.75` DX/HGRH, `≥ 8.75`
 water) and HEIGHT FIT (FH ≤ 24/42/45/48 by size band) arms (R-078). NOT adopted, by John's
-separate rulings: the water `O = CH−x` (drawn O = I, KD-024..027), the CWC `S = IN/2+3` (drawn
-S = conn), and the Terra V HGRH CD (rows-based, KD-001) — see `known_divergences.yaml`. Sheet
+separate rulings: the water `O = CH−x` (drawn O = I, KD-024..027) and the Terra V HGRH CD
+(rows-based, KD-001) — see `known_divergences.yaml`. **Adopted 2026-09-23 (John):** water S/R
+on every line — CWC `S = IN/2+3` (C27), `R = OUT` (C28); HWC `S = IN` (C31), `R = OUT` (C32) —
+replacing the drawn `S = conn, R = S`; and the R-071 CD term is now applied from the
+submittal's extracted inlet/outlet sizes on the analyze path too (`_apply_water_connection_slots`). Sheet
 defects found in the refresh are filed as `docs/rule_proposals/RP-003-template-2026-09-22-defects.md`.
 
 **Important discovery about the checklist:** the CHK SUBMITTAL column is formula-driven. It is itself a deterministic rule engine keyed on `C3` (product type), `C4` (unit size), `C5` (application), `C13/C14` (rows/feeds), `C15–C18` (conn size, qty conn/header), etc. This makes evidence extraction far stronger than expected — but it also exposes real conflicts with the SOP, listed below.
