@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
+> 마지막 갱신: 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
 > 멀티헤더 결함 4건. 도면이 **시드 코일의 as-built을 인쇄**(`-0.25 S1`; slot_map에 없어 치환 대상조차 아님),
 > 9abe5a7의 Terra V 가드가 **실제 PDF 경로에서 死**(R-052의 `qty or circuits` 무언 대체), 그 결과 **S 음수 발산**,
 > 패널 I2/O2 비대칭 미설명. 조사 중 결론이 한 번 뒤집혔다 — 참조를 **그 입력으로 재구성**하면 우리 공식이
@@ -547,6 +547,7 @@
 > 커밋은 hunk 격리 필요. 이전: **2단계 Case Retrieval Phase 2.0 구축·커밋·푸시(66087fd)**: Gower kNN 엔진 + corpus 게이지 + `/api/capture/similar` + CLI, gated n≥50 + **rule_id→3자뷰 배선**. 코퍼스 46/50·**교정 0**(실 submittal 12개 배치 분석=feature-only). ▶️ 지금 = 2단계 원장 채우기 — 실사용으로 **교정** 축적이 진짜 관건(개수보다 이게 핵심). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
+- [x] **체크리스트 리프레시 2026-09-22 (ee7ef30)** — 6탭 back-crack → 22건 반영(Terra V SIZE 숫자·케이싱·드레인팬·FIT 자체 행, DX H05/H10 DIST EXT 17, HGRH Terra V I1=2 + supply SL 공식, 물코일 I/O/S/R·CD 접속경·RB 가족별·single-feed 폐기·HWC DP tri-state·V/D ConnEnd), Terra H/V 물코일 도면 vacant, KD 정리(004·006..009 은퇴 / 005·022..029 추가), RP-003. 1694 green + 라이브 Excel 채움 확인. 미채택 3건은 ⬜ 앞으로의 John 결정 항목
 - [x] Phase 2A MVP 코어 — YAML 룰 엔진 + 템플릿-우선 SVG 도면 파이프라인 동작
 - [x] 22개 템플릿 시드 완료 — per-hand 실참조 + 4HD(DX/HGRH LH+RH), 미러 생성 없음
 - [x] Terra V SOP 확정 — 10개 델타값 LOW→HIGH 승격, 13개 사이즈·케이싱 전부 해소
@@ -1262,6 +1263,21 @@
   확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
   ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
+- [ ] **[딜리버러블 트랙] finalize의 남은 미포장 OSError 2곳 + 프런트 가드 (2026-09-22)** —
+  `commit_placements`의 **bytes 분기**(`write_bytes`)는 `OSError`가 안 감싸여 잠긴 대상 PDF가
+  **이름 없는 500**이 된다(같은 함수의 copyfile 분기만 409로 명명 — 비대칭). `plan_placements`의
+  `_sha256_file`도 미포장이라 OneDrive 미하이드레이트/잠금 시 500. 프런트 `fileDeliverable`은
+  타임아웃·중복클릭 가드가 없어 Excel COM이 길어지면 멈춘 것처럼 보이고 재클릭이 두 번째 finalize를
+  띄운다. 셋 다 실사용 빈도는 낮음. 또 옛 긴 이름으로 파일링된 프로젝트를 다시 돌리면 `already filed`로
+  안 잡히고 짧은 이름으로 한 번 더 파일링된다(중복 1개, 무해).
+- [ ] **[체크리스트 리프레시 트랙] John 결정 3건 — 구현과 분리해 열어 둠 (2026-09-22)** — ① KD-001 Terra V HGRH CD 재판정
+  (rows-based 실측 RHHGRC-3 3.75 vs 시트 else-branch 4.125; 시트는 리프레시 후에도 Terra V arm 없음) ② CWC 도면 S 콜아웃을 시트
+  `IN/2+3`으로 바꿀지(seed 7/7이 S=conn) ③ 물코일 O 콜아웃을 `CH−x`로 재정의할지(2026-07-29 판정 O=I 유지가 기본; KD-024..027 amber).
+  셋 다 현재는 체크리스트 비교열에 red/amber로 정직하게 드러남. 결정 전 코드 변경 없음.
+- [ ] **[체크리스트 리프레시 트랙] Terra H/V CWC/HWC 새 SVG 템플릿 시딩 (John 소유)** — 그때까지 도면 vacant
+  (`submittal_to_drawing._TERRA_WATER_WITHHELD_FAMILIES`; 시드 후 집합을 비우면 게이트 해제). Direct Coil 경로는 게이트 밖(범위 외).
+- [ ] **[체크리스트 리프레시 트랙] 시트 버그 3건을 Oxygen8에 전달 (RP-003)** — HGRH Terra V O4/O6/O8=2(O2 2.75), HGRH SL5/SL7→C47,
+  CWC NOTES C327 오타. 라이브 검증 후 `/wiki-lint`로 R-046/R-067/R-077 drift 정리.
 - [ ] **[3179 트랙] RHHGRC `X` 치수 — 배선 STOP. 게이트는 `X`의 정의 확보 (John 2026-09-05)**
   — 3179 TWU에서 드러남(09-02) → 정체 규명 시도(09-03) → **실측으로 작업가설 반증(09-05). 코드 0줄.**
   John의 family-aware 지시(Terra V blank / Terra H는 공식)를 착수 전 검증하다 **두 전제가 모두**
@@ -1383,8 +1399,8 @@
     셔틀은 진짜 no-op(숨은 취약점 없음), 외부 정규화-前 판독자 `mechanical_fit`은 `_coarse_terra_family()` 방어를
     실제로 갖춤. Phase 3는 **사용자 이득 0**(도면·값 무변경)인 순수 표현 정리인데 **회귀 리스크는 실재**: ①값 뒤집힘 —
     R-012/R-014/R-021/R-027/R-042/R-045b/R-061/R-065 8룰은 `[TERRA_H,TERRA_V]` 단순치환 시 Terra V가 last-writer-wins/`_v`
-    은퇴로 H 값으로 되돌아감(반드시 `[TERRA_H]`로만 좁혀야). ②키 단절 — R-077/R-078은 `TERRA` 키만 있어 coarse 은퇴 시
-    fit/drain-pan 조회 miss → Terra 코일 `CANNOT_EVALUATE`. 무이득+고위험이라 [[project_review_gate]]·Simplicity First에
+    은퇴로 H 값으로 되돌아감(반드시 `[TERRA_H]`로만 좁혀야). ②키 단절 — R-077/R-078은 Terra **H**가 여전히 coarse `TERRA` 키만
+    있어(Terra V는 2026-09-22부터 `TERRA_V|…` 자체 행 보유) coarse 은퇴 시 Terra H fit/drain-pan 조회 miss → `CANNOT_EVALUATE`. 무이득+고위험이라 [[project_review_gate]]·Simplicity First에
     정면 위배.
     **재개 트리거:** 템플릿 선택이 Terra H/V로 갈라져야 하거나, Terra V 전용 casing/water 레퍼런스가 시드돼 variant가
     first-class 표현을 실제로 요구할 때 — 그 작업과 묶어 원자적으로. (리키 분류: 단순치환 5 / variant 1:1 12 / 주의 8 —
@@ -1395,8 +1411,8 @@
   재질+두께+표면을 한 문자열로 저장 → Ambient `"Copper"`와 differ(정직하나 노이즈). 재질 토큰만 비교(John 확인).
 - [ ] **[Ambient 트랙] circuits 검출 + baseline 용량 소스 + % 허용오차 확정** — 현재 circuits 기본 1,
   킷 선택 Ambient 폴백, review-only tolerance. John 결정 후 정밀화. (상세: `docs/SESSION_LOG.md` 2026-07-16)
-- [ ] **[3058 트랙] Phase 3 — DIST EXTENTION 정렬** — R-033을 체크리스트 `C59=IF(SIZE in{H05,H10},17,6)`에
-  맞춤(현재 상수 6, H05/H10=17 누락) + 체크리스트 compare에 CoilForge 값 노출(현재 blank). John: "체크리스트에 6 push".
+- [x] **[3058 트랙] Phase 3 — DIST EXTENTION 정렬 — ✅ 종결 (2026-09-22, 체크리스트 리프레시 트랙)** — R-033b가
+  Ventum H H05/H10에 17을 냄(`size_pattern`, R-025b 패턴); 체크리스트 compare의 `DIST EXTENTION` 행은 `slot.DIST_EXT`로 이미 노출.
 - [ ] **[3058 트랙] Phase 4 — 코일별 product/size 오탐지 조사** — CDXC-3=VENTUM_H/H10 등 혼재(일부 전역폴백).
   오탐지면 R-074 casing W/H + 위 C59(17 vs 6) 틀어짐. `detect_product_and_size` per-coil 추적, 실 유닛 대조(John/BOM).
 - [x] **[물코일 트랙] coating 노트가 물코일에 없음 — ✅ John 판정 종결 (b44fdd0, 2026-08-06)** —
