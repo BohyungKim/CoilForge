@@ -5,6 +5,51 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-09-22 (Toronto) · base d9dc812..a0a88b8 · claude/ambient-supplier
+> 이번 세션의 커밋은 `a0a88b8` 하나. 트리에 함께 있는 체크리스트 리프레시(6탭) 작업은
+> **다른 세션**의 것이며 커밋하지 않았다.
+
+### ✅ 구현/결정된 것
+- **"Move to DirectCoil"이 10번 중 1번만 성공하던 원인 2건 수정** (커밋 `a0a88b8`).
+  둘 다 화면에는 똑같이 `Filing failed:` 한 줄로만 보여서 구분이 안 됐다. 프런트에 그 헤드라인을
+  만드는 경로가 **하나뿐**(`app.js:5108`, `requestJson`이 던진 예외)이라는 걸 먼저 확정하고,
+  conflict(200)·부분성공은 각각 다르게 렌더된다는 사실로 범위를 HTTP 예외로 좁혔다.
+- **결함 ① 프로젝트 번호가 줄 나머지를 달고 왔다.** 라벨 정규식이 `[^
+]+`로 줄 끝까지 캡처하고
+  `_clean_project_context_value`는 공백 2칸이나 8개 stop-word에서만 자른다. Oxygen8은 **모든 페이지
+  푸터**에 `Version 1.0.0.9 Project #2727 / Rev`를 찍고, 이게 커버의 `Project Number: 2727`과 **같은
+  패턴**에 걸린다. `_first_label_value`가 문서 전체의 첫 매치 하나만 취했으므로 어느 줄이 먼저 파싱되느냐가
+  답을 결정했고, PO 조회는 접두어 매칭이라 `2727 / Rev #3`은 1369개 폴더 중 무엇과도 안 맞았다.
+  `_project_number_token`으로 **번호 토큰만** 남기니 푸터와 커버가 같은 답을 내어 순서 의존성이 사라진다.
+  대리점 9자리 번호는 **자르지 않고 거부**(`(?!\d)`)하고, `finditer`로 모든 매치를 훑어 우리 번호를 찾는다.
+- **결함 ② 체크리스트 대상 경로가 MAX_PATH를 넘었다.** Downloads 이름이 submittal stem 전체라
+  3219 SPCA Cincinnati는 **정확히 260자**(Win32 한도 259, 이 PC는 long path 꺼짐). `copyfile`이
+  `[Errno 2] No such file or directory`로 죽으면서 **멀쩡히 존재하는** DirectCoil 폴더를 가리켰다.
+  게다가 **commit 시점**에 터져서 PDF 2개가 이미 들어간 뒤였다 — all-or-nothing 약속이 conflict에는
+  지켜지고 I/O 실패에는 안 지켜지고 있었다. 이제 `plan_placements`가 길이를 먼저 보고 아무것도 안 쓴다.
+- **John 결정(2026-09-22): 시트는 `<번호> - Coil Checklist.xlsx`로 파일링.** 3219 기준 186자.
+  Downloads 원본은 긴 이름 그대로 두고 **이동**(복사 아님)은 유지.
+- **실패 메시지를 자가진단형으로.** 값을 따옴표로 감싸고(꼬리·끝공백이 안 보인다), 선행 숫자만으로
+  재검색해 근접 폴더를 이름으로 댄다. 후보를 **고르지는 않는다**(고르면 프로젝트를 지어내는 것).
+  `web_app`은 번호의 출처(PDF 라벨 / 파일명)를 덧붙인다 — 고칠 곳이 갈린다.
+- **기존 테스트가 파일링 이름을 하나도 고정하지 않고 있었다** — Downloads 이름이 우연히 새 이름과
+  같아서 전부 통과했다. 현실적인 긴 이름으로 된 테스트를 추가했다.
+- **측정으로 배제한 가설:** PO base 존재 ✓, `Accessory Order Forms` 최근 77/77 존재,
+  `Direct Coil` 철자 변형 0건, 중복 철자 0건, 번호 접두어 중복 21/1342(1.6%), Excel 좀비·stale lock 없음.
+- **테스트:** 신규 10건. 전체 **1694 passed, 0 failed**. 라이브: 3219 3개 문서 전부 파일링 확인(John).
+
+### ⏭️ 다음 스텝
+- [ ] **`.claude/roadmap.md` 항목 추가분이 워킹트리에 있으나 미커밋** — 이 파일에 다른 세션의
+  체크리스트 리프레시 편집이 함께 들어 있어 쓸어 담지 않았다. John이 그 세션 커밋과 함께 넣거나,
+  별도로 지시하면 커밋한다.
+- [ ] **`commit_placements`의 `write_bytes`가 `OSError` 미포장** — 잠긴 대상 PDF가 이름 없는 500이 된다.
+  같은 함수의 copyfile 분기만 409로 명명돼 있어 비대칭. (🟡, 이번 범위 밖)
+- [ ] **`plan_placements`의 `_sha256_file` 미포장** — OneDrive 미하이드레이트/잠금 시 500. (🟡)
+- [ ] **프런트 `fileDeliverable`에 타임아웃·중복클릭 가드 없음** — Excel COM이 길어지면 멈춘 것처럼
+  보이고 재클릭이 두 번째 finalize를 띄운다. (🟡)
+- [ ] 예전에 긴 이름으로 파일링된 프로젝트를 다시 돌리면 `already filed`로 인식되지 않고 짧은 이름으로
+  한 번 더 파일링된다(무해하나 중복 파일 1개).
+
 ## 2026-09-02 (Toronto) · base dd99c8d..ebb3c35 · claude/ambient-supplier
 > 이번 세션의 커밋은 `ebb3c35` 하나. 범위 안의 나머지 5개(`8bac658`·`9bfef68`·`2f67dac`·`27d1ef9`·
 > `d60bad1`)는 다른 세션의 Terra V HGRH 트랙이며 로드맵 완료 섹션에 이미 기록돼 있다.
