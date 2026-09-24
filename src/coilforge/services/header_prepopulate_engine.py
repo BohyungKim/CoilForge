@@ -852,8 +852,10 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
                     (the single-feed specials R-064-* -- sl=12/14, io=TBD, hd=N/A -- were
                      RETIRED 2026-09-22: the refreshed checklist has no single-feed arm;
                      feeds == 1 now resolves exactly like feeds > 1)
-    feeds absent -> io/hd MEDIUM suggestions (missing feeds); sl HIGH default
-                    (the sheet blanks I/O and HD when FEEDS/CIRCUITS is empty)
+    feeds absent -> the SAME HIGH io/hd (John 2026-09-24, RP-004 A3): no value here
+                    depends on the feed count since the single-feed special went, so a
+                    submittal that omits FEEDS no longer blanks I/O, HD and OAL. The sheet's
+                    own FEEDS gate is on Dave's fix list (gate on UNIT instead).
     TERRA        -> io=3.25 HIGH (R-061), sl=10 HIGH (R-065) [checklist, John 2026-06-11]
     TERRA V      -> io=2.75 HIGH (R-061v), sl=12 HIGH (R-065v) [SOP, John 2026-06-28]
                     (supply AND return alike — the SOP's / sheet's "return CH-2.75" is the
@@ -867,7 +869,6 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
     index = _rule_index()
     product = request.product_type
     is_terra_v = request.terra_variant == TerraVariant.TERRA_V
-    feeds_stated = request.feeds is not None
     hwc_off_pan = (
         request.type_of_coil == CoilType.HWC and request.installed_on_drain_pan is False
     )
@@ -896,53 +897,27 @@ def _emit_cwc_io_hd_sl(request, place) -> None:  # type: ignore[no-untyped-def]
         )
     else:
         rule = index["R-060"]
-        if feeds_stated:
-            place(
-                "io",
-                FieldResult(
-                    value=2.3125,
-                    confidence=Confidence.HIGH,
-                    evidence_refs=rule["evidence_refs"],
-                    rule_id=rule["rule_id"],
-                ),
-            )
-        else:  # feeds absent
-            place(
-                "io",
-                FieldResult(
-                    value=2.3125,
-                    confidence=Confidence.MEDIUM,
-                    evidence_refs=rule["evidence_refs"],
-                    rule_id=rule["rule_id"],
-                    review_required=True,
-                    missing_inputs=["feeds"],
-                ),
-            )
-
-    # --- hd ---
-    rule = index["R-062"]
-    if feeds_stated:
         place(
-            "hd",
+            "io",
             FieldResult(
-                value=4,
+                value=2.3125,
                 confidence=Confidence.HIGH,
                 evidence_refs=rule["evidence_refs"],
                 rule_id=rule["rule_id"],
             ),
         )
-    else:  # feeds absent
-        place(
-            "hd",
-            FieldResult(
-                value=4,
-                confidence=Confidence.MEDIUM,
-                evidence_refs=rule["evidence_refs"],
-                rule_id=rule["rule_id"],
-                review_required=True,
-                missing_inputs=["feeds"],
-            ),
-        )
+
+    # --- hd --- (4 for any feed count, stated or not — see the docstring)
+    rule = index["R-062"]
+    place(
+        "hd",
+        FieldResult(
+            value=4,
+            confidence=Confidence.HIGH,
+            evidence_refs=rule["evidence_refs"],
+            rule_id=rule["rule_id"],
+        ),
+    )
 
     # --- sl ---
     if product == ProductFamily.TERRA:

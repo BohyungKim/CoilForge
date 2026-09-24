@@ -493,11 +493,11 @@ def test_t12_cwc_nova_a16_feeds_absent() -> None:
     assert r.values["sl"].value == 8
     assert r.values["size_class"].value == "NOVA_1IN"
     assert r.values["notes"].value[0].startswith("Vent & Drain installed")
-    # feeds absent -> io/hd are suggestions reporting missing feeds.
-    assert r.suggestions["io"].value == 2.3125
-    assert "feeds" in r.suggestions["io"].missing_inputs
-    assert r.suggestions["hd"].value == 4
-    assert "feeds" in r.suggestions["hd"].missing_inputs
+    # feeds absent -> io/hd HIGH anyway (John 2026-09-24, RP-004 A3): no water I/O or
+    # HD value depends on the feed count since the single-feed special was retired.
+    assert r.values["io"].value == 2.3125 and r.values["io"].confidence == Confidence.HIGH
+    assert r.values["hd"].value == 4 and r.values["hd"].confidence == Confidence.HIGH
+    assert "io" not in r.suggestions and "hd" not in r.suggestions
     # TF/BF resolved to checklist value 0.625 (R-013, John 2026-06-11).
     assert r.values["top_flange"].value == 0.625
     assert r.values["bottom_flange"].value == 0.625
@@ -509,10 +509,10 @@ def test_t13_cwc_ventum_plus_v30() -> None:
     assert r.values["bottom_flange"].value == 1
     assert r.values["return_bend"].value == 1.875  # R-006p (2026-09-22 checklist: Ventum+ -> 1.875)
     assert r.values["sl"].value == 10
-    # Per John (2026-06-11): feeds absent -> io/hd are MEDIUM suggestions,
-    # consistent with T12 (not T13's literal "Confidence=High").
-    assert r.suggestions["io"].value == 2.3125
-    assert r.suggestions["hd"].value == 4
+    # feeds absent -> io/hd HIGH (John 2026-09-24), which is T13's literal
+    # "Confidence=High" again (2026-06-11 had made them MEDIUM suggestions).
+    assert r.values["io"].value == 2.3125 and r.values["io"].confidence == Confidence.HIGH
+    assert r.values["hd"].value == 4 and r.values["hd"].confidence == Confidence.HIGH
 
 
 def test_t14_hwc_ventum_plus_single_feed() -> None:

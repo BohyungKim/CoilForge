@@ -836,6 +836,9 @@ rules:
   # 2026-09-22 that the checklist wins. The entries stay (deprecated: true) for
   # traceability and remain in the engine's _CWC_IO_HD_SL_IDS so the generic emitter
   # never picks them up; `_emit_cwc_io_hd_sl` no longer branches on feeds == 1.
+  # 2026-09-24 (John, RP-004 A3): nor on feeds being STATED — the sheet's `C14=""` gate
+  # blanked I/O/HD/OAL for a value that does not depend on the feed count, so CoilForge
+  # emits them HIGH either way and the sheet's gate is on Dave's fix list.
   - rule_id: R-064-sl
     applies_to: { coil_type: [CWC, HWC], product_family: ["*"], terra_variant: null, size_pattern: null }
     field: sl

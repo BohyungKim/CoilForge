@@ -4,6 +4,9 @@
 **Raised by:** the 2026-09-22 template back-crack (KD-005 / KD-022 / KD-023 in
 `src/coilforge/rules/known_divergences.yaml`)
 **Adjudicated:** 2026-09-22 · John (item 1 ruled a sheet defect; items 2–3 reported)
+**Updated 2026-09-24 (John):** item 1 confirmed and scoped — every Terra V return I/O
+(O2/O4/O6/O8) is 2.75 and every Terra H one is 3.25; item 2 goes on the fix-request list;
+item 3 is **FIXED** in the 2026-09-24 template (`CWC!C20` now reads `C27`).
 
 > **Nothing is applied by this document.** It targets a spreadsheet CoilForge does not
 > own. CoilForge's behaviour for item 1 is to keep its own value (2.75) and label the
@@ -21,11 +24,13 @@
 | `HGRH!C40` (O8) | same shape as C38 | **2** |
 
 The Terra V arm was added to `C37` only. A return I/O that differs between header 1
-and header 2 of the same coil has no engineering basis. John ruled this a sheet defect;
-CoilForge keeps 2.75 on every return header (R-042v).
+and header 2 of the same coil has no engineering basis. John ruled this a sheet defect
+(2026-09-22) and confirmed the scope on 2026-09-24: **Terra V = 2.75 on every return
+header, Terra H = 3.25 on every return header** (the Terra H arm in `C38:C40` is already
+correct). CoilForge draws exactly that (R-042v / R-042).
 
 **Proposed fix:** add `IF(C3="TERRA V",2.75, …)` to the inner `IF` of `C38:C40`, mirroring
-`C37`.
+`C37`. Still present in the 2026-09-24 template.
 
 ## 2. HGRH `SL5` / `SL7` reference `C47` (S3) instead of `C48` / `C49`
 
@@ -36,8 +41,9 @@ CoilForge keeps 2.75 on every return header (R-042v).
 
 Numerically inert today because `S1 = S3 = S5 = S7` on every product line (one supply
 position per coil), but a future per-header S would silently print the wrong SL5/SL7.
+**On the fix-request list (John 2026-09-24).** Still present in the 2026-09-24 template.
 
-## 3. CWC NOTES references `C327` (should be `C27`)
+## 3. CWC NOTES references `C327` (should be `C27`) — FIXED 2026-09-24
 
 `CWC!C20`: `…"Add Headers Stubouts and Copper Straps I-" & TEXT(C327, "# ?/?") & …`
 
@@ -45,6 +51,7 @@ position per coil), but a future per-header S would silently print the wrong SL5
 the I row. (The HWC twin, `HWC!C24`, correctly references `C31`.)
 
 Cosmetic but engineer-facing: the note is what gets pasted into the order.
+**Resolved:** the 2026-09-24 template reads `TEXT(C27, "# ?/?")` (checked with openpyxl).
 
 ## Also noted (no fix requested)
 

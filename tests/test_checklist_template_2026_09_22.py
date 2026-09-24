@@ -233,9 +233,26 @@ def test_water_single_feed_resolves_like_multi_feed():
     assert r.values["sl"].value == 8 and r.values["hd"].value == 4
     assert r.values["io"].value == 2.3125
     assert not any(k in r.suggestions for k in ("io", "hd", "sl"))
-    # feeds ABSENT is unchanged: the sheet blanks I/O and HD, so they stay MEDIUM.
+    # feeds ABSENT resolves the same way (John 2026-09-24, RP-004 A3): the values do not
+    # depend on the feed count, so a submittal without FEEDS no longer blanks I/O and HD.
     absent = prepopulate(build_header_request(coil_type="CWC", product_type="NOVA", unit_size="C24", rows=2))
-    assert "io" in absent.suggestions and "hd" in absent.suggestions
+    assert absent.values["io"].value == 2.3125 and absent.values["hd"].value == 4
+    assert not any(k in absent.suggestions for k in ("io", "hd"))
+
+
+def test_water_drawing_without_feeds_is_no_longer_blank():
+    """RP-004 A3 (John 2026-09-24): a submittal that omits FEEDS used to blank the water
+    I/O, HD and OAL on the drawing (and on the sheet). The values are identical for any
+    feed count, so the drawing now carries them either way."""
+    for cat in ("CWC", "HWC"):
+        common = dict(coil_type=cat, product_type="NOVA", unit_size="C24", rows=4, circuits=1,
+                      finned_height=30.0, finned_length=40.0,
+                      inlet_conn_size=1.5, outlet_conn_size=1.25)
+        without, _ = build_drawing_slots(**common)
+        with_feeds, _ = build_drawing_slots(**common, feeds=4)
+        for slot in ("slot.I1", "slot.O2", "slot.HD2", "slot.OAL"):
+            assert without.get(slot) is not None, (cat, slot)
+            assert without[slot] == with_feeds[slot], (cat, slot)
 
 
 def test_water_vent_drain_and_vd_angle_follow_the_sheet_on_every_line():

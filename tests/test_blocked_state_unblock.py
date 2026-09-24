@@ -64,7 +64,8 @@ def test_withheld_terra_water_still_offers_hand_and_param_levers(monkeypatch):
     # The Terra water gate is empty since both Terra water pairs were seeded (2026-09-23);
     # re-arm it here so the "levers survive a withheld drawing" guarantee stays pinned.
     monkeypatch.setattr(std, "_TERRA_WATER_WITHHELD_CATEGORIES", {"HWC"})
-    result = derive_coil_template_drawing(_terra_water())
+    # No finned height -> CH/O are genuinely blank (HD no longer is: John 2026-09-24).
+    result = derive_coil_template_drawing(_terra_water(finned_height=None))
     assert result["not_registered_reason"], "precondition: the re-armed gate withheld it"
     assert result["svg"] == ""
     plan = result["manual_fill_plan"]
