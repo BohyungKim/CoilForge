@@ -428,6 +428,16 @@
         "pdf_drawing_value_redacted_to_slot"
       ],
       "notes": "Seeded from the provided EZ drawing PDF; review required."
+    },
+    {
+      "slot_id": "slot.COATING_NOTE",
+      "label": "COATING NOTE",
+      "required_for_preview": false,
+      "review_status": "review_required",
+      "source_candidates": [
+        "submittal_coil_coating"
+      ],
+      "notes": "The reference drawing this template was seeded from had a coating applied, so the coating name was baked into the artwork ('ELECTROFIN COATING REQUIRED' / 'FINKOTE 2 COATING REQUIRED') and printed on every coil in this bucket regardless of its actual coating. Redacted to a slot 2026-08-05 (John)."
     }
   ]
 }

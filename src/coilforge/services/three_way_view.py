@@ -108,7 +108,10 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
             continue
         # bridge the param key to its engine field (CD -> casing_depth) to find the rule.
         rule_id = firing_rule.get(PARAM_TO_ENGINE_FIELD.get(key, key))
-        fields.append(_row(key, "drawing_param", None, coilforge, engineer, rule_id=rule_id))
+        # Who supplied the engineer value: typed, or adopted from the Coil Checklist.
+        source = (param.get("source") or (ev or {}).get("source")) if overridden else None
+        fields.append(_row(key, "drawing_param", None, coilforge, engineer, rule_id=rule_id,
+                           engineer_source=source))
 
     note = (
         "Review aid — submittal (raw) vs CoilForge (engine) vs engineer (manual). "
@@ -119,7 +122,7 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
 
 def _row(
     field: str, kind: str, submittal: Any, coilforge: Any, engineer: Any,
-    *, rule_id: str | None = None,
+    *, rule_id: str | None = None, engineer_source: str | None = None,
 ) -> dict[str, Any]:
     return {
         "field": field,
@@ -131,4 +134,6 @@ def _row(
         "submittal_vs_coilforge": _verdict(submittal, coilforge),
         "coilforge_vs_engineer": _verdict(coilforge, engineer) if engineer is not None else None,
         "rule_id": rule_id,  # engine field's firing (1c); None when the engine didn't emit it
+        # "engineer" | "checklist" (adopted) | None when no override — labels the column.
+        "engineer_source": engineer_source,
     }

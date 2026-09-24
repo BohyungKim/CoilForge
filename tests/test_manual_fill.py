@@ -328,8 +328,11 @@ def test_kill_switch_off_strips_fills(monkeypatch):
 
 
 def _water_spec(**kw):
+    # A Nova water coil: the assumed-hand behaviour is line-agnostic, and Terra H/V water
+    # drawings are withheld while their templates are re-seeded (John 2026-09-22), so a
+    # Terra V spec here would blank the svg for a reason unrelated to the hand.
     spec = dict(
-        coil_category="HWC", product_type="TERRA V", unit_size="040",
+        coil_category="HWC", product_type="NOVA", unit_size="C24",
         circuits=1, rows=1, feeds=2, finned_height=36.0, finned_length=33.0,
         suction_conn_size=1.0, tag="HHWC-1",
     )

@@ -306,6 +306,39 @@ button:disabled,
   color: var(--sidebar-muted);
 }
 
+/* Sidebar coil row: tag button + its own review-approve toggle. Only tokens that are
+   defined in BOTH the light and dark blocks are referenced here (--sidebar-muted,
+   --sidebar-active-em, --status-ready). An undefined token silently falls back to
+   white/inherited, which is the dark-mode white-card bug -- see the CLAUDE.md guard. */
+.tree-row {
+  align-items: center;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr auto;
+}
+
+.tree-approve {
+  background: transparent;
+  border: 1px solid var(--sidebar-muted);
+  border-radius: 999px;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 7px;
+}
+
+.tree-approve:hover {
+  border-color: var(--sidebar-active-em);
+  color: var(--sidebar-active-em);
+}
+
+.tree-approve.is-reviewed {
+  border-color: var(--status-ready);
+  color: var(--status-ready);
+  font-weight: 700;
+}
+
 .workspace {
   display: grid;
   gap: 14px;
@@ -653,6 +686,8 @@ body.is-init-stage .project-search {
    own (theme-neutral rgba, like the rows above) tint rather than borrowing either. */
 .checklist-overridden { background: rgba(120, 110, 220, 0.18); }
 .checklist-overridden .checklist-verdict { color: #7b6fdc; }
+/* Adopted from the sheet onto a blank row: neutral (a copy is not an agreement). */
+.checklist-adopted .checklist-verdict { color: var(--accent-link); font-weight: 700; }
 .checklist-override-badge { color: #7b6fdc; cursor: help; }
 
 .quote-package-section .quote-package {
@@ -849,6 +884,78 @@ body.is-init-stage .primary-intake-panel {
   border-color: var(--danger-border);
   border-left-color: var(--status-blocked);
   color: var(--danger-text);
+}
+
+/* CRITICAL dimension with no value (John 2026-09-22: CD / CH / HD / HDx / S / I). Outranks
+   the ordinary --empty red in the border chain: a thicker edge plus a halo, so the rows a
+   drawing cannot be trusted without are found first. Defined tokens only (both themes). */
+.dc-control.dc-control--critical-empty {
+  background: var(--danger-bg);
+  border: 2px solid var(--status-blocked);
+  box-shadow: 0 0 0 2px var(--danger-border);
+  color: var(--danger-text);
+  font-weight: 700;
+}
+
+.dc-dimension-row .dc-dimension-critical {
+  color: var(--status-blocked);
+  font-size: 10.5px;
+  font-weight: 700;
+  grid-column: 1 / -1;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.dc-dimension-row .dc-inline-reason {
+  background: var(--bg-field);
+  border: 1px solid var(--status-blocked);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  grid-column: 1 / -1;
+  padding: 3px 6px;
+}
+
+/* "Adopt from Coil Checklist" — neutral on purpose: an adopted value is a copy of the
+   sheet, never an agreement with it, so it must not look like the green match state. */
+.dc-adopt,
+.dc-release {
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent-link);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+  justify-self: start;
+  padding: 1px 6px;
+}
+
+.dc-dimension-row .dc-adopt {
+  grid-column: 1 / -1;
+}
+
+.dc-adopt:hover,
+.dc-release:hover {
+  border-color: var(--accent-hover);
+}
+
+.checklist-adopt-bar {
+  align-items: center;
+  background: var(--bg-inset);
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+}
+
+.checklist-adopt-bar .dc-dimension-note {
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .dc-dimension-reason {
@@ -2177,6 +2284,33 @@ h4 {
   padding: 9px 11px;
 }
 
+/* Rows the coil-tag gate refused. Informational, not an error: the exclusion is
+   usually correct (a valve kit is not a coil), but it must be visible with its reason
+   so a WRONG exclusion cannot masquerade as "the submittal never listed that coil".
+   Defined tokens only -- an undefined one silently falls back to white and breaks
+   dark mode (see the CLAUDE.md guard). */
+.non-coil-excluded {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 8px 11px;
+}
+
+.non-coil-excluded > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.non-coil-excluded ul {
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
 .template-not-registered {
   align-items: center;
   background: var(--danger-bg);
@@ -2462,6 +2596,30 @@ h4 {
 .manual-fill-reason {
   color: var(--text-muted);
   font-size: 0.76rem;
+}
+
+/* Critical fill levers (product / size / hand / connection sizes / category). */
+.manual-fill-row.is-critical .manual-fill-key {
+  color: var(--status-blocked);
+  font-weight: 700;
+}
+
+.manual-fill-row.is-critical input,
+.manual-fill-row.is-critical select {
+  border: 2px solid var(--status-blocked);
+}
+
+.manual-fill-critical {
+  color: var(--status-blocked);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* The product / unit-size picker while either is still missing: the headline lever. */
+.coil-drawing-picker.is-critical {
+  border: 2px solid var(--status-blocked);
+  box-shadow: 0 0 0 2px var(--danger-border);
 }
 
 .manual-fill-errors {

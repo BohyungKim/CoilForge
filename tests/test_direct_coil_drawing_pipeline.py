@@ -19,6 +19,7 @@ from coilforge.services.direct_coil_drawing_pipeline import (  # noqa: E402
     build_header_request,
     run_direct_coil_drawing_pipeline,
 )
+from coilforge.services.header_prepopulate_engine import prepopulate  # noqa: E402
 
 # EZC-0001 geometry-sourced (non-engine) slots.
 EZC0001_GEOMETRY_SLOTS = {
@@ -149,17 +150,145 @@ def test_hgrh_supply_sl_odd_position_formula_same_per_slot() -> None:
     assert slots["slot.SL1"] == slots["slot.SL3"]
 
 
-def test_hgrh_single_feed_sl1_is_three() -> None:
-    # Coil Checklist HGRH!C58 = IF(feeds/circuits==1, 3, ...), David 2026-07-16 (source of
-    # truth). Supersedes the 2026-06-27 call that had removed the single-feed SL1=3 branch.
-    # SL2 stays the return_sl length (8 for NOVA).
+def test_hgrh_single_feed_sl1_follows_the_position_formula() -> None:
+    """Single-feed supply SL1 = 6 + D/2 - S1 (CHK HGRH!C58, 2026-09-22 template).
+
+    History: C58 used to compute 3 for a single feed while C26's note said 6; John ruled
+    6 on 2026-08-06 (KD-006..009). The refreshed template removed the single-feed arm
+    altogether -- C58 is the position formula for every feed count -- and John ruled
+    2026-09-22 that the checklist wins. NOVA C20 rows=4: CD 5.5, S1 = 5.5 - 3*0.625 =
+    3.625, SL1 = 6 + 0.3125 - 3.625 = 2.6875.
+
+    SL2 is untouched -- it stays the return_sl length (8 for NOVA).
+    """
     conn = 0.625
     slots, _ = build_drawing_slots(
         coil_type="HGRH", product_type="NOVA", unit_size="C20",
         rows=4, circuits=1, feeds=1, conn_size=conn,
     )
-    assert slots["slot.SL1"] == 3
+    assert slots["slot.SL1"] == round(6 + conn / 2 - slots["slot.S1"], 4) == 2.6875
     assert slots["slot.SL2"] == 8
+
+
+def test_hgrh_single_feed_sl1_is_the_position_formula_on_every_product_line() -> None:
+    """C58 `=6+C15/2-C46` for every line (2026-09-22 template), Terra V included -- its
+    SOP constant 5 and the single-feed 6 are both gone. With conn 0.625, rows 4 (CD 5.5):
+    S = CD - 3D = 3.625 on the CD-formula lines -> SL1 2.6875; S = D on Terra H / Ventum+
+    -> SL1 = 6 - D/2 = 5.6875 (the value the seeded Ventum+ header-1 reference prints).
+    """
+    def sl(prod, size):
+        s, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=1, feeds=1, conn_size=0.625,
+        )
+        return s["slot.SL1"], s["slot.SL2"]
+
+    assert sl("NOVA", "C20") == (2.6875, 8)
+    assert sl("VENTUM_H", "H15") == (2.6875, 8)
+    assert sl("TERRA H", "032") == (5.6875, 10)
+    assert sl("VENTUM_PLUS", "V20") == (5.6875, 10)
+    assert sl("TERRA V", "012") == (2.6875, 12)
+
+
+def test_hgrh_multi_feed_slots_are_byte_identical() -> None:
+    """The no-regression contract for the single-feed change. Multi-feed takes a
+    different branch, so nothing about it may move -- asserted on the WHOLE slot dict,
+    not just SL, because a shared-state mistake would surface in CD/S/O/R first.
+
+    Literals captured from the pre-change implementation.
+    """
+    nova2, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="NOVA", unit_size="C20",
+        rows=4, circuits=2, feeds=2, conn_size=0.625,
+    )
+    assert nova2 == {
+        "slot.BF": 0.625, "slot.CD": 5.5, "slot.HD2": 3.5, "slot.HD4": 3.5,
+        "slot.HDx1": 3.5, "slot.HDx3": 3.5, "slot.HF": 1.5, "slot.I1": 2,
+        "slot.I3": 2, "slot.NOTES": "Copper Straps Required.", "slot.O2": 2,
+        "slot.O4": 2, "slot.R2": 0.625, "slot.R4": 2.75, "slot.RB": 1.5,
+        "slot.RF": 1.5, "slot.ROWS": 4, "slot.S1": 1.5, "slot.S3": 1.5,
+        "slot.SL1": 4.8125, "slot.SL2": 8, "slot.SL3": 4.8125, "slot.SL4": 8,
+        "slot.TF": 0.625,
+    }
+
+    terra_h3, _ = build_drawing_slots(
+        coil_type="HGRH", product_type="TERRA H", unit_size="032",
+        rows=4, circuits=3, feeds=3, conn_size=0.625,
+    )
+    assert terra_h3 == {
+        "slot.BF": 0.5, "slot.CD": 6.625, "slot.HD2": 3.5, "slot.HD4": 3.5,
+        "slot.HD6": 3.5, "slot.HDx1": 3.5, "slot.HDx3": 3.5, "slot.HDx5": 3.5,
+        "slot.HF": 1.5, "slot.I1": 2, "slot.I3": 2, "slot.I5": 2,
+        "slot.NOTES": "Copper Straps Required.", "slot.O2": 3.25, "slot.O4": 3.25,
+        "slot.O6": 3.25, "slot.R2": 0.625, "slot.R4": 2.75, "slot.R6": 4.875,
+        "slot.RB": 1.5, "slot.RF": 1.5, "slot.ROWS": 4, "slot.S1": 0.625,
+        "slot.S3": 0.625, "slot.S5": 0.625, "slot.SL1": 5.6875, "slot.SL2": 10,
+        "slot.SL3": 5.6875, "slot.SL4": 10, "slot.SL5": 5.6875, "slot.SL6": 10,
+        "slot.TF": 1.625,
+    }
+
+    # The remaining lines keep the position formula (C58's multi-feed arm) untouched.
+    conn = 0.625
+    for prod, size in (("VENTUM_H", "H15"), ("VENTUM_PLUS", "V20")):
+        s, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=2, feeds=2, conn_size=conn,
+        )
+        assert s["slot.SL1"] == round(6 + conn / 2 - s["slot.S1"], 4), prod
+
+
+def test_hgrh_single_feed_sl1_absent_when_cd_unresolved() -> None:
+    """SL1 is a formula on S1, which needs CD; an un-gated coil gets NO SL1 rather than an
+    invented constant (the single-feed 6 that used to be filled here is gone with the
+    2026-09-22 checklist)."""
+    for prod in ("NOVA", "TERRA V"):
+        ungated, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size="ZZ99",
+            rows=None, circuits=1, feeds=1, conn_size=None,
+        )
+        assert ungated.get("slot.CD") is None, prod      # CD genuinely unresolved
+        assert "slot.SL1" not in ungated, prod
+
+
+def test_engine_supply_sl_agrees_with_slot_layer_single_feed() -> None:
+    """The bridge test. ``supply_sl`` used to be emitted by the rule engine as a constant
+    and read by NO python in src/, so engine (6) and slot layer (3) contradicted each
+    other for a year without a single test failing.
+
+    Since the 2026-09-22 checklist R-044a / R-044c are formula-kind data rules: the engine
+    emits NOTHING for ``supply_sl`` (so there is no constant left to drift) and the slot
+    layer computes `6 + D/2 - S1`. Both halves are pinned here.
+    """
+    for prod, size in (("NOVA", "C20"), ("VENTUM_H", "H15"), ("VENTUM_PLUS", "V20")):
+        request = build_header_request(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=1, feeds=1, conn_size=0.625,
+        )
+        response = prepopulate(request)
+        assert "supply_sl" not in response.values, prod
+        assert "supply_sl" not in response.suggestions, prod
+        slots, _ = build_drawing_slots(
+            coil_type="HGRH", product_type=prod, unit_size=size,
+            rows=4, circuits=1, feeds=1, conn_size=0.625,
+        )
+        assert slots["slot.SL1"] == round(6 + 0.625 / 2 - slots["slot.S1"], 4), prod
+
+
+def test_dx_and_water_unaffected_by_hgrh_sl1_change() -> None:
+    """The change sits behind ``is_hgrh``. DX has no supply header (no odd SL at all) and
+    water coils never enter the branch."""
+    dx, _ = build_drawing_slots(
+        coil_type="DX", product_type="NOVA", unit_size="B20",
+        rows=4, circuits=1, feeds=1, conn_size=0.625, suction_conn_size=0.625,
+    )
+    assert "slot.SL1" not in dx and dx["slot.SL2"] == 8
+
+    for coil_type in ("CWC", "HWC"):
+        water, _ = build_drawing_slots(
+            coil_type=coil_type, product_type="NOVA", unit_size="C20",
+            rows=4, circuits=1, feeds=1, conn_size=1.0,
+        )
+        assert "slot.SL1" not in water
 
 
 def test_hgrh_supply_sl_gated_by_circuit_count() -> None:
@@ -302,23 +431,36 @@ def test_cwc_per_header_slots_resolved_from_shared_geometry() -> None:
     assert s["slot.HDx1"] == 4        # supply header depth = hd
 
 
-def test_water_supply_and_return_spacing_are_the_connection_size() -> None:
-    """CWC/HWC S = R = the connection size (John 2026-07-29).
+def test_water_supply_and_return_spacing_follow_the_coil_checklist() -> None:
+    """Water S/R = the Coil Checklist, every product line (John 2026-09-23):
+    CWC S = IN/2 + 3 (CWC!C27), R = OUT (C28); HWC S = IN (HWC!C31), R = OUT (C32).
 
-    Same shape the rest of the family already takes for a single-connection header —
-    DX R-022 gives R1 = D, HGRH R-052 gives R = D at n = 1 — and a water coil is always
-    1HD with one supply and one return. Replaces an even-spacing fallback (CD/2) that
-    matched none of the seven seeded water references. Product-line-independent."""
-    common = dict(rows=4, circuits=1, feeds=1,
-                  conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
-    for coil_type in ("CWC", "HWC"):
-        for product, unit_size in (("TERRA V", "012"), ("TERRA H", "012"),
-                                   ("NOVA", "C24"), ("VENTUM_H", "H15")):
-            slots, _ = build_drawing_slots(
-                coil_type=coil_type, product_type=product, unit_size=unit_size, **common
-            )
-            assert slots["slot.S1"] == 0.625, (coil_type, product)
-            assert slots["slot.R2"] == slots["slot.S1"], (coil_type, product)
+    Supersedes "S = R = the connection size" (2026-07-29), which matched the seeded
+    references but not the sheet; John rules the sheet the source of truth. IN != OUT on
+    purpose so a formula that confuses the two ends fails."""
+    common = dict(rows=4, circuits=1, feeds=1, inlet_conn_size=1.25, outlet_conn_size=1.0,
+                  finned_height=20.0)
+    for product, unit_size in (("TERRA V", "012"), ("TERRA H", "012"),
+                               ("NOVA", "C24"), ("VENTUM_H", "H15")):
+        cwc, _ = build_drawing_slots(coil_type="CWC", product_type=product,
+                                     unit_size=unit_size, **common)
+        assert cwc["slot.S1"] == 1.25 / 2 + 3, product      # 3.625
+        assert cwc["slot.R2"] == 1.0, product
+        hwc, _ = build_drawing_slots(coil_type="HWC", product_type=product,
+                                     unit_size=unit_size, **common)
+        assert hwc["slot.S1"] == 1.25, product
+        assert hwc["slot.R2"] == 1.0, product
+
+
+def test_water_spacing_single_connection_fallback_uses_it_for_both_ends() -> None:
+    """A caller with no inlet/outlet split (Direct Coil pipeline, older callers) passes one
+    connection size; it is used for BOTH ends -- the stated single-connection assumption."""
+    common = dict(rows=4, circuits=1, feeds=1, conn_size=0.625, suction_conn_size=0.625,
+                  finned_height=20.0)
+    cwc, _ = build_drawing_slots(coil_type="CWC", product_type="NOVA", unit_size="C24", **common)
+    assert cwc["slot.S1"] == 0.625 / 2 + 3 and cwc["slot.R2"] == 0.625
+    hwc, _ = build_drawing_slots(coil_type="HWC", product_type="NOVA", unit_size="C24", **common)
+    assert hwc["slot.S1"] == 0.625 and hwc["slot.R2"] == 0.625
 
 
 def test_water_spacing_resolves_from_the_suction_named_connection_too() -> None:
@@ -352,7 +494,13 @@ def test_water_return_io_mirrors_supply_io_on_every_product_line() -> None:
     That is the same physical position measured from the OPPOSITE datum — a datum
     mismatch, not a different value. Every one of the seven seeded water references
     reads O{even} == I{odd}; none reads CH - 2.75. Terra V was the only line whose O
-    diverged from its own I, which is the tell."""
+    diverged from its own I, which is the tell.
+
+    2026-09-23: that holds on HEADER-SIDE artwork (the shared water buckets). The
+    dedicated Terra CWC and Terra HWC artworks run their O dimension line from the
+    opposite end (seeds: 16.50 = CH 19.25 - I 2.75; 13.50 = CH 16.25 - I 2.75), so on
+    them O = CH - I is the correct number. Ferguson's 34.5 was wrong because it was
+    printed on the SHARED header-side art; a Terra HWC now draws on its own art."""
     common = dict(rows=1, circuits=1, feeds=2, conn_size=1.0, suction_conn_size=1.0,
                   finned_height=36.0, finned_length=33.0)
     for coil_type in ("CWC", "HWC"):
@@ -362,6 +510,9 @@ def test_water_return_io_mirrors_supply_io_on_every_product_line() -> None:
                 coil_type=coil_type, product_type=product, unit_size=unit_size, **common
             )
             i1, o2, ch = slots.get("slot.I1"), slots.get("slot.O2"), slots.get("slot.CH")
+            if product.startswith("TERRA"):
+                assert o2 == round(ch - i1, 4), (coil_type, product, i1, o2, ch)
+                continue
             assert o2 == i1, (coil_type, product, i1, o2)
             # The stubout callout is a small dimension — never a casing-height-scale one.
             assert ch is None or o2 < ch / 2, (coil_type, product, o2, ch)
@@ -397,9 +548,10 @@ def test_dx_and_hgrh_return_spacing_unaffected_by_the_water_rule() -> None:
 
 
 def test_terra_v_drawing_slots_use_sop_specials() -> None:
-    """Terra V drawing slots use the SOP specials, NOT Terra H values (John 2026-06-28):
+    """Terra V drawing slots use the Terra V values, NOT Terra H values (John 2026-06-28):
     DX S = CD - Rn (own R-023 formula, never the generic R-022 net); DX I/O=2.75, SL=12;
-    HGRH supply SL = 5; CWC supply AND return I/O = 2.75."""
+    HGRH supply SL = position formula (the SOP's 5 was superseded by the 2026-09-22
+    checklist); CWC supply AND return I/O = 2.75."""
     common = dict(unit_size="012", rows=4, circuits=2, feeds=2,
                   conn_size=0.625, suction_conn_size=0.625, finned_height=20.0)
 
@@ -415,15 +567,19 @@ def test_terra_v_drawing_slots_use_sop_specials() -> None:
     assert dx_h["slot.R2"] == 0.625 and dx_h["slot.O2"] == 3.25 and dx_h["slot.SL2"] == 10
 
     hgrh, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA V", **common)
-    # Terra V HGRH SL callouts split (John 2026-07-03): supply reheat stub SL1 = 5 (its own
-    # redacted template callout), return clearance SL2 = 12 (R-046 return_sl). The old
-    # force-SL2=5 workaround is gone.
-    assert hgrh["slot.SL1"] == 5 and hgrh["slot.SL3"] == 5    # supply SL = 5 (odd)
+    # Terra V HGRH SL callouts split (John 2026-07-03): supply reheat stub SL{odd} (its own
+    # redacted template callout), return clearance SL2 = 12 (R-046 return_sl). Since the
+    # 2026-09-22 checklist the supply SL is the position formula 6 + D/2 - S1 (= 6 +
+    # 0.3125 - 1.5), not the SOP's 5.
+    assert hgrh["slot.SL1"] == 4.8125 and hgrh["slot.SL3"] == 4.8125  # supply SL (odd)
     assert hgrh["slot.SL2"] == 12 and hgrh["slot.SL4"] == 12  # return SL = 12 (even)
     # CD restored to the rows-based base depth (R-070 HIGH), not the R-073 multi value;
     # rows=4 -> ROUNDUP(4*0.866 to 1/8)+2 = 5.5. This also makes S = CD - Rn use the real CD.
     assert hgrh["slot.CD"] == 5.5
-    assert hgrh["slot.S1"] == round(5.5 - hgrh["slot.R2"], 4)  # S = CD - Rn
+    # SOP RHHGRC supply: CD - [(n+2)*D + (n-1)*1.5], n = connections per header = 2.
+    # (Was CD - Rn until 2026-09-09 -- that special is DX-scoped: R-023 "SOP 2024018
+    # §DX-TNVH". The rows-based CD this test guards is unchanged.)
+    assert hgrh["slot.S1"] == 1.5
 
     # Scope guard: non-Terra-V HGRH keeps the return_sl clearance on the drawn even slot.
     hgrh_h, _ = build_drawing_slots(coil_type="HGRH", product_type="TERRA H", **common)
@@ -432,13 +588,14 @@ def test_terra_v_drawing_slots_use_sop_specials() -> None:
 
     cwc, _ = build_drawing_slots(coil_type="CWC", product_type="TERRA V", **common)
     assert cwc["slot.I1"] == 2.75                           # supply I/O = 2.75
-    # Return I/O prints the SAME stubout dimension as the supply (John 2026-07-29). The
-    # old expectation here was `CH - 2.75`, which is that same position measured from the
-    # opposite datum — writing it into the stubout callout printed 34.5 where ~2.75
-    # belongs. All seven seeded water references read O{even} == I{odd}, and none reads
-    # CH - 2.75 (checked across CH 17.00-38.75).
-    assert cwc["slot.O2"] == 2.75
-    assert cwc["slot.O2"] == cwc["slot.I1"]
+    # Return O on the dedicated Terra water artwork is measured from the OPPOSITE end
+    # (seeds: CWC 16.50 = 19.25 - 2.75, HWC 13.50 = 16.25 - 2.75; John 2026-09-23), so it
+    # prints CH - I. The shared header-side water artwork (every non-Terra line) still
+    # prints O == I (John 2026-07-29) -- see test_water_return_io_mirrors_...
+    assert cwc["slot.O2"] == round(cwc["slot.CH"] - cwc["slot.I1"], 4)
+    hwc, _ = build_drawing_slots(coil_type="HWC", product_type="TERRA V", **common)
+    assert hwc["slot.I1"] == 2.75
+    assert hwc["slot.O2"] == round(hwc["slot.CH"] - hwc["slot.I1"], 4)
     assert cwc["slot.SL2"] == 12
 
 
@@ -476,8 +633,10 @@ def test_hgrh_cd_stays_rows_based_when_conn_present() -> None:
     )
     assert tv["slot.CD"] == 3.75          # was blank when R-073 (MEDIUM) hijacked casing_depth
     assert tv["slot.R2"] == 0.5
-    assert tv["slot.SL1"] == 5 and tv["slot.SL2"] == 12
-    assert tv["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn uses the real (rows-based) CD
+    assert tv["slot.SL1"] == 4.0 and tv["slot.SL2"] == 12   # SL1 = 6 + 0.25 - 2.25 (2026-09-22)
+    # SOP RHHGRC supply with n = 1: 3.75 - 3*0.5. Still built on the real rows-based CD,
+    # which is what this test guards; only the formula changed (2026-09-09).
+    assert tv["slot.S1"] == 2.25
 
 
 def test_dx_cd_with_hgrh_reheat_pair_uses_checklist_branch() -> None:
@@ -507,8 +666,13 @@ def test_hgrh_cd_s_sl_align_to_checklist_family_branches() -> None:
     Coil Checklist HGRH!C27/C46/C58 family branches (the confirmed source of truth):
       CD  = MAX(base, TERRA H:(n+2)conn+(n-1)1.5+0.5 | NOVA/VH:(n+1)conn+(n-1)1.5 | VP:3conn)
       S1  = conn (TERRA H / VENTUM+)  |  CD-((n+2)conn+(n-1)1.5) (NOVA / VENTUM H)
-      SL1 = 5 (Terra V) | 3 (single feed) | 6+conn/2-S1
-    Values verified against the sheet's recomputed cells for the 3058 reheat coils."""
+      SL1 = 6+conn/2-S1 (every line and feed count since the 2026-09-22 template)
+    Values verified against the sheet's recomputed cells for the 3058 reheat coils.
+
+    CD and S1 are the regression this case exists for and are asserted UNCHANGED. The
+    single-feed SL1 element moved twice: 3 -> 6 (John 2026-08-06, over C58's old arm) and
+    then to the position formula (2026-09-22, C58 dropped the arm; checklist wins).
+    """
     def hgrh(prod, size, rows, conn, n, feeds):
         s, _ = build_drawing_slots(
             coil_type="HGRH", product_type=prod, unit_size=size,
@@ -518,45 +682,43 @@ def test_hgrh_cd_s_sl_align_to_checklist_family_branches() -> None:
 
     # RHHGRC-2 TERRA H rows=1 conn=0.875 n=1 feeds=3: CD 2.875->3.125, S1=conn, SL1=6+conn/2-S1.
     assert hgrh("TERRA H", "048", 1, 0.875, 1, 3) == (3.125, 0.875, 5.5625)
-    # RHHGRC-3 VENTUM H rows=2 conn=0.5 n=1 feeds=1: base dominates CD; S1=CD-formula; single feed SL1=3.
-    assert hgrh("VENTUM_H", "H10", 2, 0.5, 1, 1) == (3.75, 2.25, 3)
+    # RHHGRC-3 VENTUM H rows=2 conn=0.5 n=1 feeds=1: base dominates CD; S1=CD-formula;
+    # SL1 = 6 + 0.25 - 2.25 (CD 3.75 and S1 2.25 unchanged — the regression this case guards).
+    assert hgrh("VENTUM_H", "H10", 2, 0.5, 1, 1) == (3.75, 2.25, 4.0)
     # RHHGRC-5 TERRA H rows=1 conn=0.625 n=1 feeds=2: SL1 takes the position formula (not 3).
     assert hgrh("TERRA H", "032", 1, 0.625, 1, 2) == (2.875, 0.625, 5.6875)
 
 
-def test_hgrh_sl1_single_feed_branch_keys_on_feeds_then_circuits() -> None:
-    """The single-feed SL1=3 branch keys on the SAME value the checklist's FEEDS/CIRCUITS
-    cell holds — ``feeds`` if stated, else ``circuits`` (checklist/mapping.py). So a
-    submittal that omits feeds but states 1 circuit still triggers SL1=3 (matches the
-    sheet), while feeds omitted + 2 circuits takes the position formula."""
+def test_hgrh_sl1_is_the_position_formula_regardless_of_feed_count() -> None:
+    """Until 2026-09-22 a single-feed branch (keyed on feeds, else circuits) overrode the
+    position formula with a constant. The refreshed checklist has no such arm, so SL1 is
+    `6 + D/2 - S1` whatever FEEDS/CIRCUITS holds -- only S1 (via n = circuits) moves."""
+    conn = 0.625
+
     def sl1(feeds, circuits):
         s, _ = build_drawing_slots(
             coil_type="HGRH", product_type="NOVA", unit_size="C20",
-            rows=4, circuits=circuits, feeds=feeds, conn_size=0.625,
+            rows=4, circuits=circuits, feeds=feeds, conn_size=conn,
         )
-        return s["slot.SL1"]
+        return s["slot.SL1"], round(6 + conn / 2 - s["slot.S1"], 4)
 
-    assert sl1(None, 1) == 3                       # feeds absent, 1 circuit -> single feed
-    assert sl1(1, 2) == 3                          # feeds stated =1 wins over circuits=2
-    conn = 0.625
-    s, _ = build_drawing_slots(
-        coil_type="HGRH", product_type="NOVA", unit_size="C20",
-        rows=4, circuits=2, feeds=None, conn_size=conn,
-    )
-    assert s["slot.SL1"] == round(6 + conn / 2 - s["slot.S1"], 4)  # feeds absent, 2 circuits
+    for feeds, circuits in ((None, 1), (1, 2), (None, 2), (3, 1)):
+        got, expected = sl1(feeds, circuits)
+        assert got == expected, (feeds, circuits)
 
 
 def test_hgrh_terra_v_unchanged_by_checklist_alignment() -> None:
-    """The HGRH checklist alignment must NOT touch Terra V: its CD stays rows-based (SOP)
-    and its S = CD - Rn / supply SL = 5 path is preserved (guards the R-073 disable
-    rationale — Terra V CD must never be replaced by a multi-header term)."""
+    """The HGRH checklist alignment must NOT touch Terra V's CD: it stays rows-based
+    (KD-001, measured RHHGRC-3; open for John's re-adjudication) and must never be
+    replaced by a multi-header term. S and SL follow the same formulas as every line."""
     s, _ = build_drawing_slots(
         coil_type="HGRH", product_type="TERRA V", unit_size="012",
         rows=2, circuits=1, suction_conn_size=0.5,
     )
     assert s["slot.CD"] == 3.75              # rows-based base, not a multi term
-    assert s["slot.S1"] == round(3.75 - 0.5, 4)  # S = CD - Rn (R-023), unchanged
-    assert s["slot.SL1"] == 5                 # Terra V supply SL (SOP), not 3 or the formula
+    # SOP RHHGRC supply with n = 1: 3.75 - 3*0.5 (R-023 is DX-only; 2026-09-09).
+    assert s["slot.S1"] == 2.25
+    assert s["slot.SL1"] == 4.0              # 6 + 0.25 - 2.25 (2026-09-22: the SOP's 5 is gone)
 
 
 def test_dx_cd_with_hgrh_noop_when_base_dominates() -> None:

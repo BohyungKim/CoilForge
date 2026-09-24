@@ -57,6 +57,11 @@ class DrawingParameterOverride(BaseModel):
     override_reason: str
     reviewed_by: str | None = None
     review_status: str = "unreviewed"
+    # Provenance of the typed value: an engineer's own number, or a Coil Checklist formula
+    # result adopted onto a blank row. Both stay review-required; the distinction only
+    # decides how the panel / three-way view / checklist compare LABEL the value (an
+    # adopted number is a copy of the sheet, never an independent agreement with it).
+    source: Literal["engineer", "checklist"] = "engineer"
 
     @field_validator("key", "unit", "override_reason", "reviewed_by", "review_status", mode="before")
     @classmethod
@@ -79,6 +84,21 @@ class DrawingParameter(BaseModel):
     review_required: bool
     blocked_reason: str | None = None
     manual_override: bool = False
+    # Set only on a manual override row: who supplied the value (see the override model).
+    source: Literal["engineer", "checklist"] | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def criticality(self) -> Literal["critical", "standard"]:
+        """``"critical"`` for the dimensions a drawing cannot be trusted without
+        (CD, CH, HD/HDx, S, I at every header index — John 2026-09-22).
+
+        Computed from ``key`` for the same reason as :attr:`slot`: twelve construction
+        sites, and a forgotten constructor argument would silently demote a row. The
+        table lives in ``drawing_param_resolver`` (one place)."""
+        from coilforge.services.drawing_param_resolver import criticality_for_param_key
+
+        return criticality_for_param_key(self.key)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      2.2.1
+// @version      2.2.3
 // @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
 // @include      /^https?:\/\/(localhost|127\.0\.0\.1):\d+\//
 // @match        https://coil.ccsi.ie/*
@@ -42,7 +42,10 @@
   // Shown in the panel header so you can SEE which filler version is actually running —
   // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
   // with @version above.
-  const SCRIPT_VERSION = "2.2.1";
+  const SCRIPT_VERSION = "2.2.3";
+  // Must equal web/app.js::CCSI_WATER_DRAIN_VENT_LOCATION (pinned by a test). Every CWC/HWC,
+  // all product lines (John 2026-09-23).
+  const WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
   const BRIDGE_KEY = "coilforge_ccsi_payload";
   const PANEL_ID = "coilforge-ccsi-autofill-panel";
   const STALE_MS = 10 * 60 * 1000;
@@ -156,6 +159,11 @@
       // HGBP rides along so the CCSI side can set Apply Venting/Draining Constraints. On this
       // DOM-scraped bridge path CoilForge stamps it onto #drawing-parameters at render time.
       hot_gas_bypass: document.querySelector("#drawing-parameters")?.dataset.specialFeature === "HGBP",
+      // Same stamp mechanism for the coil category: water coils get the Drain and Vent
+      // Location select (see drainVentLocationEntry).
+      drain_vent_location: drainVentLocationEntry(
+        document.querySelector("#drawing-parameters")?.dataset.coilCategory,
+      ),
       fields,
     };
   }
@@ -338,7 +346,28 @@
     if (notes && notes.value !== null && notes.value !== undefined && notes.value !== "") {
       entries.push({ ...notes, key: "NOTES", ccsi_readonly: false, unit: null });
     }
+    // CCSI "Drain and Vent Location" (water coils only; null otherwise). Same adapter shape.
+    const dvl = payload.drain_vent_location;
+    if (dvl && dvl.value !== null && dvl.value !== undefined && dvl.value !== "") {
+      entries.push({ ...dvl, key: "DVL", ccsi_readonly: false, unit: null });
+    }
     return entries;
+  }
+
+  // Mirror of web/app.js::ccsiDrainVentLocation for the DOM-scraped bridge path.
+  function drainVentLocationEntry(coilCategory) {
+    const category = String(coilCategory || "").toUpperCase();
+    if (category !== "CWC" && category !== "HWC") return null;
+    return {
+      ccsi_label: "Drain and Vent Location",
+      value: WATER_DRAIN_VENT_LOCATION,
+      status: "review_required",
+      type: "select",
+      match: "option_text",
+      selectors: [{ strategy: "labelText", text: "Drain and Vent Location" }],
+      selector_verified: false,
+      blocked_reason: null,
+    };
   }
 
   function isFillable(field) {
@@ -352,6 +381,11 @@
       try {
         if (typeof sel === "string") {
           found = document.querySelector(sel);
+        } else if (sel && sel.strategy === "css" && sel.selector) {
+          // The object form of a CSS selector. It was never handled here, so the live-captured
+          // `#DrawingNotes` entry resolved to nothing and the notes fell through to label text
+          // — which CCSI's own markup defeats (`for="Drawing_Notes"` names a missing id).
+          found = document.querySelector(sel.selector);
         } else if (sel && sel.strategy === "labelText" && sel.text) {
           found = byLabelText(sel.text);
         } else if (sel && sel.strategy === "xpath" && sel.xpath) {
@@ -393,6 +427,21 @@
     // input's readOnly and makes CCSI accept the value — then write + read-back verify.
     enableFieldForUpdate(target);
     if (target.readOnly) { markRow(field, "readonly"); return; }
+    // A select filled by OPTION TEXT: CCSI's option values are its own codes, so the value
+    // written is whatever the option labelled `field.value` carries. No matching option ->
+    // nothing is written (never a guessed code) and the row says so.
+    if (target instanceof HTMLSelectElement && field.match === "option_text") {
+      const option = optionByText(target, field.value);
+      if (!option) {
+        markRow(field, "mismatch");
+        toast(`"${field.value}" is not an option of ${field.ccsi_label || field.key} — left unchanged.`, true);
+        return;
+      }
+      setNativeValue(target, option.value);
+      ["input", "change", "blur"].forEach((type) => target.dispatchEvent(new Event(type, { bubbles: true })));
+      markRow(field, verify(target, field) ? "ok" : "mismatch");
+      return;
+    }
     // Write the SAME normalization verify() will compare against (see forTarget): writing
     // the raw multi-line value and comparing the collapsed one would report a mismatch on
     // every successful notes fill.
@@ -453,7 +502,22 @@
     return text.replace(/\s*\n+\s*/g, "; ").trim();
   }
 
+  // Option text compared loosely: whitespace collapsed, case-insensitive, a trailing period
+  // optional ("Hdr Side In Airflow Dir." vs "Hdr Side In Airflow Dir").
+  function normOptionText(text) {
+    return String(text || "").replace(/\s+/g, " ").trim().replace(/\.$/, "").toLowerCase();
+  }
+
+  function optionByText(select, text) {
+    const want = normOptionText(text);
+    return [...select.options].find((o) => normOptionText(o.textContent) === want) || null;
+  }
+
   function verify(target, field) {
+    if (target instanceof HTMLSelectElement && field.match === "option_text") {
+      const selected = target.options[target.selectedIndex];
+      return !!selected && normOptionText(selected.textContent) === normOptionText(field.value);
+    }
     const got = String(target.value).trim();
     if (got === forTarget(target, field.value).trim()) return true;
     const a = Number(got), b = Number(field.value);

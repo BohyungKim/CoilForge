@@ -45,6 +45,13 @@ is no install step or `pyproject.toml`.
   `python scripts/seed_templates_from_pdf.py build-one <template_id>` (delete that bucket's 4
   artifacts first for a clean regen — `build_bucket` won't rewrite existing metadata/evidence
   and only merges `slot_map`).
+  ⚠️ **The committed templates have DIVERGED from the seeder** (measured 2026-08-30): a fresh
+  seed of `coilmaster_hgrh_{rh,lh}_header2` / `rh_header1` / `rh_header3` does not reproduce
+  the committed `template.svg` — the committed copies carry post-seed work the script does not
+  emit (the `id="coilforge-coating-note"` anchor among it) and the fresh output drops text the
+  committed one has. `build_bucket` writes `template.svg` **unconditionally**, so `build-one`
+  on an already-seeded bucket silently discards that work. Diff a scratch regen against the
+  committed file BEFORE letting it land, and hand-edit instead when they disagree.
 
 Runtime deps that may need installing: `python -m pip install fastapi uvicorn pyyaml pydantic`.
 PDF intake uses PyPDF2. Tests `pytest.importorskip("fastapi")` so they degrade gracefully.
@@ -144,20 +151,30 @@ means editing BOTH the engine rule/helper AND the slot layer, and threading `ter
 into `build_drawing_slots` where a variant-specific drawing formula is needed (the generic-R
 safety net is guarded `and not is_terra_v` so Terra V never borrows Terra H's spacing).
 
-**CWC/HWC return spacing `R = S` (John 2026-07-28)** — a water coil's supply and return headers
-are symmetric: **all seven** seeded water references read `R{even} == S{odd}` (and `O == I`
-with them). There is no `return_spacing` rule for water (R-022/R-023 are DX, R-052 is HGRH) and
-the generic net both excludes Terra V and keys off the DX-named `suction_conn_size`, so water R
-was blank on every product line. The slot layer's water branch **owns** R — it deliberately
-does not fall through to the generic net, because an R whose S is blank has no basis. Written
-only when `slot.S` exists (S needs `cd`), so an un-gated coil leaves R blank instead of raising.
-Kept in the slot layer, not YAML, for the same reason as the Terra V `S = CD − Rn` special:
-the water `S` it mirrors is itself a slot-layer value the engine never emits — a YAML rule
-placed before this branch would be permanently shadowed, i.e. a rule that documents a value it
-never produces. **Open:** the water `S` formula `k*CD/(circuits+1)` reproduces NO seed `S1`
-(seed CD 4.63 → 2.315 vs actual 1.63) and `I1 = 2.31` is constant across CD 3.38–7.25, so `I` is
-not CD-derived either — the HWC seed matching `CD/2` is a coincidence. R inherits that
-uncertainty; both stay review-required until a real water S source is confirmed.
+**Water S / R / CD follow the Coil Checklist (John 2026-09-23); O follows the artwork's datum.** Every
+product line: CWC `S = IN/2 + 3` (`CWC!C27`), `R = OUT` (`C28`); HWC `S = IN` (`HWC!C31`),
+`R = OUT` (`C32`); CD = `MAX(base, 1.5·(IN+OUT)+1.5)` HWC / `MAX(base, 1.5·OUT+IN+4.5)` CWC
+(R-071). This superseded 2026-07-29's `S = conn`, `R = S` (which matched the seven seeded
+references but not the sheet — John: "CD는 무조건 coil checklist … source of truth").
+The slot layer's water branch **owns** S/R (no fall-through to the generic R-022 net); a
+caller without an inlet/outlet split uses its single connection size for both ends (stated
+assumption). The frozen analyze path never passes IN/OUT, so the non-frozen
+`_apply_water_connection_slots` re-runs the slot layer with the submittal's
+`water_conn_extracted` (both analyze and derive; typed `inlet/outlet_conn_size` win) and stamps
+`water_conn_applied`, which `_attach_recomputed_engine_provenance` mirrors (else the corrected
+CD reads as drift). Extracted sizes are **submittal data, never a ManualOverride** — only the
+typed Tier-A keys (`_MANUAL_ENGINE_INPUT_KEYS`) write an audit row. Real effect: 2857 HHWC-1 CD
+3.375 → 3.75. **Water O is a DATUM question, not a rule (John 2026-09-23).** The sheet's Terra
+`O = CH − 3.25/2.75` and the drawn `O = I` are one stubout measured from opposite ends. The datum
+belongs to the ARTWORK: `catalog.TEMPLATE_O_DATUM` marks the Terra CWC and Terra HWC buckets
+`opposite` (seeds: 16.50 = CH 19.25 − I 2.75; 13.50 = CH 16.25 − I 2.75); every shared water
+bucket is `header_side` (O = I).
+`apply_water_o_datum` (step 3b of `build_drawing_slots`, and again after a manual CH/I in
+`_reflect_param_overrides_into_slots`) prints `CH − I` on opposite art — and **blanks** O when CH
+is unresolved rather than printing I there. The checklist tags the O row with both datums
+(`mapping._with_water_o_datum`) and `compare.py` matches both from the header end; "use
+checklist" adopts `checklist_as_drawn`, never the raw sheet number. KD-024..027 are retired.
+A future water bucket goes into `TEMPLATE_O_DATUM` only after reading ITS seed's O2.
 
 **The confidence gate is the central invariant.** Every rule carries a confidence that
 routes its output (`bucket_for_confidence`):
@@ -194,6 +211,14 @@ Schemas for the catalog / slot map live in `schemas/*.schema.json`.
 listed in that template's `slot_map.json` `slots[]` — not every `{{slot.*}}` in the SVG. So
 redacting a hardcoded as-built dim to a NEW slot means adding it to BOTH `template.svg` AND
 `slot_map.json`, or the placeholder renders literally (`{{slot.SL1}}`).
+The **inverse** failure is worse and was live until 2026-08-30: a callout the seeder never
+redacted stays a literal number and is printed on EVERY coil in that bucket, with nothing
+missing and no test failing — 3095's RHHGRC-1 drew the seed coil's `-0.25 S1` / `6.56 SL3`
+while the panel beside it said 3.25 / 5. Two seeder holes caused it: `_CALLOUT_RE` could not
+match a leading minus (fixed), and the odd supply SLs + `HD1` are absent from `_DIM_LABELS`
+(open — `SL1` means `slot.SL1` on HGRH but `slot.SL2` on water, so the mapping is
+category-dependent). `tests/test_template_hardcoded_dims.py` now pins the remaining inventory
+by EQUALITY, so a new frozen dimension fails and clearing a listed one fails too.
 
 **Mechanical fit / stability** (`compatibility/mechanical_fit.py`) — a review-aid check
 (NOT in the drawing path) mirroring the Coil Checklist WIDTH/HEIGHT/INSTALL fit.
@@ -228,6 +253,17 @@ Auto-fills on analyze (frontend `maybeAutoFillChecklist` after `hydratePdfWorkfl
 cover_page_hint + **overrides fingerprint**) so `deliverable_finalize` reuses the same Downloads
 .xlsx instead of re-running Excel COM (no double-fill).
 
+**Template refresh 2026-09-22 (John):** the workbook's logic was re-worked on every tab and
+the code mirrors the new one — Terra V SIZE is numeric (`SIZE_OPTIONS["TERRA V"]`), the water
+sheets have separate `I`/`O`/`S`/`R` rows (`_WATER_BARE` in `mapping.py`; the old `I/O` label is
+gone), `installed_on_drain_pan` and the water inlet/outlet connection sizes are threaded into
+`_resolve_engine` because the HWC sheet branches Terra TF/BF + I/O on the pan cell and the
+water CD on both connections, and **water RB is no longer written** (the sheet now carries a
+real RB rule, so it is compared like any dim; DX/HGRH RB is still written). Everything the
+refresh changed, and the three rows CoilForge deliberately does NOT follow, is in
+`docs/rules/coil_header_rule_extraction.md` ("2026-09-22 template refresh") and the
+known-divergence registry.
+
 **Manual overrides reach the checklist (John 2026-07-29)** — the drawing regenerated from a
 manual fill while the checklist kept re-deriving from the submittal, so the sheet (and the .xlsx
 filed with the order) silently disagreed with the drawing. `checklist/overrides.py` (pure) carries
@@ -250,6 +286,43 @@ debounced `scheduleChecklistRefill` after an interactive derive; the headless re
 fires it ONCE after `Promise.allSettled` instead of per coil. `_try_checklist_review` (project
 gate) deliberately passes none — it reads the machine proposal.
 
+**Deliverable filing — one click, and it MOVES (John 2026-08-30)** (`deliverable/finalize.py`,
+`POST /api/deliverable/finalize`, `web/app.js::fileDeliverable`) — "Build quote package" now
+files the deliverable in the same click (`skip_draft: true`); the second button is
+**"Open Outlook draft"** only. **Amended 2026-09-09 (John):** the build click no longer
+decides — once all three documents exist it opens a `<dialog>` confirmation
+(`showDeliverableChoiceDialog` / `runDeliverableChoiceFlow`) listing each document as
+captured (✓) or not (⚠ with its reason), and John picks *move to the PO folder's DirectCoil*
+and/or *open the Outlook draft* — the two checkboxes map to nothing more than `skip_draft`.
+**The draft checkbox is disabled while the move is unchecked**, because the draft attaches
+the FILED revised PDF (`revised_dest`): "email without filing" is not a state the backend
+has. Declining files nothing and re-offers the choice from `#deliverable-summary`, so the
+docs simply stay in Downloads. Never `confirm()`/`alert()` — they block the page and any
+Claude-in-Chrome session driving it. Four rules carry the change:
+① **Move, not copy.** The checklist is the one doc whose real path we know (`saved_path`), so
+it is a true move; the two PDFs reach the server as BYTES ONLY (a browser never hands over a
+path), so their Downloads original is reconstructed as `~/Downloads/<name>` — plus Chrome's
+`<stem> (1)<ext>` duplicate — and deleted **only where sha256 matches what was just filed**
+(`retire_download`). Name-match alone never deletes, which is what makes reconstructing a path
+safe. Never-found is a reported `downloads_cleanup` status, not a failure; the revised PDF gets
+a bounded 5s poll because the browser saves it asynchronously moments earlier.
+② **A conflict is same-name AND different-content**, and it stops the WHOLE deliverable —
+`plan_placements` decides all three destinations before `commit_placements` writes any, so a
+half-filed folder (which looks finished) is unreachable. It returns **HTTP 200 with
+`status: "conflict"`** and writes nothing: a conflict is a decision waiting on John, not an
+error (a missing folder still 400/409s). `overwrite: true` is his answer.
+③ A byte-identical file already at the destination is **`already_filed`, not a conflict** —
+that is precisely what lets Build file the docs and the draft button re-run over the same
+three without arguing. The Outlook attachment is therefore looked up **by name, not
+`files_written[1]`**, since `already_filed` makes list order unreliable.
+④ **Folder names are matched folded** (lowercase, spaces/`_`/`-` removed): a `Direct Coil` is
+**renamed to `DirectCoil`** and reused (never left beside a fresh empty one), while
+`Accessory Order Forms` is matched loosely but **never renamed** — John's rule is that a
+missing AOF means we grabbed the wrong project folder, and that error only carries meaning if
+a spelling variant cannot trigger it. Two spellings coexisting raises rather than guessing.
+The ` (2)` auto-increment that `place_bytes`/`place_copy` used to do is **gone**; the separate
+`(2)` fallback in `checklist/excel_writer.py` (a Downloads write) is untouched.
+
 **Drain-pan option from the unit model code** (`submittal/model_code.py`) — R-077 keys
 Terra's drain-pan width by option D1/D2/D3, and nothing produced that value, so every Terra
 INSTALL FIT reported `CANNOT_EVALUATE` while explaining its own blockage. The option is
@@ -270,15 +343,17 @@ guaranteed. ② **Attribution is
 by unit SIZE** (`drain_pan_option_for_unit_size`), never document-wide: the code sits alone
 on a configuration page with no coil tag, and 2755 is a MULTI-unit submittal (009 + 012)
 printing only ONE full code — "one distinct code = one unit" silently gives 009 the 012
-unit's pan. A size with no code stays blocked rather than borrowing. ③ **Terra V is refused**
-(its code carries a two-digit token at the same index, so the refusal must be explicit):
-its pan is size-keyed and the Install sheet has no Terra V rows. That guard lives INSIDE
-`mechanical_fit._drain_pan_row` because both callers reach R-077 through it — and the
-checklist caller (`mapping._install_widths`, whose number is written into the .xlsx filed
-with the order) used to fold `"TERRA V" → "TERRA"` in `_FAMILY_FROM_UNIT`, which was the
-route around any call-site guard. R-077 deliberately has NO empty `TERRA_V|<size>` rows:
-`_drain_pan_row` tests `row is None`, and `{}` would fall to "no width column available"
-instead of the real reason. **Partner size guard:** a DX+HGRH / CWC+HWC pair is one unit,
+unit's pan. A size with no code stays blocked rather than borrowing. ③ **Terra V's D-option
+is refused** (its code carries a two-digit token at the same index, so the refusal must be
+explicit): its pan is keyed by unit **size**. Since the 2026-09-22 template the Install sheet
+carries Terra V rows (006-012 → 28, 015-024 → 29, 032-100 → 32) and R-077 has
+`TERRA_V|<size>` rows; `_drain_pan_row` looks Terra V up ONLY there and never falls back to
+the coarse `TERRA|D1..D3` rows (Terra **H** widths) — the option can still arrive by payload,
+which is why the refusal-to-borrow lives INSIDE `_drain_pan_row` where both callers pass, and
+why the checklist caller (`mapping._install_widths`, whose number is written into the .xlsx
+filed with the order) maps `"TERRA V" → "TERRA_V"` in `_FAMILY_FROM_UNIT` rather than folding
+onto `TERRA`. Terra V has a drain-pan width but no INSTALL WIDTH (a Ventum+-only column), so
+that cell stays blank by design. **Partner size guard:** a DX+HGRH / CWC+HWC pair is one unit,
 so differing `unit_size` means a detection is wrong — width/height **and `drain_pan`** all
 degrade to `CANNOT_EVALUATE` (drain_pan reads the same size through the same lookup, so
 leaving it live keeps a verdict standing on a distrusted value) and the note states BOTH
@@ -294,7 +369,8 @@ measurement taken before it. Identity =
 `(coil_category, product_family, terra_variant, unit_size_scope, slot)`; `terra_variant` is
 load-bearing (a Terra V ruling must not silence Terra H) and the family token is the **split**
 `TERRA_H`/`TERRA_V` straight from `resolve_product_line` — deliberately NOT the coarse `TERRA`
-that `mechanical_fit._coarse_terra_family` folds back to for its `TERRA|…` R-077/R-078 keys.
+that `mechanical_fit._coarse_terra_family` folds Terra **H** back to for its `TERRA|…`
+R-077/R-078 keys (Terra V has its own `TERRA_V|…` rows in both tables since 2026-09-22).
 `unit_size_scope` is **declared** (`"*"` or a size), never inferred. **Numbers are not in the
 identity** — CD varies per coil, so a numeric key would never match twice; magnitude is policed
 by an optional signed `delta_band` on `coilforge - checklist`, and outside it (wrong sign or too
@@ -436,6 +512,16 @@ PDF intake derives the coil **category** from the unit/coil tag prefix
 - `HHWC` / `PHWC` → **HWC** (Hot Water Coil)
 - `CCWC` → **CWC** (Chilled Water Coil)
 
+A cover row with a valid coil tag is still refused when its ITEM names an accessory
+(`_NON_COIL_ITEM_TOKENS`: valve/EEV… and, since 2026-09-24, **`casing`**) — Oxygen8 v1.0.0.10
+schedules print the coil casing as its own `1 CCWC-1 CWC Cooling Casing` line under the coil's
+tag and Qty, which made a phantom second coil AND stole the next coil's detail block
+(`_detail_lines_by_cover_row` hands blocks out per cover row in order). The same submittals
+title the water-coil detail page **`Changeover Coil - Cooling Performance`** (recognised as
+`cooling_chilled_water` by `_detail_section_format`, hence by the table reader too); its
+`… - Heating Performance` twin is the same physical coil in the other mode and is a
+`_DETAIL_SECTION_STOP_PATTERN` entry like `Heating DX` — owned by no cover row, never merged.
+
 Coil **product line + unit size** (Terra/Nova/Ventum + R-076 size) is a *separate*
 detection from the tag-prefix category above:
 `coilmaster_drawing_extract.detect_product_and_size` reads the R-076-validated unit
@@ -495,18 +581,59 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   untouched) + threaded at `direct_coil_drawing_pipeline`. (Ventum+ was first un-blocked
   2026-07-03 — `_UNREGISTERED_PRODUCT_LINES` emptied — to reuse shared templates; the fork
   then gave it its own seeded set so the R-032 UP geometry is captured from the reference.)
-  That same submittal gate (`_gate_unregistered_product_line`) **used to omit Terra V
-  CWC/HWC** drawings; John **released them 2026-07-28** on the same reasoning that
-  un-blocked Ventum+ — a CoilMaster water-coil drawing has the same shape whichever AHU
-  it ships in, so the **shared Nova/Ventum-H water template is the correct carrier and
-  only the printed values are Terra-V-specific**. Those values were already correct
-  before the release (the Terra V water rules R-061v I/O = 2.75 and R-067's
-  vent/drain), so removing the gate changed the drawing and nothing else: Terra V and
-  Terra H water resolve DIFFERENT `slot.O2` on the SAME `coilmaster_{cwc,hwc}_lh`
-  template — pinned by `test_terra_v_water_carries_terra_v_drawing_parameters`. Caveat
-  carried over: the water templates still have un-redacted as-built dims (see
-  *Template hardcoded dims deferred*), which are Nova-shaped for every line that borrows
-  them, Terra V included.
+  That same submittal gate (`_gate_unregistered_product_line`) withheld Terra H and Terra V
+  water drawings (`_TERRA_WATER_WITHHELD_FAMILIES` × `_TERRA_WATER_WITHHELD_CATEGORIES`; John
+  2026-09-22: "keep the drawing template vacant for now"). **Both are released 2026-09-23 and
+  the category set is EMPTY** (the gate is an inert extension point, re-armed by monkeypatch in
+  tests): `coilmaster_terra_{cwc,hwc}_{lh,rh}` were seeded from John's own CoilMaster
+  references (one artwork per category for Terra H AND Terra V — `catalog.TERRA_TEMPLATES`, bucket family
+  `TERRA`, with `TEMPLATE_FAMILY_ALIAS` folding `TERRA_H`/`TERRA_V`/`TERRA_H_C`/`"TERRA H C"`
+  onto it), and `_prefer_dedicated_family_template` swaps the shared artwork for them. The gate
+  must stay category-level: it runs BEFORE the dedicated-family step, which needs an SVG.
+  The references print the supply header's `HD1`/`SL1`, which `_DIM_LABELS` lacks; the seeder's
+  per-bucket `extra_callouts` maps them to `slot.HD2`/`slot.SL2` for these water buckets only.
+  History: Terra V water was gated until John released it 2026-07-28 onto the shared
+  Nova/Ventum-H water template (same shape whichever AHU it ships in, only the printed
+  values are Terra-V-specific); the 2026-09-22 instruction re-gates BOTH Terra families,
+  water only. The drawing is blanked loudly (`unregistered_terra_water`, a
+  `not_registered_reason` naming the re-seed) while `slot_values`, the parameter panel and
+  the Coil Checklist are still produced — Terra V and Terra H water still resolve DIFFERENT
+  `slot.O2` (pinned by `test_terra_v_water_carries_terra_v_drawing_parameters` and
+  `tests/test_terra_water_drawing_gated.py`). The
+  Direct Coil pipeline does not pass this gate (out of scope 2026-09-22). Caveat carried
+  over: the shared water templates still have un-redacted as-built dims (see *Template
+  hardcoded dims deferred*), which are Nova-shaped for every line that borrows them.
+- **Omnia (`OW###` model codes, John 2026-08-25) is a first-class `ProductFamily.OMNIA` that
+  IS Ventum+ except for one value.** "Everything is exactly the same rule and drawing template
+  as Ventum+; the only difference is TF and BF = 0.625" (Ventum+ R-011 = 1.0). Four mechanisms
+  make that sentence hold, and each has a test in `tests/test_omnia_product_line.py`:
+  ① every Ventum+ rule lists `OMNIA` next to `VENTUM_PLUS` in `applies_to` (11 rules + the
+  R-064 `value_map`), and `R-011o` is Omnia's ONLY own rule; ② the Python `== VENTUM_PLUS`
+  branches (HGRH flat R / `CD = 3*conn` / R-063b water SL / supply S / install_width drain-pan
+  compare) test `in VENTUM_PLUS_CLASS` (`schemas/header_prepopulate.py`) — a new Ventum+
+  special-case written as `== VENTUM_PLUS` silently drops Omnia, which is what the
+  field-by-field `omnia == ventum_plus except flanges` test exists to catch; ③ templates are
+  an **alias**, not a seed: `catalog.TEMPLATE_FAMILY_ALIAS = {"OMNIA": "VENTUM_PLUS"}` answers
+  an Omnia selection from the 11 dedicated Ventum+ buckets (bucket count unchanged;
+  `dedicated_family_template` records the BUCKET family `VENTUM_PLUS`), and the DX
+  not-registered / R-032 gates in `submittal_to_drawing.py` key on `_VENTUM_PLUS_CLASS`;
+  ④ detection needs no regex — `R-076 OMNIA: [OW050 … OW085]` puts the token into
+  `_non_terra_size_tokens()`, so `OW085_I` resolves through the existing Pass A. **Data gap
+  (deliberate):** the "Wheel Product Sizing Summary" chart gives the coil envelope (coil width;
+  coil height + clearance = 23/25/28/31/34/37/39 per size), NOT the unit casing or drain-pan
+  widths, so R-074 / R-077 / R-078 carry **no** OMNIA rows — casing is absent (never borrowed
+  from a Ventum+ size) and every fit verdict is `CANNOT_EVALUATE` until John supplies them.
+  The Coil Checklist workbook has no OMNIA unit: `template_map.UNIT_BY_PRODUCT` fills it as
+  `VENTUM+` (SIZE left blank — `OW085` is not in the sheet's list), so the sheet computes
+  TF/BF = 1.0 and `known_divergences.yaml` KD-010..017 (one per category × flange, band
+  exactly −0.375) label that row amber instead of red.
+  **Seed-page audit (John 2026-08-26):** the first Omnia drawing exposed that
+  `coilmaster_vplus_dx_lh_header1` and `coilmaster_vplus_hgrh_lh_header1` had been seeded from
+  2760 Revere **p.2 / p.6 (CDXC-1 / RHHGRC-1)** — a NON-Ventum+ pair in a mixed project
+  (TF/BF 0.63, SL 8, I 3, distributor nozzle UP = ConnectionDown). Re-seeded from **p.5 / p.7**
+  (CDXC-4 / RHHGRC-2: TF/BF 1.00, SL 10, I 12 / 2, nozzle DOWN = R-032 UP). The check that
+  catches this class of mistake is cheap: a Ventum+ reference page must print **TF = BF = 1.00**
+  (R-011) — 2619 Congress prints 0.88 on both its seeded pages and is still unexplained.
 - **Hot gas bypass (HGBP) is a Nova / Ventum H option ONLY** (John 2026-07-15). Both HGBP
   DX templates (`coilmaster_dx_{lh,rh}_hgbp`, seeded from real `(1 ASC)` 1-header references)
   are Nova/Ventum-H-class, so `_gate_hgbp_unsupported_product_line` **omits** an HGBP drawing
@@ -571,23 +698,26 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
 - **No surrogate / mirror template generation** — each hand/header must be seeded from its
   own real reference PDF.
 - **Terra V** drawing values were SOP-confirmed and promoted **LOW→HIGH (now drawn)** on
-  2026-06-28 (`R-023` DX return spacing, `R-046` HGRH supply/return, `R-067` CWC/HWC
-  vent-drain) — it is no longer a blanket LOW/blocked line. What genuinely stays gated:
-  `R-082` Terra mounting holes (blocked/deferred) and HGRH Supply 2/3/4 I/O (review-required —
-  a software default, not derivable). **Since 2026-08-04 the code matches that sentence:** the
-  slot layer used to broadcast R-046's Supply-**1** constant to every odd header, so a
-  multi-header Terra V HGRH printed 2.75 on positions the SOP declines to specify (the
-  checklist caught it as `I3: CoilForge 2.75 vs Checklist TBD`). `slot.I{2k-1}` for k≥2 is now
-  left blank; the drawing prints one more "REVIEW REQUIRED" callout (18→19 on a header-2
-  reference) instead of a fabricated number, and the panel names R-046 as the reason rather
-  than the generic "engine did not derive this". Terra V HGRH `slot.S{2k-1}` past the R-052
-  return-spacing list is blanked for the same reason — it used to fall through to the generic
-  even-spacing net and print DX distributor spacing on a reheat coil (reachable when the
-  CoilMaster prose states more circuits than connections-per-header). Both are Terra-V-HGRH
-  scoped; every other line's broadcast is unchanged. Blanks are counted by
-  `project_gate` as `blocked` exceptions, so `exceptions_K` rises for these coils (pinned by
-  `tests/test_terra_v_hgrh_headers.py`). The Terra V **CWC/HWC drawing** was the third item until
-  John released it 2026-07-28 — it now draws on the shared water template with Terra V values.
+  2026-06-28 (`R-023` DX return spacing, `R-046` HGRH, water vent-drain) — it is no longer a
+  blanket LOW/blocked line. **The 2026-09-22 Coil Checklist refresh then overrode three of
+  those SOP values (John: "the checklist wins"):** HGRH supply I/O is **2** on every line
+  (R-046 `supply_io: 2`; the measured 3025 Bauducco reference prints 2.00 and now agrees),
+  HGRH supply SL is the position formula `6 + D/2 − S{odd}` on every line (R-044a/R-044c,
+  formula-kind, evaluated in the slot layer — the SOP's Terra V 5 and the single-feed 6 /
+  KD-006..009 are gone), and water vent/drain is `ConnEnd` + `LAS` for every line (R-066 /
+  R-066a; R-067 "HDR ENDS" retired). Water RB is family-branched (R-006 2.25, R-006v Terra V
+  1.875, R-006p Ventum+-class 1.875) and the Terra V casing heights follow the Units tab
+  (47/58/74/74/76). What genuinely stays gated: `R-082` Terra mounting holes (LOW, and its
+  only source — the checklist clause — was removed on 2026-09-22). The Terra V HGRH CD
+  **follows the checklist** since 2026-09-23 (John: "always taken from the Coil Checklist"):
+  HGRH!C27 has no Terra V arm, so `_hgrh_cd_multi` gives Terra V the NOVA / VENTUM H
+  else-branch `MAX(rows base, (n+1)·D + (n−1)·1.5)` — even though the measured RHHGRC-3
+  reference prints the rows base 3.75 (sheet 4.125). Supply S therefore comes out `−D` when
+  the else-term wins; KD-001/002/003/028/029 are retired. Supply I/O is ONE value on
+  every odd header (John 2026-09-09, `I1 = I2 = I3`) and supply S is one fixed position per
+  coil — neither is blanked any more (pinned by `tests/test_terra_v_hgrh_headers.py`). The
+  sheet's own Terra V `O4/O6/O8 = 2` (while `O2 = 2.75`) is a sheet defect (John 2026-09-22,
+  RP-003); CoilForge keeps 2.75 and KD-005/022/023 label the rows amber.
 
 ### MVP checklist
 
@@ -764,6 +894,18 @@ column. The rules that keep it legible — and the precedent for any future view
 - Tests: `tests/test_schematic_renderer.py`
 - Existing template path — **DO NOT TOUCH**: `slot_population.py::populate_template_slots`,
   the 17 `template.svg` files, `pdf_to_template_drawing.py`.
+  **Approved exception, 2026-08-30 (John, in advance of the work):** asked whether to redact the
+  frozen as-built callouts in the HGRH multi-header templates given that "이 리댁션은
+  DO-NOT-TOUCH 게이트라 별도 승인이 필요합니다", John chose "이번에 같이 리댁션". Scope of that
+  approval = `coilmaster_hgrh_{lh,rh}_header2`, `coilmaster_hgrh_rh_header3`,
+  `coilmaster_vplus_hgrh_rh_header2` (commit `27d1ef9`). It does NOT extend to the 14 callouts
+  left in place, nor to any future template edit — each needs its own approval.
+  **Approved addition, 2026-09-23 (John: "새로운 chill water coil template 피딩" + plan
+  approval):** two NEW buckets `coilmaster_terra_cwc_{lh,rh}` seeded into new folders from
+  `Case/feed/terra_cwc_{lh,rh}/` — no existing `template.svg` was regenerated or edited.
+  **Approved addition, 2026-09-23 (John: "A 시딩 지금 해주고 … Terra 전용"):** two NEW buckets
+  `coilmaster_terra_hwc_{lh,rh}` seeded into new folders from `Case/feed/terra_hwc_{lh,rh}/`
+  (`TERRA_HWC_LH/RH.pdf`, `HW-A-F-03-11-15.00x22.50-L/R`) — again no existing template touched.
 - The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
   at render time by `drawing/label_authority.py::direct_coil_label` (applied in
   `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded

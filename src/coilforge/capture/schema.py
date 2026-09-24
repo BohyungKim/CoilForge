@@ -341,6 +341,35 @@ _M5_DIVERGENCE_ADJUDICATION = (
     "CREATE INDEX ix_adj_ts ON divergence_adjudication(ts_utc)",
 )
 
+# Provenance source (1c'). WHICH engine call a firing describes.
+#
+# 1c shipped with exactly one writer -- the Tier-A-fill derive, the only wired non-frozen
+# path that hands back the HeaderPrepopulateResponse -- so rule_firing stayed EMPTY for
+# every ordinary PDF analyse, and field -> rule attribution (the only route from "this
+# dimension is wrong" to "this RULE is wrong") was never captured at all. The fix re-runs
+# the engine caller-side for provenance only; these columns say so, rather than letting a
+# reconstruction pass itself off as the call that actually drew.
+#
+#   source   = 'live'       the human's Tier-A fill really returned this response
+#            = 'recomputed' caller-side re-run with the same arguments the frozen path used
+#   fidelity = 'verified'   every recomputed slot matched the drawn slot_values
+#            = 'drifted'    at least one did not -- the row is KEPT (suppressing it would
+#                           hide the very mismatch that makes the reconstruction suspect);
+#                           readers exclude drifted from rates instead.
+#   drift_keys_json         which slots drifted, so the cause is diagnosable, not just counted
+#
+# NULL source means "written before this migration", i.e. the 1c seam -> readers treat it as
+# 'live' (COALESCE). rule_firing was at 0 rows when this shipped, so that is a convention
+# rather than a live concern -- but it is written down so it cannot be re-litigated.
+_M6_PROVENANCE_SOURCE = (
+    "ALTER TABLE rule_firing ADD COLUMN source TEXT",
+    "ALTER TABLE rule_firing ADD COLUMN fidelity TEXT",
+    "ALTER TABLE engine_call ADD COLUMN source TEXT",
+    "ALTER TABLE engine_call ADD COLUMN fidelity TEXT",
+    "ALTER TABLE engine_call ADD COLUMN drift_keys_json TEXT",
+    "CREATE INDEX ix_rule_firing_source ON rule_firing(source)",
+)
+
 # (description, statements). Index + 1 == PRAGMA user_version after it applies.
 # APPEND ONLY -- never edit or remove an entry that has shipped.
 MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -349,4 +378,5 @@ MIGRATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("engine provenance (1c)", _M3_ENGINE_PROVENANCE),
     ("observability (1d)", _M4_OBSERVABILITY),
     ("divergence adjudication (Phase D)", _M5_DIVERGENCE_ADJUDICATION),
+    ("provenance source (1c')", _M6_PROVENANCE_SOURCE),
 )

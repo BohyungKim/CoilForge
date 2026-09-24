@@ -29,8 +29,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Dimension callout labels (longest first so HDx1 wins over HD). The regex sorts
 # by length, so list order here is not significant.
-# "X" (uppercase, single char) is the tube-projection callout; it is case-
-# sensitive so it never matches the lowercase "x" in tube specs (e.g.
+# "X" (uppercase, single char) is the drawing's X column. What it MEASURES is still open:
+# the working reading is a header-stack depth (h+1)*D + (h-1)*1.5 (same shape as R-073's
+# header-bank term), but a 328-page measurement of real HGRH drawings (2026-09-05) found it
+# explains only 52% of the pages that carry a value -- see
+# docs/wiki/concepts/x-header-stack-depth.md. What IS settled: X appears only on
+# header-connected coils (RETURN CONN "... OD Header" -> always printed, "... swt" -> always
+# blank, 328/328). The older "tube projection" label was wrong either way.
+# It is case-sensitive so it never matches the lowercase "x" in tube specs (e.g.
 # "0.375 x 0.016"). Added 2026-06-23 (John) so "1.13 X" redacts to {{slot.X}}.
 _DIM_LABELS = [
     "HDx1", "HDx3", "HDx5", "HD2", "HD4", "HD6", "SL2", "SL4", "SL6", "OAL",
@@ -45,8 +51,25 @@ _DIM_LABELS = [
 ]
 # Bare drawing-area callout label -> the parity-numbered first-header slot it means.
 _BARE_CALLOUT_SLOT = {"I": "slot.I1", "O": "slot.O2", "S": "slot.S1", "R": "slot.R2"}
+# The value group accepts a LEADING MINUS. Without it `-0.25 S1` did not match, so the
+# callout was never redacted even though `S1` is in _DIM_LABELS above -- and the seed
+# coil's own -0.25 stayed baked into coilmaster_hgrh_{lh,rh}_header2, printed on every
+# coil that rendered through the bucket while the panel beside it said 3.25 (John, 3095
+# Harrison, 2026-08-30). A negative supply spacing is a REAL CoilMaster value, not a
+# parse artefact: the Nova/Ventum H `S = CD - ((n+2)D + (n-1)1.5)` branch genuinely
+# yields it and reproduces the seeded references exactly.
+#
+# NOT fixed here, because both need a decision this script cannot make on its own:
+#   * the ODD supply SLs (SL1/SL3/SL5/SL7) and HD1 are absent from _DIM_LABELS, so those
+#     callouts are still baked. `SL1` cannot simply be added: on an HGRH sheet it means
+#     `slot.SL1` (the supply stub position) but on a water sheet `label_authority`
+#     rewrites SL1 -> SL2, so the right slot depends on the coil category, which this
+#     matcher does not see.
+#   * re-seeding is NOT the way to apply either fix to the CURRENT templates. They have
+#     diverged from this script (the coilforge-coating-note anchor, among other post-seed
+#     work, is not emitted here), so `build-one` on a seeded bucket silently discards it.
 _CALLOUT_RE = re.compile(
-    r"^([\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
+    r"^(-?[\d.]+)\s+(" + "|".join(sorted(_DIM_LABELS, key=len, reverse=True)) + r")$"
 )
 # Title-block summary column header -> slot id (drawing-area value reused).
 _TB_COLUMN_SLOT = {
@@ -142,8 +165,26 @@ def _pick_drawing_page(doc: "fitz.Document") -> "fitz.Page":
     return best
 
 
-def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
+def seed_pdf(
+    pdf_path: Path,
+    page_index: int | None = None,
+    extra_callouts: dict[str, str] | None = None,
+) -> SeedResult:
+    """``extra_callouts`` maps a callout LABEL absent from ``_DIM_LABELS`` to the slot it
+    means FOR THIS BUCKET (e.g. a water sheet's ``SL1`` -> ``slot.SL2``). It is per-bucket
+    on purpose: the same label means a different slot on another category (on HGRH, SL1 is
+    the supply stub position), which is exactly why SL1/HD1 were never added globally.
+    Without it such a callout stays a literal number and prints on every coil."""
     doc = fitz.open(pdf_path)
+    extra_re = (
+        re.compile(
+            r"^(-?[\d.]+)\s+("
+            + "|".join(re.escape(k) for k in sorted(extra_callouts, key=len, reverse=True))
+            + r")$"
+        )
+        if extra_callouts
+        else None
+    )
     # Multi-coil project PDFs hold many drawing pages, so a specific page must be named;
     # single-coil EZ exports omit it and fall back to the callout-density auto-pick.
     page = doc[page_index] if page_index is not None else _pick_drawing_page(doc)
@@ -165,6 +206,14 @@ def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
             x, y = (xy if xy else (0.0, 0.0))
             return f"<text{keep}><tspan x=\"{x:.2f}\" y=\"{y:.2f}\">{text}</tspan></text>"
 
+        # 0) Bucket-specific callout label (see `extra_callouts`).
+        em = extra_re.match(content) if extra_re else None
+        if em:
+            slot = extra_callouts[em.group(2)]
+            used.add(slot)
+            ref.setdefault(slot, em.group(1))
+            return single(f"{{{{{slot}}}}} {em.group(2)}")
+
         # 1) Drawing-area dimension callout: "VALUE LABEL".
         cm = _CALLOUT_RE.match(content)
         if cm:
@@ -172,6 +221,20 @@ def seed_pdf(pdf_path: Path, page_index: int | None = None) -> SeedResult:
             if label == "X":
                 # X is a fixed (non-variable) dimension no parameter drives; drop
                 # the callout rather than slot it (would render blank). John 2026-06-27.
+                #
+                # WARNING (2026-09-02): this branch DELETES the callout, so re-seeding an
+                # already-seeded HGRH bucket silently removes its X and
+                # tests/test_template_hardcoded_dims.py then fails the `known - found`
+                # direction. Diff a scratch regen before letting it land (see the
+                # committed-vs-seeder divergence note in CLAUDE.md).
+                #
+                # The premise -- "no parameter drives it" -- is unproven either way. A
+                # 328-page measurement of real HGRH drawings (2026-09-05) showed X IS driven
+                # by something (it varies between coils identical in every other title-block
+                # dimension), but the working formula (h+1)*D + (h-1)*1.5 explains only 52%
+                # of the pages that carry a value, so no rule can be written yet. If a rule
+                # ever lands, this branch must flip to slotting X.
+                # docs/wiki/concepts/x-header-stack-depth.md
                 return ""
             slot = _BARE_CALLOUT_SLOT.get(label, f"slot.{label}")
             used.add(slot)
@@ -579,7 +642,10 @@ VPLUS_BUCKETS: list[tuple] = [
     ("coilmaster_vplus_dx_rh_header1", "dx", "DX", "RH", "Header 1", None,
      "Case/feed/vplus_dx_rh_header1/2798_Centra_Reno.pdf", "VPLUS-2798-CENTRA-RENO", 1),
     ("coilmaster_vplus_dx_lh_header1", "dx", "DX", "LH", "Header 1", None,
-     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 2),
+     # p2 (CDXC-1) is NOT a Ventum+ coil -- TF/BF 0.63, SL 8, I 3, nozzle-up distributor;
+     # John caught the Down-orientation on the Omnia 3097 drawing (2026-08-26). p5 (CDXC-4)
+     # is the real Ventum+ LH 1-distributor page (TF/BF 1.00, SL 10, I 12, R-032 UP).
+     "Case/feed/vplus_dx_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 5),
     ("coilmaster_vplus_dx_lh_header2", "dx", "DX", "LH", "Header 2", None,
      "Case/feed/vplus_dx_lh_header2/2760_Revere.pdf", "VPLUS-2760-REVERE", 3),
     ("coilmaster_vplus_dx_lh_header3", "dx", "DX", "LH", "Header 3", None,
@@ -587,7 +653,9 @@ VPLUS_BUCKETS: list[tuple] = [
     ("coilmaster_vplus_dx_rh_header2", "dx", "DX", "RH", "Header 2", None,
      "Case/feed/vplus_dx_rh_header2/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 1),
     ("coilmaster_vplus_hgrh_lh_header1", "hgrh", "HGRH", "LH", "Header 1", None,
-     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 6),
+     # p6 (RHHGRC-1) pairs with the non-Ventum+ CDXC-1 above (TF/BF 0.63); p7 (RHHGRC-2)
+     # is the Ventum+ one (TF/BF 1.00, SL 10, I 2.0 -- same pattern as Hoffman/Congress).
+     "Case/feed/vplus_hgrh_lh_header1/2760_Revere.pdf", "VPLUS-2760-REVERE", 7),
     ("coilmaster_vplus_hgrh_rh_header1", "hgrh", "HGRH", "RH", "Header 1", None,
      "Case/feed/vplus_hgrh_rh_header1/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 2),
     ("coilmaster_vplus_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,
@@ -598,6 +666,37 @@ VPLUS_BUCKETS: list[tuple] = [
      "Case/feed/vplus_hwc_rh/2523_WestCalgary.pdf", "VPLUS-2523-WCALGARY", 1),
     ("coilmaster_vplus_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
      "Case/feed/vplus_cwc_lh/2773_Paiza.pdf", "VPLUS-2773-PAIZA", 1),
+]
+
+
+# Dedicated Terra water buckets (CWC + HWC, John 2026-09-23): ONE artwork shared by Terra H and Terra V
+# (the catalog aliases both families onto `TERRA`); every printed value is CoilForge's own,
+# filled per coil. Seeded from John's own CoilMaster drawings of the same coil in each hand
+# (`CW-A-F-06-10-18.00x36.00-L/R`, created 2026-09-23) -- each hand its own seed, no mirror.
+# Sources are staged under Case/feed/terra_cwc_* (gitignored). 10th element = the
+# bucket's extra callout map: the references print the supply header's `4.00 HD1` and
+# `10.00 SL1`, which `_DIM_LABELS` does not know, so without it both numbers would be
+# baked into the artwork and printed on every Terra CWC. On a water coil the supply and
+# return headers are symmetric (reference: HD1 = HD2 = 4, SL1 = SL2 = 10), so they
+# render the return-side slots -- the same mapping `label_authority` applies to a water
+# sheet's SL1 at render time.
+_WATER_SUPPLY_CALLOUTS = {"HD1": "slot.HD2", "SL1": "slot.SL2"}
+TERRA_BUCKETS: list[tuple] = [
+    ("coilmaster_terra_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
+     "Case/feed/terra_cwc_lh/TERRA_CCWC_LH.pdf", "TERRA-CWC-JOHN-2026-09-23-L", None,
+     _WATER_SUPPLY_CALLOUTS),
+    ("coilmaster_terra_cwc_rh", "cwc", "CWC", "RH", "Header 1", None,
+     "Case/feed/terra_cwc_rh/TERRA_CCWC_RH.pdf", "TERRA-CWC-JOHN-2026-09-23-R", None,
+     _WATER_SUPPLY_CALLOUTS),
+    # Terra HWC (John 2026-09-23): same artwork family, John's own CoilMaster drawings of
+    # one HWC in each hand (`HW-A-F-03-11-15.00x22.50-L/R`, tag PHWC-1). Same supply
+    # callouts (`4.00 HD1`, `12.00`/`10.00 SL1`) -> the return-side slots.
+    ("coilmaster_terra_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
+     "Case/feed/terra_hwc_lh/TERRA_HWC_LH.pdf", "TERRA-HWC-JOHN-2026-09-23-L", None,
+     _WATER_SUPPLY_CALLOUTS),
+    ("coilmaster_terra_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
+     "Case/feed/terra_hwc_rh/TERRA_HWC_RH.pdf", "TERRA-HWC-JOHN-2026-09-23-R", None,
+     _WATER_SUPPLY_CALLOUTS),
 ]
 
 
@@ -628,9 +727,11 @@ def build_bucket(spec: tuple) -> set[str]:
     template_id, cat_dir, coil_cat, hand, header_type, special, src, case_id = spec[:8]
     # Optional 9th element = explicit page index for multi-coil project PDFs (Ventum+).
     page_index = spec[8] if len(spec) > 8 else None
+    # Optional 10th element = bucket-specific callout labels (see seed_pdf).
+    extra_callouts = spec[9] if len(spec) > 9 else None
     out_dir = REPO_ROOT / "templates" / "drawing" / "coilmaster" / cat_dir / template_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    res = seed_pdf(REPO_ROOT / src, page_index)
+    res = seed_pdf(REPO_ROOT / src, page_index, extra_callouts)
     (out_dir / "template.svg").write_text(finalize(res.svg, template_id), encoding="utf-8")
     src_folder = str(Path(src).parent).replace("\\", "/")
     page_count = fitz.open(REPO_ROOT / src).page_count
@@ -715,7 +816,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1] == "build-one":
         sys.path.insert(0, str(REPO_ROOT / "src"))
         target = sys.argv[2]
-        spec = next((s for s in (*BUCKETS, *VPLUS_BUCKETS) if s[0] == target), None)
+        spec = next((s for s in (*BUCKETS, *VPLUS_BUCKETS, *TERRA_BUCKETS) if s[0] == target), None)
         if spec is None:
             raise SystemExit(f"unknown template_id: {target}")
         ids = build_bucket(spec)

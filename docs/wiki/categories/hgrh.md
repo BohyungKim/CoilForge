@@ -34,10 +34,18 @@ DX와 HGRH는 헤더 수 **1HD–4HD**를 지원하며 모두 first-class다. 4H
 | Conn angle | `R-047` | `LAS` | `[CONFIRMED]` | `SOP §HGRH-TNVH/-VP`, `CHK HGRH SupConnAngle=LAS` |
 | Return spacing `Rn` | `R-052` | `Terra/Nova/Ventum_H: n·D+(n−1)·1.5` ; `Ventum+: D` | `[REVIEW-REQUIRED]` | `John 2026-06-25`, `CHK HGRH!C42:C49` |
 | Casing depth (멀티헤더) | `R-073` | `(circuits+1)·D+(circuits−1)·1.5` (패밀리별 분기) | `[REVIEW-REQUIRED]` | `SOP §HGRH-TNVH`, `CHK HGRH!C27 branches` |
+| 도면 치수 `X` | *규칙 없음* | 미상 — 작업가설 `(h+1)·D+(h−1)·1.5`는 실측 52%만 설명 | `[REVIEW-REQUIRED]` | 실측 328장, `John 2026-09-05` |
 
 > **R-040b 참고:** Terra H는 이전에 supply-I/O 규칙이 *없어서* 도면의 "I"가 항상 빈칸이었다. R-040b는
 > `[TERRA_H, TERRA_H_C]`로 스코프되어 `[[terra-v]]`의 `R-046`과 절대 충돌하지 않는다. I/R 빈칸 역사:
 > 메모리 `[[hgrh-i-r-mapping-fix]]`, `[[hgrh-r-suntion-typo]]`.
+
+> **`X` 참고:** `X`가 **언제 존재하는지**는 확정됐다 — 리턴 연결 표기가 `OD Header`면 항상 값이
+> 있고 `swt`면 항상 비어 있다(실측 328/328, 예외 0). **값이 무엇으로 결정되는지는 미상**이다:
+> `R-073`의 헤더뱅크 항과 같은 형태의 작업가설이 값 있는 186장 중 52%만 설명하고, 기하가 완전히
+> 동일한 두 코일이 서로 다른 `X`를 갖는다. 엔진 규칙은 **없고** 8개 공유 버킷 중 `lh_header1`만
+> 빈칸을, 나머지 7개는 시드 as-built 숫자를 인쇄한다. 배선 보류(John 2026-09-05 STOP) —
+> 전체는 `[[x-header-stack-depth]]`.
 
 ## 카퍼 스트랩 (HGRH 전용 가격)
 
@@ -54,3 +62,4 @@ HGRH는 드레인-팬 INSTALL 체크를 위해 파트너 코일과 페어링됨(
 `[[confidence-gate]]` 참고.
 
 관련 패밀리: `[[terra-v]]`(그 HGRH 스페셜은 `R-046`), `[[nova]]`, `[[ventum-plus]]`.
+관련 개념: `[[x-header-stack-depth]]`, `[[multi-header-geometry]]`.

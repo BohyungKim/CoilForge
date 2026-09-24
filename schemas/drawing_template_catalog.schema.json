@@ -49,7 +49,8 @@
         "source_case_id": {"type": ["string", "null"]},
         "reference_status": {"type": "string"},
         "blocked_reason": {"type": ["string", "null"]},
-        "product_family": {"type": ["string", "null"]}
+        "product_family": {"type": ["string", "null"]},
+        "o_datum": {"enum": ["header_side", "opposite"]}
       }
     }
   }

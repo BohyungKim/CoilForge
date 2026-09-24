@@ -16,6 +16,22 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 | D3 | Terra V "LOW/blocked로 라우팅 (R-023/R-046/R-067)" (CLAUDE.md) | 셋 다 `HIGH`, SOP-confirmed, 2026-06-28 승격. `[[terra-v]]` 참고. | **CLOSED** (2026-07-06 — CLAUDE.md manual-review 룰 "LOW→HIGH, now drawn"으로 정정) |
 | D4 | Ventum+ fork MVP 체크리스트(L43)에선 `[ ]` OPEN vs CLAUDE.md "불필요로 폐기" | 두 거버넌스 문서 간 모순. `_UNREGISTERED_PRODUCT_LINES`는 비어 있음(Ventum+ 도면화됨). | **CLOSED** (2026-07-06 — MVP 체크리스트 L43 `[x]` 폐기로 정정, 두 문서 일치) |
 
+## lint 2026-09-24가 잡은 드리프트 — `[[terra-v]]`가 09-22 체크리스트 리프레시 / 09-23 Terra 물코일 시딩 이전에 얼어 있음
+
+위키 본문은 고치지 않았다(위키를 코드에 억지로 맞추지 않음). John이 소스(CLAUDE.md/YAML)를 기준으로
+`[[terra-v]]`·이 원장을 정정하거나 `/wiki-ingest`로 09-22/09-23 변경을 들여온다.
+
+| # | 항목 | 조정 | 상태 |
+| --- | --- | --- | --- |
+| D5 | `[[terra-v]]` L45 `R-046 supply_io=2.75, supply_sl=5, return_sl=12` `[CONFIRMED]` | YAML `R-046`은 `{supply_io: 2, return_sl: 12}`; supply SL은 `R-044a` 공식 `6 + D/2 − S{odd}`로 이동(John 2026-09-22 "checklist wins"). | **DRIFT** |
+| D6 | `[[terra-v]]` L47/L71 · 이 원장 D3 · `[[log]]` 07-04 항목이 `R-067 vent_drain = HDR ENDS`를 인용 | `R-067`은 2026-09-22 은퇴, 존재하지 않음 — `R-066 = ConnEnd`(전 라인). | **DRIFT** (존재하지 않는 규칙 인용) |
+| D7 | `[[terra-v]]` L26/L32 Terra V 케이싱 `006→30×51, 032→48×78, 060/072/084→69×78, 100→77×80` | `R-074 TERRA_V\|INTEGRATED\|*`는 30×47 / 48×74 / 69×74 / 77×76 (Units 탭 47/58/74/74/76). | **DRIFT** |
+| D8 | `[[terra-v]]` "Terra V water는 공유 템플릿" + "데이텀 정정: `O = I`" (L49–81) | `catalog.TERRA_TEMPLATES` 전용 4버킷(2026-09-23) + `TEMPLATE_O_DATUM` 전부 `opposite` → `O = CH − I`. 페이지가 현행 규칙의 정반대를 단언. | **DRIFT** |
+| D9 | 이 원장 "R-048 supply_position: 엔진이 return과 같은 리스트를 방출" | 엔진은 `CD − [(Xmax+2)·D + (Xmax−1)·1.5]`를 MEDIUM으로 방출(John 2026-07-15). 미구현 주장은 낡음 — "공식 미검증 / MEDIUM"이 맞음. | **DRIFT** |
+| D10 | `R-044a` "기하식 미구현, 검토 유지" (이 원장 + MVP 체크리스트 L62) | `R-044a`는 HIGH·formula-kind(`NOVA, VENTUM_H, TERRA`). 두 원장이 서로 일치하되 YAML과 불일치. | **DRIFT** (stale REVIEW-REQUIRED) |
+
+MEDIUM(보고만): `[[terra-v]]` "독자 `ProductFamily` 아님" vs enum `TERRA_H/TERRA_V/OMNIA` 존재(체크리스트 L69는 `[ ]` — 어느 쪽이 권위인지 **보류**); `[[ventum-plus]]`에 OMNIA 언급 0(인용 규칙은 전부 `[VENTUM_PLUS, OMNIA]` 스코프); Ventum+ 사인오프 이 원장 OPEN vs 체크리스트 L123 `[x]`; `[[log]]` 하단 4항목(07-07·07-15×3)이 최신순 위반; `[[sources]]` "87-규칙" vs YAML 95.
+
 ## MEDIUM → HIGH 승격 — RESOLVED (John 2026-07-07)
 
 `docs/MVP_FINALIZATION_CHECKLIST.md` §"MEDIUM→HIGH promotions" 판정 완료 — 결정표 `docs/mvp_promotion_decisions.md`:
@@ -28,6 +44,28 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 
 ## 열린 엔지니어링 작업
 
+- **[도면] `X`의 engineering definition 또는 `X`를 결정하는 source input 확보** `[REVIEW-REQUIRED]` —
+  **이것이 `X` 배선의 게이트다** (John 2026-09-05). 2026-09-03에 유력했던 공식
+  `(h+1)·D+(h−1)·1.5`는 PO 트리 HGRH 도면 **328장 실측**에서 값이 있는 186장 중 **96장(52%)**만
+  설명한다. 불일치 값(`1.63`·`2.00`·`2.50`·`3.00`·`3.25`)은 h = 1..8 어디로도 재현되지 않고,
+  `FH·FL·CH·CL·CD·OAL·SL·I·S·O`가 완전히 같은 두 코일이 `X`만 1.94 대 2.00으로 다르다 →
+  **결정 변수가 타이틀블록 안에 없다.** 코퍼스 역추정으로는 닫히지 않으므로 **SOP / CoilMaster의
+  열 정의**가 필요하다. 이전 게이트였던 "Terra 참조 도면 1장 확보"는 **무효** — 도면 3장을 읽은
+  결과가 오히려 공식을 반증했다(3025 Bauducco = 신형 Terra V가 `X` 1.25를 인쇄). 상세와 재현 정보는
+  `[[x-header-stack-depth]]`. **OPEN (John: SOP/CoilMaster 정의 탐색).**
+- **[도면] `swt` 코호트에 `X`가 없는 이유** `[LIKELY]` — 리턴 연결 표기가 `… " OD Header`인 페이지는
+  **186/186 전부** `X`를 인쇄하고, `… " swt`인 페이지는 **142/142 전부** 비운다(예외 0건, n=328).
+  공란 142장은 `I`·`S`·`O`·`R`도 전부 공란이다. **상관관계는 확정**이나, "swt는 헤더가 없는 연결이라
+  헤더 기하가 존재하지 않는다"는 **인과 해석은 미확인**이다. 도면의 버전·발행일 근거가 없으므로
+  "구형/신형 세대"라 부르지 않고 **connection-notation cohort**로 부른다. CoilMaster/SOP 확인 필요.
+  **OPEN.**
+- **[측정] 텍스트 레이어 없는 도면은 미측정 사각지대** `[CONFIRMED]` — 위 328장 측정에서 HGRH 태그가
+  붙은 631장 중 303장이 타이틀블록 파싱 실패로 빠졌다. 248장은 코일 PDF 1페이지의 CoilMaster
+  성능/표지 시트(도면 아님, 양성 제외)이지만 **55장은 텍스트 레이어가 비어 있는 이미지 전용
+  페이지**(표본 2097 Go Green)다. 그 55장의 `X`는 알 수 없다. OCR 없이는 닫히지 않는다. **OPEN.**
+- **[도면] 물 코일(CWC/HWC)의 `X`** `[REVIEW-REQUIRED]` — 시드 템플릿의 타이틀블록 `X`가
+  `cwc_lh` 3.90 · `cwc_rh` 2.60 · `hwc` 1.38 / `vplus_hwc_rh` 1.88로 갈린다. 물 템플릿에는 도면 영역
+  `X` 콜아웃이 없어 인쇄되지 않으므로 우선순위는 낮다. HGRH의 `X`와 같은 양인지 미확인. **OPEN.**
 - **[MVP] R-074 케이싱 dim 2차 출처 확보** `[REVIEW-REQUIRED]` — `casing_width`/`casing_height`는
   CHK Units 시트 **단일출처**라 MEDIUM. 2026-07-08 판정: **코드베이스 내부에 독립 2차 출처가
   없다** — `mechanical_fit.py`(R-078)·`checklist/mapping.py`는 R-074 출력을 소비(순환참조),

@@ -15,12 +15,21 @@ from fastapi.testclient import TestClient
 from coilforge.submittal.pdf_intake import (
     _candidate_from_cover_row,
     _CoverRow,
+    _cover_row_from_text_line,
     _match_detail_label,
     _cover_row_summary,
+    _DETAIL_SECTION_STOP_PATTERN,
     _detail_lines_by_cover_row,
+    _detail_page_tags,
+    _detail_section_format,
     _detail_table_field_pairs,
+    _seed_detail_lines_from_tables,
+    _table_coil_format,
     _is_cover_coil_row,
     _normalize_fin_surface,
+    coil_tag_rejection_reason,
+    drain_pan_partner_tag,
+    is_coil_tag,
     _OcrPageResult,
     _package_hgbp_pages,
     _TextPage,
@@ -108,6 +117,54 @@ def test_pdf_intake_surfaces_project_context_without_raw_pdf_storage() -> None:
     assert result.summary.raw_pdf_stored is False
 
 
+def _project_number_from_text(lines: list[str]) -> str | None:
+    return extract_coil_candidate_from_pdf_bytes(
+        _make_text_pdf([*lines, "Tag CDXC-1", "Coil Quantity 1", "Handing Right"]),
+        source_filename=None,
+    ).summary.project_number
+
+
+def test_project_number_is_the_token_not_the_rest_of_the_line() -> None:
+    """The label patterns capture to end of line; the number is only its head.
+
+    Both lines below are printed by real Oxygen8 submittals — the second on EVERY
+    page. Carrying the tail through made the PO-folder prefix lookup match nothing,
+    which surfaced as "no project folder under '02 - POs' starting with 2727 / Rev".
+    """
+    assert _project_number_from_text(["Project Number: 2727"]) == "2727"
+    assert _project_number_from_text(["Version 1.0.0.9 Project #2727 / Rev"]) == "2727"
+    assert (
+        _project_number_from_text(
+            ["Project Number: 3186 - BodyRock 300 W. Ship To Revision No.: 0"]
+        )
+        == "3186"
+    )
+
+
+def test_project_number_keeps_a_split_release_letter_suffix() -> None:
+    """2025a / 2131b are real PO folders — the suffix is part of the number."""
+    assert _project_number_from_text(["Project Number: 2131a"]) == "2131a"
+
+
+def test_project_number_skips_a_foreign_number_and_keeps_looking() -> None:
+    """A rep prints its own project number, often before ours.
+
+    Taking the first label match meant that number won and every lookup failed. It
+    is refused on width rather than truncated — a silent cut to "223060" would be a
+    plausible-looking wrong answer.
+    """
+    assert (
+        _project_number_from_text(
+            ["Project Number: 223060028", "Project Number: 2862"]
+        )
+        == "2862"
+    )
+
+
+def test_project_number_is_none_when_no_label_carries_a_number() -> None:
+    assert _project_number_from_text(["Project Number: Bowie State Tubman"]) is None
+
+
 def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() -> None:
     page = _TextPage(
         page_number=2,
@@ -145,6 +202,102 @@ def test_cover_page_table_signature_is_detected_and_preferred_for_coil_rows() ->
     assert values["COIL_TYPE"] == "DX COIL"
     assert values["PRODUCT_TYPE"] == "DX"
     assert values["HANDING"] == "Left"
+
+
+def _wrapped_continuation_page() -> "_TextPage":
+    """3179 Havtech/TWU signed record submittal, p24: a multi-line Item cell that
+    pdfplumber split into its own table row, repeating the tag with a blank Qty."""
+    return _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                ("1", "CDXC-2", "DXC Cooling", "TV_B_100", "", "", "", "", "Right"),
+                ("1", "RHHGRC-2", "HGRC Reheat", "TV_B_100", "", "", "", "", "Right"),
+                # The wrap: same tag, no Qty, Item holds only the tail of the line above.
+                ("", "CDXC-2", "Coil)", "", "", "", "Factory Installed", "", ""),
+            ),
+        ),
+    )
+
+
+def test_wrapped_continuation_row_does_not_become_a_second_coil() -> None:
+    # Regression (John 2026-09-02): the table path read Qty but never checked it, so a
+    # wrapped cell fragment carrying a valid tag became a SECOND CDXC-2 -- a full extra
+    # drawing with a defaulted hand, inserted into the quote package with no warning.
+    page = _wrapped_continuation_page()
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert detection.detected is True
+    assert [row.tag for row in detection.rows] == ["CDXC-2", "RHHGRC-2"]
+
+
+def test_wrapped_continuation_row_is_reported_not_silently_dropped() -> None:
+    # A dropped row must always be explainable -- the same contract every other
+    # cover-row refusal follows (`non_coil_rows_excluded`).
+    detection = detect_cover_page_from_pdf_pages(
+        [_TextPage(page_number=1, text=""), _wrapped_continuation_page()]
+    )
+    reasons = {tag: reason for tag, reason in detection.rejected_rows}
+
+    assert "CDXC-2" in reasons
+    assert "wrapped continuation" in reasons["CDXC-2"]
+
+
+def test_first_occurrence_of_a_tag_without_qty_is_still_a_coil() -> None:
+    # The gate keys on tag-repeat AND missing qty together. A missing Qty alone must
+    # never drop a row: a layout that leaves the cell blank would lose the whole coil.
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                ("", "CDXC-1", "DXC Cooling", "TV_B_024", "", "", "", "", "Left"),
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert [row.tag for row in detection.rows] == ["CDXC-1"]
+    assert detection.rows[0].qty is None
+
+
+def test_clean_cover_table_is_unchanged_by_the_wrap_gate() -> None:
+    # The 3179 authoritative submittal's shape: four DX/HGRH pairs, every row with a Qty
+    # and a distinct tag. The gate must be inert here.
+    rows = []
+    for tag, item, model in (
+        ("CDXC-1", "DXC Cooling", "TV_B_024"), ("RHHGRC-1", "HGRC Reheat", "TV_B_024"),
+        ("CDXC-2", "DXC Cooling", "TV_B_100"), ("RHHGRC-2", "HGRC Reheat", "TV_B_100"),
+        ("CDXC-3", "DXC Cooling", "TV_B_048"), ("RHHGRC-3", "HGRC Reheat", "TV_B_048"),
+        ("CDXC-4", "DXC Cooling", "TV_B_100"), ("RHHGRC-4", "HGRC Reheat", "TV_B_100"),
+    ):
+        rows.append(("1", tag, item, model, "", "", "", "", "Left"))
+    page = _TextPage(
+        page_number=2,
+        text="",
+        tables=(
+            (
+                (
+                    "Qty", "Tag", "Item", "Model", "Voltage",
+                    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+                ),
+                *rows,
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([_TextPage(page_number=1, text=""), page])
+
+    assert len(detection.rows) == 8
+    assert detection.rejected_rows == ()
 
 
 def test_borderless_coil_table_without_header_row_is_detected_positionally() -> None:
@@ -913,7 +1066,7 @@ def test_coil_drawing_product_options_endpoint() -> None:
     response = client.get("/api/coil-drawing/product-options")
     assert response.status_code == 200
     lines = response.json()["product_lines"]
-    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS"}
+    assert set(lines) == {"NOVA", "TERRA H", "TERRA V", "VENTUM_H", "VENTUM_PLUS", "OMNIA"}
     assert "A16" in lines["NOVA"]
 
 
@@ -1735,6 +1888,133 @@ def test_is_cover_coil_row_rejects_eev_valve_accessory_rows() -> None:
     assert _is_cover_coil_row("PHWCV-2", "HWC Pre-Heat Valve") is False
 
 
+def test_is_coil_tag_structural_predicate() -> None:
+    """A coil tag is EXACTLY <coil-prefix>-<seq>. Everything else is an accessory,
+    a unit, or a mangled read -- and none of those may become a coil.
+
+    The rejected spellings are not hypothetical variants: this codebase names the
+    expansion-valve kit ``EKEXVA{n}U``, so a submittal tagging it ``EKEXVA-CDXC-1``
+    walked straight past the old three-string denylist.
+    """
+    for tag in ("CDXC-1", "RHHGRH-2", "RHHGRC-10", "ccwc-3", "PHWC - 4", " HHWC-1 "):
+        assert is_coil_tag(tag) is True, tag
+    for tag in (
+        "EKEXV-CDXC-1",     # the reported case
+        "EKEXVA-CDXC-1",    # spelling variant the denylist never listed
+        "EKEXVA72U-CDXC-1",
+        "EEVK-CDXC-1",
+        "TXV-CDXC-1",
+        "PHWCV-2",          # valve tag that merely starts like a coil prefix
+        "ERV-02",           # parent unit, not a coil
+        "DOAS-1",
+        "660024-001",       # a part number (the HGBP adder line)
+        "CDXC",             # no sequence
+        "CDXC-1-EXTRA",     # trailing segment -- old split("-")[0] read this as a coil
+        "",
+    ):
+        assert is_coil_tag(tag) is False, tag
+
+
+def test_coil_tag_rejection_reason_names_the_tag_and_the_cause() -> None:
+    """Every rejection is explainable. A row that vanishes without a reason reads as
+    'not in the submittal', which is the failure this filter must not cause."""
+    assert coil_tag_rejection_reason("CDXC-1", "DXC Cooling") is None
+
+    structural = coil_tag_rejection_reason("EKEXV-CDXC-1", "DX Coil")
+    assert structural is not None
+    assert "EKEXV-CDXC-1" in structural and "not a coil tag" in structural
+
+    # A structurally-VALID coil tag whose item names an accessory: the item-token
+    # signal is the only thing that catches this, so it must survive independently.
+    item_based = coil_tag_rejection_reason("CDXC-1", "EEV Kit")
+    assert item_based is not None
+    assert "accessory" in item_based
+
+    # A multi-tag cover cell (qty 2, two coils on one row) is a coil row; a cell with
+    # any accessory member is not. _expand_cover_tags splits the accepted one later.
+    assert coil_tag_rejection_reason("CDXC-1, CDXC-2", "DXC Cooling") is None
+    assert coil_tag_rejection_reason("CDXC-1, EKEXV-CDXC-1", "DXC Cooling") is not None
+
+
+def test_cover_item_canonicalization_cannot_launder_a_valve_row() -> None:
+    """The text-line cover path canonicalizes the item BEFORE the coil test, so
+    "EKEXV Valve (DX Coil)" arrives as "DX Coil" with the 'valve'/'ekexv' tokens
+    already destroyed. The structural tag rule is what closes that asymmetry (the
+    table path passes the raw cell and never had it)."""
+    page = _TextPage(page_number=1, text="")
+    assert _cover_row_from_text_line(
+        page, 1, "1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH"
+    ) is None
+    # The real coil on the same cover still parses.
+    rows = _cover_row_from_text_line(page, 2, "1 CDXC-1 DXC Cooling TR_C_032 LH")
+    assert rows is not None and [r.tag for r in rows] == ["CDXC-1"]
+
+
+def _tags_from_text(*lines: str) -> list[str]:
+    page = _TextPage(page_number=1, text="\n".join(lines))
+    return [
+        line.source_value
+        for line in extract_coil_lines_from_pdf_text([page])
+        if line.source_key == "COIL_TAG"
+    ]
+
+
+def test_unit_tag_anchor_rejects_compound_accessory_tag() -> None:
+    """The "Unit Tag:"/"Coil Tag:" anchor had NO non-coil filter at all -- the leak that
+    actually fired (reproduced 2026-08-06). Both the anchor regex and the _FIELD_PATTERNS
+    COIL_TAG label path read the same line, so both have to refuse it."""
+    assert _tags_from_text("Unit Tag: EKEXV-CDXC-1") == []
+    assert _tags_from_text("Coil Tag: EKEXV-CDXC-1") == []
+    assert _tags_from_text("Unit Tag: EKEXVA72U-CDXC-1") == []
+    # A real coil on the same shape still lands.
+    assert _tags_from_text("Unit Tag: CDXC-1") == ["CDXC-1"]
+
+
+def test_qty_tag_row_rejects_eev_kit_phantom_coil() -> None:
+    """A valve accessory line NAMES the coil it serves. The component-row rule harvested
+    that name into a phantom coil -- and via _set_line it could overwrite a tag already
+    captured, so the phantom won."""
+    assert _tags_from_text("2 CDXC-1 EEV Kit EKEXVA72U") == []
+    assert _tags_from_text("1 EKEXV-CDXC-1 EKEXV Valve (DX Coil) EKEXVA72U LH") == []
+    # The genuine component row still wins over its parent unit tag.
+    assert _tags_from_text("Unit Tag: ERV-1", "1 PHWC-2 Preheat Coil") == ["PHWC-2"]
+
+
+def test_detail_page_tags_ignores_embedded_coil_tag_in_accessory_tag() -> None:
+    """Containment matching strips separators, so "CDXC1" sits inside "EKEXVCDXC1" and an
+    EEV page attached itself to the real coil even after that row was correctly dropped."""
+    assert _detail_page_tags("EKEXV-CDXC-1 Valve Kit Data", ("CDXC-1",)) == ()
+    # Recall guard: the spellings the containment match exists to rescue still match.
+    assert _detail_page_tags("Tag: CDXC-1", ("CDXC-1",)) == ("CDXC-1",)
+    assert _detail_page_tags("Tag: CDXC - 1", ("CDXC-1",)) == ("CDXC-1",)
+    assert _detail_page_tags("CDXC1 Cooling DX", ("CDXC-1",)) == ("CDXC-1",)
+    # A page naming both the accessory and the coil still resolves to the coil.
+    assert _detail_page_tags(
+        "EKEXV-CDXC-1 Valve Kit\nCDXC-1 Cooling DX", ("CDXC-1",)
+    ) == ("CDXC-1",)
+
+
+def test_drain_pan_partner_resolves_after_compound_tag_filter() -> None:
+    """The downstream payoff. A leaked compound tag failed drain_pan_partner_tag's anchor
+    and returned None, so the DX/HGRH pair silently lost its INSTALL FIT check."""
+    assert drain_pan_partner_tag("EKEXV-CDXC-1", ["RHHGRH-1"]) is None   # the old state
+    assert drain_pan_partner_tag("CDXC-1", ["RHHGRH-1"]) == "RHHGRH-1"   # what we now keep
+
+
+def test_non_coil_rows_are_surfaced_not_silent() -> None:
+    """End-to-end: the excluded row reaches the summary the browser renders, naming the
+    tag and why. Dropping it silently would make a WRONGLY-excluded coil look exactly
+    like one the submittal never listed -- the ambiguity the gate exists to remove."""
+    result = extract_coil_candidate_from_pdf_bytes(
+        _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes()
+    )
+    excluded = result.summary.non_coil_rows_excluded
+    assert any("EKEXV-CDXC-1" in entry for entry in excluded), excluded
+    # The two real coils are not reported as exclusions.
+    assert not any(entry.startswith("CDXC-1:") for entry in excluded), excluded
+    assert not any(entry.startswith("CDXC-2:") for entry in excluded), excluded
+
+
 def test_eev_valve_dropped_and_second_dx_section_reaches_cdxc_2() -> None:
     pdf_bytes = _cdxc1_eev_cdxc2_two_dx_sections_pdf_bytes()
 
@@ -2078,3 +2358,173 @@ def test_detail_coating_annotation_absent_on_an_uncoated_coil() -> None:
     silent) rather than being invented."""
     page = _TextPage(page_number=26, text="Cooling DX\nRows: 6\nTotal Feeds: 18\n")
     assert "COIL_COATING" not in _detail_lines_as_dict(page)
+
+
+# --------------------------------------------------------------------------- #
+# 2954 Aki Kurose (Oxygen8 v1.0.0.10, Ventum+ changeover coils) exposed two intake
+# holes at once: the cover schedule prints the coil CASING as its own line item under
+# the coil's tag, and the detail page is titled "Changeover Coil - Cooling Performance"
+# with a second "Heating Performance" block for the same physical coil. Fixtures are
+# synthetic transcriptions — no customer data.
+# --------------------------------------------------------------------------- #
+_COVER_HEADER_9 = (
+    "Qty", "Tag", "Item", "Model", "Voltage",
+    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+)
+
+
+def test_coil_casing_cover_row_is_the_accessory_line_not_a_second_coil() -> None:
+    # Both rows carry Qty 1, so the wrapped-continuation guard (tag repeated, NO Qty)
+    # cannot catch the casing row; only the item text says what it is.
+    assert _is_cover_coil_row("CCWC-1", "CWC Cooling") is True
+    assert _is_cover_coil_row("CCWC-1", "CWC Cooling Casing") is False
+
+    page = _TextPage(
+        page_number=1,
+        text="",
+        tables=(
+            (
+                _COVER_HEADER_9,
+                ("1", "CCWC-1", "CWC Cooling", "V60_I_HRV_BP", "", "", "", "", "RH"),
+                ("1", "CCWC-1", "CWC Cooling Casing", "V60_I_HRV_BP", "", "", "", "", "RH"),
+                ("1", "CCWC-2", "CWC Cooling", "V50_I_HRV_BP", "", "", "", "", "LH"),
+                ("1", "CCWC-2", "CWC Cooling Casing", "V50_I_HRV_BP", "", "", "", "", "LH"),
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([page])
+
+    assert [row.tag for row in detection.rows] == ["CCWC-1", "CCWC-2"]
+    assert [row.handing for row in detection.rows] == ["RH", "LH"]
+    reasons = [reason for tag, reason in detection.rejected_rows if tag == "CCWC-1"]
+    assert reasons and "casing" in reasons[0].lower()
+    # The wording must not read as the coil itself being dropped: the genuine CCWC-1
+    # row sits right above it in the same schedule.
+    assert "not a second coil" in reasons[0]
+
+
+def test_changeover_coil_section_titles_are_recognised() -> None:
+    assert _detail_section_format("Changeover Coil - Cooling Performance") == "cooling_chilled_water"
+    # The heating block of a changeover coil belongs to no cover row (the cover schedules
+    # the coil ONCE, as CWC); it closes the cooling block like "Heating DX" does for DX.
+    assert _detail_section_format("Changeover Coil - Heating Performance") is None
+    assert _DETAIL_SECTION_STOP_PATTERN.search("Changeover Coil - Heating Performance")
+    assert _DETAIL_SECTION_STOP_PATTERN.search("Changeover Coil – Heating Performance")
+    assert not _DETAIL_SECTION_STOP_PATTERN.search("Changeover Coil - Cooling Performance")
+
+
+def _changeover_table(kind: str, capacity: str, ent_temp: str) -> tuple[tuple[str, ...], ...]:
+    # Shape of 2954 p.5: title in row 0, section headers in row 2, two value columns.
+    return (
+        (f"Changeover Coil - {kind} Performance", "", "", "", "", "", "", ""),
+        ("", "", "", "", "", "", "", ""),
+        ("Coil", "", "", "Entering", "", "", "Coil Operating Setpoint", ""),
+        ("Model:", "5W-02-27.0-08-72.0-5", "", "Airflow (CFM):", "4980", "", "DB (F):", "65"),
+        ("Fin Surface:", "Flat", "", "Fluid Type:", "Water", "", "Max Coil Performance", ""),
+        ("Fin Height (in):", "27", "", "Fluid Ent Temp (F):", ent_temp, "", "Airflow (CFM):", "4980"),
+        ("Fin Length (in):", "72", "", "", "", "", "Capacity (MBH):", capacity),
+        ("FPI:", "8", "", "", "", "", "", ""),
+        ("Rows:", "2", "", "", "", "", "", ""),
+        ("Circuits:", "5", "", "", "", "", "", ""),
+        ("Inlet Conn. Size:", "1.25", "", "", "", "", "", ""),
+        ("Outlet Conn. Size:", "1.25", "", "", "", "", "", ""),
+    )
+
+
+def test_changeover_tables_cooling_consumed_heating_skipped() -> None:
+    """The real page is read through the TABLE path (pdfplumber keeps the two-column
+    grid), so the title match has to hold there too: the cooling table is consumed for
+    the CWC row and the heating table — same coil, other mode — is left alone."""
+    cooling = _changeover_table("Cooling", "80.65", "44")
+    heating = _changeover_table("Heating", "109.9", "120")
+    assert _table_coil_format(cooling) == "cooling_chilled_water"
+    assert _table_coil_format(heating) is None
+
+    page = _TextPage(page_number=5, text="", tables=(cooling, heating))
+    extracted: dict = {}
+    _seed_detail_lines_from_tables(extracted, 1, page, coil_format="cooling_chilled_water")
+    fields = {line.source_key: line.source_value for line in extracted.values()}
+
+    assert fields["FINNED_HEIGHT"] == "27"
+    assert fields["FINNED_LENGTH"] == "72"
+    assert fields["FINS_PER_INCH"] == "8"
+    assert fields["ROWS_DEEP"] == "2"
+    assert fields["CIRCUITS"] == "5"
+    assert fields["INLET_CONNECTION_SIZE"] == "1.25"
+    assert fields["OUTLET_CONNECTION_SIZE"] == "1.25"
+    assert fields["TOTAL_CAPACITY_MBH"] == "80.65"
+    assert fields["FLUID_ENTERING_TEMP_F"] == "44"
+
+
+def _changeover_coil_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 HRU-04 HRV V60_I_HRV_BP 460V/3ph/60Hz Controls by Others Vertical S2 RH",
+            "1 CCWC-1 CWC Cooling V60_I_HRV_BP RH",
+            "1 CCWC-1 CWC Cooling Casing V60_I_HRV_BP RH",
+            "V60 SUBMITTALS",
+            "Changeover Coil - Cooling Performance",
+            "Coil",
+            "Model: 5W-02-27.0-08-72.0-5",
+            "Fin Surface: Flat",
+            "Fin Height (in): 27",
+            "Fin Length (in): 72",
+            "Face Area (sq.ft): 13.5",
+            "FPI: 8",
+            "Rows: 2",
+            "Circuits: 5",
+            "Fin Thickness (in): 0.008",
+            "Inlet Conn. Size: 1.25",
+            "Outlet Conn. Size: 1.25",
+            "Entering",
+            "Airflow (CFM): 4980",
+            "DB (F): 77.1",
+            "WB (F): 64.1",
+            "Fluid Type: Water",
+            "Fluid Percent (%): 100",
+            "Fluid Ent Temp (F): 44",
+            "Fluid Lvg Temp (F): 54",
+            "Coil Operating Setpoint",
+            "DB (F): 65",
+            "Max Coil Performance",
+            "Airflow (CFM): 4980",
+            "Capacity (MBH): 80.65",
+            "DB (F): 64.49",
+            "WB (F): 58.81",
+            "Air Vel (FPM): 369",
+            "Changeover Coil - Heating Performance",
+            "Coil",
+            "Model: 5W-02-27.0-08-72.0-5",
+            "Fin Height (in): 27",
+            "Fin Length (in): 72",
+            "Entering",
+            "Fluid Ent Temp (F): 120",
+            "Fluid Lvg Temp (F): 110",
+            "Max Coil Performance",
+            "Capacity (MBH): 109.9",
+        ]
+    )
+
+
+def test_changeover_coil_page_feeds_the_ccwc_row_with_cooling_values_only() -> None:
+    workflow = run_pdf_to_drawing_workflow(_changeover_coil_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+
+    # One coil, not two: the casing line item is excluded and the exclusion is surfaced.
+    assert [page["tag"] for page in pages] == ["CCWC-1"]
+    excluded = workflow["pdf_intake_summary"]["non_coil_rows_excluded"]
+    assert any("CCWC-1" in entry and "casing" in entry.lower() for entry in excluded)
+
+    candidate = pages[0]["workflow"]["candidates"][0]
+    assert candidate["geometry"]["finned_height"]["value"] == 27
+    assert candidate["geometry"]["finned_length"]["value"] == 72
+    assert candidate["geometry"]["rows_deep"]["value"] == 2
+    assert candidate["geometry"]["fins_per_inch"]["value"] == 8
+    assert candidate["geometry"]["circuits"]["value"] == 5
+    assert candidate["connections"]["inlet_connection_size"]["value"] == 1.25
+    assert candidate["connections"]["outlet_connection_size"]["value"] == 1.25
+    # Cooling-mode performance, never the heating block's.
+    assert candidate["performance"]["total_capacity_mbh"]["value"] == 80.65
+    assert candidate["airside_conditions"]["fluid_entering_temp_f"]["value"] == 44
+    assert candidate["airside_conditions"]["fluid_leaving_temp_f"]["value"] == 54
