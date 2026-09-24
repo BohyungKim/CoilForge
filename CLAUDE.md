@@ -512,6 +512,16 @@ PDF intake derives the coil **category** from the unit/coil tag prefix
 - `HHWC` / `PHWC` → **HWC** (Hot Water Coil)
 - `CCWC` → **CWC** (Chilled Water Coil)
 
+A cover row with a valid coil tag is still refused when its ITEM names an accessory
+(`_NON_COIL_ITEM_TOKENS`: valve/EEV… and, since 2026-09-24, **`casing`**) — Oxygen8 v1.0.0.10
+schedules print the coil casing as its own `1 CCWC-1 CWC Cooling Casing` line under the coil's
+tag and Qty, which made a phantom second coil AND stole the next coil's detail block
+(`_detail_lines_by_cover_row` hands blocks out per cover row in order). The same submittals
+title the water-coil detail page **`Changeover Coil - Cooling Performance`** (recognised as
+`cooling_chilled_water` by `_detail_section_format`, hence by the table reader too); its
+`… - Heating Performance` twin is the same physical coil in the other mode and is a
+`_DETAIL_SECTION_STOP_PATTERN` entry like `Heating DX` — owned by no cover row, never merged.
+
 Coil **product line + unit size** (Terra/Nova/Ventum + R-076 size) is a *separate*
 detection from the tag-prefix category above:
 `coilmaster_drawing_extract.detect_product_and_size` reads the R-076-validated unit

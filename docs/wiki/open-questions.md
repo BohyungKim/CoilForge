@@ -16,6 +16,22 @@ John에게 남았거나 사인오프를 기다리는 엔지니어링 항목의 �
 | D3 | Terra V "LOW/blocked로 라우팅 (R-023/R-046/R-067)" (CLAUDE.md) | 셋 다 `HIGH`, SOP-confirmed, 2026-06-28 승격. `[[terra-v]]` 참고. | **CLOSED** (2026-07-06 — CLAUDE.md manual-review 룰 "LOW→HIGH, now drawn"으로 정정) |
 | D4 | Ventum+ fork MVP 체크리스트(L43)에선 `[ ]` OPEN vs CLAUDE.md "불필요로 폐기" | 두 거버넌스 문서 간 모순. `_UNREGISTERED_PRODUCT_LINES`는 비어 있음(Ventum+ 도면화됨). | **CLOSED** (2026-07-06 — MVP 체크리스트 L43 `[x]` 폐기로 정정, 두 문서 일치) |
 
+## lint 2026-09-24가 잡은 드리프트 — `[[terra-v]]`가 09-22 체크리스트 리프레시 / 09-23 Terra 물코일 시딩 이전에 얼어 있음
+
+위키 본문은 고치지 않았다(위키를 코드에 억지로 맞추지 않음). John이 소스(CLAUDE.md/YAML)를 기준으로
+`[[terra-v]]`·이 원장을 정정하거나 `/wiki-ingest`로 09-22/09-23 변경을 들여온다.
+
+| # | 항목 | 조정 | 상태 |
+| --- | --- | --- | --- |
+| D5 | `[[terra-v]]` L45 `R-046 supply_io=2.75, supply_sl=5, return_sl=12` `[CONFIRMED]` | YAML `R-046`은 `{supply_io: 2, return_sl: 12}`; supply SL은 `R-044a` 공식 `6 + D/2 − S{odd}`로 이동(John 2026-09-22 "checklist wins"). | **DRIFT** |
+| D6 | `[[terra-v]]` L47/L71 · 이 원장 D3 · `[[log]]` 07-04 항목이 `R-067 vent_drain = HDR ENDS`를 인용 | `R-067`은 2026-09-22 은퇴, 존재하지 않음 — `R-066 = ConnEnd`(전 라인). | **DRIFT** (존재하지 않는 규칙 인용) |
+| D7 | `[[terra-v]]` L26/L32 Terra V 케이싱 `006→30×51, 032→48×78, 060/072/084→69×78, 100→77×80` | `R-074 TERRA_V\|INTEGRATED\|*`는 30×47 / 48×74 / 69×74 / 77×76 (Units 탭 47/58/74/74/76). | **DRIFT** |
+| D8 | `[[terra-v]]` "Terra V water는 공유 템플릿" + "데이텀 정정: `O = I`" (L49–81) | `catalog.TERRA_TEMPLATES` 전용 4버킷(2026-09-23) + `TEMPLATE_O_DATUM` 전부 `opposite` → `O = CH − I`. 페이지가 현행 규칙의 정반대를 단언. | **DRIFT** |
+| D9 | 이 원장 "R-048 supply_position: 엔진이 return과 같은 리스트를 방출" | 엔진은 `CD − [(Xmax+2)·D + (Xmax−1)·1.5]`를 MEDIUM으로 방출(John 2026-07-15). 미구현 주장은 낡음 — "공식 미검증 / MEDIUM"이 맞음. | **DRIFT** |
+| D10 | `R-044a` "기하식 미구현, 검토 유지" (이 원장 + MVP 체크리스트 L62) | `R-044a`는 HIGH·formula-kind(`NOVA, VENTUM_H, TERRA`). 두 원장이 서로 일치하되 YAML과 불일치. | **DRIFT** (stale REVIEW-REQUIRED) |
+
+MEDIUM(보고만): `[[terra-v]]` "독자 `ProductFamily` 아님" vs enum `TERRA_H/TERRA_V/OMNIA` 존재(체크리스트 L69는 `[ ]` — 어느 쪽이 권위인지 **보류**); `[[ventum-plus]]`에 OMNIA 언급 0(인용 규칙은 전부 `[VENTUM_PLUS, OMNIA]` 스코프); Ventum+ 사인오프 이 원장 OPEN vs 체크리스트 L123 `[x]`; `[[log]]` 하단 4항목(07-07·07-15×3)이 최신순 위반; `[[sources]]` "87-규칙" vs YAML 95.
+
 ## MEDIUM → HIGH 승격 — RESOLVED (John 2026-07-07)
 
 `docs/MVP_FINALIZATION_CHECKLIST.md` §"MEDIUM→HIGH promotions" 판정 완료 — 결정표 `docs/mvp_promotion_decisions.md`:

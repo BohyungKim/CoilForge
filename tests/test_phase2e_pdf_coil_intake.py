@@ -18,9 +18,13 @@ from coilforge.submittal.pdf_intake import (
     _cover_row_from_text_line,
     _match_detail_label,
     _cover_row_summary,
+    _DETAIL_SECTION_STOP_PATTERN,
     _detail_lines_by_cover_row,
     _detail_page_tags,
+    _detail_section_format,
     _detail_table_field_pairs,
+    _seed_detail_lines_from_tables,
+    _table_coil_format,
     _is_cover_coil_row,
     _normalize_fin_surface,
     coil_tag_rejection_reason,
@@ -2354,3 +2358,173 @@ def test_detail_coating_annotation_absent_on_an_uncoated_coil() -> None:
     silent) rather than being invented."""
     page = _TextPage(page_number=26, text="Cooling DX\nRows: 6\nTotal Feeds: 18\n")
     assert "COIL_COATING" not in _detail_lines_as_dict(page)
+
+
+# --------------------------------------------------------------------------- #
+# 2954 Aki Kurose (Oxygen8 v1.0.0.10, Ventum+ changeover coils) exposed two intake
+# holes at once: the cover schedule prints the coil CASING as its own line item under
+# the coil's tag, and the detail page is titled "Changeover Coil - Cooling Performance"
+# with a second "Heating Performance" block for the same physical coil. Fixtures are
+# synthetic transcriptions — no customer data.
+# --------------------------------------------------------------------------- #
+_COVER_HEADER_9 = (
+    "Qty", "Tag", "Item", "Model", "Voltage",
+    "Controls\nPreference", "Installation", "Duct Connection", "Handing",
+)
+
+
+def test_coil_casing_cover_row_is_the_accessory_line_not_a_second_coil() -> None:
+    # Both rows carry Qty 1, so the wrapped-continuation guard (tag repeated, NO Qty)
+    # cannot catch the casing row; only the item text says what it is.
+    assert _is_cover_coil_row("CCWC-1", "CWC Cooling") is True
+    assert _is_cover_coil_row("CCWC-1", "CWC Cooling Casing") is False
+
+    page = _TextPage(
+        page_number=1,
+        text="",
+        tables=(
+            (
+                _COVER_HEADER_9,
+                ("1", "CCWC-1", "CWC Cooling", "V60_I_HRV_BP", "", "", "", "", "RH"),
+                ("1", "CCWC-1", "CWC Cooling Casing", "V60_I_HRV_BP", "", "", "", "", "RH"),
+                ("1", "CCWC-2", "CWC Cooling", "V50_I_HRV_BP", "", "", "", "", "LH"),
+                ("1", "CCWC-2", "CWC Cooling Casing", "V50_I_HRV_BP", "", "", "", "", "LH"),
+            ),
+        ),
+    )
+    detection = detect_cover_page_from_pdf_pages([page])
+
+    assert [row.tag for row in detection.rows] == ["CCWC-1", "CCWC-2"]
+    assert [row.handing for row in detection.rows] == ["RH", "LH"]
+    reasons = [reason for tag, reason in detection.rejected_rows if tag == "CCWC-1"]
+    assert reasons and "casing" in reasons[0].lower()
+    # The wording must not read as the coil itself being dropped: the genuine CCWC-1
+    # row sits right above it in the same schedule.
+    assert "not a second coil" in reasons[0]
+
+
+def test_changeover_coil_section_titles_are_recognised() -> None:
+    assert _detail_section_format("Changeover Coil - Cooling Performance") == "cooling_chilled_water"
+    # The heating block of a changeover coil belongs to no cover row (the cover schedules
+    # the coil ONCE, as CWC); it closes the cooling block like "Heating DX" does for DX.
+    assert _detail_section_format("Changeover Coil - Heating Performance") is None
+    assert _DETAIL_SECTION_STOP_PATTERN.search("Changeover Coil - Heating Performance")
+    assert _DETAIL_SECTION_STOP_PATTERN.search("Changeover Coil – Heating Performance")
+    assert not _DETAIL_SECTION_STOP_PATTERN.search("Changeover Coil - Cooling Performance")
+
+
+def _changeover_table(kind: str, capacity: str, ent_temp: str) -> tuple[tuple[str, ...], ...]:
+    # Shape of 2954 p.5: title in row 0, section headers in row 2, two value columns.
+    return (
+        (f"Changeover Coil - {kind} Performance", "", "", "", "", "", "", ""),
+        ("", "", "", "", "", "", "", ""),
+        ("Coil", "", "", "Entering", "", "", "Coil Operating Setpoint", ""),
+        ("Model:", "5W-02-27.0-08-72.0-5", "", "Airflow (CFM):", "4980", "", "DB (F):", "65"),
+        ("Fin Surface:", "Flat", "", "Fluid Type:", "Water", "", "Max Coil Performance", ""),
+        ("Fin Height (in):", "27", "", "Fluid Ent Temp (F):", ent_temp, "", "Airflow (CFM):", "4980"),
+        ("Fin Length (in):", "72", "", "", "", "", "Capacity (MBH):", capacity),
+        ("FPI:", "8", "", "", "", "", "", ""),
+        ("Rows:", "2", "", "", "", "", "", ""),
+        ("Circuits:", "5", "", "", "", "", "", ""),
+        ("Inlet Conn. Size:", "1.25", "", "", "", "", "", ""),
+        ("Outlet Conn. Size:", "1.25", "", "", "", "", "", ""),
+    )
+
+
+def test_changeover_tables_cooling_consumed_heating_skipped() -> None:
+    """The real page is read through the TABLE path (pdfplumber keeps the two-column
+    grid), so the title match has to hold there too: the cooling table is consumed for
+    the CWC row and the heating table — same coil, other mode — is left alone."""
+    cooling = _changeover_table("Cooling", "80.65", "44")
+    heating = _changeover_table("Heating", "109.9", "120")
+    assert _table_coil_format(cooling) == "cooling_chilled_water"
+    assert _table_coil_format(heating) is None
+
+    page = _TextPage(page_number=5, text="", tables=(cooling, heating))
+    extracted: dict = {}
+    _seed_detail_lines_from_tables(extracted, 1, page, coil_format="cooling_chilled_water")
+    fields = {line.source_key: line.source_value for line in extracted.values()}
+
+    assert fields["FINNED_HEIGHT"] == "27"
+    assert fields["FINNED_LENGTH"] == "72"
+    assert fields["FINS_PER_INCH"] == "8"
+    assert fields["ROWS_DEEP"] == "2"
+    assert fields["CIRCUITS"] == "5"
+    assert fields["INLET_CONNECTION_SIZE"] == "1.25"
+    assert fields["OUTLET_CONNECTION_SIZE"] == "1.25"
+    assert fields["TOTAL_CAPACITY_MBH"] == "80.65"
+    assert fields["FLUID_ENTERING_TEMP_F"] == "44"
+
+
+def _changeover_coil_pdf_bytes() -> bytes:
+    return _make_text_pdf(
+        [
+            "Qty Tag Item Model Voltage Controls Preference Installation Duct Connection Handing",
+            "1 HRU-04 HRV V60_I_HRV_BP 460V/3ph/60Hz Controls by Others Vertical S2 RH",
+            "1 CCWC-1 CWC Cooling V60_I_HRV_BP RH",
+            "1 CCWC-1 CWC Cooling Casing V60_I_HRV_BP RH",
+            "V60 SUBMITTALS",
+            "Changeover Coil - Cooling Performance",
+            "Coil",
+            "Model: 5W-02-27.0-08-72.0-5",
+            "Fin Surface: Flat",
+            "Fin Height (in): 27",
+            "Fin Length (in): 72",
+            "Face Area (sq.ft): 13.5",
+            "FPI: 8",
+            "Rows: 2",
+            "Circuits: 5",
+            "Fin Thickness (in): 0.008",
+            "Inlet Conn. Size: 1.25",
+            "Outlet Conn. Size: 1.25",
+            "Entering",
+            "Airflow (CFM): 4980",
+            "DB (F): 77.1",
+            "WB (F): 64.1",
+            "Fluid Type: Water",
+            "Fluid Percent (%): 100",
+            "Fluid Ent Temp (F): 44",
+            "Fluid Lvg Temp (F): 54",
+            "Coil Operating Setpoint",
+            "DB (F): 65",
+            "Max Coil Performance",
+            "Airflow (CFM): 4980",
+            "Capacity (MBH): 80.65",
+            "DB (F): 64.49",
+            "WB (F): 58.81",
+            "Air Vel (FPM): 369",
+            "Changeover Coil - Heating Performance",
+            "Coil",
+            "Model: 5W-02-27.0-08-72.0-5",
+            "Fin Height (in): 27",
+            "Fin Length (in): 72",
+            "Entering",
+            "Fluid Ent Temp (F): 120",
+            "Fluid Lvg Temp (F): 110",
+            "Max Coil Performance",
+            "Capacity (MBH): 109.9",
+        ]
+    )
+
+
+def test_changeover_coil_page_feeds_the_ccwc_row_with_cooling_values_only() -> None:
+    workflow = run_pdf_to_drawing_workflow(_changeover_coil_pdf_bytes())
+    pages = workflow["pdf_coil_pages"]
+
+    # One coil, not two: the casing line item is excluded and the exclusion is surfaced.
+    assert [page["tag"] for page in pages] == ["CCWC-1"]
+    excluded = workflow["pdf_intake_summary"]["non_coil_rows_excluded"]
+    assert any("CCWC-1" in entry and "casing" in entry.lower() for entry in excluded)
+
+    candidate = pages[0]["workflow"]["candidates"][0]
+    assert candidate["geometry"]["finned_height"]["value"] == 27
+    assert candidate["geometry"]["finned_length"]["value"] == 72
+    assert candidate["geometry"]["rows_deep"]["value"] == 2
+    assert candidate["geometry"]["fins_per_inch"]["value"] == 8
+    assert candidate["geometry"]["circuits"]["value"] == 5
+    assert candidate["connections"]["inlet_connection_size"]["value"] == 1.25
+    assert candidate["connections"]["outlet_connection_size"]["value"] == 1.25
+    # Cooling-mode performance, never the heating block's.
+    assert candidate["performance"]["total_capacity_mbh"]["value"] == 80.65
+    assert candidate["airside_conditions"]["fluid_entering_temp_f"]["value"] == 44
+    assert candidate["airside_conditions"]["fluid_leaving_temp_f"]["value"] == 54

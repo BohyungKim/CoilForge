@@ -460,7 +460,12 @@ def drain_pan_partner_tag(tag: str, candidate_tags: list[str]) -> str | None:
 # ``_NON_COIL_TAG_PREFIXES`` is retained as documentation of the observed spellings; the
 # structural rule is what actually rejects them (and their unlisted variants).
 _NON_COIL_TAG_PREFIXES = {"EKEXV", "EEV", "EXV"}
-_NON_COIL_ITEM_TOKENS = ("valve", "ekexv", "eev", "expansionvalve")
+# "casing": an Oxygen8 cover schedule prints the coil CASING as its own line item under the
+# SAME tag and Qty as the coil ("1 CCWC-1 CWC Cooling" then "1 CCWC-1 CWC Cooling Casing",
+# 2954 Aki Kurose p.1). The wrap guard cannot catch it (Qty is present), so without this
+# token the casing became a second coil AND, because `_detail_lines_by_cover_row` hands out
+# detail blocks per cover row in order, it consumed the next coil's detail page.
+_NON_COIL_ITEM_TOKENS = ("valve", "ekexv", "eev", "expansionvalve", "casing")
 
 
 def is_coil_tag(tag: str) -> bool:
@@ -500,6 +505,13 @@ def coil_tag_rejection_reason(tag: str, item: str = "") -> str | None:
             "Read as an accessory or unit line, not a coil."
         )
     normalized_item = _normalize_header_token(item)
+    if "casing" in normalized_item:
+        # Worded for the row that sits right under a genuine coil row with the same tag:
+        # "names an accessory, not a coil" would read as the coil itself being dropped.
+        return (
+            f"'{normalized_tag}' row '{_clean_value(item)}' is the coil-casing accessory "
+            "line that accompanies the coil, not a second coil."
+        )
     if any(token in normalized_item for token in _NON_COIL_ITEM_TOKENS):
         return (
             f"'{normalized_tag}' item text names an accessory "
@@ -536,11 +548,18 @@ _DETAIL_SECTION_HEADER_PATTERN = re.compile(
     r"HGRH\s+COIL\s+DATA|HGRC\s+COIL\s+DATA|CONDENSING\s+COIL\s+DATA|"
     r"HOT\s+WATER\s+COIL\s+DATA|HEATING\s+HOT\s+WATER\s+COIL\s+DATA|"
     r"PREHEAT\s+HOT\s+WATER\s+COIL\s+DATA|CHILLED\s+WATER\s+COIL\s+DATA|"
-    r"FLUID\s+COIL\s+DATA)\b",
+    r"FLUID\s+COIL\s+DATA|"
+    r"Changeover\s+Coil\s*[-–—]?\s*Cooling\s+Performance)\b",
     re.IGNORECASE,
 )
+# A changeover coil (Oxygen8 v1.0.0.10 Ventum+ submittals, 2954 Aki Kurose p.5) is ONE
+# physical coil printed as two performance blocks. The cover schedules it once, as CWC, so
+# its "Heating Performance" block belongs to no cover row: it closes the cooling block the
+# same way "Heating DX" closes a DX coil's block. Same dimensions, different performance --
+# nothing is lost, and the heating capacity / fluid temps never overwrite the cooling ones.
 _DETAIL_SECTION_STOP_PATTERN = re.compile(
-    r"\b(?:Heating\s+DX|Supply\s+Fan)\b",
+    r"\b(?:Heating\s+DX|Supply\s+Fan|"
+    r"Changeover\s+Coil\s*[-–—]?\s*Heating\s+Performance)\b",
     re.IGNORECASE,
 )
 
@@ -2441,7 +2460,13 @@ def _detail_section_format(line: str) -> str | None:
         return "dx"
     if normalized in {"reheathotgasreheatcoil", "hgrhcoildata", "hgrccoildata"}:
         return "condensing"
-    if normalized in {"coolingcwc", "chilledwatercoildata", "fluidcoildata"}:
+    if normalized in {
+        "coolingcwc",
+        "chilledwatercoildata",
+        "fluidcoildata",
+        # v1.0.0.10 changeover-coil page title; the cover tags the coil CCWC / "CWC Cooling".
+        "changeovercoilcoolingperformance",
+    }:
         return "cooling_chilled_water"
     if normalized in {"preheathwc", "preheathotwatercoildata"}:
         return "preheat_hot_water"

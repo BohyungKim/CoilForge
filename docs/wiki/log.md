@@ -6,6 +6,15 @@
 
 <!-- LOG (newest first) -->
 
+## 2026-09-24 · ingest — Submittal v1.0.0.10: 커버 casing 부속 행 / Changeover 코일 제목
+2954 Aki Kurose(Ventum+ V60/V50, changeover CWC)에서 John이 보고한 결함 2건의 소스-포맷 사실을
+`[[sources]]` Submittal 행에 `[CONFIRMED]`로 등재. ① 커버 스케줄이 코일마다 같은 태그·Qty로
+`… Cooling Casing` 부속 행을 인쇄 → intake의 item-token 거부 목록에 `casing` 추가(유령 코일 + 다음
+코일의 상세 블록 탈취를 동시에 막음). ② 상세 페이지 제목 `Changeover Coil - Cooling/Heating
+Performance` — 냉방 블록이 CWC 출처, 난방 블록은 stop(`Heating DX` 선례). 코드: `pdf_intake.py`
++ 회귀 4건, 스위트 1787 green. 같은 날 lint가 잡은 HIGH 드리프트 5건(`[[terra-v]]`가 09-22/09-23
+변경과 모순)은 위키 본문을 고치지 않고 `[[open-questions]]`에 John 정정 항목으로 올림.
+
 ## 2026-09-05 · ingest — `X` 실측 코퍼스 328장: 작업가설 반증, 배선 STOP, 철회 2건
 John의 family-aware 배선 지시(Terra V → blank / Terra H → 공식)를 착수 전 검증하다가 두 전제가 모두
 무너졌다. Terra 도면 3건을 읽고 PO 트리의 HGRH 코일 도면을 전수 측정(511 PDF → 1,964면 → HGRH 태그
