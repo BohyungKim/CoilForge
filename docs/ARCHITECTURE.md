@@ -22,13 +22,13 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `(repo root)` | 1 |
 | `.claude/hooks` | 1 |
 | `mcp_servers/plan_review` | 1 |
-| `scripts` | 16 |
+| `scripts` | 18 |
 | `src/coilforge` | 4 |
 | `src/coilforge/accuracy` | 2 |
 | `src/coilforge/adapters` | 3 |
 | `src/coilforge/ambient` | 13 |
 | `src/coilforge/capture` | 9 |
-| `src/coilforge/ccsi` | 3 |
+| `src/coilforge/ccsi` | 5 |
 | `src/coilforge/checklist` | 8 |
 | `src/coilforge/coil_utilities` | 4 |
 | `src/coilforge/common` | 2 |
@@ -51,10 +51,10 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 135 |
+| `tests` | 137 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
-| `web/ccsi` | 1 |
+| `web/ccsi` | 2 |
 
 ### Files
 
@@ -63,6 +63,8 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `test_case_journal.py` | Standalone check for src/coilforge/case_journal.py (run: python test_case_journal.py) |
 | `.claude/hooks/run_drawing_tests.py` | Claude Code PostToolUse hook: run the drawing-engine tests after a relevant edit |
 | `mcp_servers/plan_review/server.py` | plan-review MCP server: one tool, ``review_plan``, backed by OpenAI |
+| `scripts/ccsi_coil_data_readiness.py` | Replay the capture ledger through the CCSI coil-data mapping contract |
+| `scripts/ccsi_crosscheck.py` | Cross-check harvested CCSI selections against the capture ledger's submittal extraction |
 | `scripts/draw_audit_sample.py` | Draw a flag-INDEPENDENT random audit sample (1d): pick N coils for ground-truth review, |
 | `scripts/execute.py` | Harness Step Executor — phase 내 step을 순차 실행하고 자가 교정한다 |
 | `scripts/find_similar.py` | Case Retrieval (Stage 2): "have I seen this coil before?" |
@@ -107,7 +109,9 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/capture/triage.py` | Review-triage measurement (Stage 3.0): read-only override-rate over the ledger |
 | `src/coilforge/capture/tuning.py` | Case-retrieval weight tuning harness (Stage 2, Part A5) |
 | `src/coilforge/ccsi/__init__.py` | CCSI Direct Coil integration (server side) |
+| `src/coilforge/ccsi/coil_data_map.py` | CCSI coil-data mapping contract: Direct Coil draft values -> CCSI form inputs |
 | `src/coilforge/ccsi/compare.py` | Compare CoilForge drawing-parameter values against values read back from the |
+| `src/coilforge/ccsi/crosscheck.py` | Cross-check a harvested CCSI coil form against CoilForge's submittal extraction |
 | `src/coilforge/ccsi/export_audit.py` | Offline CCSI-export audit — run the green/red compare from a downloaded CCSI |
 | `src/coilforge/checklist/__init__.py` | Coil Checklist auto-fill subsystem (review aid) |
 | `src/coilforge/checklist/compare.py` | Build the in-app review table: checklist (formula) vs CoilForge (engine) |
@@ -190,7 +194,9 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_capture_retrieve.py` | Case retrieval (Stage 2.0): masked-Gower nearest-neighbor over the ledger |
 | `tests/test_case_prefill.py` | PO Release board case prefill (?case= deep link) |
 | `tests/test_case_tuning.py` | Case-retrieval weight tuning harness (Stage 2, Part A5) |
+| `tests/test_ccsi_coil_data_map.py` | CCSI coil-data mapping contract (Rating-mode push, Phase 1) |
 | `tests/test_ccsi_compare.py` | CCSI-vs-CoilForge compare core (Phase 3): reuses the checklist comparator, so a |
+| `tests/test_ccsi_crosscheck.py` | CCSI harvest cross-check (Step C) + the harvest's read-only guarantee |
 | `tests/test_ccsi_drain_vent_location.py` | CCSI "Drain and Vent Location" for water coils (John 2026-09-23) |
 | `tests/test_ccsi_export_audit.py` | Offline CCSI-export audit (`ccsi/export_audit.py`) |
 | `tests/test_ccsi_field_map.py` | Contract guard for the CCSI Direct Coil autofill field map |
@@ -204,13 +210,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_checklist_overrides.py` | Manual browser fills carried into the Coil Checklist (pure; no Excel, no PDF) |
 | `tests/test_checklist_panel_join.py` | The Drawing Parameters panel joins the Coil Checklist by SLOT, not by name |
 | `tests/test_checklist_partner_cd.py` | The partner CD written onto a sheet must equal that partner's OWN sheet CD (pure) |
-| `tests/test_checklist_template_2026_09_22.py` | Coil Checklist template refresh (2026-09-22): what moved and what deliberately did not |
-| `tests/test_circuit_from_coil_style.py` | Circuit count derived from the 'Coil Style' prose |
-| `tests/test_coating_note_on_drawing.py` | The coil's ACTUAL coating is printed on the drawing (John 2026-08-05) |
-| `tests/test_coil_utilities.py` | Phase 3 — Coil Utilities internal table (geometry engine + capacity-range charts) |
-| `tests/test_coilmaster_drawing_extract.py` | Tests for CoilMaster drawing + cover-page extraction (synthetic text) |
-| `tests/test_condensing_mirror_fields.py` | Source-contract guards for the condensing (RHHGRC/HGRH) mirror in web/app.js |
 
-_301 source files, 211 with a header comment. 61 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_308 source files, 218 with a header comment. 68 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

@@ -402,6 +402,22 @@ colouring each field green(match)/red(mismatch) at `POST /api/ccsi-compare`. Reu
 R 3.317 vs 1.3125) flags red before John saves. Review aid only (`export_allowed: False`);
 multi-header keys (I2/S2…) push only when present in `parameters` AND in the field map.
 
+**CCSI coil data — Rating mode (John 2026-09-24; reverses the 2026-07-05 "CCSI deprioritized")**
+(`ccsi/coil_data_map.py`, `web/ccsi/ccsi_coil_data_map.dx.json`, `docs/ccsi/form_structure_dx.md`,
+`scripts/ccsi_coil_data_readiness.py`) — push the rest of the CCSI form (geometry, options, air,
+refrigerant) so CCSI rates the coil from CoilForge's extraction and the application team stops
+re-selecting. John clicks Calculate; nothing auto-saves. A **separate** map: the dimension map stays
+dimension-only (`test_ccsi_field_map.py`). Each entry has a `role` (`input` pushable; `computed`/`locked`
+read back only), an exact captured option list (a value off it is `CCSI_OPTION_UNMAPPED`, never the
+nearest option), and a `mapping_status` — every entry is `captured` today, so **nothing is pushable**
+until past-project validation promotes it. CCSI access boundary: a user can open coils only in
+projects they own, so colleagues' saved selections are not reachable from John's account. The
+submittal side of validation replays the capture ledger's draft stage (read-only) — no PDF re-parse.
+**Tube/fin material (D1, 2026-09-30):** the intake's number/unit split stores `0.016 Copper` as value
+`0.016` + unit `Copper`, so a reader that takes only `value` sees a bare gauge — the material was never
+lost. `option_material_gauge` reads both plus the canonical `tube_surface` (the ledger keeps it only as
+the drawing's `slot.TUBE_MATERIAL_2`; Smooth = Plain, John); no stated surface or material → unmapped.
+
 **Manual fill (human-in-the-loop)** (`services/drawing_param_resolver.py::build_manual_fill_plan`,
 `workflows/submittal_to_drawing.py::_rerun_slots_with_manual_inputs`, `web/app.js::renderManualFillPanel`)
 — when a coil blocks, the engineer fills the missing data in the browser and the drawing regenerates
