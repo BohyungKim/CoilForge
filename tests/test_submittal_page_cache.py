@@ -4,7 +4,6 @@ the never-cache-PyPDF2 rule, no OCR in extraction, and the per-file batch runner
 """
 from __future__ import annotations
 
-import collections
 import dataclasses
 import hashlib
 import os
@@ -101,14 +100,26 @@ def _dump(result) -> dict:
 
 
 def test_pdf_intake_internals_the_cache_relies_on():
-    """Fails loudly if pdf_intake's private page memo changes shape; the fix at that
-    point is the public ``prime_text_pages_cache`` seam planned for the merge."""
-    assert isinstance(pdf_intake._PAGES_CACHE, collections.OrderedDict)
-    assert callable(pdf_intake._bound_intake_cache)
+    """Fails loudly if the pdf_intake surface the cache uses changes shape: the public
+    seam, the ``_TextPage`` layout it rebuilds, and the fingerprinted extractor source."""
+    assert callable(pdf_intake.prime_text_pages_cache)
     assert [f.name for f in dataclasses.fields(pdf_intake._TextPage)] == ["page_number", "text", "tables"]
     for name in page_cache._FINGERPRINTED_FUNCTIONS:
         assert callable(getattr(pdf_intake, name))
     assert len(extractor_fingerprint()) == 64
+
+
+def test_prime_seam_makes_the_next_extraction_a_hit(monkeypatch):
+    pages = [pdf_intake._TextPage(page_number=1, text="Tag CDXC-1", tables=())]
+    pdf_intake.prime_text_pages_cache("f" * 40, pages, "pdfplumber")
+
+    def forbidden(_pdf_bytes):
+        raise AssertionError("primed pages must not be re-extracted")
+
+    monkeypatch.setattr(pdf_intake, "_pdf_bytes_sha1", lambda _b: "f" * 40)
+    monkeypatch.setattr(pdf_intake, "_extract_text_pages_from_pdf_bytes_uncached", forbidden)
+    got, engine = pdf_intake.extract_text_pages_from_pdf_bytes(b"any bytes")
+    assert engine == "pdfplumber" and got == pages and got is not pages
 
 
 # --- records --------------------------------------------------------------------------

@@ -16,11 +16,11 @@ which Pydantic refuses; only the header is a Pydantic model. A PyPDF2-fallback r
 and then calls the REAL ``extract_coil_candidate_from_pdf_bytes``, so a consumer's
 output (OCR behaviour included) is exactly what a live parse gives.
 
-Reaches into ``pdf_intake`` privates, all pinned by
-``test_pdf_intake_internals_the_cache_relies_on``: the memo write in
-``_prime_intake_page_cache`` (``_PAGES_CACHE`` / ``_bound_intake_cache``), rebuilding
-``_TextPage`` in ``_pages_from_payload``, and reading the extractor functions' source in
-``extractor_fingerprint``. At merge the memo write becomes a public seam in ``pdf_intake``.
+The memo write goes through the public seam ``pdf_intake.prime_text_pages_cache``. Two
+reads of ``pdf_intake`` privates remain, both pinned by
+``test_pdf_intake_internals_the_cache_relies_on``: rebuilding ``_TextPage`` in
+``_pages_from_payload`` and reading the extractor functions' source in
+``extractor_fingerprint``.
 """
 from __future__ import annotations
 
@@ -205,10 +205,7 @@ class CachedIntake:
 
 
 def _prime_intake_page_cache(sha1: str, pages: list[Any], engine: str) -> None:
-    """The ONE place that reaches into pdf_intake's private memo (pinned by a test)."""
-    pdf_intake._PAGES_CACHE[sha1] = (list(pages), engine)
-    pdf_intake._PAGES_CACHE.move_to_end(sha1)
-    pdf_intake._bound_intake_cache(pdf_intake._PAGES_CACHE)
+    pdf_intake.prime_text_pages_cache(sha1, pages, engine)
 
 
 def intake_with_page_cache(

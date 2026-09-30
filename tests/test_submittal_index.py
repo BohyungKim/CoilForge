@@ -257,19 +257,25 @@ def test_index_round_trip_and_failed_write_keeps_previous(tmp_path, po_tree, mon
     assert [p.name for p in data_dir.iterdir()] == ["index.json"]  # temp file cleaned up
 
 
-def test_data_dir_defaults_outside_repo_and_refuses_a_repo_path(monkeypatch):
+def _fake_checkout(tmp_path: Path) -> Path:
+    """A directory that looks like a git checkout (a ``.git`` marker), so the guard is
+    tested without depending on where this test file happens to live."""
+    repo = tmp_path / "checkout"
+    (repo / ".git").mkdir(parents=True)
+    return repo
+
+
+def test_data_dir_defaults_outside_repo_and_refuses_a_repo_path(tmp_path, monkeypatch):
     monkeypatch.delenv(fs.ENV_INDEX_DIR, raising=False)
     assert default_data_dir() == Path.home() / "CoilForgeData" / "submittal_index"
 
-    repo_path = Path(__file__).resolve().parents[1] / "outputs" / "submittal_index"
-    monkeypatch.setenv(fs.ENV_INDEX_DIR, str(repo_path))
+    monkeypatch.setenv(fs.ENV_INDEX_DIR, str(_fake_checkout(tmp_path) / "outputs" / "submittal_index"))
     with pytest.raises(SubmittalIndexConfigError, match=fs.ENV_INDEX_DIR):
         default_data_dir()
 
 
 def test_explicit_index_dir_is_guarded_too(tmp_path):
     # --index-dir must not be a way to write raw submittal text into the checkout.
-    repo_path = Path(__file__).resolve().parents[1] / "outputs" / "x"
     with pytest.raises(SubmittalIndexConfigError):
-        fs.resolve_data_dir(repo_path)
+        fs.resolve_data_dir(_fake_checkout(tmp_path) / "outputs" / "x")
     assert fs.resolve_data_dir(tmp_path / "ok") == tmp_path / "ok"

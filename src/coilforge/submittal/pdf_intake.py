@@ -1092,6 +1092,16 @@ def clear_pdf_intake_caches() -> None:
     _OCR_PAGE_CACHE.clear()
 
 
+def prime_text_pages_cache(pdf_sha1: str, pages: list[_TextPage], engine: str) -> None:
+    """Seed the page memo for one PDF, e.g. from the on-disk submittal page cache
+    (``coilforge.corpus.page_cache``). The next ``extract_text_pages_from_pdf_bytes`` on
+    bytes with this sha1 is a HIT, so intake output is exactly what a live parse gives
+    without re-running pdfplumber. Everything above the page memo still runs."""
+    _PAGES_CACHE[pdf_sha1] = (list(pages), engine)
+    _PAGES_CACHE.move_to_end(pdf_sha1)
+    _bound_intake_cache(_PAGES_CACHE)
+
+
 def extract_text_pages_from_pdf_bytes(pdf_bytes: bytes) -> tuple[list[_TextPage], str]:
     """Extract per-page text (pdfplumber, PyPDF2 fallback), memoized on the PDF bytes.
 

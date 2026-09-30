@@ -418,6 +418,25 @@ submittal side of validation replays the capture ledger's draft stage (read-only
 lost. `option_material_gauge` reads both plus the canonical `tube_surface` (the ledger keeps it only as
 the drawing's `slot.TUBE_MATERIAL_2`; Smooth = Plain, John); no stated surface or material → unmapped.
 
+**Submittal corpus index + page-text cache (2026-09-30)** (`corpus/`, `scripts/build_submittal_index.py`,
+`scripts/pre_extract_submittals.py`, `docs/corpus/`) — indexes every PDF in the OneDrive PO tree by
+**metadata only** (`os.scandir` + `st_file_attributes`: a cloud-only file is never hydrated; 268 paths
+≥260 chars need the `\\?\` prefix because `LongPathsEnabled=0`) and caches only the slow pdfplumber page
+extraction, keyed by PDF sha1 (`pages/<sha1>.json`; `extractor_fingerprint` = pdfplumber/pdfminer versions +
+source of the three extractor functions). Candidates/canonical values are re-derived by the REAL intake
+(`intake_with_page_cache` → `pdf_intake.prime_text_pages_cache` → `extract_coil_candidate_from_pdf_bytes`),
+so intake or rule fixes never stale the cache; cache == live parse was proven on 8 real submittals (~1 s vs
+0.5–13.6 min). PyPDF2 fallbacks are never cached. Data lives outside the repo (`COILFORGE_SUBMITTAL_INDEX_DIR`
+or `~/CoilForgeData/submittal_index`, `assert_outside_repo`); the ledger is opened `mode=ro` and its path is
+never a CLI argument (the protected-asset hook reads command text). Primary submittal per project (John):
+`--assign` > ledger sha1 match (latest `ts_utc`) > Signed Final > Final Working; tiers 2/3 are fail-closed
+(Oxygen8-named, Rev parsed from the **stem** — on the full name `.pdf` became the Rev letter — not archived,
+not as-built, no folder/filename number conflict) and consumers act only on `primaries.json` rows with
+`"usable": true`. To pair a ledger run with its own PDF use `cached_source_path(run.input_hash)`, never "the
+project's latest file" (3183's newest uploads are not on disk). Run heavy batches **detached** (`Start-Process`,
+≤4 workers): Claude Code reaps `run_in_background` shells under memory pressure, which silently killed two
+batch runs.
+
 **Manual fill (human-in-the-loop)** (`services/drawing_param_resolver.py::build_manual_fill_plan`,
 `workflows/submittal_to_drawing.py::_rerun_slots_with_manual_inputs`, `web/app.js::renderManualFillPanel`)
 — when a coil blocks, the engineer fills the missing data in the browser and the drawing regenerates
