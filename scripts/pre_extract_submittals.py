@@ -107,7 +107,10 @@ def main(argv: list[str] | None = None) -> int:
     scoped = {entry.path for project in args.project for entry in entries_for_project(index, project)}
     local_mismatch = 0
     for path in sorted(set(cand_by_path) | scoped):
-        if entry_by_path[path].cloud_only_at_scan or _currently_cloud_only(path):
+        # Live attributes, not the index's scan-time flag: a file a batch already
+        # downloaded is local now, and treating it as cloud-only would re-mark a
+        # confirmed ledger match as provisional. stat() never triggers a download.
+        if _currently_cloud_only(path):
             if path in cand_by_path:
                 state.provisional.add(path)
             continue
@@ -161,8 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         if path in queued:
             return
         queued.add(path)
-        entry = entry_by_path.get(path)
-        cloud = (entry.cloud_only_at_scan if entry else _currently_cloud_only(path)) and path not in state.file_sha1
+        cloud = _currently_cloud_only(path) and path not in state.file_sha1
         items.append(BatchItem(path=path, cloud_only=cloud, ledger_expected=ledger_expected))
 
     if args.ledger_matches:
