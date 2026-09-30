@@ -22,7 +22,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `(repo root)` | 1 |
 | `.claude/hooks` | 1 |
 | `mcp_servers/plan_review` | 1 |
-| `scripts` | 18 |
+| `scripts` | 20 |
 | `src/coilforge` | 4 |
 | `src/coilforge/accuracy` | 2 |
 | `src/coilforge/adapters` | 3 |
@@ -34,6 +34,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/common` | 2 |
 | `src/coilforge/compatibility` | 10 |
 | `src/coilforge/contracts` | 4 |
+| `src/coilforge/corpus` | 5 |
 | `src/coilforge/deliverable` | 4 |
 | `src/coilforge/direct_coil` | 7 |
 | `src/coilforge/drawing` | 9 |
@@ -51,7 +52,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 138 |
+| `tests` | 141 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 2 |
@@ -63,6 +64,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `test_case_journal.py` | Standalone check for src/coilforge/case_journal.py (run: python test_case_journal.py) |
 | `.claude/hooks/run_drawing_tests.py` | Claude Code PostToolUse hook: run the drawing-engine tests after a relevant edit |
 | `mcp_servers/plan_review/server.py` | plan-review MCP server: one tool, ``review_plan``, backed by OpenAI |
+| `scripts/build_submittal_index.py` | Build the download-free submittal PDF index (metadata only; no PDF is opened) |
 | `scripts/ccsi_coil_data_readiness.py` | Replay the capture ledger through the CCSI coil-data mapping contract |
 | `scripts/ccsi_crosscheck.py` | Cross-check harvested CCSI selections against the capture ledger's submittal extraction |
 | `scripts/draw_audit_sample.py` | Draw a flag-INDEPENDENT random audit sample (1d): pick N coils for ground-truth review, |
@@ -71,6 +73,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `scripts/generate_coverage_dashboard.py` | Generate the template-coverage dashboard from the live drawing catalog |
 | `scripts/inventory_ventum_selection.py` | Phase 0 (READ-ONLY): inventory the Ventum+ coil-selection PDFs page-by-page so we |
 | `scripts/override_rate.py` | Review Triage measurement (Stage 3.0): "which fields does John actually override?" |
+| `scripts/pre_extract_submittals.py` | Pre-extract submittal page text into the on-disk cache (``coilforge.corpus.page_cache``) |
 | `scripts/preview_schematic.py` | Eyeball gate for the parametric drawing engine (Phase 1 / 1.5 / 2) |
 | `scripts/promote_divergences.py` | Promote adjudicated divergences from the working file into the tracked registry |
 | `scripts/render_dx_lh_pngs.py` | Render populated DX_1_LH and DX_2_LH template drawings to PNG (review aid) |
@@ -130,6 +133,11 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/compatibility/__init__.py` | Review-only compatibility comparison helpers |
 | `src/coilforge/compatibility/mechanical_fit.py` | Mechanical fit / coil-stability checks (review aid) |
 | `src/coilforge/contracts/__init__.py` | Shared CoilForge contract models |
+| `src/coilforge/corpus/__init__.py` | Submittal corpus: a download-free index of the real submittal PDFs (the OneDrive PO |
+| `src/coilforge/corpus/fs.py` | Filesystem helpers for the submittal corpus |
+| `src/coilforge/corpus/ledger_link.py` | Link the capture ledger's submittal PDFs to indexed files, and pick each project's |
+| `src/coilforge/corpus/page_cache.py` | On-disk cache of the slow pdfplumber page extraction, keyed by the PDF's sha1 |
+| `src/coilforge/corpus/submittal_index.py` | Download-free index of the submittal PDFs in the PO tree (and optional extra roots) |
 | `src/coilforge/deliverable/__init__.py` | DirectCoil deliverable finalization — file the docs + draft the hand-off email |
 | `src/coilforge/deliverable/finalize.py` | Pure / filesystem layer for finalizing a DirectCoil deliverable |
 | `src/coilforge/deliverable/open_folder.py` | Open a filed deliverable's folder in Windows Explorer |
@@ -203,14 +211,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_ccsi_field_map.py` | Contract guard for the CCSI Direct Coil autofill field map |
 | `tests/test_checklist_adopt.py` | Adopt from Coil Checklist (John 2026-09-22) |
 | `tests/test_checklist_cache.py` | Bounded sha1 memoization of the Coil Checklist fill (_run_or_reuse_checklist) |
-| `tests/test_checklist_compare.py` | Phase 3 — adapter + comparison tests (pure; no Excel, no PDF) |
-| `tests/test_checklist_excel_writer.py` | Phase 2 — Excel writer integration test (Windows + Excel only) |
-| `tests/test_checklist_from_workflow.py` | Tests for the candidate -> coil-input adapter: per-coil product detection |
-| `tests/test_checklist_ledger_signal.py` | Checklist divergences reach the review-triage ranking (Stage 3.1 groundwork) |
-| `tests/test_checklist_mapping.py` | Phase 1 — pure checklist mapping tests (no Excel) |
-| `tests/test_checklist_overrides.py` | Manual browser fills carried into the Coil Checklist (pure; no Excel, no PDF) |
-| `tests/test_checklist_panel_join.py` | The Drawing Parameters panel joins the Coil Checklist by SLOT, not by name |
 
-_309 source files, 219 with a header comment. 69 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_319 source files, 229 with a header comment. 79 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->
