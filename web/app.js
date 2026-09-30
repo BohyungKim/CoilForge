@@ -2130,8 +2130,62 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
     drain_vent_location: ccsiDrainVentLocation(
       uiState.template_drawing?.extracted?.coil_category,
     ),
+    // Stage 1 (Rating mode) coil data: geometry / options / air / refrigerant / fluid, from
+    // /api/ccsi/coil-data-payload. Its own top-level key — `fields` stays dimension-only.
+    coil_data: readStampedCcsiCoilData(),
     fields,
   };
+}
+
+// The coil-data block is keyed by the draft it was built from, so a manual fill that changes
+// the draft re-fetches, while re-renders of the same coil reuse the stamped block.
+async function stampCcsiCoilData() {
+  const page = activePdfCoilPage();
+  const workflow = page && page.workflow;
+  const container = elements.drawingParameters;
+  if (!workflow || !container) {
+    return;
+  }
+  const candidate = (workflow.candidates || [])[0] || null;
+  const draft = workflow.direct_coil_input_draft || null;
+  if (!candidate || !draft) {
+    return;
+  }
+  const key = JSON.stringify([candidate.candidate_id, draft.coil_quantity?.value ?? null, draft.fields || {}]);
+  if (page.ccsiCoilDataKey === key && page.ccsiCoilData) {
+    container.dataset.ccsiCoilData = JSON.stringify(page.ccsiCoilData);
+    return;
+  }
+  try {
+    const res = await fetch("/api/ccsi/coil-data-payload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate, direct_coil_input_draft: draft }),
+    });
+    if (!res.ok) {
+      return;
+    }
+    const block = await res.json();
+    page.ccsiCoilData = block;
+    page.ccsiCoilDataKey = key;
+    if (activePdfCoilPage() === page) {
+      container.dataset.ccsiCoilData = JSON.stringify(block);
+    }
+  } catch (_error) {
+    // Review aid: a failed fetch leaves stage 1 empty (the panel says so), never half-filled.
+  }
+}
+
+function readStampedCcsiCoilData() {
+  const raw = elements.drawingParameters?.dataset.ccsiCoilData;
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (_error) {
+    return null;
+  }
 }
 
 // The CCSI select is chosen by OPTION TEXT (`match: "option_text"`): the option values are
@@ -3720,6 +3774,9 @@ function renderDrawingParameters(uiState) {
   // Location" select is pushed (water coils only).
   elements.drawingParameters.dataset.coilCategory =
     uiState.template_drawing?.extracted?.coil_category || "";
+  // Stage 1 of the CCSI push (Rating mode): the active coil's coil-data block, stamped for the
+  // userscript's DOM-scraped Send path. Async and fire-and-forget — the panel never waits on it.
+  stampCcsiCoilData();
   const casing = DRAWING_PARAM_COLUMNS[0];
   const header1 = DRAWING_PARAM_COLUMNS[1];
   // Mirror the CCSI Direct Coil form: a casing column, then one column per header

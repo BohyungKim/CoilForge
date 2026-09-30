@@ -462,6 +462,27 @@ async def mechanical_fit(request: dict[str, Any] = Body(default_factory=dict)):
     return report_dict
 
 
+@app.post("/api/ccsi/coil-data-payload")
+async def ccsi_coil_data_payload(request: dict[str, Any] = Body(default_factory=dict)):
+    """The ``coil_data`` block of the CCSI push for one coil (Rating mode, stage 1 of the push).
+
+    Body: ``{candidate, direct_coil_input_draft, coil_type?}`` — the same objects the PDF workflow
+    returns per coil. Only ``validated`` entries are ``pushable``; every other entry carries its
+    reason code. Review aid only (``export_allowed: False``); never writes to CCSI.
+    """
+    from coilforge.ccsi.coil_data_map import build_coil_data_payload
+
+    payload = request or {}
+    try:
+        return build_coil_data_payload(
+            candidate=payload.get("candidate"),
+            draft=payload.get("direct_coil_input_draft"),
+            coil_type=payload.get("coil_type"),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/ccsi-compare")
 async def ccsi_compare(request: dict[str, Any] = Body(default_factory=dict)):
     """Compare CoilForge drawing values vs values read back from the CCSI form.

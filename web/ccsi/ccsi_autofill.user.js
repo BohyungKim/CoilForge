@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      2.2.3
-// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
+// @version      3.0.0
+// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. v3: two stages — stage 1 fills the coil data (geometry/options/air/refrigerant/fluid) one field at a time and stops before Calculate; stage 2 fills the drawing parameters once the dimension grid appears. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves and Calculate is never pressed by the script.
 // @include      /^https?:\/\/(localhost|127\.0\.0\.1):\d+\//
 // @match        https://coil.ccsi.ie/*
 // @noframes
@@ -12,6 +12,7 @@
 // @grant        GM_getValue
 // @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -42,7 +43,7 @@
   // Shown in the panel header so you can SEE which filler version is actually running —
   // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
   // with @version above.
-  const SCRIPT_VERSION = "2.2.3";
+  const SCRIPT_VERSION = "3.0.0";
   // Must equal web/app.js::CCSI_WATER_DRAIN_VENT_LOCATION (pinned by a test). Every CWC/HWC,
   // all product lines (John 2026-09-23).
   const WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
@@ -164,6 +165,8 @@
       drain_vent_location: drainVentLocationEntry(
         document.querySelector("#drawing-parameters")?.dataset.coilCategory,
       ),
+      // Stage 1 (Rating mode): CoilForge stamps /api/ccsi/coil-data-payload's block here.
+      coil_data: readCoilData(),
       fields,
     };
   }
@@ -282,7 +285,7 @@
     const gateCheck = el("input", { type: "checkbox" });
     gate.append(gateCheck, el("span", { textContent: "I have reviewed these review-aid values" }));
 
-    const fillAll = btn("Fill all reviewed", () => {
+    const fillAll = btn("Stage 2 — fill drawing parameters", () => {
       entriesOf(payload).forEach((f) => { if (isFillable(f)) fillOne(f); });
       applyFormLevelToggles(payload);
       summarize(payload);
@@ -290,7 +293,13 @@
     fillAll.disabled = true;
     gateCheck.addEventListener("change", () => { fillAll.disabled = !gateCheck.checked; });
 
-    body.append(gate, fillAll, el("div", { id: "ccsi-af-summary" }, { margin: "6px 0", fontSize: "12px" }));
+    body.append(
+      gate,
+      coilDataSection(payload, gateCheck),
+      el("div", { id: "ccsi-af-stage2" }, { margin: "6px 0 2px", fontSize: "12px", color: "#5a6573" }),
+      fillAll,
+      el("div", { id: "ccsi-af-summary" }, { margin: "6px 0", fontSize: "12px" }),
+    );
 
     entriesOf(payload).forEach((field) => {
       const resolved = resolve(field.selectors);
@@ -312,6 +321,149 @@
       body.append(row);
     });
     summarize(payload);
+    watchDimensionGrid(payload);
+  }
+
+  // ===================== Stage 1: coil data (Rating mode) =====================
+  // The coil_data block is CoilForge's /api/ccsi/coil-data-payload output; only `pushable`
+  // entries (validated mappings + the approved default profile) are written. CCSI refreshes
+  // dependent dropdowns on every change (getDependencyOptions -> /Coils/GetDependencies), so
+  // fields go ONE AT A TIME in form order, each waiting for the page's AJAX to settle, and all
+  // are re-verified at the end: a later dependency refresh can reset an earlier select.
+  // This stage never presses Calculate — the engineer does, after reviewing.
+  function readCoilData() {
+    const raw = document.querySelector("#drawing-parameters")?.dataset.ccsiCoilData;
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  function pageWindow() {
+    return typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+  }
+
+  function ajaxIdle(timeoutMs = 8000) {
+    const start = Date.now();
+    return new Promise((done) => {
+      const tick = () => {
+        const jq = pageWindow().jQuery;
+        if (!jq || jq.active === 0 || Date.now() - start > timeoutMs) { done(); return; }
+        setTimeout(tick, 80);
+      };
+      setTimeout(tick, 60);
+    });
+  }
+
+  function coilDataTargets(block) {
+    return (block.entries || []).filter((e) => e.pushable && e.value !== null && e.value !== undefined);
+  }
+
+  // CCSI re-renders a dependent select after getDependencyOptions, and the re-rendered option
+  // TEXT can differ from the first render: live 2026-09-30, Tube Material "Copper 0.016 Plain"
+  // came back as "Copper - 0.016 Plain" (which is also its option VALUE) once Tube Diameter
+  // changed. So a coil-data option matches on text OR value, with the " - " separator ignored.
+  function coilOptionKey(text) {
+    return normOptionText(text).replace(/\s+-\s+/g, " ");
+  }
+
+  function optionForCoilData(select, text) {
+    const want = coilOptionKey(text);
+    return [...select.options].find((o) => coilOptionKey(o.textContent) === want || coilOptionKey(o.value) === want) || null;
+  }
+
+  function writeCoilDataEntry(target, entry) {
+    if (target instanceof HTMLSelectElement) {
+      const option = optionForCoilData(target, entry.value);
+      if (!option) return "no_option";
+      setNativeValue(target, option.value);
+    } else {
+      setNativeValue(target, entry.value);
+    }
+    ["input", "change", "blur"].forEach((type) => target.dispatchEvent(new Event(type, { bubbles: true })));
+    return "written";
+  }
+
+  function coilDataMatches(target, entry) {
+    if (target instanceof HTMLSelectElement) {
+      const selected = target.options[target.selectedIndex];
+      const want = coilOptionKey(entry.value);
+      return !!selected && (coilOptionKey(selected.textContent) === want || coilOptionKey(selected.value) === want);
+    }
+    const got = String(target.value).trim();
+    const a = Number(got), b = Number(entry.value);
+    return got === String(entry.value).trim() || (Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1e-9);
+  }
+
+  async function fillCoilDataStage(block, out) {
+    const targets = coilDataTargets(block);
+    const results = [];
+    for (const entry of targets) {
+      const target = document.querySelector(entry.selector);
+      if (!target) { results.push([entry, "not_on_form"]); continue; }
+      // Read-only here is CCSI's own lock (Altitude under Standard air, for one) — skip, never force.
+      if (target.readOnly || target.disabled) { results.push([entry, "locked"]); continue; }
+      const r = writeCoilDataEntry(target, entry);
+      results.push([entry, r]);
+      out.textContent = `Stage 1: ${results.length} / ${targets.length} …`;
+      if (r === "written") await ajaxIdle();
+    }
+    await ajaxIdle();
+    return results.map(([entry, r]) => {
+      const target = document.querySelector(entry.selector);
+      const ok = r === "written" && !!target && coilDataMatches(target, entry);
+      return { entry, status: r === "written" ? (ok ? "ok" : "reset_or_mismatch") : r };
+    });
+  }
+
+  function coilDataSection(payload, gateCheck) {
+    const block = payload.coil_data;
+    const wrap = el("div", { id: "ccsi-af-coildata" },
+      { margin: "8px 0", padding: "8px", border: "1px solid #dbe2ea", borderRadius: "6px" });
+    if (!block || !Array.isArray(block.entries)) {
+      wrap.append(note("Stage 1 — no coil data in this payload (drawing parameters only)."));
+      return wrap;
+    }
+    const targets = coilDataTargets(block);
+    const held = block.entries.length - targets.length;
+    wrap.append(el("strong", { textContent: `Stage 1 — coil data (${block.coil_type || "?"}: ${targets.length} to fill, ${held} held)` }));
+    if (block.geometry_reselect_reason) {
+      wrap.append(note(`Rows / FPI / fin withheld — re-select them in CCSI: ${block.geometry_reselect_reason}`));
+    }
+    const out = el("div", {}, { fontSize: "12px", margin: "4px 0" });
+    const go = btn("Stage 1 — fill coil data (stops before Calculate)", async () => {
+      go.disabled = true;
+      const res = await fillCoilDataStage(block, out);
+      const bad = res.filter((r) => r.status !== "ok");
+      out.textContent = `Stage 1 done: ${res.length - bad.length}/${res.length} set` +
+        (bad.length ? ` · ⚠ ${bad.map((r) => `${r.entry.ccsi_id}: ${r.status}`).join(", ")}` : "") +
+        " — review, then press Calculate in CCSI yourself.";
+      out.style.color = bad.length ? "#b3261e" : "#1a7f37";
+      go.disabled = !gateCheck.checked;
+    });
+    go.disabled = !gateCheck.checked;
+    gateCheck.addEventListener("change", () => { go.disabled = !gateCheck.checked; });
+    wrap.append(go, out);
+    return wrap;
+  }
+
+  // Stage 2 (drawing parameters) needs CCSI's dimension grid, which renders only after the
+  // engineer's own Calculate -> Custom Dimensions. Watch for it instead of guessing.
+  function watchDimensionGrid(payload) {
+    const probe = (payload.fields || []).map((f) => f.selectors).find((sel) => Array.isArray(sel) && sel.length);
+    const present = () => !!probe && !!resolve(probe);
+    const update = () => {
+      const hint = document.getElementById("ccsi-af-stage2");
+      if (hint) {
+        hint.textContent = present()
+          ? "Stage 2 — dimension grid found: fill the drawing parameters."
+          : "Stage 2 — waiting for the dimension grid (press Calculate → Custom Dimensions in CCSI).";
+      }
+    };
+    update();
+    if (present()) return;
+    const obs = new MutationObserver(() => {
+      if (present()) { obs.disconnect(); update(); summarize(payload); }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
   }
 
   function chip(field, resolved) {

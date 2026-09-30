@@ -51,7 +51,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 137 |
+| `tests` | 138 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 2 |
@@ -195,6 +195,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_case_prefill.py` | PO Release board case prefill (?case= deep link) |
 | `tests/test_case_tuning.py` | Case-retrieval weight tuning harness (Stage 2, Part A5) |
 | `tests/test_ccsi_coil_data_map.py` | CCSI coil-data mapping contract (Rating-mode push, Phase 1) |
+| `tests/test_ccsi_coil_data_payload.py` | CCSI coil-data push payload (Step E stage 1): candidate + Direct Coil draft -> coil_data |
 | `tests/test_ccsi_compare.py` | CCSI-vs-CoilForge compare core (Phase 3): reuses the checklist comparator, so a |
 | `tests/test_ccsi_crosscheck.py` | CCSI harvest cross-check (Step C) + the harvest's read-only guarantee |
 | `tests/test_ccsi_drain_vent_location.py` | CCSI "Drain and Vent Location" for water coils (John 2026-09-23) |
@@ -209,8 +210,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_checklist_mapping.py` | Phase 1 — pure checklist mapping tests (no Excel) |
 | `tests/test_checklist_overrides.py` | Manual browser fills carried into the Coil Checklist (pure; no Excel, no PDF) |
 | `tests/test_checklist_panel_join.py` | The Drawing Parameters panel joins the Coil Checklist by SLOT, not by name |
-| `tests/test_checklist_partner_cd.py` | The partner CD written onto a sheet must equal that partner's OWN sheet CD (pure) |
 
-_308 source files, 218 with a header comment. 68 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_309 source files, 219 with a header comment. 69 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->
