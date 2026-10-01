@@ -52,8 +52,8 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
     "coilmaster_hgrh_rh_header3": ("hgrh", "EZC-0016", _SEEDED),
     "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
-    "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
-    "coilmaster_hwc_lh": ("hwc", "EZC-0005", _SEEDED),
+    "coilmaster_cwc_lh": ("cwc", "WATER-CWC-JOHN-2026-09-24-L", _SEEDED),
+    "coilmaster_hwc_lh": ("hwc", "WATER-HWC-JOHN-2026-09-24-L", _SEEDED),
     # 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now seeded
     # from real per-hand EZ drawing PDFs (Case/feed/), so every bucket is active.
     # Mirroring is retired; source_case_id is a provenance token (FEED-*) until
@@ -64,8 +64,8 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_dx_rh_hgbp": ("dx", "FEED-DX_HB_RH", _SEEDED),
     "coilmaster_hgrh_rh_header2": ("hgrh", "FEED-HG_2_RH", _SEEDED),
     "coilmaster_hgrh_lh_header3": ("hgrh", "FEED-HG_3_LH", _SEEDED),
-    "coilmaster_cwc_rh": ("cwc", "FEED-CW_RH", _SEEDED),
-    "coilmaster_hwc_rh": ("hwc", "FEED-HW_RH", _SEEDED),
+    "coilmaster_cwc_rh": ("cwc", "WATER-CWC-JOHN-2026-09-24-R", _SEEDED),
+    "coilmaster_hwc_rh": ("hwc", "WATER-HWC-JOHN-2026-09-24-R", _SEEDED),
     "coilmaster_dx_lh_header4": ("dx", "FEED-DX_4_LH", _SEEDED),
     "coilmaster_dx_rh_header4": ("dx", "FEED-DX_4_RH", _SEEDED),
     "coilmaster_hgrh_lh_header4": ("hgrh", "FEED-HG_4_LH", _SEEDED),
@@ -126,12 +126,11 @@ VENTUM_PLUS_TEMPLATES: dict[
         "hgrh", "HGRH", "RH", "Header 1", None, "VPLUS-2619-CONGRESS", _SEEDED),
     "coilmaster_vplus_hgrh_rh_header2": (
         "hgrh", "HGRH", "RH", "Header 2", None, "VPLUS-2839-FAIRMOUNT", _SEEDED),
-    "coilmaster_vplus_hwc_lh": (
-        "hwc", "HWC", "LH", "Header 1", None, "VPLUS-2802-MANCHESTER", _SEEDED),
-    "coilmaster_vplus_hwc_rh": (
-        "hwc", "HWC", "RH", "Header 1", None, "VPLUS-2523-WCALGARY", _SEEDED),
-    "coilmaster_vplus_cwc_lh": (
-        "cwc", "CWC", "LH", "Header 1", None, "VPLUS-2773-PAIZA", _SEEDED),
+    # Ventum+ WATER buckets (vplus_hwc_lh / vplus_hwc_rh / vplus_cwc_lh) retired
+    # 2026-09-24 (John: "Ventum+ 코일도 사실상 다 같아야하는거야 다른 코일들하고"): every
+    # non-Terra CWC/HWC -- Ventum+ and Omnia included -- draws on the shared
+    # coilmaster_{cwc,hwc}_{lh,rh} art re-seeded that day. Only DX/HGRH keep a Ventum+
+    # fork, because the R-032 ConnectionUP distributor is genuinely different art.
 }
 
 # Dedicated Terra buckets (same tuple shape as VENTUM_PLUS_TEMPLATES). Seeded 2026-09-23
@@ -156,7 +155,7 @@ TEMPLATE_BUCKET_COUNT = (
 
 # Datum of each artwork's water return-stubout callout `slot.O2` (John 2026-09-23).
 # Every bucket defaults to "header_side": O is measured from the header end, so it
-# prints the same number as I (all seven shared water seeds read O == I). The Terra CWC
+# prints the same number as I (every non-Terra water seed reads O == I). The Terra CWC
 # artwork measures O from the OPPOSITE end -- both seeds print CH 19.25, I1 2.75,
 # O2 16.50 = CH - I (seed_evidence.json) -- which is also how the Coil Checklist writes
 # the Terra O row (CH - 3.25 / CH - 2.75). The datum belongs to the artwork, not to a
@@ -473,9 +472,9 @@ def _entry_for_water_category(category: str, hand: str) -> DrawingTemplateEntry:
         return _active_entry(template_id, category.upper(), hand, "Header 1", None)
     source = None
     if category == "cwc" and hand == "LH":
-        source = "EZC-0014"
+        source = "WATER-CWC-JOHN-2026-09-24-L"
     if category == "hwc" and hand == "LH":
-        source = "EZC-0005"
+        source = "WATER-HWC-JOHN-2026-09-24-L"
     return DrawingTemplateEntry(
         template_id=template_id,
         supplier="coilmaster",

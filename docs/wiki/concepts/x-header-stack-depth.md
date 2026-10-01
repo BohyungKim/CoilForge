@@ -170,8 +170,10 @@ DX/CWC/HWC 전부에 빈 `X` 행이 생기고, `review/project_gate.py::_classif
 
 ## 물 코일의 `X` `[REVIEW-REQUIRED]`
 
-CWC/HWC 템플릿의 타이틀블록 `X`는 `coilmaster_cwc_lh` 3.90 · `coilmaster_cwc_rh` 2.60 ·
-`hwc` 1.38 / `vplus_hwc_rh` 1.88로 갈린다. 물 템플릿에는 도면 영역 `X` 콜아웃이 없어 인쇄되지 않는다.
+CWC/HWC 템플릿의 타이틀블록 `X`는 시드 코일의 값이 그대로 박혀 있다. 2026-09-24 재시딩 후
+`coilmaster_cwc_lh` 5.38 · `coilmaster_cwc_rh` 5.50 · `coilmaster_hwc_{lh,rh}` 4.50
+(이전 3.90 / 2.60 / 1.38; `vplus_hwc_rh` 1.88은 버킷 은퇴로 소멸). 새 참조 도면(2026-09-24, Terra 2026-09-23)은
+도면 영역에도 `X` 콜아웃을 인쇄하지만 seeder의 `X` 분기가 삭제하므로 템플릿에는 남지 않는다.
 HGRH와 같은 양인지 미확인.
 
 ---

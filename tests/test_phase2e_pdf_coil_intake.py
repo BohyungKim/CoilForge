@@ -2272,14 +2272,27 @@ def test_drawing_notes_never_diverge_from_the_drawings_own_notes() -> None:
     On 2949 Ferguson Theatre every HWC coil hit exactly that: the drawing carried the
     vent/drain note while the panel read "unmapped". This asserts the invariant rather
     than the one shape of the bug, so any future gate that resolves for one surface and
-    not the other trips it."""
-    workflow = run_pdf_to_drawing_workflow(_cwc_and_hwc_sections_pdf_bytes())
+    not the other trips it.
+
+    Since R-007's retirement (John 2026-09-24) a water coil carries NO note, so the water
+    fixture now pins the empty side of the invariant (both surfaces empty) and the DX+HGRH
+    fixture carries the non-vacuous side (R-008 / R-035 notes on both surfaces)."""
+    pages = [
+        page
+        for pdf in (_cwc_and_hwc_sections_pdf_bytes(), _oxygen8_cooling_dx_and_hgrh_pdf_bytes())
+        for page in run_pdf_to_drawing_workflow(pdf)["pdf_coil_pages"]
+    ]
 
     checked = 0
-    for page in workflow["pdf_coil_pages"]:
+    for page in pages:
         wf = page["workflow"]
         slot_notes = (wf["template_drawing"].get("slot_values") or {}).get("slot.NOTES")
         if not slot_notes:
+            empty = [
+                f for f in wf["direct_coil_paste_ready"]["fields"]
+                if f["normalized_key"] == "drawing_notes" and f["value"]
+            ]
+            assert not empty, f"{page['tag']}: panel carries notes the drawing does not"
             continue
         paste = [
             f for f in wf["direct_coil_paste_ready"]["fields"]

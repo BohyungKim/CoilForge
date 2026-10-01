@@ -492,7 +492,9 @@ def test_t12_cwc_nova_a16_feeds_absent() -> None:
     assert r.values["return_flange"].value == 1.5
     assert r.values["sl"].value == 8
     assert r.values["size_class"].value == "NOVA_1IN"
-    assert r.values["notes"].value[0].startswith("Vent & Drain installed")
+    # R-007's "Vent & Drain installed <= 3\"" note is retired (John 2026-09-24): a water
+    # coil carries no base note, and nothing else fires one, so no notes field at all.
+    assert "notes" not in r.values and "notes" not in r.suggestions
     # feeds absent -> io/hd HIGH anyway (John 2026-09-24, RP-004 A3): no water I/O or
     # HD value depends on the feed count since the single-feed special was retired.
     assert r.values["io"].value == 2.3125 and r.values["io"].confidence == Confidence.HIGH
@@ -539,9 +541,8 @@ def test_t16_cwc_terra_18_gate() -> None:
     r = prepopulate(_req(CoilType.CWC, ProductFamily.TERRA, "018"))
     assert r.values["return_bend"].value == 2.25  # R-006 (2026-09-22 checklist; Terra H is not Terra V)
     assert r.values["header_flange"].value == 1.5
-    assert r.values["notes"].value[0].startswith("Vent & Drain installed")
-    # CWC/HWC have no coating process -> no coating note appended.
-    assert r.values["notes"].value == [r.values["notes"].value[0]]
+    # R-007 retired (John 2026-09-24) and CWC/HWC have no coating process -> no notes.
+    assert "notes" not in r.values and "notes" not in r.suggestions
     # Terra = Terra H C, checklist values reliable (John 2026-06-11): resolved HIGH.
     assert r.values["io"].value == 3.25  # R-061
     assert r.values["sl"].value == 10  # R-065
@@ -650,7 +651,9 @@ def test_distributor_extension_note_up_for_ventum_plus_dx_else_down() -> None:
     assert not any("Distributor" in n for n in hgrh.values["notes"].value)
     for coil in (CoilType.CWC, CoilType.HWC):
         water = prepopulate(_req(coil, ProductFamily.NOVA, "C30", feeds=2, rows=2))
-        assert not any("Distributor" in n for n in water.values["notes"].value)
+        # Since R-007's retirement (2026-09-24) a water coil carries no note at all,
+        # which is strictly stronger than "no distributor note".
+        assert "notes" not in water.values
 
 
 def test_hot_gas_bypass_distributor_note_replaces_the_plain_down_note() -> None:

@@ -64,8 +64,9 @@ MEDIUM(보고만): `[[terra-v]]` "독자 `ProductFamily` 아님" vs enum `TERRA_
   성능/표지 시트(도면 아님, 양성 제외)이지만 **55장은 텍스트 레이어가 비어 있는 이미지 전용
   페이지**(표본 2097 Go Green)다. 그 55장의 `X`는 알 수 없다. OCR 없이는 닫히지 않는다. **OPEN.**
 - **[도면] 물 코일(CWC/HWC)의 `X`** `[REVIEW-REQUIRED]` — 시드 템플릿의 타이틀블록 `X`가
-  `cwc_lh` 3.90 · `cwc_rh` 2.60 · `hwc` 1.38 / `vplus_hwc_rh` 1.88로 갈린다. 물 템플릿에는 도면 영역
-  `X` 콜아웃이 없어 인쇄되지 않으므로 우선순위는 낮다. HGRH의 `X`와 같은 양인지 미확인. **OPEN.**
+  2026-09-24 재시딩 후 `cwc_lh` 5.38 · `cwc_rh` 5.50 · `hwc` 4.50으로 갈린다(Ventum+ 물 버킷 은퇴).
+  참조 도면의 도면 영역 `X` 콜아웃은 seeder가 삭제하고 타이틀블록은 크롭 밖이라 인쇄되지 않으므로
+  우선순위는 낮다. HGRH의 `X`와 같은 양인지 미확인. **OPEN.**
 - **[MVP] R-074 케이싱 dim 2차 출처 확보** `[REVIEW-REQUIRED]` — `casing_width`/`casing_height`는
   CHK Units 시트 **단일출처**라 MEDIUM. 2026-07-08 판정: **코드베이스 내부에 독립 2차 출처가
   없다** — `mechanical_fit.py`(R-078)·`checklist/mapping.py`는 R-074 출력을 소비(순환참조),

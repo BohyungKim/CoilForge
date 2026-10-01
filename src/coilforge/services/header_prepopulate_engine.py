@@ -36,7 +36,7 @@ from coilforge.schemas.header_prepopulate import (
 _RULES_PATH = Path(__file__).resolve().parents[1] / "rules" / "coil_header_rules.yaml"
 
 # Rule IDs handled by dedicated phases rather than the generic constant emitter.
-_NOTES_BASE_IDS = {"R-007", "R-008"}
+_NOTES_BASE_IDS = {"R-008"}  # R-007 (water) retired 2026-09-24
 _NOTES_APPEND_IDS = {"R-080", "R-081", "R-035a", "R-035b", "R-035c"}
 _CASING_DEPTH_IDS = {"R-070", "R-071", "R-072", "R-073"}
 _RETURN_SPACING_IDS = {"R-022", "R-023", "R-052"}
@@ -397,7 +397,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                 ),
             )
 
-    # --- Notes assembly: base (R-007/R-008) then coating append (R-080/R-081) ---
+    # --- Notes assembly: base (R-008) then coating append (R-080/R-081) ---
     # Direct Coil selection has no coating trigger field, so the coating note is
     # always appended to the drawing notes (per John, 2026-06-11).
     # `only_when` is honoured here as well as in the generic emitter: the distributor
@@ -405,7 +405,7 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
     # rule's condition would be inert and BOTH notes would append.
     note_lines: list[str] = []
     note_refs: list[str] = []
-    for rid in ("R-007", "R-008", "R-080", "R-081", "R-035a", "R-035b", "R-035c"):
+    for rid in ("R-008", "R-080", "R-081", "R-035a", "R-035b", "R-035c"):
         rule = index[rid]
         only_when = rule.get("only_when")
         if _applies(rule, request) and (
@@ -422,8 +422,8 @@ def prepopulate(request: HeaderPrepopulateRequest) -> HeaderPrepopulateResponse:
                 value=note_lines,
                 confidence=Confidence.HIGH,
                 evidence_refs=note_refs,
-                # multi-rule (R-007/008 + R-080/081/035x); primary = the base notes rule.
-                rule_id="R-007",
+                # multi-rule (R-008 + R-080/081/035x); primary = the base notes rule.
+                rule_id="R-008",
             ),
         )
 
@@ -658,7 +658,7 @@ def assemble_drawing_notes(request: HeaderPrepopulateRequest) -> list[str]:
 
     Wraps :func:`prepopulate` so callers (the paste-ready "Drawing Notes" field and
     the SVG title block) share ONE source with the drawing. The ``notes`` field is only
-    placed when at least one note rule fires (R-007/008/080/081/035a/035b/035c), so read
+    placed when at least one note rule fires (R-008/080/081/035a/035b/035c), so read
     it with ``.get`` — an unknown product line yields no distributor note (never
     invented). The distributor note needs ``request.hot_gas_bypass`` to pick between
     R-035b and R-035c — a caller that omits it always gets the non-HGBP wording.

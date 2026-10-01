@@ -4089,15 +4089,15 @@ function checklistSizeToPickerToken(unit, size) {
 
 // A value the sheet actually computed. Excel COM hands an error cell (#N/A, #VALUE!) back as
 // a large NEGATIVE integer, so "finite and non-negative" also keeps those out.
+// The sheet's value in the drawing's own datum. Only the water O row differs: the sheet
+// measures the Terra stubout from the opposite end (CH - x), so adopting the raw number
+// would print it on the wrong dimension line (compare.py `checklist_as_drawn`, 2026-09-23).
 function _datumTitle(c) {
   const fmt = (v) => (v === null || v === undefined ? "—" : String(v));
   return `Compared from the header end: CoilForge ${fmt(c.coilforge)} (drawn ${c.coilforge_datum}), `
     + `checklist ${fmt(c.checklist)} (sheet ${c.checklist_datum}) — same stubout, measured from opposite ends`;
 }
 
-// The sheet's value in the drawing's own datum. Only the water O row differs: the sheet
-// measures the Terra stubout from the opposite end (CH - x), so adopting the raw number
-// would print it on the wrong dimension line (compare.py `checklist_as_drawn`, 2026-09-23).
 function checklistValueAsDrawn(entry) {
   const c = entry && entry.compared_from_header_end;
   return c ? c.checklist_as_drawn : entry && entry.checklist;

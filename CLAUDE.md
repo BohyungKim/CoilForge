@@ -602,7 +602,10 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   (R-032) which the shared ConnectionDown-seeded templates can't show, `catalog.py` gained an
   optional `product_family` axis (2-pass match: a dedicated bucket wins, else fall back to the
   shared one) and **11 dedicated Ventum+ templates were seeded from real Ventum+ selection
-  drawings** (`VENTUM_PLUS_TEMPLATES` / `VPLUS_BUCKETS`: DX 5, HGRH 3, HWC 2, CWC 1). A Ventum+
+  drawings** (`VENTUM_PLUS_TEMPLATES` / `VPLUS_BUCKETS`: DX 5, HGRH 3, HWC 2, CWC 1). **The 3
+  water ones were retired 2026-09-24** (John: "Ventum+ 코일도 사실상 다 같아야하는거야 다른
+  코일들하고") — 8 remain (DX 5, HGRH 3) and every Ventum+/Omnia CWC/HWC draws on the shared
+  `coilmaster_{cwc,hwc}_{lh,rh}` art re-seeded that day. A Ventum+
   coil prefers its dedicated bucket; every other line resolves to the shared 22 buckets, and a
   not-yet-seeded Ventum+ **non-DX** combo (HGRH/HWC/CWC) still falls back to the shared bucket.
   A not-yet-seeded Ventum+ **DX** combo, however, is **blocked as "not registered"** (John
@@ -649,7 +652,7 @@ First-class product types: **NOVA, VENTUM_H, VENTUM_PLUS, TERRA_H, TERRA_V**.
   special-case written as `== VENTUM_PLUS` silently drops Omnia, which is what the
   field-by-field `omnia == ventum_plus except flanges` test exists to catch; ③ templates are
   an **alias**, not a seed: `catalog.TEMPLATE_FAMILY_ALIAS = {"OMNIA": "VENTUM_PLUS"}` answers
-  an Omnia selection from the 11 dedicated Ventum+ buckets (bucket count unchanged;
+  an Omnia selection from the 8 dedicated Ventum+ buckets (bucket count unchanged;
   `dedicated_family_template` records the BUCKET family `VENTUM_PLUS`), and the DX
   not-registered / R-032 gates in `submittal_to_drawing.py` key on `_VENTUM_PLUS_CLASS`;
   ④ detection needs no regex — `R-076 OMNIA: [OW050 … OW085]` puts the token into
@@ -813,7 +816,7 @@ Until then, the code differs as follows — do not assume the target is implemen
 | --- | --- | --- |
 | Product family enum | `ProductFamily {NOVA, TERRA, VENTUM_H, VENTUM_PLUS}` + `TerraVariant {TERRA_H, TERRA_H_C, TERRA_V}` (`schemas/header_prepopulate.py`) | Split `TERRA` → `TERRA_H` + `TERRA_V`; demote `TERRA_H_C` to a sub-variant of Terra H |
 | 4HD buckets | ✅ Resolved 2026-06-21 — DX/HGRH header-4 LH+RH seeded from real reference PDFs (`catalog.ACTIVE_TEMPLATES`); the `placeholder_blocked` branch is inert | Was `needs_pair`; now seeded — aligned |
-| Ventum+ | ✅ Fork implemented 2026-07-06 — optional `product_family` axis in `catalog.py` + 11 dedicated Ventum+ templates seeded (DX 5, HGRH 3, HWC 2, CWC 1); unseeded **non-DX** combos + other lines fall back to shared, unseeded **DX** blocked as not-registered (2026-07-14, R-032 UP) | Ventum+ prefers its own seeded buckets (captures R-032 UP distributor); shared fallback keeps every other line unchanged |
+| Ventum+ | ✅ Fork implemented 2026-07-06 — optional `product_family` axis in `catalog.py` + 11 dedicated Ventum+ templates seeded (DX 5, HGRH 3, HWC 2, CWC 1), water 3 retired 2026-09-24 → 8; unseeded **non-DX** combos + other lines fall back to shared, unseeded **DX** blocked as not-registered (2026-07-14, R-032 UP) | Ventum+ prefers its own seeded buckets (captures R-032 UP distributor); shared fallback keeps every other line unchanged |
 | Coverage checklist | ✅ Resolved 2026-07-14 — `scripts/generate_coverage_dashboard.py` generates `docs/coverage_dashboard.html` from `catalog.list_template_entries()` (+ `--check` drift guard) | Was hand-authored snapshot; now generated — aligned |
 
 ## Conventions
@@ -941,6 +944,15 @@ column. The rules that keep it legible — and the precedent for any future view
   **Approved addition, 2026-09-23 (John: "A 시딩 지금 해주고 … Terra 전용"):** two NEW buckets
   `coilmaster_terra_hwc_{lh,rh}` seeded into new folders from `Case/feed/terra_hwc_{lh,rh}/`
   (`TERRA_HWC_LH/RH.pdf`, `HW-A-F-03-11-15.00x22.50-L/R`) — again no existing template touched.
+  **Approved OVERWRITE, 2026-09-24 (John: "존재하는 DRAWING OVERWRITE" + plan approval):** the four
+  SHARED water buckets `coilmaster_{cwc,hwc}_{lh,rh}` re-seeded in place from `Case/feed/{cwc,hwc}_{lh,rh}/`
+  (`CCWC_LH/RH.pdf` = `CW-A-F-06-10-18.00x36.00-L/R`, `HHWC_LH/RH.pdf` = `HW-A-F-03-12-21.00x41.00-L/R`)
+  with `_WATER_SUPPLY_CALLOUTS`. Same 35 slots, zero baked callouts, seed O2 = I1 → still
+  `header_side`. The new art's fixed text follows the Terra references: `LIFTING LUGS REQUIRED`
+  (was `COLLARED HOLES REQUIRED`), empty `NOTES:` (the old vent/drain note is gone),
+  `Stacking Flanges: True`. Same day the 3 Ventum+ water buckets were retired (`git rm`), so
+  these four draw EVERY non-Terra CWC/HWC, and R-007 (the water "Vent & Drain installed <= 3\""
+  note) was retired from the engine — a water coil now carries no notes field at all.
 - The rendered review-aid drawing's dimension-callout labels are remapped to Direct-Coil terms
   at render time by `drawing/label_authority.py::direct_coil_label` (applied in
   `workflows/submittal_to_drawing.py::_clean_callout`) — **not** taken from the EZ-coil-seeded
