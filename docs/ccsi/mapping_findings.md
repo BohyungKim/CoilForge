@@ -265,6 +265,17 @@ capacity, 0/7 on Standard (Likely; not re-derived here).
   altitude CCSI locked to 0; ordered coils selected on Standard will now show an `ACFM` mismatch. Neither
   is a CoilForge defect — a gate cause "air basis" is the open follow-up.
 - **Standard (SCFM) is parked on the roadmap as a suspect area** (John 2026-10-01), not adopted.
+- **Gate cause `air_basis` (not a defect), measured 2026-10-01** on the fresh cross-check (107 projects; the
+  three slow submittals 2982 / 3037 / 3191 finished this time). Applies only when the ordered report's basis
+  is Standard: the `ACFM` row (DX 44 · HGRH 28 · HWC 10 · CWC 3 Standard orders), `Altitude` locked to 0
+  (**all** DX 17 / HGRH 12 former "unexplained" — the lock, as predicted), and the rating (`Capacity` /
+  `LeavingDryBulb`). Defects left on those four fields: DX Capacity 18 / LDB 13, HGRH 4 / 2, HWC Altitude 2
+  (3032 PHWC-1 1056 vs 1061; 3154 HHWC-1 13 vs 0 on an Actual order) — read-back fields, real rating gaps.
+  Proposal shifts: DX / HGRH `Altitude` demote_candidate -> supported; `ACFM` no_source -> insufficient.
+- **New, unrelated to the basis:** DX `CoilHand` supported -> demote_candidate from ONE coil now in the
+  corpus — 2982 CDXC-2 CoilForge `Left` vs order `Right` (CDXC-1 / -3 of the same project match; no REV0, and
+  the submittal was picked heuristically). Extraction error vs order-time change is Unknown — John to check
+  before any demotion.
 
 ## Implementation already in scope (no decision needed)
 
