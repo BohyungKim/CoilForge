@@ -113,15 +113,18 @@ Tolerance sensitivity — one (F, tol) pair drives both families, and DX sits on
 
 ## Air flow basis — decided (John 2026-10-01)
 
-CCSI's `Air flow basis` for a Direct Coil selection is **Standard (SCFM)**. (John first said
-ACFM — "it used to be SCFM with Coilmaster; we decided to use ACFM with Direct Coil" — and
-corrected it the same day: "we should go with SCFM instead".)
+CCSI's `Air flow basis` for a Direct Coil selection is **Actual (ACFM)** — the same ruling the
+CCSI coil-data maps carry (`docs/ccsi/mapping_findings.md`, "Air flow basis = Actual").
 
-The corpus does not line up with that rule, and John explained why: "ideally it should've
-calculated with SCFM but we've been calculating all with ACFM for direct coil — that's why
-that difference is happening." So Standard is the intended basis, and Actual is what the
-Direct Coil selections have in practice been calculated on. The submittals' own numbers moved
-from Standard to Actual around project 2900–3100, and the orders followed part of the way:
+John: "it used to be SCFM with Coilmaster; we decided to use ACFM with Direct Coil", and
+"ideally it should've calculated with SCFM but we've been calculating all with ACFM for direct
+coil — that's why that difference is happening." Standard (SCFM) would be the ideal basis; it
+is parked on the roadmap as a suspect area and **not adopted**. (An earlier revision of this
+page recorded Standard as decided. That was this session's misreading of a same-day
+correction; John confirmed Actual when the two sessions' records were found to disagree.)
+
+The corpus shows the switch. The submittals' own numbers moved from Standard to Actual around
+project 2900–3100, and the orders followed part of the way:
 
 | Project number | Submittal heating coils fit: standard / actual / both / neither | Ordered CCSI basis: Actual / Standard |
 |---|---|---|
@@ -132,20 +135,20 @@ from Standard to Actual around project 2900–3100, and the orders followed part
 
 What this changes for a reader of the checks:
 
-- `air_basis: standard` or `indeterminate`: the submittal's capacity is on the basis CCSI
-  will rate on.
-- `air_basis: actual`: the submittal's capacity was computed on actual air. Rated in CCSI on
-  Standard, the capacity will not reproduce. Measured on ordered heating coils whose submittal
-  fits Actual only: CCSI on Actual matched the submittal's capacity on 26 of 26; CCSI on
-  Standard matched on 0 of 7. Every evaluable heating coil from project 3100 on is `actual`
-  or `indeterminate` (21 and 6), so this is the normal case for a current submittal.
-- It is still `consistent`: the check asks whether the submittal agrees with itself, not
-  which basis CCSI should use. The checks accept both bases.
+- `air_basis: actual` or `indeterminate`: the submittal's capacity is on the basis CCSI will
+  rate on. This is the normal case for a current submittal — every evaluable heating coil from
+  project 3100 on is one or the other (21 and 6). Ordered heating coils whose submittal fits
+  Actual only: CCSI on Actual reproduced the submittal's capacity on 26 of 26, CCSI on
+  Standard on 0 of 7.
+- `air_basis: standard`: the submittal's capacity was computed on standard air (an older
+  submittal). Rated in CCSI on Actual, the capacity will differ by the air-density ratio.
+- Either way the finding is `consistent`: the check asks whether the submittal agrees with
+  itself, not which basis CCSI should use. The checks accept both bases.
 
-Altitude follows the basis. On Standard, CCSI locks the altitude field at 0 even when the
-submittal states one (49 of 130 Standard orders). So with this rule the altitude is not a
-value to push: the form reports it locked, which is expected, and the order cross-check's
-"altitude mismatch" rows are that lock, not an extraction error.
+Altitude follows the basis. On Actual orders CCSI carries the submittal's altitude (148 of
+149 coils); on Standard it locks the field at 0 even when the submittal states one (49 of 130
+Standard orders). So the basis has to be set before the altitude, and the order cross-check's
+"altitude mismatch" rows are that lock on Standard-selected orders, not an extraction error.
 
 ## Open decisions (John)
 
