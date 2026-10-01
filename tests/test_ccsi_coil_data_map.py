@@ -152,6 +152,24 @@ def test_every_map_file_honours_the_contract(coil_type) -> None:
             assert entry.options and (entry.transform.startswith("option_") or entry.transform == "value_map"), ccsi_id
         if entry.value_map is not None:
             assert set(entry.value_map.values()) <= set(entry.options or []), f"{ccsi_id}: value_map leaves the CCSI list"
+        if entry.style_path is not None:
+            # a fallback for an empty canonical_path, never a source of its own
+            assert entry.canonical_path is not None and entry.style_map, ccsi_id
+            assert entry.style_path in _INTAKE_TARGETS, f"{ccsi_id}: {entry.style_path} is not an intake field"
+            assert set(entry.style_map.values()) <= set(entry.options or []), f"{ccsi_id}: style_map leaves the CCSI list"
+            assert all(key == key.casefold() for key in entry.style_map), f"{ccsi_id}: style_map keys are casefolded"
+        if entry.substitutions is not None:
+            # a replacement must itself be something this form's list can take
+            for stated, replacement in entry.substitutions.items():
+                assert stated == stated.casefold(), f"{ccsi_id}: substitution keys are casefolded"
+                if entry.transform == "option_material_gauge":  # a gauge moves only for a named material
+                    assert len(stated.split()) >= 2, f"{ccsi_id}: {stated!r} must be '<material> <gauge>'"
+                assert any(replacement.casefold() in option.casefold() for option in entry.options or []), (
+                    f"{coil_type}/{ccsi_id}: {replacement!r} is not on the CCSI list")
+            assert entry.mapping_status == "validated" and entry.evidence, f"{ccsi_id}: a substitution is John's call"
+        if entry.material is not None:
+            assert entry.transform == "option_material_gauge" and entry.evidence, ccsi_id
+            assert any(option.casefold().startswith(entry.material.casefold()) for option in entry.options or []), ccsi_id
         promoted = entry.mapping_status != "captured"
         assert promoted == (ccsi_id in JOHN_APPROVED_VALIDATED.get(coil_type, set())), (
             f"{coil_type}/{ccsi_id}: promotion is John's call — only his approved list may leave 'captured'"
@@ -200,6 +218,18 @@ for _type, _ids in _ORDER_2026_09_30.items():
 # John 2026-10-01: CCSI air flow basis = Actual (Direct Coil selections are calculated in ACFM), every form.
 for _type in JOHN_APPROVED_VALIDATED:
     JOHN_APPROVED_VALIDATED[_type] = JOHN_APPROVED_VALIDATED[_type] | {"ACFM"}
+# John 2026-10-01 ("complete the mapping"; ordered + quoted CCSI reports paired per coil): tube / fin
+# material on DX and HGRH (fin 0.0075 -> 0.008 and Sine -> Corrugated as substitutions); on the water
+# forms feeds from the submittal's Circuits, the fin from its Fin Thickness, the tube as a default,
+# Altitude (it rides the Actual air basis), and CWC CoilQuantity.
+_MAPPING_2026_10_01 = {
+    "DX": {"TubeMaterial", "FinMaterial"},
+    "HGRH": {"FinMaterial"},
+    "CWC": {"NumberOfFeeds", "TubeMaterial", "FinMaterial", "Altitude", "CoilQuantity"},
+    "HWC": {"NumberOfFeeds", "TubeMaterial", "FinMaterial", "Altitude"},
+}
+for _type, _ids in _MAPPING_2026_10_01.items():
+    JOHN_APPROVED_VALIDATED[_type] = JOHN_APPROVED_VALIDATED[_type] | _ids
 # D3: CCSI calculates connection sizes — never pushable, on every form.
 _D3_CONNECTION_SIZES = {"DX": {"DXReturnConnectionSize"},
                         "HGRH": {"CondenserSupplyConnectionSize", "CondenserReturnConnectionSize"},
@@ -220,10 +250,13 @@ def test_only_johns_validated_fields_are_pushable_on_the_real_map() -> None:
     assert pushable <= JOHN_APPROVED_VALIDATED["DX"]
     by = _by_id(entries)
     assert by["EnteringDryBulb"].reason_code == "CCSI_OK" and by["EnteringDryBulb"].value == "95"
-    # a still-captured mapping resolves (so validation can compare it) but is never pushed
-    # (CoilHand, then CoilQuantity served here until John promoted them on 2026-09-30; FinMaterial is still captured)
-    assert by["FinMaterial"].reason_code == "CCSI_NOT_VALIDATED"
-    assert by["FinMaterial"].value == "Aluminum 0.008" and not by["FinMaterial"].pushable
+    assert by["FinMaterial"].reason_code == "CCSI_OK" and by["FinMaterial"].value == "Aluminum 0.008"
+    # a still-captured mapping resolves (so validation can compare it) but is never pushed. Every DX
+    # input with a source is promoted since 2026-10-01, so the HWC form's Leaving Dry Bulb carries the
+    # pin now (CoilHand, CoilQuantity and FinMaterial served here before John promoted them).
+    leaving = {"leaving_dry_bulb_f": {"value": 95, "status": "review_required"}}
+    captured = _by_id(resolve_coil_data(leaving, coil_type="HWC"))["LeavingDryBulb"]
+    assert captured.reason_code == "CCSI_NOT_VALIDATED" and captured.value == "95" and not captured.pushable
     assert by["CoilQuantity"].reason_code == "CCSI_OK" and by["CoilQuantity"].pushable  # order cross-check "A"
     assert by["CoilHand"].reason_code == "CCSI_OK" and by["CoilHand"].pushable
 
@@ -243,16 +276,17 @@ _BASE = {
     ("surface", "gauge"),
     [("Sine", "0.008"), ("Flat", "0.0075"), ("Sine", "0.0075")],  # 3183 is the last one
 )
-def test_unbuildable_fin_withholds_rows_fpi_and_fin(validated_map, surface, gauge) -> None:
+def test_unbuildable_fin_withholds_only_fpi(validated_map, surface, gauge) -> None:
+    # John 2026-10-01 narrowed D7: on the ordered selections rows survive the fin change (41/46 equal)
+    # and the fin is substituted predictably, while FPI is what gets re-optimised (16/45 equal).
     src = {**_BASE, "fin_surface": {"value": surface, "status": "review_required"},
-           "fin_material": {"value": gauge, "status": "review_required"}}
+           "fin_material": {"value": gauge, "unit": "Aluminum", "status": "review_required"}}
     by = _by_id(resolve_coil_data(src))
-    for ccsi_id in ("RowsDeep", "FinsPerInch"):
-        assert by[ccsi_id].reason_code == "CCSI_GEOMETRY_RESELECT", ccsi_id
-        assert not by[ccsi_id].pushable
-        assert by[ccsi_id].value is not None  # still resolved so the cross-check shows the difference
-    assert not by["FinSurface"].pushable and not by["FinMaterial"].pushable
-    for ccsi_id in ("FinnedHeight", "NumberOfFeeds", "EnteringDryBulb"):
+    assert by["FinsPerInch"].reason_code == "CCSI_GEOMETRY_RESELECT" and not by["FinsPerInch"].pushable
+    assert by["FinsPerInch"].value == "9"  # still resolved so the cross-check shows the difference
+    assert (by["FinSurface"].value, by["FinSurface"].pushable) == ("Corrugated" if surface == "Sine" else "Flat", True)
+    assert (by["FinMaterial"].value, by["FinMaterial"].pushable) == ("Aluminum 0.008", True)
+    for ccsi_id in ("RowsDeep", "FinnedHeight", "NumberOfFeeds", "EnteringDryBulb"):
         assert by[ccsi_id].pushable, f"{ccsi_id} survives a re-selection and must still go"
 
 
@@ -270,10 +304,13 @@ def test_absent_fin_is_not_evidence_for_the_gate(validated_map) -> None:
 def test_gate_uses_each_forms_own_fin_list() -> None:
     from coilforge.ccsi.coil_data_map import geometry_reselect_reason
 
-    # the water forms offer no 0.005 fin, the DX form does
-    src = {"fin_material": {"value": "0.005", "status": "review_required"}}
+    # the water forms offer no 0.005 fin, the DX form does — and each form's gate reads the fin
+    # from the key its own FinMaterial entry resolves from (water: the submittal's Fin Thickness)
+    src = {"fin_material": {"value": "0.005", "status": "review_required"},
+           "geometry.fin_thickness_in": {"value": 0.005, "unit": "in", "status": "review_required"}}
     assert geometry_reselect_reason(src, load_coil_data_map("DX")) is None
     assert "0.005" in (geometry_reselect_reason(src, load_coil_data_map("CWC")) or "")
+    assert geometry_reselect_reason({"fin_material": src["fin_material"]}, load_coil_data_map("CWC")) is None
 
 
 def test_computed_and_locked_fields_are_never_pushable(validated_map) -> None:
@@ -300,7 +337,7 @@ def test_spelling_and_format_normalizations(validated_map) -> None:
     [
         ("fin_material", "0.008", "FinMaterial"),  # thickness without material — never assume aluminum
         ("tube_material", "0.016", "TubeMaterial"),
-        ("fin_surface", "Sine", "FinSurface"),  # no CCSI equivalent
+        ("fin_surface", "Louvered", "FinSurface"),  # no CCSI equivalent (Sine left 2026-10-01: a substitution)
         ("fins_per_inch", 8.5, "FinsPerInch"),  # integer-only list, never rounded
         ("return_connection_size", 1.1, "DXReturnConnectionSize"),  # not a sixteenth
         # CoilCoating left this list on 2026-09-30 (John): a coating off the dropdown now selects
@@ -346,15 +383,14 @@ def test_material_and_gauge_land_on_the_exact_ccsi_option(coil_type, sources, cc
     assert entry.review_required
 
 
-def test_only_hgrh_tube_material_is_promoted() -> None:
-    # John 2026-09-30 (D1 "A"): HGRH TubeMaterial 3/3 match -> validated. DX TubeMaterial (3232 is the
-    # D5 CCSI re-selection) and both FinMaterials (2 projects; 3183 is 0.0075) stay captured.
+def test_tube_and_fin_material_are_promoted_on_dx_and_hgrh() -> None:
+    # HGRH TubeMaterial: John 2026-09-30 (D1 "A"). The other three: John 2026-10-01, on the ordered
+    # CCSI reports paired per coil.
     src = {"tube_material": _gauge(0.016, "Copper"), "fin_material": _gauge(0.008, "Aluminum"), **_SMOOTH}
     hgrh = _by_id(resolve_coil_data(src, coil_type="HGRH"))
     dx = _by_id(resolve_coil_data(src, coil_type="DX"))
-    assert hgrh["TubeMaterial"].reason_code == "CCSI_OK" and hgrh["TubeMaterial"].pushable
-    for by, ccsi_id in ((hgrh, "FinMaterial"), (dx, "TubeMaterial"), (dx, "FinMaterial")):
-        assert by[ccsi_id].reason_code == "CCSI_NOT_VALIDATED" and not by[ccsi_id].pushable, ccsi_id
+    for by, ccsi_id in ((hgrh, "TubeMaterial"), (hgrh, "FinMaterial"), (dx, "TubeMaterial"), (dx, "FinMaterial")):
+        assert by[ccsi_id].reason_code == "CCSI_OK" and by[ccsi_id].pushable, ccsi_id
     # promotion does not loosen the rule: no stated surface is still never pushed
     bare = _by_id(resolve_coil_data({"tube_material": _gauge(0.016, "Copper")}, coil_type="HGRH"))["TubeMaterial"]
     assert bare.reason_code == "CCSI_OPTION_UNMAPPED" and not bare.pushable
@@ -363,7 +399,10 @@ def test_only_hgrh_tube_material_is_promoted() -> None:
 @pytest.mark.parametrize(
     ("sources", "ccsi_id", "why"),
     [
-        ({"fin_material": _gauge(0.0075, "Aluminium")}, "FinMaterial", "0.0075"),  # never rounded to 0.008
+        ({"fin_material": _gauge(0.0065, "Aluminium")}, "FinMaterial", "0.0065"),  # an unlisted gauge is never rounded
+        ({"fin_material": _gauge(0.0075)}, "FinMaterial", "no material"),  # a substitution never supplies the material
+        # the 0.0075 -> 0.008 substitution was approved on Aluminum orders only; no other material rides it
+        ({"fin_material": _gauge(0.0075, "Copper")}, "FinMaterial", "Copper 0.0075"),
         ({"fin_material": _gauge(0.008)}, "FinMaterial", "no material"),  # never assume aluminum
         ({"tube_material": _gauge(0.016, "Copper")}, "TubeMaterial", "not stated"),  # Plain vs Rifled never assumed
         ({"tube_material": _gauge(0.016, "Copper"), TUBE_SURFACE_SOURCE: {"value": "Enhanced", "status": "review_required"}},
@@ -390,11 +429,99 @@ def test_a_lone_surface_candidate_is_still_never_assumed() -> None:
     )
 
 
-def test_a_resolved_fin_is_still_withheld_by_the_reselect_gate(validated_map) -> None:
-    src = {**_BASE, "fin_surface": {"value": "Sine", "status": "review_required"},
-           "fin_material": _gauge(0.008, "Aluminum")}
-    fin = _by_id(resolve_coil_data(src))["FinMaterial"]
-    assert fin.reason_code == "CCSI_GEOMETRY_RESELECT" and fin.value == "Aluminum 0.008" and not fin.pushable
+@pytest.mark.parametrize("coil_type", ["DX", "HGRH"])
+def test_the_fin_ccsi_cannot_build_is_sent_as_the_ordered_substitute(coil_type) -> None:
+    # 0.0075 is not a CCSI gauge and Sine is not a CCSI surface; the ordered selections carry
+    # Aluminum 0.008 and Corrugated for them (John approved 2026-10-01).
+    src = {"fin_material": _gauge(0.0075, "Aluminium"), "fin_surface": {"value": "Sine", "status": "review_required"}}
+    by = _by_id(resolve_coil_data(src, coil_type=coil_type))
+    assert (by["FinMaterial"].value, by["FinMaterial"].pushable) == ("Aluminum 0.008", True)
+    assert (by["FinSurface"].value, by["FinSurface"].pushable) == ("Corrugated", True)
+    for ccsi_id, stated in (("FinMaterial", "0.0075"), ("FinSurface", "Sine")):
+        assert stated in by[ccsi_id].reason and "sent in its place" in by[ccsi_id].reason  # the reviewer sees it
+        assert str(by[ccsi_id].source_value) == stated  # what the submittal said is still reported
+
+
+# --- water coils (John 2026-10-01): feeds, fin and tube ------------------------------
+
+_FIN_THICKNESS = "geometry.fin_thickness_in"
+_WATER = {
+    "geometry.circuits": {"value": 2, "status": "review_required"},
+    _FIN_THICKNESS: {"value": 0.008, "unit": "in", "status": "review_required"},
+}
+
+
+def _thickness(value):
+    return {_FIN_THICKNESS: {"value": value, "unit": "in", "status": "review_required"}}
+
+
+@pytest.mark.parametrize("coil_type", ["CWC", "HWC"])
+def test_water_feeds_fin_and_tube(coil_type) -> None:
+    by = _by_id(resolve_coil_data(_WATER, coil_type=coil_type))
+    # the submittal's Circuits is CCSI's Number Of Feeds
+    feeds = by["NumberOfFeeds"]
+    assert (feeds.value, feeds.source_key, feeds.pushable) == ("2", "geometry.circuits", True)
+    # Fin Thickness is printed without a material ("in" is its unit, not one); the entry names Aluminum
+    fin = by["FinMaterial"]
+    assert (fin.value, fin.source_key, fin.pushable) == ("Aluminum 0.008", _FIN_THICKNESS, True)
+    # the tube is never stated on a water submittal: the default profile, flagged as one
+    tube = by["TubeMaterial"]
+    assert (tube.value, tube.reason_code, tube.pushable) == ("Copper 0.018 Plain", "CCSI_DEFAULT_PROFILE", True)
+    assert by["FinsPerInch"].reason_code != "CCSI_GEOMETRY_RESELECT"  # a buildable fin does not trip D7
+
+
+@pytest.mark.parametrize("coil_type", ["CWC", "HWC"])
+def test_water_fin_thickness_lands_on_the_ccsi_gauge(coil_type) -> None:
+    assert _by_id(resolve_coil_data(_thickness(0.01), coil_type=coil_type))["FinMaterial"].value == "Aluminum 0.010"
+    src = {**_thickness(0.0075), "fins_per_inch": {"value": 12, "status": "review_required"}}
+    by = _by_id(resolve_coil_data(src, coil_type=coil_type))
+    assert (by["FinMaterial"].value, by["FinMaterial"].pushable) == ("Aluminum 0.008", True)
+    # the same D7 rule as DX / HGRH: a substituted fin withholds FPI, and only FPI
+    assert by["FinsPerInch"].reason_code == "CCSI_GEOMETRY_RESELECT" and not by["FinsPerInch"].pushable
+    assert by["FinsPerInch"].value == "12"
+
+
+@pytest.mark.parametrize("coil_type", ["CWC", "HWC"])
+@pytest.mark.parametrize("key", cdm.FIN_MATERIAL_SOURCES)
+def test_a_stated_fin_material_is_never_replaced_by_the_maps_aluminum(coil_type, key) -> None:
+    # the entry's ``material`` fills in for a thickness printed WITHOUT one — nothing more
+    def fin(source):
+        return _by_id(resolve_coil_data({**_thickness(0.008), key: source}, coil_type=coil_type))["FinMaterial"]
+
+    for stated in (_gauge(0.008, "Copper"), _gauge("Copper 0.008"), _gauge(0.006, "Coated aluminum")):
+        copper = fin(stated)
+        assert copper.reason_code == "CCSI_OPTION_UNMAPPED" and copper.value is None and not copper.pushable
+        assert "only for a thickness printed without a material" in copper.reason
+    conflict = fin({"value": None, "status": "blocked", "blocked_reason": "conflicting sources"})
+    assert conflict.reason_code == "CCSI_OPTION_UNMAPPED" and "not assumed over it" in conflict.reason
+    # the same material, a bare gauge, or plain absence leave the approved mapping standing
+    absent = {"value": None, "status": "blocked", "blocked_reason": "required canonical field missing"}
+    for agreeing in (_gauge(0.008, "Aluminium"), _gauge(0.008), absent):
+        assert (fin(agreeing).value, fin(agreeing).pushable) == ("Aluminum 0.008", True)
+
+
+def test_the_stated_fin_material_sources_are_real_fields() -> None:
+    draft_key, canonical = cdm.FIN_MATERIAL_SOURCES
+    assert draft_key in DIRECT_COIL_FIELD_REGISTRY and canonical in _INTAKE_TARGETS
+
+
+@pytest.mark.parametrize("coil_type", ["CWC", "HWC"])
+def test_water_values_that_are_absent_or_unlisted_are_not_guessed(coil_type) -> None:
+    by = _by_id(resolve_coil_data({}, coil_type=coil_type))
+    for ccsi_id in ("NumberOfFeeds", "FinMaterial"):
+        assert by[ccsi_id].reason_code == "CCSI_SOURCE_MISSING" and not by[ccsi_id].pushable, ccsi_id
+    odd = _by_id(resolve_coil_data(_thickness(0.0065), coil_type=coil_type))["FinMaterial"]
+    assert odd.reason_code == "CCSI_OPTION_UNMAPPED" and odd.value is None
+    blocked = {_FIN_THICKNESS: {"value": 0.008, "unit": "in", "status": "blocked", "blocked_reason": "conflict"}}
+    assert _by_id(resolve_coil_data(blocked, coil_type=coil_type))["FinMaterial"].reason_code == "CCSI_SOURCE_BLOCKED"
+    # a stated tube always wins over the default, and a stated tube off the list stays unmapped
+    stated = {"tube_material": {"value": "Copper 0.020 Plain", "status": "review_required"}}
+    assert _by_id(resolve_coil_data(stated, coil_type=coil_type))["TubeMaterial"].value == "Copper 0.020 Plain"
+    off = {"tube_material": {"value": "Steel 0.049", "status": "review_required"}}
+    tube = _by_id(resolve_coil_data(off, coil_type=coil_type))["TubeMaterial"]
+    assert tube.reason_code == "CCSI_OPTION_UNMAPPED" and tube.value is None and not tube.pushable
+    conflict = {"tube_material": {"value": None, "status": "blocked", "blocked_reason": "conflicting sources"}}
+    assert _by_id(resolve_coil_data(conflict, coil_type=coil_type))["TubeMaterial"].reason_code == "CCSI_SOURCE_BLOCKED"
 
 
 def test_ledger_replay_reads_the_material_unit_and_the_stated_tube_surface() -> None:
@@ -431,6 +558,8 @@ def test_ledger_replay_reads_the_material_unit_and_the_stated_tube_surface() -> 
 
 @pytest.mark.parametrize(("coil_type", "circuits", "expected"), [
     ("DX", 1, "Single-Circuit"), ("DX", 2, "Dual-Circuit Intertwined"), ("HGRH", 1, "Single-Circuit"),
+    # John approved 2026-10-01 (System Type fix), observed on ordered reports: 17/17 and 8/8 coils.
+    ("DX", 3, "3-Circuit Intertwined"), ("HGRH", 2, "Dual-Circuit Face-Split"),
 ])
 def test_system_type_follows_circuits(coil_type, circuits, expected) -> None:
     src = {"geometry.circuits": {"value": circuits, "status": "review_required"}}
@@ -438,11 +567,81 @@ def test_system_type_follows_circuits(coil_type, circuits, expected) -> None:
     assert entry.value == expected and entry.pushable
 
 
-@pytest.mark.parametrize(("coil_type", "circuits"), [("DX", 3), ("HGRH", 2)])
+# DX 4 is observed but SPLIT across orders (4-Circuit Face-Split 4 / 3-Circuit Intertwined 2), so it
+# is not mapped either; HGRH 3 has never been seen. (DX 3 and HGRH 2 stood here until 2026-10-01,
+# when the ordered reports showed them 17/17 and 8/8.)
+@pytest.mark.parametrize(("coil_type", "circuits"), [("DX", 4), ("HGRH", 3)])
 def test_unobserved_circuit_count_is_unmapped_not_guessed(coil_type, circuits) -> None:
     src = {"geometry.circuits": {"value": circuits, "status": "review_required"}}
     entry = _by_id(resolve_coil_data(src, coil_type=coil_type))["RefrigerationSystemType"]
     assert entry.reason_code == "CCSI_OPTION_UNMAPPED" and not entry.pushable
+
+
+_COIL_STYLE = "manufacturing_options.coil_style"
+
+
+@pytest.mark.parametrize("coil_type", ["DX", "HGRH"])
+def test_standard_coil_style_is_a_single_circuit(coil_type) -> None:
+    # A one-circuit submittal prints no circuit count: Coil Style is "Standard" and geometry.circuits
+    # is empty. Ordered reports: Single-Circuit on 93/93 DX and 80/80 HGRH such coils (John approved 2026-10-01).
+    src = {_COIL_STYLE: {"value": " standard ", "status": "review_required"}}
+    entry = _by_id(resolve_coil_data(src, coil_type=coil_type))["RefrigerationSystemType"]
+    assert (entry.value, entry.reason_code, entry.pushable) == ("Single-Circuit", "CCSI_OK", True)
+    assert entry.source_key == _COIL_STYLE and entry.source_value == "standard"
+    assert "no circuit count" in entry.reason
+
+
+@pytest.mark.parametrize(("coil_type", "style"), [("DX", "Intertwined (x2)"), ("HGRH", "Face Split"), ("DX", "Custom")])
+def test_a_coil_style_without_a_count_that_is_not_standard_stays_unmapped(coil_type, style) -> None:
+    # 2944 "Intertwined (x2)" and 2950 "Face Split" were ordered as DUAL circuits: a style that states
+    # no count must never fall to Single-Circuit just because the count is missing.
+    src = {_COIL_STYLE: {"value": style, "status": "review_required"}}
+    entry = _by_id(resolve_coil_data(src, coil_type=coil_type))["RefrigerationSystemType"]
+    assert entry.reason_code == "CCSI_OPTION_UNMAPPED" and entry.value is None and not entry.pushable
+
+
+@pytest.mark.parametrize(("coil_type", "circuits", "style"), [
+    ("DX", 3, "Face Split 3 Circuits"),   # would have gone out as 3-Circuit Intertwined
+    ("DX", 2, "Dual Face Split"),         # would have gone out as Dual-Circuit Intertwined
+    ("HGRH", 2, "Interlaced 2 Circuits"), # would have gone out as Dual-Circuit Face-Split
+])
+def test_a_style_naming_another_arrangement_is_not_sent_as_the_mapped_one(coil_type, circuits, style) -> None:
+    src = {"geometry.circuits": {"value": circuits, "status": "review_required"},
+           _COIL_STYLE: {"value": style, "status": "review_required"}}
+    entry = _by_id(resolve_coil_data(src, coil_type=coil_type))["RefrigerationSystemType"]
+    assert entry.reason_code == "CCSI_OPTION_UNMAPPED" and not entry.pushable
+    assert "different arrangement" in entry.reason
+
+
+@pytest.mark.parametrize(("coil_type", "circuits", "style", "expected"), [
+    ("DX", 2, "Interlaced 2 Circuits", "Dual-Circuit Intertwined"), ("DX", 2, "Dual Interlaced", "Dual-Circuit Intertwined"),
+    ("DX", 3, "Interlaced 3 Circuits", "3-Circuit Intertwined"), ("DX", 1, "Single-circuit", "Single-Circuit"),
+    ("HGRH", 2, "Face Split 2 Circuits", "Dual-Circuit Face-Split"), ("HGRH", 2, "Dual Face Split", "Dual-Circuit Face-Split"),
+])
+def test_the_styles_seen_on_ordered_coils_still_resolve(coil_type, circuits, style, expected) -> None:
+    src = {"geometry.circuits": {"value": circuits, "status": "review_required"},
+           _COIL_STYLE: {"value": style, "status": "review_required"}}
+    entry = _by_id(resolve_coil_data(src, coil_type=coil_type))["RefrigerationSystemType"]
+    assert entry.value == expected and entry.pushable
+
+
+def test_a_stated_circuit_count_wins_over_the_coil_style() -> None:
+    src = {"geometry.circuits": {"value": 2, "status": "review_required"},
+           _COIL_STYLE: {"value": "Standard", "status": "review_required"}}
+    entry = _by_id(resolve_coil_data(src))["RefrigerationSystemType"]
+    assert entry.value == "Dual-Circuit Intertwined" and entry.source_key == "geometry.circuits"
+
+
+@pytest.mark.parametrize("src", [
+    {"geometry.circuits": {"value": None, "status": "blocked", "blocked_reason": "conflicting circuit counts"},
+     _COIL_STYLE: {"value": "Standard", "status": "review_required"}},
+    {_COIL_STYLE: {"value": "Standard", "status": "blocked", "blocked_reason": "ambiguous"}},
+    {},
+])
+def test_a_blocked_or_absent_source_never_becomes_a_single_circuit(src) -> None:
+    entry = _by_id(resolve_coil_data(src))["RefrigerationSystemType"]
+    assert entry.value is None and not entry.pushable
+    assert entry.reason_code in {"CCSI_SOURCE_BLOCKED", "CCSI_SOURCE_MISSING"}
 
 
 def test_the_oxygen8_unit_system_is_never_the_ccsi_system_type() -> None:
@@ -533,13 +732,13 @@ def test_ledger_replay_tallies_reason_codes_per_field() -> None:
 
     coils = [
         {"project": "P1", "tag": "CDXC-1", "sources": LEDGER_3025_CDXC1},
-        {"project": "P2", "tag": "CDXC-1", "sources": {"tag": "CDXC-1", "fin_surface": {"value": "Sine", "status": "review_required"}}},
+        {"project": "P2", "tag": "CDXC-1", "sources": {"tag": "CDXC-1", "fin_surface": {"value": "Louvered", "status": "review_required"}}},
     ]
     report = replay.build_report(coils, "DX")
     assert report["coils"] == 2 and report["projects"] == 2
     fin = report["fields"]["FinSurface"]
     assert fin["reason_counts"] == {"CCSI_OK": 1, "CCSI_OPTION_UNMAPPED": 1}  # FinSurface validated 2026-09-30
-    assert fin["off_vocabulary"] == {"'Sine'": 1}
+    assert fin["off_vocabulary"] == {"'Louvered'": 1}  # Sine left on 2026-10-01: it is a substitution now
     assert "| `FinSurface` | input | 1/2 |" in replay.render_markdown(report)
 
 

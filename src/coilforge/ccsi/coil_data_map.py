@@ -19,12 +19,13 @@ Pure. Three rules carry it:
   entry still resolves its value so validation can compare it (``CCSI_NOT_VALIDATED``).
   A promotion carries its ``evidence`` (the cross-checked projects + John's approval).
 
-**Geometry re-selection gate (D7, John 2026-09-29).** When the submittal's fin is one CCSI
-cannot build — a fin surface off CCSI's list (``Sine``) or a fin gauge no CCSI fin option has
-(``0.0075``) — the application engineer substitutes the fin and re-optimises rows/FPI in CCSI
-(observed on 3183). Pushing the submittal's rows/FPI/fin would then rate a different coil, so
-for such a coil those fields are withheld (``CCSI_GEOMETRY_RESELECT``) whatever their mapping
-status; FH/FL/feeds and the conditions still go.
+**Geometry re-selection gate (D7, John 2026-09-29; narrowed 2026-10-01).** When the submittal's
+fin is one CCSI cannot build — a fin surface off CCSI's list (``Sine``) or a fin gauge no CCSI
+fin option has (``0.0075``) — the application engineer substitutes the fin in CCSI. The ordered
+selections show what the substitution is (0.0075 -> 0.008 on 72/75 coils, Sine -> Corrugated on
+24/27), so the fin itself is sent through the entry's ``substitutions``; rows survive it (41/46
+equal to the order) and are sent too. Only FPI is re-optimised (16/45 equal), so for such a coil
+FPI alone is withheld (``CCSI_GEOMETRY_RESELECT``) whatever its mapping status.
 
 **Oxygen8 default profile (D2, John 2026-09-29).** Fields the submittal never states but every
 finished CCSI selection sets identically (header Copper / (L), casing Standard / Galv 16 ga, …)
@@ -80,9 +81,10 @@ PUSHABLE_STATUSES: frozenset[str] = frozenset({"validated", "confirmed"})
 # A blocked source whose only reason is absence may take the default profile; any other block
 # (a conflict, an ambiguous read) must stay visible and is never defaulted over.
 _ABSENCE_BLOCK_REASONS: frozenset[str | None] = frozenset({None, "required canonical field missing"})
-# Withheld when the submittal fin cannot be built in CCSI (D7). FH/FL/feeds are not here:
-# on 3183 they survived the re-selection unchanged.
-GEOMETRY_RESELECT_IDS: frozenset[str] = frozenset({"RowsDeep", "FinsPerInch", "FinSurface", "FinMaterial"})
+# Withheld when the submittal fin cannot be built in CCSI (D7). Until 2026-10-01 rows and the fin
+# were withheld as well; John narrowed it to FPI once the ordered selections showed that rows
+# stay (41/46) and the fin is substituted predictably, while FPI is what gets re-optimised (16/45).
+GEOMETRY_RESELECT_IDS: frozenset[str] = frozenset({"FinsPerInch"})
 # Coil identity the caller supplies next to the draft fields (not draft field keys).
 IDENTITY_KEYS: frozenset[str] = frozenset({"tag", "coil_quantity"})
 CANONICAL_GROUPS: tuple[str, ...] = (
@@ -93,6 +95,9 @@ CANONICAL_GROUPS: tuple[str, ...] = (
 TUBE_SURFACE_SOURCE = "materials_construction.tube_surface"
 # The fluid the submittal's "Fluid Percent (%)" is a percentage OF — read only for GlycolRatio.
 FLUID_TYPE_SOURCE = "airside_conditions.fluid_type"
+# Where a submittal states the fin's material. An entry that names a ``material`` for a bare
+# thickness reads these first: a stated material is never replaced by the entry's.
+FIN_MATERIAL_SOURCES: tuple[str, ...] = ("fin_material", "materials_construction.fin_material")
 # Submittal tube-surface word -> CCSI's. Smooth = Plain is John's ruling (2026-09-30; 6/6 harvested
 # DX/HGRH coils: submittal Smooth, CCSI Plain). CCSI's own words map to themselves; nothing else does.
 _TUBE_SURFACE_TO_CCSI: dict[str, str] = {"smooth": "plain", "plain": "plain", "rifled": "rifled"}
@@ -117,6 +122,22 @@ class CcsiCoilDataEntry(BaseModel):
     canonical_path: str | None = None
     default: str | None = None
     value_map: dict[str, str] | None = None
+    # Read ONLY when ``canonical_path`` is empty: a second canonical field whose stated text
+    # answers the same question. System Type: a submittal with one circuit prints no circuit
+    # count at all — its Coil Style is "Standard" — so ``geometry.circuits`` is empty on most
+    # coils. ``style_map`` keys are the casefolded style text; a style not listed stays unmapped.
+    style_path: str | None = None
+    style_map: dict[str, str] | None = None
+    # A stated value CCSI cannot take, and what the ordered selections put in its place
+    # ("aluminum 0.0075" -> "0.008" fin gauge, "sine" -> "Corrugated"). Keys are the casefolded
+    # text or the number text; on a material + gauge entry the key carries the material, so a
+    # gauge is only replaced for the material it was approved on. John-approved per entry; a
+    # value not listed is never moved to a neighbour.
+    substitutions: dict[str, str] | None = None
+    # The material of a gauge the submittal prints WITHOUT one (water-coil "Fin Thickness (in)").
+    # Used only when ``FIN_MATERIAL_SOURCES`` state none; a different stated material leaves the
+    # entry unmapped. John-approved per entry, never a general assumption.
+    material: str | None = None
 
 
 class CcsiCoilDataMap(BaseModel):
@@ -266,6 +287,55 @@ def _transform(
     return picked, None, ""
 
 
+def _substitution(entry: CcsiCoilDataEntry, value: Any, material: str | None = None) -> str | None:
+    """The entry's approved replacement for a stated value CCSI cannot take, if it lists one."""
+    if not entry.substitutions:
+        return None
+    x = _as_float(value)
+    key = _number_text(x) if x is not None else " ".join(str(value).split()).casefold()
+    if entry.transform == "option_material_gauge":
+        if not material:
+            return None
+        key = f"{_material_key(material)} {key}"
+    return entry.substitutions.get(key)
+
+
+def _named_material(entry: CcsiCoilDataEntry, sources: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """(material, refusal) for an entry whose map names the material of a bare thickness.
+
+    The entry's ``material`` stands in only for a material the submittal does not state. A
+    stated one that differs, or a fin-material source blocked for anything but absence, is a
+    refusal: the gauge is left unmapped rather than sent under the map's material.
+    """
+    for key in FIN_MATERIAL_SOURCES:
+        raw = sources.get(key)
+        value, status, blocked_reason = _unwrap(raw)
+        if status == "blocked":
+            if blocked_reason not in _ABSENCE_BLOCK_REASONS:
+                return None, f"{key} is blocked ({blocked_reason}) — {entry.material} is not assumed over it"
+            continue
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        stated = _unit(raw)
+        if stated is None and _as_float(value) is None:
+            gauge = _GAUGE_RE.search(str(value))
+            stated = (str(value)[: gauge.start()] if gauge else str(value)).strip(" -") or None
+        if stated is not None and _material_key(stated) != _material_key(entry.material or ""):
+            return None, (f"{key} states {stated!r} — the map's {entry.material} is only for a thickness "
+                          "printed without a material")
+    return entry.material, None
+
+
+def _arrangement(text: Any) -> str | None:
+    """The circuit arrangement a coil-style or CCSI-option text names, if it names one."""
+    folded = str(text or "").casefold()
+    if "face" in folded and "split" in folded:
+        return "face-split"
+    if "interlac" in folded or "intertwin" in folded:
+        return "intertwined"
+    return None
+
+
 def _fluid_type_option(value: Any, options: list[str]) -> str | None:
     """The submittal's fluid on CCSI's list: ``Water`` as is, ``Propylene`` -> ``Propylene Glycol``
     (Oxygen8 submittals name the glycol without the word). Nothing else is guessed."""
@@ -344,9 +414,10 @@ def _material_gauge_option(
 
     An option reads as ``<material> <gauge> [<surface>]`` around its gauge (``_GAUGE_RE``, the D7
     gate's own definition). The material must equal the option's WHOLE material (``Aluminum`` is
-    not ``Coated aluminum``), the gauge must be numerically equal (``0.0075`` never becomes
-    ``0.008``; ``0.01`` is ``0.010``), and when the option names a surface the submittal must state
-    one that maps — even a lone ``Plain`` candidate is never assumed.
+    not ``Coated aluminum``), the gauge must be numerically equal (``0.01`` is ``0.010``; a gauge
+    CCSI lacks is never moved to its neighbour HERE — an entry's John-approved ``substitutions``
+    does that before this is called), and when the option names a surface the submittal must
+    state one that maps — even a lone ``Plain`` candidate is never assumed.
     """
     exact = _pick_option(str(value), options)
     if exact is not None:  # already a CCSI option text (a manual entry)
@@ -394,7 +465,10 @@ def geometry_reselect_reason(sources: Mapping[str, Any], cmap: CcsiCoilDataMap) 
         if _pick_option(str(surface), surface_entry.options) is None:
             return f"fin surface {surface!r} is not a CCSI option ({', '.join(surface_entry.options)})"
     material_entry = cmap.fields.get("FinMaterial")
-    gauge_match = _GAUGE_RE.search(str(_unwrap(sources.get("fin_material"))[0] or ""))
+    # The gate judges the same source the entry resolves from: the water forms read the fin from
+    # ``geometry.fin_thickness_in``, so a fixed ``fin_material`` key never saw a water coil's gauge.
+    material_key = (material_entry.draft_key or material_entry.canonical_path) if material_entry else None
+    gauge_match = _GAUGE_RE.search(str(_unwrap(sources.get(material_key))[0] or "")) if material_key else None
     if material_entry and material_entry.options and gauge_match:
         gauge = float(gauge_match.group())
         offered = {float(m.group()) for o in material_entry.options if (m := _GAUGE_RE.search(o))}
@@ -457,6 +531,11 @@ def resolve_coil_data(
             )
 
         absent = value is None or (isinstance(value, str) and not value.strip())
+        styled = False
+        if absent and status != "blocked" and entry.style_path is not None:
+            style, style_status, _ = _unwrap(sources.get(entry.style_path))
+            if style_status != "blocked" and isinstance(style, str) and style.strip():
+                source_key, value, absent, styled = entry.style_path, " ".join(style.split()), False, True
         if entry.default is not None and absent and (status != "blocked" or blocked_reason in _ABSENCE_BLOCK_REASONS):
             pushable = entry.role == "input" and entry.mapping_status in PUSHABLE_STATUSES
             emit("CCSI_DEFAULT_PROFILE", "not stated by the submittal — Oxygen8 CCSI default profile (review)",
@@ -471,11 +550,32 @@ def resolve_coil_data(
         if value is None or (isinstance(value, str) and not value.strip()):
             emit("CCSI_SOURCE_MISSING", f"{source_key} is empty in the source")
             continue
-        text, failure, why = _transform(
-            entry, value, _unwrap(sources.get("coil_quantity"))[0], unit=_unit(raw),
-            surface=tube_surface if entry.draft_key == "tube_material" else None,
-            fluid=fluid_type if entry.transform == "glycol_ratio" else None,
-        )
+        if styled:
+            text = _pick_option((entry.style_map or {}).get(value.casefold()), entry.options or [])
+            failure, why = (None, f"Coil Style {value!r}; the submittal states no circuit count") if text else (
+                "CCSI_OPTION_UNMAPPED",
+                f"Coil Style {value!r} states no circuit count and has no style_map entry "
+                f"({', '.join(entry.style_map or {})})")
+        else:
+            material, refused = (_unit(raw), None) if entry.material is None else _named_material(entry, sources)
+            replaced = None if refused else _substitution(entry, value, material)
+            text, failure, why = (None, "CCSI_OPTION_UNMAPPED", refused) if refused else _transform(
+                entry, value if replaced is None else replaced, _unwrap(sources.get("coil_quantity"))[0],
+                unit=material,
+                surface=tube_surface if entry.draft_key == "tube_material" else None,
+                fluid=fluid_type if entry.transform == "glycol_ratio" else None,
+            )
+            if failure is None and replaced is not None:
+                why = (f"{value!r} is not a CCSI option — {replaced} sent in its place, as on the ordered "
+                       "selections") + (f"; {why}" if why else "")
+            if failure is None and entry.style_path is not None:
+                # The count picks the option, but the style names the arrangement: a count mapped
+                # to "... Intertwined" must not be sent for a coil whose style says Face Split.
+                stated = _unwrap(sources.get(entry.style_path))[0]
+                if _arrangement(stated) not in (None, _arrangement(text)) and _arrangement(text) is not None:
+                    failure, why = "CCSI_OPTION_UNMAPPED", (
+                        f"Coil Style {' '.join(str(stated).split())!r} names a different arrangement than "
+                        f"{text!r}, the option mapped for {value!r} circuits")
         if failure is not None:
             emit(failure, why)
         elif reselect and ccsi_id in GEOMETRY_RESELECT_IDS:

@@ -155,8 +155,9 @@ def test_userscript_is_v3_1() -> None:
     header = re.search(r"// @version\s+(\S+)", _USERSCRIPT).group(1)
     runtime = re.search(r'const SCRIPT_VERSION = "([^"]+)";', _USERSCRIPT).group(1)
     # 3.1.1 = + live-captured #DrainAndVentLocation; 3.1.2 = water ZD withheld (2026-10-01);
-    # 3.1.3 = performance self-consistency warnings in the stage-1 panel (warning only)
-    assert header == runtime == "3.1.3"
+    # 3.1.3 = performance self-consistency warnings in the stage-1 panel (warning only);
+    # 3.1.4 = the Send to CCSI path carries the Drawing Notes
+    assert header == runtime == "3.1.4"
     assert "runAllSection(payload, gateCheck)," in _USERSCRIPT
 
 
@@ -322,3 +323,70 @@ def test_performance_warning_text_from_a_real_finding() -> None:
             assert len(lines) == 1 and "— constructor:" in lines[0]  # the check id, not an inherited function
         else:
             assert lines == shown
+
+
+def test_a_substituted_value_is_named_in_the_panel() -> None:
+    """The fin CCSI cannot build goes out as its approved substitute — and the panel says so."""
+    import shutil
+    import subprocess
+
+    assert "substitutionNotes(block).forEach((text) => wrap.append(note(text)));" in _USERSCRIPT
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    from coilforge.ccsi.coil_data_map import resolve_coil_data
+
+    sources = {"fin_material": {"value": 0.0075, "unit": "Aluminum", "status": "review_required"},
+               "fin_surface": {"value": "Sine", "status": "review_required"},
+               "finned_height": {"value": 30, "status": "review_required"}}
+    block = {"entries": [e.model_dump() for e in resolve_coil_data(sources, coil_type="DX")]}
+    targets = _USERSCRIPT[_USERSCRIPT.index("function coilDataTargets(block)"):_USERSCRIPT.index("// CCSI re-renders")]
+    notes = _USERSCRIPT[_USERSCRIPT.index("function substitutionNotes(block)"):
+                        _USERSCRIPT.index("// The submittal's own performance values")]
+    script = "\n".join([targets, notes, "console.log(JSON.stringify(substitutionNotes(JSON.parse(process.argv[1]))));"])
+    for payload, expected in (
+        (block, ["↔ Fin Material: submittal says 0.0075, CCSI gets Aluminum 0.008 (substituted — review).",
+                 "↔ Fin Surface: submittal says Sine, CCSI gets Corrugated (substituted — review)."]),
+        ({}, []), ({"entries": "oops"}, []),  # an older or malformed payload shows nothing and never throws
+    ):
+        run = subprocess.run([node, "-e", script, json.dumps(payload)], capture_output=True, text=True, encoding="utf-8")
+        assert run.returncode == 0, run.stderr
+        assert sorted(json.loads(run.stdout)) == sorted(expected)
+    for forbidden in ("disabled", ".click(", "throw "):  # a note, never a gate
+        assert forbidden not in notes, forbidden
+
+
+def test_send_to_ccsi_carries_the_drawing_notes() -> None:
+    # John 2026-10-01: the notes reached CCSI from "Copy" but not from "Send to CCSI" — the DOM-scraped
+    # payload had no `drawing_notes` key, because nothing stamped the notes for it to read.
+    assert "elements.drawingParameters.dataset.ccsiDrawingNotes = JSON.stringify(ccsiDrawingNotes(uiState));" in _APP_JS
+    start = _USERSCRIPT.index("async function buildPayloadFromDom()")
+    bridge = _USERSCRIPT[start:_USERSCRIPT.index("function toast(", start)]
+    assert "drawing_notes: readDrawingNotes()," in bridge
+    assert "dataset.ccsiDrawingNotes" in bridge
+    # the receiving side is unchanged: notes still enter the panel through entriesOf()
+    assert "const notes = payload.drawing_notes;" in _USERSCRIPT
+
+
+def test_the_stamped_notes_round_trip_through_the_bridge_reader() -> None:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    start = _USERSCRIPT.index("function readDrawingNotes()")
+    source = _USERSCRIPT[start:_USERSCRIPT.index("function toast(", start)]
+    script = "\n".join([
+        "const stamp = process.argv[1];",
+        "const document = { querySelector: () => (stamp === 'ABSENT' ? null"
+        " : { dataset: stamp === 'EMPTY' ? {} : { ccsiDrawingNotes: stamp } }) };",
+        source,
+        "console.log(JSON.stringify(readDrawingNotes()));",
+    ])
+    notes = {"ccsi_label": "Drawing Notes", "status": "review_required",
+             "value": "\n".join(["AA COATING REQUIRED", 'Distributor 6" ext. — "quoted"'])}
+    for stamp, expected in ((json.dumps(notes), notes), ("{not json", None), ("EMPTY", None), ("ABSENT", None)):
+        run = subprocess.run([node, "-e", script, stamp], capture_output=True, text=True, encoding="utf-8")
+        assert run.returncode == 0, run.stderr
+        assert json.loads(run.stdout) == expected, stamp

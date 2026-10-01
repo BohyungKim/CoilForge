@@ -277,6 +277,40 @@ capacity, 0/7 on Standard (Likely; not re-derived here).
   the submittal was picked heuristically). Extraction error vs order-time change is Unknown — John to check
   before any demotion.
 
+## Decided 2026-10-01 — complete the mapping (John)
+
+John: "dx 하고 hgrh 그리고 water coil 케이스의 매핑도 완벽하게 매핑". Four approvals, each measured on the
+order tier of the cross-check (`code_version phase4-landed-262-g6a19675-dirty`; DX 127 / HGRH 72 / CWC 6 /
+HWC 16 ordered coils paired with their push-time sources). "n / N" below is pushed value = ordered value.
+The maps' `evidence` strings count a wider set — ordered **and** quoted reports, 243 paired coils — so
+their totals are larger than these and the two are not meant to add up.
+
+- **System Type** (`RefrigerationSystemType`): the circuit count still picks the option (DX 3 → `3-Circuit
+  Intertwined`, HGRH 2 → `Dual-Circuit Face-Split` added). A submittal with one circuit prints no count —
+  its Coil Style is `Standard` — so the entry reads `manufacturing_options.coil_style` **only when the count
+  is absent** (`style_path` / `style_map`: `standard` → `Single-Circuit`). A style naming a different
+  arrangement than the mapped option is unmapped. DX 4 circuits stays unmapped (orders split 4 / 2).
+  DX 116 / 127, HGRH 71 / 72.
+- **DX / HGRH tube and fin material** promoted. Two `substitutions`, as on the ordered selections: fin gauge
+  `0.0075` → `0.008`, fin surface `Sine` → `Corrugated`. The reason line names what the submittal stated.
+  DX tube 119, fin 122, surface 118 / 127; HGRH fin 68, surface 68 / 72. A gauge or surface not listed is
+  still unmapped, a substitution never supplies a missing material, and the gauge key carries its material
+  (`aluminum 0.0075`) — the orders behind it are Aluminum, so a Copper 0.0075 fin stays unmapped. The
+  userscript panel lists every substituted field ("submittal says … CCSI gets …").
+- **D7 narrowed to FPI.** This supersedes "D7 A" above: `GEOMETRY_RESELECT_IDS = {FinsPerInch}`. Rows are
+  pushed (DX 118 / 127, HGRH 69 / 72) and the fin is substituted; FPI is what the order re-optimises. The
+  gate now reads the fin from the key that form's `FinMaterial` entry resolves from, so a water coil's
+  `geometry.fin_thickness_in` trips it too (water 0.0075 fins: FPI changed on 3 of 5 orders).
+- **Water coils:** `NumberOfFeeds` ← `geometry.circuits` (CWC 6 / 6, HWC 14 / 16); `FinMaterial` ←
+  `geometry.fin_thickness_in` with the entry's `material: Aluminum` (the submittal prints a thickness with no
+  material; CWC 5 / 6, HWC 16 / 16 — a fin material the submittal does state, in `fin_material` or
+  `materials_construction.fin_material`, wins: a different one leaves the entry unmapped); `TubeMaterial` default `Copper 0.018 Plain` (never stated; CWC 4 / 6,
+  HWC 15 / 16); `Altitude` and CWC `CoilQuantity` promoted.
+
+Not closable by mapping: feeds changed at order time (DX 14, HGRH 7), Standard-air orders (`ACFM` /
+`Altitude`, cause `air_basis`), HWC `LeavingDryBulb` (matches 7 / 16 — CCSI solves it; stays captured), water
+`FinSurface` when the submittal omits it (CWC 1, HWC 4), and fields the order report does not print.
+
 ## Implementation already in scope (no decision needed)
 
 - Thread canonical-only values into the coil-data source (plan Step A): HGRH vapor / condensing /

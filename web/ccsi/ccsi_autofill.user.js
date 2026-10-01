@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      3.1.3
-// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. v3: two stages — stage 1 fills the coil data (geometry/options/air/refrigerant/fluid) one field at a time and stops before Calculate; stage 2 fills the drawing parameters once the dimension grid appears. v3.1 adds one button: coil data -> Calculate -> Custom Dimensions -> drawing parameters, then it stops (you press Calculate once more to apply the dimensions, and decide on Save). v3.1.3 shows CoilForge's submittal self-consistency warnings in the stage-1 box (warning only — nothing is held or stopped). Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
+// @version      3.1.4
+// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. v3: two stages — stage 1 fills the coil data (geometry/options/air/refrigerant/fluid) one field at a time and stops before Calculate; stage 2 fills the drawing parameters once the dimension grid appears. v3.1 adds one button: coil data -> Calculate -> Custom Dimensions -> drawing parameters, then it stops (you press Calculate once more to apply the dimensions, and decide on Save). v3.1.3 shows CoilForge's submittal self-consistency warnings in the stage-1 box (warning only — nothing is held or stopped). v3.1.4: Send to CCSI now carries the Drawing Notes too. Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
 // @include      /^https?:\/\/(localhost|127\.0\.0\.1):\d+\//
 // @match        https://coil.ccsi.ie/*
 // @noframes
@@ -43,7 +43,7 @@
   // Shown in the panel header so you can SEE which filler version is actually running —
   // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
   // with @version above.
-  const SCRIPT_VERSION = "3.1.3";
+  const SCRIPT_VERSION = "3.1.4";
   // Must equal web/app.js::CCSI_WATER_DRAIN_VENT_LOCATION (pinned by a test). Every CWC/HWC,
   // all product lines (John 2026-09-23).
   const WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
@@ -175,10 +175,19 @@
       drain_vent_location: drainVentLocationEntry(
         document.querySelector("#drawing-parameters")?.dataset.coilCategory,
       ),
+      // The engine-assembled Drawing Notes, stamped by CoilForge like the two values above.
+      // Until v3.1.4 this path sent no notes at all — only the clipboard payload carried them.
+      drawing_notes: readDrawingNotes(),
       // Stage 1 (Rating mode): CoilForge stamps /api/ccsi/coil-data-payload's block here.
       coil_data: readCoilData(),
       fields,
     };
+  }
+
+  function readDrawingNotes() {
+    const raw = document.querySelector("#drawing-parameters")?.dataset.ccsiDrawingNotes;
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
   }
 
   function toast(message, warn) {
@@ -425,6 +434,19 @@
     });
   }
 
+  // A stated value CCSI cannot take, sent as the substitute John approved (fin 0.0075 -> 0.008,
+  // Sine -> Corrugated). Listed so the swap is never silent. The marker is coil_data_map's own
+  // reason text ("sent in its place") — reword one side and the other stops matching.
+  function substitutionNotes(block) {
+    try {
+      return coilDataTargets(block)
+        .filter((e) => typeof e.reason === "string" && e.reason.includes("sent in its place"))
+        .map((e) => `↔ ${e.ccsi_label || e.ccsi_id}: submittal says ${e.source_value}, CCSI gets ${e.value} (substituted — review).`);
+    } catch (_error) {
+      return [];
+    }
+  }
+
   // The submittal's own performance values checked against each other (CoilForge's
   // performance_consistency). WARNING ONLY (John 2026-10-01): these lines are shown for the
   // engineer and never hold a field, disable a button or stop the one-button flow — most
@@ -474,8 +496,9 @@
     const held = block.entries.length - targets.length;
     wrap.append(el("strong", { textContent: `Stage 1 — coil data (${block.coil_type || "?"}: ${targets.length} to fill, ${held} held)` }));
     if (block.geometry_reselect_reason) {
-      wrap.append(note(`Rows / FPI / fin withheld — re-select them in CCSI: ${block.geometry_reselect_reason}`));
+      wrap.append(note(`FPI withheld — re-select it in CCSI: ${block.geometry_reselect_reason}`));
     }
+    substitutionNotes(block).forEach((text) => wrap.append(note(text)));
     performanceWarnings(block).forEach((text) => wrap.append(note(text)));
     const out = el("div", {}, { fontSize: "12px", margin: "4px 0" });
     const go = btn("Stage 1 — fill coil data (stops before Calculate)", async () => {

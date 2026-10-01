@@ -3795,6 +3795,9 @@ function renderDrawingParameters(uiState) {
   // Location" select is pushed (water coils only).
   elements.drawingParameters.dataset.coilCategory =
     uiState.template_drawing?.extracted?.coil_category || "";
+  // And the Drawing Notes: the clipboard payload carries them, but the DOM-scraped Send path
+  // had nothing to read, so "Send to CCSI" never delivered them (John 2026-10-01).
+  elements.drawingParameters.dataset.ccsiDrawingNotes = JSON.stringify(ccsiDrawingNotes(uiState));
   // Stage 1 of the CCSI push (Rating mode): the active coil's coil-data block, stamped for the
   // userscript's DOM-scraped Send path. Async and fire-and-forget — the panel never waits on it.
   stampCcsiCoilData();
