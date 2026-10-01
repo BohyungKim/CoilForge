@@ -58,10 +58,23 @@ narrowed without re-reading the sweep.
   and only 52 reconciles with the printed capacity and leaving DB. The push would send 54.
 - **3058 RHHGRC-2:** the submittal prints 4800 CFM; the order used 4500, and only 4500
   reconciles. The push would send 4800.
-- **ACFM basis.** On capacity-matched heating coils the basis inferred from the submittal's
-  own numbers agrees with the report's ACFM: `actual` → Actual 26 of 26, `standard` →
-  Standard 14 of 16. 23 coils are indeterminate. This is evidence for a rule candidate, not a
-  rule.
+- **ACFM basis — decided by John 2026-10-01: Standard (SCFM).** He first said Actual and
+  corrected it the same day ("we should go with SCFM instead"). This is the rule the `ACFM`
+  map entry was missing. The map entry is yours to change; nothing here touches it.
+- **Altitude goes with it.** Under Standard, CCSI locks the altitude field at 0 — 49 of 130
+  Standard orders have a non-zero submittal altitude against CCSI 0. That is the gate's
+  "Altitude unexplained" bin and the reason stage 1 reported Altitude as `locked` on 2803.
+  With this rule a locked Altitude is the expected outcome, not a failed push.
+- **Expect a capacity gap on current submittals.** Their own numbers fit Actual (heating
+  coils from project 3100 on: actual 21, both 6, standard 0). Ordered coils whose submittal
+  fits Actual only: CCSI on Actual reproduced the submittal's capacity on 26 of 26; CCSI on
+  Standard on 0 of 7. After "Run all" on Standard, a capacity that differs from the submittal
+  is the basis, not an extraction or mapping defect. John's explanation: "ideally it should've
+  calculated with SCFM but we've been calculating all with ACFM for direct coil — that's why
+  that difference is happening." The gap is known and accepted; `air_basis: actual` on the
+  coil's `air_sensible_balance` finding is the marker that it applies.
+- On capacity-matched heating coils the basis inferred from the submittal's own numbers
+  agrees with the report's ACFM: `actual` → Actual 26 of 26, `standard` → Standard 14 of 16.
 - **Pairing.** Capacity mismatch against the order is 28 % on projects paired by ledger hash
   and 57 % on projects paired by `heuristic_highest_rev` (order tier). Part of the
   "unexplained" capacity bin may be the wrong submittal revision rather than extraction.

@@ -50,7 +50,7 @@ a value that fits neither is `inconsistent`. Altitude is never assumed to be 0.
 
 | Constant | Value | Status | Source |
 |---|---|---|---|
-| Sensible factor F | 1.085 | in repo | `coil_utilities/geometry.py` (workbook Extras). CCSI Standard reports measure 1.082–1.092, mostly 1.084 |
+| Sensible factor F | 1.085 | in repo; decided (John 2026-10-01) | `coil_utilities/geometry.py` (workbook Extras). CCSI Standard reports measure 1.082–1.092, mostly 1.084; verdicts are identical at ±0.02. The number is printed in neither the submittal nor the CCSI report — it is back-calculated |
 | k tolerance | ±0.02 | decided (John 2026-10-01) | sweep below |
 | Actual factor | `F x 529.67 / (459.67 + EDB) x (1 − 6.8754e-6 x altitude)^5.2559` | cited | ideal-gas temperature ratio at the entering air x standard-atmosphere pressure ratio; not taken from a CCSI document |
 | Face-velocity tolerance | 1 % | assumption | 3 of 278 coils fail at 0.5 %, 1 % and 2 % alike |
@@ -108,12 +108,50 @@ Tolerance sensitivity — one (F, tol) pair drives both families, and DX sits on
 | 1.084 | 0.02 | 13 | 27 | 7 |
 | 1.08 | 0.02 | 13 | 28 | 25 |
 
+## Air flow basis — decided (John 2026-10-01)
+
+CCSI's `Air flow basis` for a Direct Coil selection is **Standard (SCFM)**. (John first said
+ACFM — "it used to be SCFM with Coilmaster; we decided to use ACFM with Direct Coil" — and
+corrected it the same day: "we should go with SCFM instead".)
+
+The corpus does not line up with that rule, and John explained why: "ideally it should've
+calculated with SCFM but we've been calculating all with ACFM for direct coil — that's why
+that difference is happening." So Standard is the intended basis, and Actual is what the
+Direct Coil selections have in practice been calculated on. The submittals' own numbers moved
+from Standard to Actual around project 2900–3100, and the orders followed part of the way:
+
+| Project number | Submittal heating coils fit: standard / actual / both / neither | Ordered CCSI basis: Actual / Standard |
+|---|---|---|
+| below 2700 | 9 / 0 / 6 / 2 | 11 / 19 |
+| 2700–2899 | 14 / 1 / 7 / 10 | 26 / 52 |
+| 2900–3099 | 19 / 11 / 11 / 1 | 69 / 43 |
+| 3100 and later | 0 / 21 / 6 / 0 | 43 / 16 |
+
+What this changes for a reader of the checks:
+
+- `air_basis: standard` or `indeterminate`: the submittal's capacity is on the basis CCSI
+  will rate on.
+- `air_basis: actual`: the submittal's capacity was computed on actual air. Rated in CCSI on
+  Standard, the capacity will not reproduce. Measured on ordered heating coils whose submittal
+  fits Actual only: CCSI on Actual matched the submittal's capacity on 26 of 26; CCSI on
+  Standard matched on 0 of 7. Every evaluable heating coil from project 3100 on is `actual`
+  or `indeterminate` (21 and 6), so this is the normal case for a current submittal.
+- It is still `consistent`: the check asks whether the submittal agrees with itself, not
+  which basis CCSI should use. The checks accept both bases.
+
+Altitude follows the basis. On Standard, CCSI locks the altitude field at 0 even when the
+submittal states one (49 of 130 Standard orders). So with this rule the altitude is not a
+value to push: the form reports it locked, which is expected, and the order cross-check's
+"altitude mismatch" rows are that lock, not an extraction error.
+
 ## Open decisions (John)
 
-1. Sensible factor: 1.085 (repo), 1.084 (CCSI reports) or 1.08.
+1. ~~Sensible factor~~ — **decided 2026-10-01: 1.085.** It only drives the checks; it is never
+   pushed and does not enter CCSI's rating.
 2. ~~k tolerance~~ — **decided 2026-10-01: ±0.02.** Narrowing it on the heating numbers alone
    would flag 16–30 % of DX coils.
-3. Whether the Actual-density relation is an acceptable cited reference.
+3. Whether the Actual-density relation is an acceptable cited reference. Evidence since:
+   every evaluable heating coil from project 3100 on fits it (actual 21, both 6, neither 0).
 4. The k ≈ 1.00 cluster: keep `inconsistent`, or recognise it as a known convention.
 5. Fluid bands as measured + 3 %, or a supplied glycol property table.
 6. Face-velocity tolerance.

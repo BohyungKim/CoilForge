@@ -51,8 +51,8 @@ PERF_NO_REFERENCE = "PERF_NO_REFERENCE"
 PERF_COIL_TYPE_UNKNOWN = "PERF_COIL_TYPE_UNKNOWN"
 
 # Sensible factor [BTU/h per CFM.degF] at standard air — the same 1.085 the workbook's Extras
-# heating-capacity calc uses (coil_utilities/geometry.py). Assumption until John rules
-# (decision 1): CCSI's Standard reports measure 1.084.
+# heating-capacity calc uses (coil_utilities/geometry.py). John 2026-10-01 (decision 1): keep
+# 1.085. CCSI's Standard reports measure 1.084; at +/-0.02 the two give identical verdicts.
 SENSIBLE_FACTOR = 1.085
 K_TOLERANCE = 0.02  # John 2026-10-01 (decision 2). Narrower flags 16-30 % of DX coils (38 sit at k 1.095-1.105).
 FACE_VELOCITY_REL_TOLERANCE = 0.01  # Assumption (decision 6).
