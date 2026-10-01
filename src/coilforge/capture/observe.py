@@ -38,7 +38,18 @@ def health() -> dict[str, Any]:
     base: dict[str, Any] = {
         "enabled": db.capture_enabled(),
         "raw_private_data_returned": False,
+        "db_path": str(db.capture_db_path()),
     }
+    # Stranded ledgers, reported on BOTH branches below -- the state this is meant to
+    # catch (migration started, not finished) is precisely "new path does not exist yet
+    # while the real corpus sits at the old one", which takes the exists:False return.
+    # A path, not customer data; the counts endpoint already reveals the ledger exists.
+    try:
+        base["legacy_ledgers"] = [
+            {"path": str(p), "byte_len": p.stat().st_size} for p in db.legacy_db_paths()
+        ]
+    except Exception:  # noqa: BLE001 -- an unreadable legacy dir must not sink health
+        base["legacy_ledgers"] = []
     if not db.capture_db_path().exists():
         return {**base, "exists": False}
     try:

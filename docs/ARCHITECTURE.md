@@ -22,7 +22,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `(repo root)` | 1 |
 | `.claude/hooks` | 1 |
 | `mcp_servers/plan_review` | 1 |
-| `scripts` | 21 |
+| `scripts` | 22 |
 | `src/coilforge` | 4 |
 | `src/coilforge/accuracy` | 2 |
 | `src/coilforge/adapters` | 3 |
@@ -72,6 +72,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `scripts/find_similar.py` | Case Retrieval (Stage 2): "have I seen this coil before?" |
 | `scripts/generate_coverage_dashboard.py` | Generate the template-coverage dashboard from the live drawing catalog |
 | `scripts/inventory_ventum_selection.py` | Phase 0 (READ-ONLY): inventory the Ventum+ coil-selection PDFs page-by-page so we |
+| `scripts/migrate_capture_ledger.py` | Move a stranded capture ledger to the current (non-redirected) location |
 | `scripts/override_rate.py` | Review Triage measurement (Stage 3.0): "which fields does John actually override?" |
 | `scripts/performance_consistency_report.py` | Measure the performance self-consistency checks on the ordered-coil corpus (read-only) |
 | `scripts/pre_extract_submittals.py` | Pre-extract submittal page text into the on-disk cache (``coilforge.corpus.page_cache``) |
@@ -210,8 +211,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_ccsi_compare.py` | CCSI-vs-CoilForge compare core (Phase 3): reuses the checklist comparator, so a |
 | `tests/test_ccsi_crosscheck.py` | CCSI harvest cross-check (Step C) + the harvest's read-only guarantee |
 | `tests/test_ccsi_drain_vent_location.py` | CCSI "Drain and Vent Location" for water coils (John 2026-09-23) |
-| `tests/test_ccsi_export_audit.py` | Offline CCSI-export audit (`ccsi/export_audit.py`) |
 
-_324 source files, 232 with a header comment. 82 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_325 source files, 233 with a header comment. 83 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->
