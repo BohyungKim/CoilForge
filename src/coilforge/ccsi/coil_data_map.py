@@ -554,7 +554,15 @@ def build_coil_data_payload(
 
     Sources come from ``coil_data_sources``. Every entry — pushable or not — is returned with
     its reason so the userscript and the review panel show why a field is held.
+
+    ``performance_consistency`` says whether the coil's own performance values agree with each
+    other (airflow x air delta-T vs capacity, GPM x fluid delta-T vs capacity, face velocity).
+    It reads the same ``sources`` BEFORE any transform — per-coil values, fluid as the submittal
+    names it — and changes no entry: an ``inconsistent`` finding is a warning for the engineer,
+    never a reason to hold a field or stop the push (John 2026-10-01).
     """
+    from coilforge.coil_utilities.performance_consistency import check_performance_consistency
+
     candidate, draft = _as_candidate_and_draft(candidate, draft)
     sources = coil_data_sources(candidate, draft)
     tag = _coil_tag(candidate, draft)
@@ -572,6 +580,21 @@ def build_coil_data_payload(
         "entries": [{**e.model_dump(), "selector": f"#{e.ccsi_id}", "type": cmap.fields[e.ccsi_id].type}
                     for e in entries],
         "summary": summarize(entries),
+        "performance_consistency": _performance_consistency(sources, resolved_type, check_performance_consistency),
         "review_aid_only": True,
         "export_allowed": False,
     }
+
+
+def _performance_consistency(sources: Mapping[str, Any], coil_type: str, check: Any) -> dict[str, Any]:
+    """The self-consistency report, or an explicit ``error`` in its place.
+
+    A warning must never be the reason the push payload fails: without this guard an exception
+    in the check would turn the whole route into a 500, the page would drop the block, and the
+    one-button flow would refuse to run. The failure is reported, not hidden.
+    """
+    try:
+        return check(sources, coil_type=coil_type).model_dump()
+    except Exception as exc:  # noqa: BLE001 — any failure here must stay a warning
+        return {"coil_type": coil_type, "findings": [], "counts": {},
+                "error": f"{type(exc).__name__}: {exc}", "review_aid_only": True, "export_allowed": False}

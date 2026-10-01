@@ -1,10 +1,23 @@
 # Handoff to the CCSI session — performance self-consistency in the push payload
 
-From the performance-consistency session (branch `claude/performance-consistency`, cut from
-`c9d84d4`). **Nothing here has been applied.** `src/coilforge/ccsi/coil_data_map.py`,
-`web/ccsi/ccsi_autofill.user.js` and `web/app.js` belong to the CCSI session and were not
-touched. There is no patch file on purpose: the working copy of `coil_data_map.py` has moved
-past `c9d84d4`, so a patch cut here would not apply.
+From the performance-consistency session (branch `claude/performance-consistency`).
+
+**Applied 2026-10-01** by that session at John's request, with the CCSI session's agreement:
+
+- `ccsi/coil_data_map.py::build_coil_data_payload` returns a `performance_consistency` key
+  (the full report, from the untransformed `sources`). No entry, `pushable` flag or summary
+  changes because of it.
+- `web/ccsi/ccsi_autofill.user.js` v3.1.3 shows each `inconsistent` finding as a note in the
+  stage-1 box (`performanceWarnings`). Warning only: no button is disabled and the one-button
+  flow is untouched. `consistent` earns no mark.
+- The check cannot break the payload: a failure inside it is returned as
+  `performance_consistency.error` with no findings, the entries are untouched, and the panel
+  says the self-check did not run. `performanceWarnings` itself never throws.
+- `web/app.js` needed no change — it stamps the payload block as it arrives.
+- Not yet seen on the live CCSI page (needs John's login): install v3.1.3, send a coil, and
+  check the note appears and "Run all" still runs.
+
+The sections below are the original proposal, kept for the reasoning.
 
 ## What is available
 

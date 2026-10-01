@@ -345,3 +345,7 @@ def test_module_is_pure_and_has_no_eval():
     )
     done = subprocess.run([sys.executable, "-c", probe, str(SRC)], capture_output=True, text=True)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_parse_number_refuses_a_string_too_long_to_be_finite():
+    assert parse_number("9" * 400) is None

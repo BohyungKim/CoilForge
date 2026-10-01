@@ -154,8 +154,9 @@ def test_userscript_is_v3_1() -> None:
 
     header = re.search(r"// @version\s+(\S+)", _USERSCRIPT).group(1)
     runtime = re.search(r'const SCRIPT_VERSION = "([^"]+)";', _USERSCRIPT).group(1)
-    # 3.1.1 = + live-captured #DrainAndVentLocation; 3.1.2 = water ZD withheld (2026-10-01)
-    assert header == runtime == "3.1.2"
+    # 3.1.1 = + live-captured #DrainAndVentLocation; 3.1.2 = water ZD withheld (2026-10-01);
+    # 3.1.3 = performance self-consistency warnings in the stage-1 panel (warning only)
+    assert header == runtime == "3.1.3"
     assert "runAllSection(payload, gateCheck)," in _USERSCRIPT
 
 
@@ -178,3 +179,146 @@ def test_run_all_refuses_a_payload_without_coil_data() -> None:
 def test_copy_status_says_whether_coil_data_is_included() -> None:
     assert "coil-data fields (Run all ready)" in _APP_JS
     assert "coil data not ready yet" in _APP_JS
+
+
+# --- performance self-consistency: carried in the payload, shown as a warning only ----
+
+
+def test_payload_carries_the_performance_consistency_report() -> None:
+    payload = build_coil_data_payload(candidate=CANDIDATE, draft=_draft())
+    report = payload["performance_consistency"]
+    assert report["coil_type"] == "DX"
+    assert len(report["findings"]) == 7 and sum(report["counts"].values()) == 7
+    assert report["review_aid_only"] is True and report["export_allowed"] is False
+    assert {f["verdict"] for f in report["findings"]} <= {"consistent", "inconsistent", "cannot_evaluate"}
+
+
+_PUSHED = ("entries", "summary", "geometry_reselect_reason", "coil_type", "tag")
+
+
+def _inconsistent_draft() -> dict:
+    """The fixture draft with two values that contradict it: a DX coil that warms the air, and
+    a face velocity that 1200 CFM over a 12 x 15 face (960 fpm) cannot give."""
+    draft = _draft()
+    for key, value in (("leaving_dry_bulb_f", 85.0), ("face_velocity_fpm", 450.0)):
+        draft["fields"][key] = {**draft["fields"][key], "value": value, "status": "review_required"}
+    return draft
+
+
+def test_performance_consistency_never_changes_what_is_pushed(monkeypatch) -> None:
+    from coilforge.coil_utilities import performance_consistency as pc
+
+    with_check = build_coil_data_payload(candidate=CANDIDATE, draft=_inconsistent_draft())
+    flagged = {f["check"] for f in with_check["performance_consistency"]["findings"] if f["verdict"] == "inconsistent"}
+    assert flagged == {"air_temp_direction", "face_velocity"}  # the check really fired
+
+    # The same coil with the check replaced by one that finds nothing: what is pushed is identical.
+    silent = pc.PerformanceConsistencyReport(coil_type="DX", findings=[], counts={})
+    monkeypatch.setattr(pc, "check_performance_consistency", lambda sources, coil_type: silent)
+    without = build_coil_data_payload(candidate=CANDIDATE, draft=_inconsistent_draft())
+    assert without["performance_consistency"]["findings"] == []
+    for key in _PUSHED:
+        assert with_check[key] == without[key], key
+
+
+def test_a_failing_check_is_reported_and_never_breaks_the_payload(monkeypatch) -> None:
+    from coilforge.coil_utilities import performance_consistency as pc
+
+    expected = build_coil_data_payload(candidate=CANDIDATE, draft=_draft())
+
+    def boom(sources, coil_type):
+        raise OverflowError("simulated")
+
+    monkeypatch.setattr(pc, "check_performance_consistency", boom)
+    payload = build_coil_data_payload(candidate=CANDIDATE, draft=_draft())
+    report = payload["performance_consistency"]
+    assert report["findings"] == [] and report["error"] == "OverflowError: simulated"
+    assert report["review_aid_only"] is True and report["export_allowed"] is False
+    for key in _PUSHED:
+        assert payload[key] == expected[key], key
+    res = TestClient(app).post("/api/ccsi/coil-data-payload",
+                               json={"candidate": CANDIDATE, "direct_coil_input_draft": _draft()})
+    assert res.status_code == 200 and res.json()["entries"] == expected["entries"]
+
+
+def test_an_absurd_value_does_not_break_the_route() -> None:
+    # A 400-digit "number" used to parse to inf and make the JSON response fail (HTTP 500).
+    draft = _draft()
+    draft["fields"]["face_velocity_fpm"] = {**draft["fields"]["face_velocity_fpm"], "value": "9" * 400,
+                                            "status": "review_required"}
+    res = TestClient(app).post("/api/ccsi/coil-data-payload", json={"candidate": CANDIDATE, "direct_coil_input_draft": draft})
+    assert res.status_code == 200
+    face = next(f for f in res.json()["performance_consistency"]["findings"] if f["check"] == "face_velocity")
+    assert (face["verdict"], face["reason_code"]) == ("cannot_evaluate", "PERF_VALUE_UNPARSEABLE")
+
+
+def test_unknown_tag_carries_no_performance_report() -> None:
+    payload = build_coil_data_payload(candidate=_FIXTURE, draft={"fields": {}})
+    assert "performance_consistency" not in payload
+
+
+def _performance_warning_source() -> str:
+    start = _USERSCRIPT.index("const PERFORMANCE_CHECK_LABELS")
+    return _USERSCRIPT[start:_USERSCRIPT.index("function coilDataSection(payload, gateCheck)")]
+
+
+def test_userscript_shows_only_inconsistent_findings_as_warnings() -> None:
+    src = _performance_warning_source()
+    assert 'f.verdict === "inconsistent"' in src
+    assert "warning only" in src and "nothing is held" in src
+    # `consistent` earns no mark: it means "not contradicted", not "correct"
+    assert '"consistent"' not in src and "#1a7f37" not in src
+    assert "performanceWarnings(block).forEach((text) => wrap.append(note(text)));" in _USERSCRIPT
+
+
+def test_performance_warnings_never_gate_a_button_or_the_one_button_flow() -> None:
+    # John 2026-10-01: warn only. The findings must not reach any disable / stop / throw.
+    assert "performance_consistency" not in _run_all_source()
+    code = "\n".join(line for line in _USERSCRIPT.splitlines() if not line.strip().startswith("//"))
+    assert code.count("performance_consistency") == 1  # read once, inside performanceWarnings()
+    assert code.count("performanceWarnings(") == 2      # its definition + the one render call
+    src = _performance_warning_source()
+    for forbidden in ("disabled", ".click(", "throw ", "return false"):
+        assert forbidden not in src, forbidden
+
+
+def test_performance_warning_text_from_a_real_finding() -> None:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    from coilforge.coil_utilities.performance_consistency import check_performance_consistency
+
+    # 2755 RHHGRC-2: 1030 CFM, 54 -> 76.76 degF, 27.64 MBH, 43 ft fits neither air basis.
+    report = check_performance_consistency(
+        {"total_air_flow_cfm": 1030, "entering_dry_bulb_f": 54, "leaving_dry_bulb_f": 76.76,
+         "total_capacity_mbh": 27.64, "altitude_ft": 43}, coil_type="HGRH").model_dump()
+    script = (_performance_warning_source()
+              + "\nconst out = performanceWarnings(JSON.parse(process.argv[1]));"
+              + "\nconsole.log(JSON.stringify(out));")
+    block = json.dumps({"performance_consistency": report})
+    done = subprocess.run([node, "-e", script, block], capture_output=True, text=True, encoding="utf-8")
+    assert done.returncode == 0, done.stderr
+    warnings = json.loads(done.stdout)
+    assert len(warnings) == 1
+    assert "capacity vs airflow" in warnings[0] and "observed 1.179" in warnings[0]
+    assert "standard 1.085" in warnings[0] and "actual 1.117" in warnings[0]
+    # a payload from an older server has no report: nothing is shown, nothing breaks
+    old = subprocess.run([node, "-e", script, "{}"], capture_output=True, text=True, encoding="utf-8")
+    assert old.returncode == 0 and json.loads(old.stdout) == []
+    # a malformed report never throws while the panel is being built; a failed check says so
+    for block, shown in (
+        ({"performance_consistency": {"findings": "oops"}}, []),
+        ({"performance_consistency": {"findings": [None, {"verdict": "inconsistent", "check": "constructor"}]}}, None),
+        ({"performance_consistency": {"findings": [], "error": "OverflowError: simulated"}},
+         ["Submittal self-check did not run (OverflowError: simulated) — nothing is held."]),
+    ):
+        run = subprocess.run([node, "-e", script, json.dumps(block)], capture_output=True, text=True, encoding="utf-8")
+        assert run.returncode == 0, run.stderr
+        lines = json.loads(run.stdout)
+        if shown is None:
+            assert len(lines) == 1 and "— constructor:" in lines[0]  # the check id, not an inherited function
+        else:
+            assert lines == shown

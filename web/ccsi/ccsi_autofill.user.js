@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CoilForge → CCSI Direct Coil autofill (review aid)
 // @namespace    coilforge
-// @version      3.1.2
-// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. v3: two stages — stage 1 fills the coil data (geometry/options/air/refrigerant/fluid) one field at a time and stops before Calculate; stage 2 fills the drawing parameters once the dimension grid appears. v3.1 adds one button: coil data -> Calculate -> Custom Dimensions -> drawing parameters, then it stops (you press Calculate once more to apply the dimensions, and decide on Save). Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
+// @version      3.1.3
+// @description  Bridge the 13 Direct Coil drawing parameters from CoilForge straight into the external CCSI Online DX form — no copy/paste. Runs on both pages; CoilForge "Send to CCSI" pushes via the userscript manager's shared storage, the CCSI tab receives and opens a review-and-fill panel. When filling, it also flips each field's own CCSI "enable" checkmark (<id>_isActive) ON so the form accepts the value, and sets Apply Venting/Draining Constraints ON for hot-gas-bypass coils only. v3: two stages — stage 1 fills the coil data (geometry/options/air/refrigerant/fluid) one field at a time and stops before Calculate; stage 2 fills the drawing parameters once the dimension grid appears. v3.1 adds one button: coil data -> Calculate -> Custom Dimensions -> drawing parameters, then it stops (you press Calculate once more to apply the dimensions, and decide on Save). v3.1.3 shows CoilForge's submittal self-consistency warnings in the stage-1 box (warning only — nothing is held or stopped). Review aid only — you confirm every value; read-only fields (RF/HF/CH) are skipped; nothing auto-saves.
 // @include      /^https?:\/\/(localhost|127\.0\.0\.1):\d+\//
 // @match        https://coil.ccsi.ie/*
 // @noframes
@@ -43,7 +43,7 @@
   // Shown in the panel header so you can SEE which filler version is actually running —
   // a stale bookmarklet / old Tampermonkey install is invisible otherwise. Keep in sync
   // with @version above.
-  const SCRIPT_VERSION = "3.1.2";
+  const SCRIPT_VERSION = "3.1.3";
   // Must equal web/app.js::CCSI_WATER_DRAIN_VENT_LOCATION (pinned by a test). Every CWC/HWC,
   // all product lines (John 2026-09-23).
   const WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
@@ -425,6 +425,43 @@
     });
   }
 
+  // The submittal's own performance values checked against each other (CoilForge's
+  // performance_consistency). WARNING ONLY (John 2026-10-01): these lines are shown for the
+  // engineer and never hold a field, disable a button or stop the one-button flow — most
+  // flagged coils have no established cause. Only `inconsistent` is shown; `consistent` earns
+  // no mark, because it means "not contradicted", not "correct".
+  const PERFORMANCE_CHECK_LABELS = {
+    air_sensible_balance: "capacity vs airflow × air ΔT",
+    air_total_vs_sensible: "total capacity vs air-side sensible load",
+    sensible_le_total: "sensible vs total capacity",
+    fluid_heat_balance: "capacity vs GPM × fluid ΔT",
+    face_velocity: "face velocity vs airflow / face area",
+    air_temp_direction: "leaving vs entering air temperature",
+    wet_bulb_le_dry_bulb: "entering wet bulb vs dry bulb",
+  };
+
+  function performanceWarnings(block) {
+    // Never throws: this runs while the panel is being built, and a warning must not be the
+    // reason the panel (Run all, stage 2) fails to render.
+    try {
+      const report = block.performance_consistency || {};
+      const findings = Array.isArray(report.findings) ? report.findings : [];
+      const num = (v) => (Number.isFinite(v) ? String(Math.round(v * 1000) / 1000) : "—");
+      const label = (check) =>
+        (Object.prototype.hasOwnProperty.call(PERFORMANCE_CHECK_LABELS, check) ? PERFORMANCE_CHECK_LABELS[check] : String(check));
+      const lines = findings.filter((f) => f && f.verdict === "inconsistent").map((f) => {
+        const expected = Object.entries(f.expected || {}).map(([k, v]) => `${k} ${num(v)}`).join(", ");
+        return `⚠ Submittal check (warning only) — ${label(f.check)}: ` +
+          `${f.reason} (observed ${num(f.observed)}${expected ? `; expected ${expected}` : ""}). ` +
+          "Review before Calculate; nothing is held.";
+      });
+      if (report.error) lines.push(`Submittal self-check did not run (${report.error}) — nothing is held.`);
+      return lines;
+    } catch (_error) {
+      return [];
+    }
+  }
+
   function coilDataSection(payload, gateCheck) {
     const block = payload.coil_data;
     const wrap = el("div", { id: "ccsi-af-coildata" },
@@ -439,6 +476,7 @@
     if (block.geometry_reselect_reason) {
       wrap.append(note(`Rows / FPI / fin withheld — re-select them in CCSI: ${block.geometry_reselect_reason}`));
     }
+    performanceWarnings(block).forEach((text) => wrap.append(note(text)));
     const out = el("div", {}, { fontSize: "12px", margin: "4px 0" });
     const go = btn("Stage 1 — fill coil data (stops before Calculate)", async () => {
       go.disabled = true;

@@ -150,10 +150,11 @@ def parse_number(raw: Any) -> float | None:
         return None
     if isinstance(raw, (int, float)):
         value = float(raw)
-        return value if math.isfinite(value) else None
-    if isinstance(raw, str) and _NUMBER_RE.fullmatch(raw.strip()):
-        return float(raw.strip())
-    return None
+    elif isinstance(raw, str) and _NUMBER_RE.fullmatch(raw.strip()):
+        value = float(raw.strip())  # a 309+ digit string parses to inf
+    else:
+        return None
+    return value if math.isfinite(value) else None
 
 
 def _unwrap(source: Any) -> tuple[Any, str | None, str | None]:
