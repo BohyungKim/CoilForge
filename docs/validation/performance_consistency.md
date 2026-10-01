@@ -166,7 +166,12 @@ Standard orders). So the basis has to be set before the altitude, and the order 
    dimension discrepancies: 2674 HHWC-1 / -2 print a velocity that matches FH 10.5 while FH 9
    was extracted; 2873 CDXC-1 prints one that matches FL 16 while FL 15 was extracted. FH and
    FL are pushed to CCSI, so these are worth checking against the page.
-7. On `inconsistent` at push time: warn or block (integration, with the CCSI session). **Open.**
+7. ~~On `inconsistent` at push time~~ — **decided 2026-10-01: warn only.** The finding is shown
+   with its reason; "Run all" is not stopped. 8 of the 13 inconsistent heating coils and 6 of
+   the 7 inconsistent DX coils have no established cause, so a block would stop coils that
+   may be fine.
+
+No decision is open.
 
 ## Running the report
 

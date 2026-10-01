@@ -43,10 +43,11 @@ verdict is `inconsistent`, with `reason`, `observed` and `expected`. A `consiste
 should earn no green mark — it means "not contradicted", and on heating coils 30 of 118 match
 both air bases.
 
-## Decision this needs (John)
+## Behaviour on `inconsistent` — decided (John 2026-10-01): warn only
 
-Whether an `inconsistent` finding only warns or also stops "Run all" before Calculate. The
-module takes no position: it reports. Measured rate on the ordered corpus at the defaults
+An `inconsistent` finding is shown with its reason and does **not** stop "Run all" before
+Calculate. So the wiring needs no change to the stage-1 stop conditions: add the key, render
+the warnings, leave the flow as it is. Measured rate on the ordered corpus at the defaults
 (F 1.085, tol ±0.02): 13 of 118 heating coils, 7 of 153 DX coils (sensible), 0 of 26 water
 coils, 3 of 278 on face velocity. John settled the tolerance at ±0.02 on 2026-10-01; DX is
 sensitive to it (7 → 25 → 46 inconsistent at ±0.02 → ±0.015 → ±0.01), so it should not be
