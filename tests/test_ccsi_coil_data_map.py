@@ -197,6 +197,9 @@ _ORDER_2026_09_30 = {
 }
 for _type, _ids in _ORDER_2026_09_30.items():
     JOHN_APPROVED_VALIDATED[_type] = JOHN_APPROVED_VALIDATED[_type] | _ids
+# John 2026-10-01: CCSI air flow basis = Actual (Direct Coil selections are calculated in ACFM), every form.
+for _type in JOHN_APPROVED_VALIDATED:
+    JOHN_APPROVED_VALIDATED[_type] = JOHN_APPROVED_VALIDATED[_type] | {"ACFM"}
 # D3: CCSI calculates connection sizes — never pushable, on every form.
 _D3_CONNECTION_SIZES = {"DX": {"DXReturnConnectionSize"},
                         "HGRH": {"CondenserSupplyConnectionSize", "CondenserReturnConnectionSize"},
@@ -456,6 +459,20 @@ def test_absent_fields_take_the_default_profile(coil_type) -> None:
     water = coil_type in ("CWC", "HWC")
     assert by["TubeDiameter"].value == ("5/8 1.50 x 1.299" if water else "3/8 1.00 x 0.866")
     assert by["ConnectionMaterial"].value == ("Steel" if water else "Copper")
+
+
+@pytest.mark.parametrize("coil_type", ["DX", "HGRH", "CWC", "HWC"])
+def test_air_flow_basis_is_actual_and_pushed_before_altitude(coil_type) -> None:
+    """John 2026-10-01: Direct Coil selections are calculated in ACFM, so CCSI's basis is Actual.
+
+    Order is load-bearing: under Standard CCSI locks Altitude to 0, and stage 1 skips a locked
+    field — so the basis must be written (and its GetDependencies settled) before Altitude.
+    Standard (SCFM) stays a roadmap question, not an option this map ever chooses.
+    """
+    acfm = _by_id(resolve_coil_data({}, coil_type=coil_type))["ACFM"]
+    assert acfm.value == "Actual" and acfm.pushable and acfm.reason_code == "CCSI_DEFAULT_PROFILE"
+    ids = list(load_coil_data_map(coil_type).fields)
+    assert ids.index("ACFM") < ids.index("Altitude")
 
 
 def test_a_stated_value_always_beats_the_default() -> None:

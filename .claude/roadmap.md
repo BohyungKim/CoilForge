@@ -1366,6 +1366,15 @@
   확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
   ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
 ## ⬜ 앞으로
+- [ ] **[CCSI coil-data 트랙] 🟡 Standard airflow(SCFM) 반영 — 의심 영역, 보류 (John 2026-10-01)** —
+  CCSI 풍량 기준은 **ACFM(Actual)로 적용 완료**(4개 맵 `ACFM` = `Actual` default·validated, Altitude보다 먼저 push).
+  근거는 John의 설명이다. "이상적으로는 SCFM으로 계산했어야 하지만, Direct Coil은 지금까지 전부 ACFM으로 계산해 왔다."
+  오더 135 Actual / 77 Standard 분포는 코퍼스 중간에 기준이 바뀐 흔적이다(성능 검증 세션 실측, 난방 코일 Actual 26/26 용량 재현 vs Standard 0/7).
+  **의심 영역인 이유:** submittal의 풍량 라벨은 `SCFM`인데 수치는 Actual 기준에 맞고(3237), Standard면 고도가 0으로 잠겨
+  고도 보정이 사라진다. 즉 "SCFM 라벨 = 실제 계산 기준"이 아니다. 그래서 SCFM으로 옮기면 CCSI 용량·LDB가 submittal과 어긋난다.
+  **할 일(착수 전 John 판단):** ①submittal 생성 쪽이 실제로 어느 기준으로 계산하는지 확정 ②SCFM 전환 시 용량·LDB 차이 크기 측정
+  ③오더 게이트에 원인 "air basis"를 추가해 ACFM 필드·Altitude·용량/LDB 불일치를 결함에서 분리(코일별 판정 =
+  `performance_consistency`의 `air_sensible_balance.air_basis`, 연결 3줄 제안은 `docs/validation/ccsi_integration_handoff.md`).
 - [x] **[Terra 물코일 트랙] Terra HWC 템플릿 시딩 (2026-09-23, John 승인)** — 바탕화면 `TERRA_HWC_LH/RH.pdf`(`HW-A-F-03-11-15.00x22.50-L/R`) → `Case/feed/terra_hwc_*` → `coilmaster_terra_hwc_{lh,rh}` 각 hand 자체 시드(35 slot, 박힌 치수 0). seed O2 13.50 = CH 16.25 − I 2.75 → **HWC도 반대편 datum**, `TEMPLATE_O_DATUM` 등록. `_TERRA_WATER_WITHHELD_CATEGORIES` = 빈 집합(게이트 비활성, 테스트는 monkeypatch로 재무장해 경로 유지). 카탈로그 37 버킷(2619127). **✅ John 템플릿 눈검증 완료(2026-09-23)** — Terra CWC/HWC LH·RH 4종 빈 슬롯 + 샘플 렌더 스크린샷(https://claude.ai/artifact/1hyNY11tgd2dxw8tk2Aw2V). 남은 것: 커버리지 대시보드 Terra 섹션(`--check`는 shared만 검사 — drift 없음). 실 Terra 물코일 제출물 라이브 확인은 **케이스가 생기면 진행**(John 2026-09-23 보류).
 - [x] **[Terra 물코일 트랙] 물코일 O = datum 문제로 종결 (2026-09-23, John "1+2 둘 다")** — 시트 O(`CH − x`)와 도면 O(`= I`)는 **한 스텁을 반대편 끝에서 잰 것**. datum을 규칙이 아니라 **아트워크 속성**(`catalog.TEMPLATE_O_DATUM`)으로 선언 → Terra CWC만 `O2 = CH − I`(seed 16.50 재현), CH 미해결이면 I를 찍지 않고 **공란**+사유, 수동 CH/I가 O를 끌고 감. 체크리스트는 양쪽을 헤더 끝 datum으로 맞춰 비교(`compared_from_header_end`), "use checklist"는 `checklist_as_drawn`만 채택. KD-024..027 은퇴. plan-review APPROVE-WITH-CHANGES(M1·M2 반영) + invariant-guard 위반 0, **1776 green**(7b562f1). Terra CWC/HWC O 치수선 = CH − I 템플릿 눈검증 완료(위 HWC 항목의 아티팩트). 남은 것: 라이브 워크북 수식 재대조(Excel 잠금).
 - [x] **[HITL 막힘 해제 트랙] J-1b — 체크리스트 IN/OUT CONN SZ 채택 허용 (John 2026-09-23: "코일별로만 허용")** — d8c2c42 이후 추출된 IN/OUT은 이미 R-071에 자동 적용되므로, 남은 차이는 **시트가 generic Supply/Return 크기로 fallback**(`from_workflow.py`)하고 도면 추출은 안 하는 경우 하나. `checklistAdoptionPlan`이 물코일에서 도면이 **읽지도(`water_conn_extracted`) 입력받지도 않은 끝만** Tier-A 엔진 입력으로 채택 → 그 코일만 R-071 적용, `adopted from Coil Checklist` 접두어로 ManualOverride 감사. 클릭 없이는 무동작. 도면 자동 fallback(무클릭)은 채택 안 함 — ambiguous 값이라 never-invent 위배. J-3a는 d8c2c42로 이미 종결.

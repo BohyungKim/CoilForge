@@ -250,6 +250,22 @@ Source: CCSI selection reports of 77 ordered projects / 212 coils (`scripts/ccsi
 - Gate change: a numeric difference at printed precision (≤0.015 or ≤0.2 %) is cause `rounding`, not a defect.
 - Three submittals never finished extraction (2982, 3037, 3191; >30 min each) and are not in these counts.
 
+## Decided 2026-10-01 — Air flow basis = Actual (John)
+
+The `ACFM` watch-list item above is settled: **CCSI "Air flow basis" = `Actual`** on all four forms
+(`default`, `validated`; the submittal never states it). John: Direct Coil selections have been calculated
+in ACFM; SCFM would be the ideal basis, but it is not what the orders were rated on. The order split
+(Actual 135 / Standard 77) is a mid-corpus switch, not noise — relayed by the performance-validation
+session from `crosscheck.json`: with the coil's own Actual basis 26/26 ordered heating coils reproduce
+capacity, 0/7 on Standard (Likely; not re-derived here).
+
+- Push order is load-bearing: under Standard CCSI locks Altitude to 0 and stage 1 skips a locked field, so
+  `ACFM` comes before `Altitude` in every map (pinned by a test).
+- Expected order-gate effect: Altitude "unexplained" (DX 17 / HGRH 12) were Standard-selected coils whose
+  altitude CCSI locked to 0; ordered coils selected on Standard will now show an `ACFM` mismatch. Neither
+  is a CoilForge defect — a gate cause "air basis" is the open follow-up.
+- **Standard (SCFM) is parked on the roadmap as a suspect area** (John 2026-10-01), not adopted.
+
 ## Implementation already in scope (no decision needed)
 
 - Thread canonical-only values into the coil-data source (plan Step A): HGRH vapor / condensing /

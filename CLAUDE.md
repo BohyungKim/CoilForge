@@ -423,6 +423,9 @@ the drawing's `slot.TUBE_MATERIAL_2`; Smooth = Plain, John); no stated surface o
 is a sibling element, not a `<label>`, so a labelText-only selector resolves nothing; and CCSI's water
 dimension grid (CD/HS/BF/VS/TF/HR/EF/VR/FF/HD/CH/CS) has **no ZD**, so every payload builder (app.js,
 userscript bridge, `/ccsi-fill`) sends water ZD as `blocked` (skipped, never a "selector not found").
+**Air flow basis = `Actual` (John 2026-10-01)** on every form — Direct Coil selections are calculated in
+ACFM even though the submittal labels airflow `SCFM`; Standard locks Altitude to 0, so `ACFM` is pushed
+before `Altitude` (map order, pinned). Moving to SCFM is a roadmap suspect area, not a map option to flip.
 
 **Submittal corpus index + page-text cache (2026-09-30)** (`corpus/`, `scripts/build_submittal_index.py`,
 `scripts/pre_extract_submittals.py`, `docs/corpus/`) — indexes every PDF in the OneDrive PO tree by
