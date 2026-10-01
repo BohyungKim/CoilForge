@@ -39,6 +39,11 @@ const state = {
   // treated as stale on THIS explicit signal — never by comparing the two CoilForge
   // numbers, which can differ permanently (the checklist resolves its own product line).
   checklistRefillPending: false,
+  // Where the auto-filled Coil Checklist landed (its Downloads path), or why it didn't.
+  // Read only by the deliverable confirmation dialog, which has to state whether the
+  // .xlsx actually exists BEFORE John chooses to file — the filing itself still resolves
+  // the path server-side from the checklist cache, never from this.
+  lastChecklistFill: null,
   // CCSI compare verdicts, per coil tag. Was a flat object, so switching coils carried
   // the previous coil's green/red until the next Compare click.
   ccsiVerdictsByTag: {},
@@ -2020,6 +2025,9 @@ const CCSI_AUTOFILL_SCHEMA = "coilforge.ccsi.autofill/1";
 // Coil Checklist vocabulary for a different field, and John keeps the two separate.
 const CCSI_WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
 const CCSI_WATER_CATEGORIES = new Set(["CWC", "HWC"]);
+// ZD / ZD2 … have no field on CCSI's water-coil dimension grid (live 2026-10-01).
+const CCSI_WATER_NO_ZD = /^ZD\d*$/;
+const CCSI_WATER_NO_ZD_REASON = "CCSI water-coil dimension grid has no ZD field — not pushed.";
 // Single source of truth for the scoped keys: the same 13 the panel lays out.
 const CCSI_DRAWING_PARAM_KEYS = DRAWING_PARAM_COLUMNS.flat();
 
@@ -2079,16 +2087,23 @@ function ccsiFillKeys(parameters, fieldMap) {
 
 function buildCcsiAutofillPayload(uiState, fieldMap) {
   const parameters = uiState.drawing_parameters?.parameters || {};
+  const isWater = CCSI_WATER_CATEGORIES.has(
+    String(uiState.template_drawing?.extracted?.coil_category || "").toUpperCase(),
+  );
   const fields = ccsiFillKeys(parameters, fieldMap).map((key) => {
     const parameter = parameters[key] || {};
     const mapEntry = fieldMap.fields?.[key] || {};
     const hasValue =
       parameter.value !== null && parameter.value !== undefined && parameter.value !== "";
+    // CCSI's water-coil dimension grid has no ZD field (live 2026-10-01, John "A"): the push
+    // is withheld so the filler counts it as skipped instead of warning "selector not found"
+    // on every water Run all. The drawing's own ZD is untouched.
+    const noCcsiTarget = isWater && CCSI_WATER_NO_ZD.test(key);
     // Confidence gate carried one step further into the external form: a no-value
     // or unmapped parameter is "blocked" for fill purposes so the userscript skips
     // it. A real value rides along, but only ever as review_required — never an
     // auto-applied "ready" (the resolver emits no ready path for these 13).
-    const status = hasValue ? parameter.status || "review_required" : "blocked";
+    const status = hasValue && !noCcsiTarget ? parameter.status || "review_required" : "blocked";
     return {
       key,
       ccsi_label: mapEntry.ccsi_label || parameter.label || key,
@@ -2101,9 +2116,11 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
       // enable checkmark is off.
       ccsi_readonly: mapEntry.ccsi_readonly === true,
       selectors: Array.isArray(mapEntry.selectors) ? mapEntry.selectors : [],
-      blocked_reason: hasValue
-        ? null
-        : parameter.blocked_reason || "No value derived from the source or rule engine; review required.",
+      blocked_reason: noCcsiTarget
+        ? CCSI_WATER_NO_ZD_REASON
+        : hasValue
+          ? null
+          : parameter.blocked_reason || "No value derived from the source or rule engine; review required.",
     };
   });
   return {
@@ -2189,10 +2206,11 @@ function readStampedCcsiCoilData() {
 }
 
 // The CCSI select is chosen by OPTION TEXT (`match: "option_text"`): the option values are
-// CCSI's own codes and have never been captured. The select's id has not been captured
-// either, so the target is found by its label and marked `selector_verified: false` — the
-// filler panel then shows exactly which element it would write, for John to confirm, until
-// a live capture pins a `#id` (the Drawing Notes Phase F procedure). Null for non-water coils.
+// CCSI's own codes and have never been captured. Its id WAS captured live on 2026-10-01
+// (3031 CCWC-1, `#DrainAndVentLocation`): the labelText-only entry resolved to nothing on the
+// real form, because CCSI prints the caption in a sibling element, not a <label> — the same
+// "unverified selector is a silent no-op" failure the Drawing Notes capture found. labelText
+// stays as a SECOND choice, as for the notes. Null for non-water coils.
 function ccsiDrainVentLocation(coilCategory) {
   if (!CCSI_WATER_CATEGORIES.has(String(coilCategory || "").toUpperCase())) return null;
   return {
@@ -2201,8 +2219,11 @@ function ccsiDrainVentLocation(coilCategory) {
     status: "review_required",
     type: "select",
     match: "option_text",
-    selectors: [{ strategy: "labelText", text: "Drain and Vent Location" }],
-    selector_verified: false,
+    selectors: [
+      { strategy: "css", selector: "#DrainAndVentLocation" },
+      { strategy: "labelText", text: "Drain and Vent Location" },
+    ],
+    selector_verified: true,
     blocked_reason: null,
   };
 }
@@ -4089,15 +4110,15 @@ function checklistSizeToPickerToken(unit, size) {
 
 // A value the sheet actually computed. Excel COM hands an error cell (#N/A, #VALUE!) back as
 // a large NEGATIVE integer, so "finite and non-negative" also keeps those out.
+// The sheet's value in the drawing's own datum. Only the water O row differs: the sheet
+// measures the Terra stubout from the opposite end (CH - x), so adopting the raw number
+// would print it on the wrong dimension line (compare.py `checklist_as_drawn`, 2026-09-23).
 function _datumTitle(c) {
   const fmt = (v) => (v === null || v === undefined ? "—" : String(v));
   return `Compared from the header end: CoilForge ${fmt(c.coilforge)} (drawn ${c.coilforge_datum}), `
     + `checklist ${fmt(c.checklist)} (sheet ${c.checklist_datum}) — same stubout, measured from opposite ends`;
 }
 
-// The sheet's value in the drawing's own datum. Only the water O row differs: the sheet
-// measures the Terra stubout from the opposite end (CH - x), so adopting the raw number
-// would print it on the wrong dimension line (compare.py `checklist_as_drawn`, 2026-09-23).
 function checklistValueAsDrawn(entry) {
   const c = entry && entry.compared_from_header_end;
   return c ? c.checklist_as_drawn : entry && entry.checklist;
@@ -4814,6 +4835,7 @@ function hydratePdfWorkflow(workflow, statusText) {
   state.checklistBySlot = null;
   state.checklistInputsByTag = null;
   state.checklistRefillPending = false;
+  state.lastChecklistFill = null;
   state.ccsiVerdictsByTag = {};
   setSelectedQuotePdfFile(null);    // fresh analyze -> clear the prior quote PDF choice
   renderShell(workflowToUiState(state.ui, workflow, null));
@@ -5321,8 +5343,13 @@ elements.copyCcsiPayload?.addEventListener("click", async () => {
       return;
     }
     const fillable = payload.fields.filter((field) => field.value !== null).length;
+    const coilData = (payload.coil_data?.entries || []).filter((entry) => entry.pushable).length;
     elements.ccsiAutofillStatus.textContent =
-      `Copied CCSI payload — ${fillable}/${payload.fields.length} fields have a value to review (map v${payload.field_map_version}). Switch to the CCSI form and run the userscript.`;
+      `Copied CCSI payload — ${fillable}/${payload.fields.length} drawing fields` +
+      (coilData
+        ? ` + ${coilData} coil-data fields (Run all ready)`
+        : " · coil data not ready yet — wait a moment and copy again for Run all") +
+      ` (map v${payload.field_map_version}). Switch to the CCSI form and run the filler.`;
   } catch (error) {
     elements.ccsiAutofillStatus.textContent = `Could not build payload: ${error.message}`;
   }
@@ -5514,10 +5541,182 @@ async function buildQuotePackage() {
   };
   const finalizeBtn = document.querySelector("#finalize-deliverable");
   if (finalizeBtn) finalizeBtn.hidden = false;
-  // File the deliverable in the SAME click (John 2026-08-30) — the three docs stop
-  // living in Downloads. The Outlook draft is deliberately skipped: John chose
-  // "file only" for the automatic step and keeps the draft on its own button.
-  await fileDeliverable({ skipDraft: true });
+  // All three deliverable documents now exist (checklist from analyze, quote from the
+  // drop zone, revised quote just built) but NOTHING has moved yet. John 2026-09-09:
+  // the build click stops deciding for him - ask, in one dialog, whether to move them
+  // into the PO folder's DirectCoil and whether to open the Outlook draft.
+  // (Supersedes the 2026-08-30 "file in the same click, draft on its own button".)
+  await runDeliverableChoiceFlow();
+}
+
+// -- Deliverable confirmation dialog -----------------------------------------------
+// The three documents the deliverable is made of, with whether each one was actually
+// captured. `name` present == captured; `detail` names the reason when it wasn't, so a
+// missing checklist is visible BEFORE John commits to filing rather than as a warning
+// line afterwards.
+function collectDeliverableDocuments() {
+  const ctx = state.lastQuotePackage || {};
+  const chk = state.lastChecklistFill;
+  const baseName = (path) => String(path).split(/[\\/]/).pop();
+  return [
+    {
+      kind: "checklist",
+      label: "Coil Checklist",
+      name: chk?.savedPath ? baseName(chk.savedPath) : null,
+      detail: chk?.savedPath ? null : chk?.status || "not auto-filled for this submittal",
+    },
+    {
+      kind: "quote",
+      label: "Quote",
+      name: isPdfFile(state.selectedQuotePdfFile) ? state.selectedQuotePdfFile.name : null,
+      detail: isPdfFile(state.selectedQuotePdfFile) ? null : "no quote PDF is loaded",
+    },
+    {
+      kind: "revised",
+      label: "Revised quote",
+      name: ctx.revisedBase64 ? ctx.fileName || null : null,
+      detail: ctx.revisedBase64 ? null : "the revised PDF was not built",
+    },
+  ];
+}
+
+// Ask, then act. Cancelling leaves every document in Downloads and re-offers the choice,
+// so a mis-click is never a dead end. Returns the finalize result, or null if nothing ran.
+async function runDeliverableChoiceFlow() {
+  const summary = document.querySelector("#deliverable-summary");
+  const choice = await showDeliverableChoiceDialog(collectDeliverableDocuments());
+  if (!choice || !choice.file) {
+    if (summary) {
+      summary.innerHTML =
+        `<span class="quote-package-coil">Nothing was filed &mdash; the documents are still in `
+        + `your Downloads folder.</span><br>`
+        + `<button id="deliverable-choice-reopen" type="button">Choose what to do&hellip;</button>`;
+      document.querySelector("#deliverable-choice-reopen")?.addEventListener("click", () => {
+        runDeliverableChoiceFlow().catch((error) => {
+          summary.textContent = `Filing failed: ${error.message || error}`;
+        });
+      });
+    }
+    return null;
+  }
+  return fileDeliverable({ skipDraft: !choice.draft });
+}
+
+// A real modal panel, not confirm(): confirm()/alert() block the page (and any
+// Claude-in-Chrome session driving it), and neither can show the per-document capture list
+// that makes the choice an informed one. Built as a positioned overlay — the pattern
+// `.ambient-drawing-modal` already uses here — rather than <dialog>.showModal(), whose
+// top-layer panel wedges the browser automation that drives this page. Resolves to
+// {file, draft}, or null when cancelled (Not now / Esc / a click on the backdrop).
+function showDeliverableChoiceDialog(docs) {
+  const overlay = ensureDeliverableDialog();
+  const captured = docs.filter((doc) => doc.name).length;
+  overlay.querySelector(".cf-dialog-lede").innerHTML =
+    `<strong>${captured} of ${docs.length}</strong> documents captured. Nothing has moved yet `
+    + `&mdash; choose what happens next.`;
+  overlay.querySelector(".cf-dialog-docs").innerHTML = docs
+    .map((doc) => {
+      const cls = doc.name ? "cf-dialog-doc is-captured" : "cf-dialog-doc is-missing";
+      const icon = doc.name ? "✓" : "⚠";
+      const body = doc.name
+        ? escapeHtml(doc.name)
+        : `<em>${escapeHtml(doc.detail || "not captured")}</em>`;
+      return `<li class="${cls}"><span class="cf-dialog-doc-icon">${icon}</span>`
+        + `<span class="cf-dialog-doc-label">${escapeHtml(doc.label)}</span>`
+        + `<span class="cf-dialog-doc-name">${body}</span></li>`;
+    })
+    .join("");
+
+  const fileBox = overlay.querySelector("#deliverable-choice-file");
+  const draftBox = overlay.querySelector("#deliverable-choice-draft");
+  const note = overlay.querySelector("#deliverable-choice-note");
+  const go = overlay.querySelector("#deliverable-choice-go");
+  const cancel = overlay.querySelector("#deliverable-choice-cancel");
+  fileBox.checked = true;
+  draftBox.checked = false;
+
+  // The Outlook draft attaches the FILED revised PDF, so it cannot run without the move.
+  // Disabling it and saying why is honest; filing anyway behind his back would not be.
+  const sync = () => {
+    draftBox.disabled = !fileBox.checked;
+    if (!fileBox.checked) draftBox.checked = false;
+    go.disabled = !fileBox.checked;
+    go.textContent = draftBox.checked ? "Move & open draft" : "Move to DirectCoil";
+    const missing = docs.filter((doc) => !doc.name).map((doc) => doc.label);
+    note.innerHTML = !fileBox.checked
+      ? "The draft attaches the filed revised PDF, so it needs the move &mdash; pick "
+        + "&ldquo;Not now&rdquo; to leave everything in Downloads."
+      : missing.length
+        ? `<span class="cf-dialog-note-warn">⚠ ${escapeHtml(missing.join(", "))} `
+          + `will not be filed.</span>`
+        : "Downloads originals are removed only where the filed copy matches byte for byte.";
+  };
+  fileBox.onchange = sync;
+  draftBox.onchange = sync;
+  sync();
+
+  return new Promise((resolve) => {
+    // One settle, whatever route got here — the handlers are re-assigned (not added) on
+    // every open, so a re-shown panel can never carry the previous answer's listeners.
+    const settle = (value) => {
+      overlay.classList.remove("open");
+      document.removeEventListener("keydown", onKey, true);
+      overlay.onclick = null;
+      go.onclick = null;
+      cancel.onclick = null;
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") settle(null);
+    };
+    go.onclick = () => settle({ file: fileBox.checked, draft: draftBox.checked });
+    cancel.onclick = () => settle(null);
+    // Backdrop only — a click inside the panel must not cancel it.
+    overlay.onclick = (event) => {
+      if (event.target === overlay) settle(null);
+    };
+    document.addEventListener("keydown", onKey, true);
+    overlay.classList.add("open");
+    go.focus();
+  });
+}
+
+// Built once and reused. The markup is behaviour-free, so it lives next to the logic that
+// fills it rather than in index.html, where it would read as always-present UI.
+function ensureDeliverableDialog() {
+  let overlay = document.querySelector("#deliverable-dialog");
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.id = "deliverable-dialog";
+  overlay.className = "cf-dialog-backdrop";
+  overlay.innerHTML = `
+    <div class="cf-dialog" role="dialog" aria-modal="true" aria-labelledby="deliverable-choice-title">
+      <h3 class="cf-dialog-title" id="deliverable-choice-title">Deliverable ready</h3>
+      <p class="cf-dialog-lede"></p>
+      <ul class="cf-dialog-docs"></ul>
+      <label class="cf-dialog-choice">
+        <input id="deliverable-choice-file" type="checkbox" checked />
+        <span>
+          <strong>Move to the PO folder</strong>
+          <small>&hellip;/02 - POs/&lt;project&gt;/Accessory Order Forms/DirectCoil &mdash; the originals leave Downloads.</small>
+        </span>
+      </label>
+      <label class="cf-dialog-choice">
+        <input id="deliverable-choice-draft" type="checkbox" />
+        <span>
+          <strong>Open an Outlook draft</strong>
+          <small>Pre-filled, revised PDF attached. Prepared only &mdash; never sent.</small>
+        </span>
+      </label>
+      <p id="deliverable-choice-note" class="cf-dialog-note"></p>
+      <div class="cf-dialog-actions">
+        <button type="button" id="deliverable-choice-cancel" class="secondary-action">Not now</button>
+        <button type="button" id="deliverable-choice-go">Move to DirectCoil</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
 }
 
 // File the deliverable — MOVE the original quote + revised quote + auto-generated
@@ -5987,6 +6186,12 @@ async function fillCoilChecklist() {
           body: pdfBytes,
         };
     const review = await requestJson("/api/checklist/fill", request);
+    // Remember where the .xlsx landed so the deliverable dialog can say "captured" (or
+    // name the reason it wasn't) instead of implying a file that never got written.
+    state.lastChecklistFill = {
+      savedPath: review.saved_path || null,
+      status: review.saved_path ? "ok" : "the fill returned no file path",
+    };
     ingestChecklistReview(review);
     renderChecklistReview(review);
     if (summary) {
@@ -6003,6 +6208,10 @@ async function fillCoilChecklist() {
         `review aid, not exported`;
     }
   } catch (error) {
+    state.lastChecklistFill = {
+      savedPath: null,
+      status: `fill failed — ${error.message || error}`,
+    };
     if (summary) summary.textContent = `Checklist fill failed: ${error.message || error}`;
   }
 }

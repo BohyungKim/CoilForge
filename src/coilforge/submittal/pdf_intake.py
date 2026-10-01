@@ -230,9 +230,15 @@ _COATING_FAMILY_RE = re.compile(
     r"|blygold\s*anti-?\s*(?:corrosive|microbial)"
     r"|blygold"
     r"|black\s+poly(?:\s+coated\s+fin)?"
+    # CCSI's own coating option (John 2026-09-30). Not in the Coil Checklist dropdown, so the
+    # checklist surfaces it for review; "AA" alone never matches -- a coating word must follow.
+    r"|aa(?=\s+(?:coil\s+)?coating\b)"
     r")",
     re.IGNORECASE,
 )
+# The Oxygen8 cover quotes it as a line item wrapped over two lines ("1 Miscellaneous AA coil" /
+# "coating adder"), which the per-line scan below cannot see -- so it is matched on the page.
+_PACKAGE_AA_COATING_RE = re.compile(r"\bAA\s+coil\s+coating\s+adder\b", re.IGNORECASE)
 
 
 def coating_family(text: Any) -> str | None:
@@ -271,6 +277,8 @@ def _package_coating(
     for page in sorted(pages, key=lambda p: p.page_number):
         if cover_page is not None and page.page_number < cover_page:
             continue
+        if _PACKAGE_AA_COATING_RE.search(page.text or ""):
+            return "AA"
         for raw_line in (page.text or "").splitlines():
             line = _clean_line(raw_line)
             if not line or "coat" not in line.lower():

@@ -187,8 +187,9 @@ def test_omnia_unseeded_dx_is_gated_like_ventum_plus():
 
 def test_omnia_water_and_hgrh_draw():
     for category, hand, tid in (
-        ("HWC", "Left", "coilmaster_vplus_hwc_lh"),
-        ("CWC", "Left", "coilmaster_vplus_cwc_lh"),
+        # Water: the shared art since the Ventum+ water buckets retired (2026-09-24).
+        ("HWC", "Left", "coilmaster_hwc_lh"),
+        ("CWC", "Left", "coilmaster_cwc_lh"),
         ("HGRH", "Right", "coilmaster_vplus_hgrh_rh_header1"),
     ):
         out = _derive(category, hand, 1)
@@ -202,7 +203,7 @@ def test_no_omnia_bucket_was_seeded():
     assert len(catalog.entries) == TEMPLATE_BUCKET_COUNT
     assert not any("omnia" in t.template_id.lower() for t in catalog.entries)
     assert not any(t.product_family == "OMNIA" for t in catalog.entries)
-    assert len(VENTUM_PLUS_TEMPLATES) == 11
+    assert len(VENTUM_PLUS_TEMPLATES) == 8  # DX 5 + HGRH 3 (water retired 2026-09-24)
 
 
 # --------------------------------------------------------------------------- #

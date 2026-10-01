@@ -81,14 +81,15 @@ def test_former_mirror_hand_now_renders() -> None:
 
 
 def test_ventum_plus_renders_across_categories() -> None:
-    # Ventum Plus renders across categories. These LH 1-header combos now have DEDICATED
-    # Ventum+ templates seeded from real Ventum+ selection drawings (2026-07-06), so they
-    # route to the `coilmaster_vplus_*` bucket instead of the shared one. Review aid only.
-    for category, template_id in (
-        ("DX", "coilmaster_vplus_dx_lh_header1"),
-        ("HGRH", "coilmaster_vplus_hgrh_lh_header1"),
-        ("CWC", "coilmaster_vplus_cwc_lh"),
-        ("HWC", "coilmaster_vplus_hwc_lh"),
+    # Ventum Plus renders across categories. DX/HGRH LH 1-header have DEDICATED Ventum+
+    # templates seeded from real Ventum+ selection drawings (2026-07-06). CWC/HWC draw on
+    # the SHARED art: the Ventum+ water buckets were retired 2026-09-24 (John: Ventum+ water
+    # coils are the same as every other line's). Review aid only.
+    for category, template_id, family in (
+        ("DX", "coilmaster_vplus_dx_lh_header1", "VENTUM_PLUS"),
+        ("HGRH", "coilmaster_vplus_hgrh_lh_header1", "VENTUM_PLUS"),
+        ("CWC", "coilmaster_cwc_lh", None),
+        ("HWC", "coilmaster_hwc_lh", None),
     ):
         out = derive_coil_template_drawing(
             dict(coil_category=category, coil_hand="Left", circuits=1,
@@ -96,7 +97,7 @@ def test_ventum_plus_renders_across_categories() -> None:
                  finned_height=12, finned_length=15, suction_conn_size=0.625)
         )
         assert out["template_id"] == template_id, category
-        assert out.get("dedicated_family_template") == "VENTUM_PLUS", category
+        assert out.get("dedicated_family_template") == family, category
         assert out["template_found"] is True, category
         assert out["generation_allowed"] is True, category
         assert out["svg"], category

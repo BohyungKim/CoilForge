@@ -67,7 +67,7 @@ Inputs referenced: `TC` = Type of Coil, `PT` = Product Type, `US` = Unit Size. `
 | R-004 | * | * | * | return_flange (RF) = 1.5 | Same as R-003 | High | No | |
 | R-005 | DX, HGRH | * | * | return_bend (RB) = 1.5 (default; John 2026-06-25, was 1.75) | John 2026-06-25 (prior: SOP §DX-TNVH/§DX-VP/§HGRH-* ; CHK DX!C29, HGRH!C32) | High | No | 1.5 is now the direct-coil default across all product lines (drops OAL=FL+3+RB by 0.25); the old 1.75 with a "reduce to 1.5 if fit issue" escape hatch is superseded |
 | R-006 / R-006v / R-006p | CWC, HWC | * | * | return_bend (RB) = 2.25; Terra V and Ventum+/Omnia = 1.875 (2026-09-22) | CHK CWC!C26 / HWC!C30 `IF(OR(TERRA V,VENTUM+),1.875,2.25)`; John 2026-09-22 (supersedes the 2026-06-29 flat 1.875) | High | No | Water RB is compared against the sheet's formula, not written (DX/HGRH RB is still written) |
-| R-007 | CWC, HWC | * | * | notes += "Vent & Drain installed <= 3\" from MPT connection. Only 1 Supply and 1 Return connection required. Do not bend connection to meet dimensional requirements." | SOP §GEN; CHK CWC!C20, HWC!C24 — strings match verbatim | High | No | |
+| ~~R-007~~ | CWC, HWC | * | * | **RETIRED 2026-09-24 (John: remove from every CWC/HWC).** Was: notes += "Vent & Drain installed <= 3\" from MPT connection. ..." | SOP §GEN; CHK CWC!C20, HWC!C24 | — | — | new water references print an empty NOTES block |
 | R-008 | DX, HGRH | * | * | notes += "Copper Straps Required." | SOP §GEN; CHK DX!C23, HGRH!C26 | High | No | |
 
 ### 2.2 Flanges (TF/BF) — the conflict zone
@@ -281,7 +281,7 @@ Expected: hd=3.5, conn_angle=LAS, rb=1.5 High; o → blocked CONFLICT (R-042); r
 Expected: single-feed note suggestion containing "Add Headers & Stubouts… O2=2… SL2=8" pattern, review_required=true (R-049 Medium); single_feed_ext=3 suggestion (R-050 Medium). Evidence: SOP §GEN single-feed note (Nova variant) + CHK HGRH!C26.
 
 **T12 — CWC / NOVA / A16**
-Expected: rb=2.25 (R-006), hf/rf=1.5, io=2.3125 (R-060, requires feeds>1 → if feeds absent: suggestion with missing_inputs=[feeds]), sl=8 (R-063), hd=4 (R-062, same feeds caveat), notes vent&drain (R-007), size_class=NOVA_1IN; tf/bf → blocked CONFLICT (R-013: SOP 1 vs CHK 0.625). Evidence: SOP §CWC/HWC vs CHK CWC.
+Expected: rb=2.25 (R-006), hf/rf=1.5, io=2.3125 (R-060, requires feeds>1 → if feeds absent: suggestion with missing_inputs=[feeds]), sl=8 (R-063), hd=4 (R-062, same feeds caveat), no notes (R-007 retired 2026-09-24), size_class=NOVA_1IN; tf/bf → blocked CONFLICT (R-013: SOP 1 vs CHK 0.625). Evidence: SOP §CWC/HWC vs CHK CWC.
 
 **T13 — CWC / VENTUM+ / V30**
 Expected: tf/bf=1 (R-011 — both docs agree for VENTUM+), rb=2.25, sl=10 (R-063), io=2.3125, hd=4. Confidence=High. Evidence: SOP §CWC/HWC + CHK.

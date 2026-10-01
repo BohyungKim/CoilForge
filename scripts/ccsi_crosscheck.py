@@ -8,10 +8,15 @@ raw values — the list John and Claude validate together.
 
     python scripts/ccsi_crosscheck.py
     python scripts/ccsi_crosscheck.py --submittal "3232=C:/.../3232 - Oxygen8 Submittal.pdf"
+    python scripts/ccsi_crosscheck.py --submittal-from-ledger
 
 ``--submittal`` re-reads a project's submittal PDF (read-only) and adds its canonical values
 (``group.key``) next to the ledger's draft values. The ledger only records the Direct Coil draft,
 so the HGRH refrigerant block and the water fluid block are comparable only this way.
+``--submittal-from-ledger`` does it for every harvested project automatically, pairing each
+drafted coil with the SAME PDF its ledger run read (``run.input_hash``) through the submittal
+page cache (``coilforge.corpus``) -- never "the project's latest file", which can be a
+different revision.
 """
 from __future__ import annotations
 
@@ -54,12 +59,19 @@ def load_harvests(harvest_dir: Path = HARVEST_DIR) -> list[dict]:
 
 
 def submittal_canonical_by_tag(pdf_path: Path) -> dict[str, dict]:
-    """``{tag: {"group.key": FieldValue}}`` for every coil the intake finds in one submittal."""
-    from coilforge.submittal.pdf_intake import coil_tag_aliases, extract_coil_candidate_from_pdf_bytes
+    """``{tag: {"group.key": FieldValue}}`` for every coil the intake finds in one submittal.
 
-    result = extract_coil_candidate_from_pdf_bytes(pdf_path.read_bytes(), source_filename=pdf_path.name)
+    Per-coil candidates only (``cover_candidates or [candidate]``, as the drawing workflow
+    does): the whole-document candidate has no per-coil detail block, and letting it claim
+    the first tag blanked that coil's fluid / refrigerant values. Page text comes from the
+    on-disk page cache, so a re-read takes about a second instead of minutes.
+    """
+    from coilforge.corpus.page_cache import intake_with_page_cache
+    from coilforge.submittal.pdf_intake import coil_tag_aliases
+
+    result = intake_with_page_cache(pdf_path).result  # source_filename defaults to pdf_path.name
     out: dict[str, dict] = {}
-    for cand in [result.candidate, *result.cover_candidates]:
+    for cand in result.cover_candidates or [result.candidate]:
         tag = cand.tag.value if cand.tag is not None else None
         if not tag:
             continue
@@ -68,17 +80,47 @@ def submittal_canonical_by_tag(pdf_path: Path) -> dict[str, dict]:
     return out
 
 
-def merge_submittal(ledger_coils: dict[str, list[dict]], project: str, by_tag: dict[str, dict]) -> int:
-    """Add canonical keys to that project's ledger coils; draft keys are never overwritten."""
+def merge_submittal(
+    ledger_coils: dict[str, list[dict]], project: str, by_tag: dict[str, dict], input_hash: str | None = None
+) -> int:
+    """Add canonical keys to that project's ledger coils; draft keys are never overwritten.
+
+    With ``input_hash``, only coils drafted from that exact PDF are merged.
+    """
     merged = 0
     for coils in ledger_coils.values():
         for coil in coils:
-            extra = by_tag.get(coil["tag"]) if str(coil["project"]) == project else None
+            same = str(coil["project"]) == project and (input_hash is None or coil.get("input_hash") == input_hash)
+            extra = by_tag.get(coil["tag"]) if same else None
             if extra:
                 for key, field in extra.items():
                     coil["sources"].setdefault(key, field)
                 merged += 1
     return merged
+
+
+def merge_submittals_from_ledger(ledger_coils: dict[str, list[dict]], projects: set[str]) -> list[str]:
+    """Merge canonical values for each harvested project from the PDF its draft was read from.
+
+    A draft whose PDF is not located (not on disk / not yet page-cached) is reported and
+    skipped -- borrowing another revision would pair values from two different documents.
+    """
+    from coilforge.corpus.page_cache import cached_source_path
+
+    notes: list[str] = []
+    pairs = sorted({(str(c["project"]), c.get("input_hash") or "") for coils in ledger_coils.values() for c in coils
+                    if str(c["project"]) in projects})
+    for project, sha1 in pairs:
+        if not sha1:  # e.g. a deliverable_finalized run: recorded without the PDF bytes
+            notes.append(f"{project}: draft run has no PDF hash -- canonical values not merged")
+            continue
+        path = cached_source_path(sha1)
+        if path is None:
+            notes.append(f"{project}: draft PDF {sha1[:10]} not located -- canonical values not merged")
+            continue
+        n = merge_submittal(ledger_coils, project, submittal_canonical_by_tag(Path(path)), input_hash=sha1)
+        notes.append(f"{project}: canonical values merged into {n} ledger coils from {Path(path).name}")
+    return notes
 
 
 def build(harvests: list[dict], ledger_coils: dict[str, list[dict]]) -> dict[str, dict]:
@@ -122,6 +164,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--submittal", action="append", default=[], metavar="PROJECT=PDF",
                         help="re-read this project's submittal PDF for canonical-only values (repeatable)")
+    parser.add_argument("--submittal-from-ledger", action="store_true",
+                        help="merge canonical values for every harvested project from the PDF its draft was read from")
     args = parser.parse_args()
     harvests = load_harvests()
     if not harvests:
@@ -136,6 +180,9 @@ def main() -> int:
         project, _, pdf = spec.partition("=")
         n = merge_submittal(ledger, project.strip(), submittal_canonical_by_tag(Path(pdf.strip())))
         print(f"submittal {project}: canonical values merged into {n} ledger coils")
+    if args.submittal_from_ledger:
+        for note in merge_submittals_from_ledger(ledger, {str(h["project"]) for h in harvests}):
+            print(note)
     report = build(harvests, ledger)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "crosscheck.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")

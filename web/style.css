@@ -3445,3 +3445,134 @@ h4 {
 .fit-chip.fit-fail { background: #c62828; }
 .fit-chip.fit-review { background: #c08a00; }
 .fit-chip.fit-na { background: #8a93a3; }
+
+/* ── Deliverable confirmation dialog ───────────────────────────────────────────
+   Shown after "Build quote package" once the three deliverable documents exist, to
+   ask whether to move them into the PO folder's DirectCoil and whether to open the
+   Outlook draft. A native <dialog> (focus trap + Esc for free) rather than confirm(),
+   which blocks the page. Every colour is a defined token so it survives dark mode. */
+.cf-dialog-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 24px;
+  overflow: auto;
+}
+.cf-dialog-backdrop.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cf-dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: min(94vw, 460px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: auto;
+  padding: 18px 20px 16px;
+}
+.cf-dialog-title {
+  color: var(--text-heading);
+  font-size: 1rem;
+  margin: 0;
+}
+.cf-dialog-lede {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin: 0;
+}
+.cf-dialog-docs {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+}
+.cf-dialog-doc {
+  align-items: baseline;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 1rem 8.5rem 1fr;
+  font-size: 0.78rem;
+}
+.cf-dialog-doc-icon {
+  font-weight: 800;
+}
+.cf-dialog-doc.is-captured .cf-dialog-doc-icon {
+  color: var(--status-ready);
+}
+.cf-dialog-doc.is-missing .cf-dialog-doc-icon,
+.cf-dialog-doc.is-missing .cf-dialog-doc-name {
+  color: var(--status-blocked);
+}
+.cf-dialog-doc-label {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.cf-dialog-doc-name {
+  overflow-wrap: anywhere;
+}
+.cf-dialog-choice {
+  align-items: start;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: auto 1fr;
+  padding: 0.5rem 0.65rem;
+}
+.cf-dialog-choice:hover {
+  border-color: var(--accent);
+}
+.cf-dialog-choice input {
+  margin: 0.15rem 0 0;
+  min-height: 0;
+}
+.cf-dialog-choice input:disabled ~ span {
+  opacity: 0.55;
+}
+.cf-dialog-choice strong {
+  color: var(--text-heading);
+  display: block;
+  font-size: 0.82rem;
+}
+.cf-dialog-choice small {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.72rem;
+  margin-top: 0.12rem;
+}
+.cf-dialog-note {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin: 0;
+  min-height: 1.6em;
+}
+.cf-dialog-note-warn {
+  color: var(--status-blocked);
+  font-weight: 700;
+}
+.cf-dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+}
+.cf-dialog-actions button:disabled {
+  background: var(--bg-disabled);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}

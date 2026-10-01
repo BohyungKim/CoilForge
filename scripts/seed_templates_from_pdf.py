@@ -571,6 +571,12 @@ _REQUIRED_SLOTS = {
     "slot.FH", "slot.FL", "slot.CH", "slot.CL", "slot.CD", "slot.TF", "slot.BF",
     "slot.HDx1", "slot.HD2", "slot.ROWS", "slot.TAG", "slot.MODEL_NUMBER",
 }
+# Water supply-header callouts (`4.00 HD1`, `8.00|10.00|12.00 SL1`) that `_DIM_LABELS` does
+# not know. Without this per-bucket map both numbers would be baked into the artwork and
+# printed on every coil. On a water coil the supply and return headers are symmetric
+# (references: HD1 = HD2, SL1 = SL2), so they render the return-side slots -- the same
+# mapping `label_authority` applies to a water sheet's SL1 at render time.
+_WATER_SUPPLY_CALLOUTS = {"HD1": "slot.HD2", "SL1": "slot.SL2"}
 BUCKETS = [
     # template_id, category_dir, coil_category, hand, header_type, special, src
     ("coilmaster_dx_lh_header1", "dx", "DX", "LH", "Header 1", None,
@@ -591,10 +597,16 @@ BUCKETS = [
      "Case/#2/EZC-0008 - HG_2_LH/RHHGRC-1.pdf", "EZC-0008"),
     ("coilmaster_hgrh_rh_header3", "hgrh", "HGRH", "RH", "Header 3", None,
      "Case/#3/EZC-0016 - HG_3_RH/RHHGRC-1.pdf", "EZC-0016"),
+    # 2026-09-24 (John): the four SHARED water buckets re-seeded from his own CoilMaster
+    # drawings of one coil in each hand (CW-A-F-06-10-18.00x36.00-L/R, tag CCWC-1;
+    # HW-A-F-03-12-21.00x41.00-L/R, tag HHWC-1), replacing EZC-0014 / EZC-0005 /
+    # FEED-CW_RH / FEED-HW_RH. Seed O2 == I1 (2.31), so they stay `header_side`.
     ("coilmaster_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
-     "Case/#2/EZC-0014 - CW_LH/CCWC-1.pdf", "EZC-0014"),
+     "Case/feed/cwc_lh/CCWC_LH.pdf", "WATER-CWC-JOHN-2026-09-24-L", None,
+     _WATER_SUPPLY_CALLOUTS),
     ("coilmaster_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
-     "Case/#2/EZC-0005 - HW_LH/PHWC-1.pdf", "EZC-0005"),
+     "Case/feed/hwc_lh/HHWC_LH.pdf", "WATER-HWC-JOHN-2026-09-24-L", None,
+     _WATER_SUPPLY_CALLOUTS),
     ("coilmaster_dx_lh_hgbp", "dx", "DX", "LH", None, "HGBP",
      "Case/#2/EZC-0013 - DX_HB_LH/CDXC-1.pdf", "EZC-0013"),
     # --- 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now
@@ -614,9 +626,11 @@ BUCKETS = [
     ("coilmaster_hgrh_lh_header3", "hgrh", "HGRH", "LH", "Header 3", None,
      "Case/feed/HG_3_LH/HG_3_LH.pdf", "FEED-HG_3_LH"),
     ("coilmaster_cwc_rh", "cwc", "CWC", "RH", "Header 1", None,
-     "Case/feed/CW_RH/CW_RH.pdf", "FEED-CW_RH"),
+     "Case/feed/cwc_rh/CCWC_RH.pdf", "WATER-CWC-JOHN-2026-09-24-R", None,
+     _WATER_SUPPLY_CALLOUTS),
     ("coilmaster_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
-     "Case/feed/HW_RH/HW_RH.pdf", "FEED-HW_RH"),
+     "Case/feed/hwc_rh/HHWC_RH.pdf", "WATER-HWC-JOHN-2026-09-24-R", None,
+     _WATER_SUPPLY_CALLOUTS),
     ("coilmaster_dx_lh_header4", "dx", "DX", "LH", "Header 4", None,
      "Case/feed/DX_4_LH/DX_4_LH.pdf", "FEED-DX_4_LH"),
     ("coilmaster_dx_rh_header4", "dx", "DX", "RH", "Header 4", None,
@@ -660,12 +674,8 @@ VPLUS_BUCKETS: list[tuple] = [
      "Case/feed/vplus_hgrh_rh_header1/2619_Congress.pdf", "VPLUS-2619-CONGRESS", 2),
     ("coilmaster_vplus_hgrh_rh_header2", "hgrh", "HGRH", "RH", "Header 2", None,
      "Case/feed/vplus_hgrh_rh_header2/2839_Fairmount.pdf", "VPLUS-2839-FAIRMOUNT", 2),
-    ("coilmaster_vplus_hwc_lh", "hwc", "HWC", "LH", "Header 1", None,
-     "Case/feed/vplus_hwc_lh/2802_Manchester.pdf", "VPLUS-2802-MANCHESTER", 2),
-    ("coilmaster_vplus_hwc_rh", "hwc", "HWC", "RH", "Header 1", None,
-     "Case/feed/vplus_hwc_rh/2523_WestCalgary.pdf", "VPLUS-2523-WCALGARY", 1),
-    ("coilmaster_vplus_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
-     "Case/feed/vplus_cwc_lh/2773_Paiza.pdf", "VPLUS-2773-PAIZA", 1),
+    # Ventum+ water buckets (vplus_hwc_lh/rh, vplus_cwc_lh) retired 2026-09-24 (John):
+    # Ventum+ water coils draw on the shared coilmaster_{cwc,hwc}_{lh,rh} art.
 ]
 
 
@@ -674,13 +684,8 @@ VPLUS_BUCKETS: list[tuple] = [
 # filled per coil. Seeded from John's own CoilMaster drawings of the same coil in each hand
 # (`CW-A-F-06-10-18.00x36.00-L/R`, created 2026-09-23) -- each hand its own seed, no mirror.
 # Sources are staged under Case/feed/terra_cwc_* (gitignored). 10th element = the
-# bucket's extra callout map: the references print the supply header's `4.00 HD1` and
-# `10.00 SL1`, which `_DIM_LABELS` does not know, so without it both numbers would be
-# baked into the artwork and printed on every Terra CWC. On a water coil the supply and
-# return headers are symmetric (reference: HD1 = HD2 = 4, SL1 = SL2 = 10), so they
-# render the return-side slots -- the same mapping `label_authority` applies to a water
-# sheet's SL1 at render time.
-_WATER_SUPPLY_CALLOUTS = {"HD1": "slot.HD2", "SL1": "slot.SL2"}
+# bucket's extra callout map (`_WATER_SUPPLY_CALLOUTS`, defined above BUCKETS): the
+# references print the supply header's `4.00 HD1` and `10.00 SL1`.
 TERRA_BUCKETS: list[tuple] = [
     ("coilmaster_terra_cwc_lh", "cwc", "CWC", "LH", "Header 1", None,
      "Case/feed/terra_cwc_lh/TERRA_CCWC_LH.pdf", "TERRA-CWC-JOHN-2026-09-23-L", None,

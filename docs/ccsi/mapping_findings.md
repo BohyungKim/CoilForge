@@ -2,7 +2,9 @@
 
 Read-only harvests (DevTools snippet `web/ccsi/ccsi_harvest_snippet.js`, 2026-09-29) compared
 against the capture ledger's draft stage via `scripts/ccsi_crosscheck.py`. Nothing in CCSI was
-changed. Every mapping is still `captured`; nothing is pushable.
+changed. (The line that stood here — "every mapping is still `captured`" — is out of date: John
+promoted fields to `validated` on 2026-09-29/30; the maps and `JOHN_APPROVED_VALIDATED` in
+`tests/test_ccsi_coil_data_map.py` are the current list.)
 
 | Coil | CCSI form | match | real mismatch | note |
 |---|---|---|---|---|
@@ -35,6 +37,13 @@ leave CCSI's own calculation?
 **D4 — CCSI "Leaving Dry Bulb".** Read-only 55.00 on both DX coils and 90 on HGRH (not the
 submittal LAT 54.91 / 70.01), but 66.8 on CWC (submittal 66.2) and editable 72 on HWC (= submittal).
 Is it a target the application engineer types? If so it is an input to push, not a result.
+✅ **Revised 2026-09-30 (John: "개정").** The "fixed default" reading was a pre-Calculate artifact:
+after Calculate the form's `#LeavingDryBulb` input still reads the locked 55.00, while the rating
+(`#mainResult`, and the report PDF's `Leaving Dry Bulb`) is the real result — 52.14 = submittal on
+2803 (`calculate_flow.md`, Live test 2), 50.75 on 3237 REV0. Rule: the rating LDB is compared
+against the submittal as a performance check; the form's LDB input is never pushed. The order gate
+therefore never uses the harvested LDB as calibration evidence (`order_gate._NOT_COMPARABLE_ON_FORM`).
+HGRH capacity pairs with the report's `Total Capacity /Coil (Total)` (John, same day).
 
 **D5 — Real DX differences.** 3232 CDXC-1: feeds 6 (submittal) vs 7 (CCSI), tube wall 0.016 vs
 0.020. Extraction error, or a deliberate re-selection in CCSI? Needs the submittal page.
@@ -177,6 +186,85 @@ same materials. So:
   did not take); both `FinMaterial` entries stay `captured` (match on 2 projects only — 3183 is 0.0075).
 - Water coils print no tube or fin material, so their CWC / HWC entries stay `option_exact` with
   no source (a D2 question, not D1).
+
+## Decided 2026-09-30 — Coil coating (John)
+
+"드랍다운에 매칭되는 코팅이 있으면 선택하되, 없으면 coating을 선택, note section과 도면에 coating
+노트를 꼭 추가."
+
+- CCSI's Coil Coating dropdown is `Plain` / `AA Coating` (re-captured live on 2803 CDXC-1, 2026-09-30).
+  Transform `option_coating`: a coating the dropdown names is selected by name; any other stated
+  coating (ElectroFin, Finkote, Heresite, Blygold, Black Poly) selects `AA Coating`, with the reason
+  saying so; no coating → `Plain`. Two coating options would be ambiguous and stay unmapped.
+- The Drawing Notes (paste field → CCSI `#DrawingNotes`) now lead with the coating's name
+  (`<FAMILY> COATING REQUIRED`, `submittal_to_drawing._engine_drawing_notes`), before the R-080 /
+  R-081 "Do Not Coat Last 5-6 inches" note. The drawing already stamped the same text on every
+  template (`_inject_coating_note_label`).
+- The gap was upstream: the intake's coating vocabulary (the Coil Checklist families) had no `AA`,
+  so a cover "Miscellaneous AA coil coating adder" (2840) read as no coating and pushed `Plain`.
+  `AA` is now a family (only with a coating word after it), and the adder is matched across its
+  two-line wrap. The Coil Checklist has no AA option — it receives `AA` as a review-required value.
+- Water coils are never coated (`_drop_coating_from_water_coil`), so they get neither the option
+  nor a note. Tests: `tests/test_coating_ccsi_and_notes.py`.
+
+## Bug fix 2026-09-30 — water fluid block (John: "glycolratio 먼저 버그를 고치도록")
+
+- The submittal's `Fluid Percent (%)` is the share of the fluid it names (`Water` + 100,
+  `Propylene` + 40); CCSI's `Fluid Ratio(%)` is the glycol share. Read straight across, plain
+  water went out as 100 % glycol (3154 HHWC-1/2, 2954 CCWC-1/2: CoilForge 100 vs CCSI 0).
+  Transform `glycol_ratio`: Water → 0 (only at 100 %; any other percent contradicts itself and
+  stays unresolved), a glycol → its percent, no stated fluid → unresolved (never guessed).
+- Same root, same fix: the submittal names the glycol without the word, so `FluidType` uses
+  `option_fluid_type` (`Propylene` → `Propylene Glycol`, `Ethylene` → `Ethylene Glycol`).
+- Both stay `captured` (not pushed) until the order batch supports promotion. Re-check on 2954
+  (same-PDF ledger pairing): GlycolRatio 0 = 0 and FluidType Water = Water on both coils.
+  Tests: `tests/test_ccsi_fluid_block.py`.
+
+## Finding 2026-09-30 — the report's "OPPOSITE END COIL REQUIRED" note is not Connection Ends
+
+`report_extras` first read that report note as the form's `ConnectionEnds = Opposite End Only`. The
+adapter calibration disproved it: the four harvested coils that carry the note (2954 CCWC-1,
+3183 RHHGRC-1, 3154 HHWC-1, 3154 HHWC-2) all read `Same End Only` on their live CCSI forms. The
+note is now left unmapped (it appears on 64 report pages); which field — if any — it reflects is
+an open question for John. `ConnectionEnds` stays a D2 default that the reports cannot test.
+With it removed the calibration is PASS again, and the fields the extras do capture calibrate
+cleanly: capillary 3/3, drain & vent 6/6, feeds from the model number 11/11.
+
+## Decided 2026-09-30 — order cross-check "A" (John: "A + altitude")
+
+Source: CCSI selection reports of 77 ordered projects / 212 coils (`scripts/ccsi_report_crosscheck.py` +
+`scripts/ccsi_order_gate.py`, adapter calibration PASS against the 12 live harvests).
+
+- **Promoted to `validated`:** HGRH `Subcooling` (74/74), `CondensingTemperature` (74/74, all 115),
+  `CoilQuantity`; DX / HWC `CoilQuantity`; CWC / HWC `FluidType`, `GlycolRatio` (16/16 after the glycol
+  fix), `EnteringFluidTemp` (16/16), `LeavingFluidTemp` (13/15); CWC `EnteringWetBulb`.
+- **HGRH `VaporTemperature` = default 140:** the submittal never states it; 74/74 ordered reports print 140.
+- **Demoted:** CWC / HWC `FluidFlowRate` (GPM matched 8/16 while EWT/LWT matched — CCSI solves the flow
+  from the temperatures; the 2026-09-29 "push GPM" decision is reversed).
+- **Kept:** every validated field at ≥90 % order agreement (the strict "one unexplained mismatch" list is
+  mostly order-time re-selections without a REV0 to show it). Altitude: the submittal value stays
+  (John ①), although CCSI selections often left 0 (DX 17 / HGRH 12 coils).
+- **Not decided / watch list:** `ACFM` (orders split Actual 135 / Standard 77 — no rule, left to the
+  engineer); below-90 % fields not demoted (HWC FinSurface 7/9, HWC FPI 10/13, HWC ConnectionMaterial
+  11/13, HGRH feeds 66/74, CWC ConnectionMaterial / TubeTurbulators 2/3).
+- Gate change: a numeric difference at printed precision (≤0.015 or ≤0.2 %) is cause `rounding`, not a defect.
+- Three submittals never finished extraction (2982, 3037, 3191; >30 min each) and are not in these counts.
+
+## Decided 2026-10-01 — Air flow basis = Actual (John)
+
+The `ACFM` watch-list item above is settled: **CCSI "Air flow basis" = `Actual`** on all four forms
+(`default`, `validated`; the submittal never states it). John: Direct Coil selections have been calculated
+in ACFM; SCFM would be the ideal basis, but it is not what the orders were rated on. The order split
+(Actual 135 / Standard 77) is a mid-corpus switch, not noise — relayed by the performance-validation
+session from `crosscheck.json`: with the coil's own Actual basis 26/26 ordered heating coils reproduce
+capacity, 0/7 on Standard (Likely; not re-derived here).
+
+- Push order is load-bearing: under Standard CCSI locks Altitude to 0 and stage 1 skips a locked field, so
+  `ACFM` comes before `Altitude` in every map (pinned by a test).
+- Expected order-gate effect: Altitude "unexplained" (DX 17 / HGRH 12) were Standard-selected coils whose
+  altitude CCSI locked to 0; ordered coils selected on Standard will now show an `ACFM` mismatch. Neither
+  is a CoilForge defect — a gate cause "air basis" is the open follow-up.
+- **Standard (SCFM) is parked on the roadmap as a suspect area** (John 2026-10-01), not adopted.
 
 ## Implementation already in scope (no decision needed)
 

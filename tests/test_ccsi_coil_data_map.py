@@ -122,7 +122,8 @@ def test_canonical_path_reads_the_candidate_group_and_keeps_its_status() -> None
     assert by["CondensingTemperature"].value == "115"
     assert by["CondensingTemperature"].source_key == "refrigerant_conditions.condensing_temp_f"
     assert by["Subcooling"].reason_code == "CCSI_SOURCE_BLOCKED"
-    assert by["VaporTemperature"].reason_code == "CCSI_SOURCE_MISSING"
+    # not stated -> D2 default 140 (John 2026-09-30: 74/74 ordered HGRH reports print 140)
+    assert by["VaporTemperature"].reason_code == "CCSI_DEFAULT_PROFILE" and by["VaporTemperature"].value == "140"
 
 
 ALL_MAP_TYPES = sorted(
@@ -168,19 +169,37 @@ _D2_COMMON = {"HeaderMaterial", "HeaderWallSchedule", "ConnectionEnds", "CoilCoa
 _W_WATER = {"Tag", "FinnedHeight", "FinnedLength", "RowsDeep", "FinsPerInch", "FinSurface", "CoilHand",
             "EnteringDryBulb", "TotalAirFlow"}
 _D2_WATER = {"ConnectionType", "TubeTurbulators", "AirFlowDirection", "DrainAndVent", "TubeSideFoulingFactor"}
+# John 2026-09-30 (geometry "A"): rows / FPI / feeds / fin surface / hand pushable on DX and HGRH;
+# the D7 gate still withholds rows / FPI / fin whenever the submittal fin cannot be built in CCSI.
+_GEOMETRY_2026_09_30 = {"RowsDeep", "FinsPerInch", "NumberOfFeeds", "FinSurface", "CoilHand"}
 JOHN_APPROVED_VALIDATED = {
     "DX": {"Tag", "FinnedHeight", "FinnedLength", "TotalAirFlow", "Altitude", "EnteringDryBulb",
            "EnteringWetBulb", "EvaporatingTemperature", "LiquidTemperature", "Superheat", "Refrigerant"}
     | _D2_COMMON | {"DraintrayTypeAlt", "DraintrayMaterialAlt", "RefrigerantConnectionType", "DXDistCapillarySize",
-                    "RefrigerationSystemType"},
+                    "RefrigerationSystemType"}
+    | _GEOMETRY_2026_09_30,
     "HGRH": {"Tag", "FinnedHeight", "FinnedLength", "NumberOfFeeds", "TotalAirFlow", "Altitude",
              "EnteringDryBulb", "Refrigerant"}
     | _D2_COMMON | {"RefrigerantConnectionType", "TemperatureInput", "CoilType", "RefrigerationSystemType"}
-    | {"TubeMaterial"},  # John 2026-09-30 (D1 "A"): 3183/3232/3237 match, 0 mismatch
-    # FluidFlowRate: John 2026-09-29 ("GPM 푸시 진행") — a push decision, not match evidence.
-    "CWC": {"FluidFlowRate"} | _W_WATER | _D2_COMMON | _D2_WATER | {"DraintrayTypeAlt", "DraintrayMaterialAlt"},
-    "HWC": {"FluidFlowRate"} | _W_WATER | _D2_COMMON | _D2_WATER | {"CoilType"},
+    | {"TubeMaterial"}  # John 2026-09-30 (D1 "A"): 3183/3232/3237 match, 0 mismatch
+    | (_GEOMETRY_2026_09_30 - {"NumberOfFeeds"}),  # HGRH feeds was already validated
+    # FluidFlowRate was pushed from 2026-09-29 ("GPM 푸시 진행") and DEMOTED 2026-09-30 (order cross-check
+    # "A"): GPM matched 8/16 ordered water coils while EWT/LWT matched — CCSI solves the flow.
+    "CWC": _W_WATER | _D2_COMMON | _D2_WATER | {"DraintrayTypeAlt", "DraintrayMaterialAlt"},
+    "HWC": _W_WATER | _D2_COMMON | _D2_WATER | {"CoilType"},
 }
+# John 2026-09-30 (order cross-check "A", 77 ordered projects, calibration PASS): the rating inputs.
+_ORDER_2026_09_30 = {
+    "DX": {"CoilQuantity"},
+    "HGRH": {"CoilQuantity", "Subcooling", "CondensingTemperature", "VaporTemperature"},  # Vapor = default 140
+    "CWC": {"FluidType", "GlycolRatio", "EnteringFluidTemp", "LeavingFluidTemp", "EnteringWetBulb"},
+    "HWC": {"CoilQuantity", "FluidType", "GlycolRatio", "EnteringFluidTemp", "LeavingFluidTemp"},
+}
+for _type, _ids in _ORDER_2026_09_30.items():
+    JOHN_APPROVED_VALIDATED[_type] = JOHN_APPROVED_VALIDATED[_type] | _ids
+# John 2026-10-01: CCSI air flow basis = Actual (Direct Coil selections are calculated in ACFM), every form.
+for _type in JOHN_APPROVED_VALIDATED:
+    JOHN_APPROVED_VALIDATED[_type] = JOHN_APPROVED_VALIDATED[_type] | {"ACFM"}
 # D3: CCSI calculates connection sizes — never pushable, on every form.
 _D3_CONNECTION_SIZES = {"DX": {"DXReturnConnectionSize"},
                         "HGRH": {"CondenserSupplyConnectionSize", "CondenserReturnConnectionSize"},
@@ -195,14 +214,18 @@ def test_selects_carry_their_captured_options() -> None:
 
 
 def test_only_johns_validated_fields_are_pushable_on_the_real_map() -> None:
-    entries = resolve_coil_data(LEDGER_3025_CDXC1)
+    fin = {"fin_material": {"value": "0.008", "unit": "Aluminum", "status": "review_required"}}
+    entries = resolve_coil_data({**LEDGER_3025_CDXC1, **fin})
     pushable = {e.ccsi_id for e in entries if e.pushable}
     assert pushable <= JOHN_APPROVED_VALIDATED["DX"]
     by = _by_id(entries)
     assert by["EnteringDryBulb"].reason_code == "CCSI_OK" and by["EnteringDryBulb"].value == "95"
     # a still-captured mapping resolves (so validation can compare it) but is never pushed
-    assert by["CoilHand"].reason_code == "CCSI_NOT_VALIDATED"
-    assert by["CoilHand"].value == "Left" and not by["CoilHand"].pushable
+    # (CoilHand, then CoilQuantity served here until John promoted them on 2026-09-30; FinMaterial is still captured)
+    assert by["FinMaterial"].reason_code == "CCSI_NOT_VALIDATED"
+    assert by["FinMaterial"].value == "Aluminum 0.008" and not by["FinMaterial"].pushable
+    assert by["CoilQuantity"].reason_code == "CCSI_OK" and by["CoilQuantity"].pushable  # order cross-check "A"
+    assert by["CoilHand"].reason_code == "CCSI_OK" and by["CoilHand"].pushable
 
 
 # --- D7 geometry re-selection gate -------------------------------------------------
@@ -280,7 +303,8 @@ def test_spelling_and_format_normalizations(validated_map) -> None:
         ("fin_surface", "Sine", "FinSurface"),  # no CCSI equivalent
         ("fins_per_inch", 8.5, "FinsPerInch"),  # integer-only list, never rounded
         ("return_connection_size", 1.1, "DXReturnConnectionSize"),  # not a sixteenth
-        ("coil_coating", "Finkote2 Epoxy Coil Coating", "CoilCoating"),
+        # CoilCoating left this list on 2026-09-30 (John): a coating off the dropdown now selects
+        # the form's coating option — tests/test_coating_ccsi_and_notes.py.
     ],
 )
 def test_values_off_the_captured_vocabulary_are_unmapped(validated_map, key, value, ccsi_id) -> None:
@@ -382,11 +406,11 @@ def test_ledger_replay_reads_the_material_unit_and_the_stated_tube_surface() -> 
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
         create table run (run_id text, ts_utc text, ok integer, project_number text, project_name text,
-                          source_filename text);
+                          source_filename text, input_hash text);
         create table coil (coil_uid text, tag text, coil_category text, circuits integer);
         create table field_observation (run_id text, coil_uid text, stage text, field_key text,
                                         value_json text, unit text, status text, blocked_reason text);
-        insert into run values ('r1', '2026-09-29T00:00:00Z', 1, '3237', 'P', 'p.pdf');
+        insert into run values ('r1', '2026-09-29T00:00:00Z', 1, '3237', 'P', 'p.pdf', 'abc123');
         insert into coil values ('c1', 'CDXC-1', 'DX', 2), ('c2', 'CDXC-2', 'DX', 1), ('c3', 'CDXC-3', 'DX', 1);
         insert into field_observation values
             ('r1', 'c1', 'draft', 'tube_material', '0.016', 'Copper', 'review_required', null),
@@ -397,6 +421,7 @@ def test_ledger_replay_reads_the_material_unit_and_the_stated_tube_surface() -> 
     """)
     coils = {c["tag"]: c for c in replay.load_coils(conn, "DX")}
     assert set(coils) == {"CDXC-1", "CDXC-2"}  # a slot row alone does not make a coil
+    assert coils["CDXC-1"]["input_hash"] == "abc123"  # pairs the coil with the PDF its draft read
     by = _by_id(resolve_coil_data(coils["CDXC-1"]["sources"]))
     assert by["TubeMaterial"].value == "Copper 0.016 Plain"
     assert by["FinMaterial"].value == "Aluminum 0.008"
@@ -436,11 +461,27 @@ def test_absent_fields_take_the_default_profile(coil_type) -> None:
     assert by["ConnectionMaterial"].value == ("Steel" if water else "Copper")
 
 
+@pytest.mark.parametrize("coil_type", ["DX", "HGRH", "CWC", "HWC"])
+def test_air_flow_basis_is_actual_and_pushed_before_altitude(coil_type) -> None:
+    """John 2026-10-01: Direct Coil selections are calculated in ACFM, so CCSI's basis is Actual.
+
+    Order is load-bearing: under Standard CCSI locks Altitude to 0, and stage 1 skips a locked
+    field — so the basis must be written (and its GetDependencies settled) before Altitude.
+    Standard (SCFM) stays a roadmap question, not an option this map ever chooses.
+    """
+    acfm = _by_id(resolve_coil_data({}, coil_type=coil_type))["ACFM"]
+    assert acfm.value == "Actual" and acfm.pushable and acfm.reason_code == "CCSI_DEFAULT_PROFILE"
+    ids = list(load_coil_data_map(coil_type).fields)
+    assert ids.index("ACFM") < ids.index("Altitude")
+
+
 def test_a_stated_value_always_beats_the_default() -> None:
     finkote = {"coil_coating": {"value": "Finkote2 Epoxy Coil Coating", "status": "review_required"}}
     coated = _by_id(resolve_coil_data(finkote))["CoilCoating"]
-    assert coated.reason_code == "CCSI_OPTION_UNMAPPED"  # never silently "Plain"
-    assert coated.value is None and not coated.pushable
+    # never silently "Plain": a stated coating the dropdown lacks selects its coating option
+    # (John 2026-09-30; until then it was left unmapped) and the notes name the real coating.
+    assert coated.reason_code == "CCSI_OK" and coated.reason_code != "CCSI_DEFAULT_PROFILE"
+    assert coated.value == "AA Coating" and coated.value != "Plain"
     stated = _by_id(resolve_coil_data({"coil_coating": {"value": "AA Coating", "status": "review_required"}}))
     assert stated["CoilCoating"].value == "AA Coating"
 
@@ -497,7 +538,7 @@ def test_ledger_replay_tallies_reason_codes_per_field() -> None:
     report = replay.build_report(coils, "DX")
     assert report["coils"] == 2 and report["projects"] == 2
     fin = report["fields"]["FinSurface"]
-    assert fin["reason_counts"] == {"CCSI_NOT_VALIDATED": 1, "CCSI_OPTION_UNMAPPED": 1}
+    assert fin["reason_counts"] == {"CCSI_OK": 1, "CCSI_OPTION_UNMAPPED": 1}  # FinSurface validated 2026-09-30
     assert fin["off_vocabulary"] == {"'Sine'": 1}
     assert "| `FinSurface` | input | 1/2 |" in replay.render_markdown(report)
 
@@ -518,11 +559,12 @@ def test_unknown_quantity_is_never_assumed_to_be_one() -> None:
 
 
 @pytest.mark.parametrize("coil_type", ["CWC", "HWC"])
-def test_gpm_is_pushed_for_all_coils_of_the_tag(coil_type) -> None:
+def test_gpm_covers_all_coils_of_the_tag_but_is_no_longer_pushed(coil_type) -> None:
     src = {"coil_quantity": 2,
            "airside_conditions.fluid_flow_rate_gpm": {"value": 8.44, "status": "review_required"}}
     gpm = _by_id(resolve_coil_data(src, coil_type=coil_type))["FluidFlowRate"]
-    assert gpm.value == "16.88" and gpm.pushable
+    # still computed x quantity for read-back comparison; demoted 2026-09-30 (CCSI solves the flow)
+    assert gpm.value == "16.88" and not gpm.pushable and gpm.reason_code == "CCSI_NOT_VALIDATED"
     unknown_qty = {"airside_conditions.fluid_flow_rate_gpm": {"value": 8.44, "status": "review_required"}}
     assert not _by_id(resolve_coil_data(unknown_qty, coil_type=coil_type))["FluidFlowRate"].pushable
 

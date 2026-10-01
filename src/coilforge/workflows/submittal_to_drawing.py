@@ -2136,7 +2136,16 @@ def _engine_drawing_notes(ctx: dict[str, Any]) -> list[str]:
         )
     except Exception:  # never break the workflow on an engine-input mismatch
         return []
-    return assemble_drawing_notes(request)
+    notes = assemble_drawing_notes(request)
+    # The coating's NAME leads the notes (John 2026-09-30): CCSI's dropdown offers only Plain /
+    # AA Coating, so a coating it lacks is pushed as AA Coating and these notes -- the paste
+    # "Drawing Notes" field and CCSI's #DrawingNotes -- are where the real coating is stated.
+    # Same text the drawing stamps (`_inject_coating_note_label`). Water coils never carry a
+    # coating (`_drop_coating_from_water_coil`), so they never get one.
+    coating_note = _coating_drawing_note(ctx.get("coating"))
+    if notes and coating_note and coating_note not in notes:
+        notes = [coating_note, *notes]
+    return notes
 
 
 _COATING_NOTE_TSPAN_RE = re.compile(

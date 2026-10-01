@@ -67,19 +67,8 @@ _KNOWN_OPEN: dict[tuple[str, str], str] = {
     # template approval, not a side effect of this pass.
     ("coilmaster_vplus_hgrh_lh_header1", "5.69 SL1"): "redaction needs its own template approval",
     ("coilmaster_vplus_hgrh_rh_header1", "5.69 SL1"): "redaction needs its own template approval",
-    # Water HD1/SL1: the engine's water branch did not reproduce the seeded 4.00 / 8.00 /
-    # 10.00 under the inputs recovered from `seed_evidence.json`, and water coils are
-    # outside the HGRH multi-header scope this pass was approved for.
-    ("coilmaster_cwc_lh", "4.00 HD1"): "water out of scope; value unverified",
-    ("coilmaster_cwc_lh", "8.00 SL1"): "water out of scope; value unverified",
-    ("coilmaster_cwc_rh", "4.00 HD1"): "water out of scope; value unverified",
-    ("coilmaster_cwc_rh", "8.00 SL1"): "water out of scope; value unverified",
-    ("coilmaster_vplus_cwc_lh", "4.00 HD1"): "water out of scope; value unverified",
-    ("coilmaster_vplus_cwc_lh", "10.00 SL1"): "water out of scope; value unverified",
-    ("coilmaster_vplus_hwc_lh", "4.00 HD1"): "water out of scope; value unverified",
-    ("coilmaster_vplus_hwc_lh", "10.00 SL1"): "water out of scope; value unverified",
-    ("coilmaster_vplus_hwc_rh", "4.00 HD1"): "water out of scope; value unverified",
-    ("coilmaster_vplus_hwc_rh", "10.00 SL1"): "water out of scope; value unverified",
+    # No water entries: every water bucket now maps HD1/SL1 to slot.HD2/slot.SL2 at seed
+    # time (shared re-seed + Ventum+ water retirement, 2026-09-24; Terra 2026-09-23).
 }
 
 
