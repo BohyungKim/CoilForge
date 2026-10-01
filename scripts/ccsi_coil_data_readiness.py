@@ -30,7 +30,7 @@ from coilforge.ccsi.coil_data_map import TUBE_SURFACE_SOURCE, load_coil_data_map
 OUT_DIR = ROOT / "outputs" / "ccsi_coil_data"
 
 _LATEST_DRAFT_RUNS = """
-select r.run_id, coalesce(r.project_number, r.project_name, r.source_filename) as project
+select r.run_id, coalesce(r.project_number, r.project_name, r.source_filename) as project, r.input_hash
 from run r
 where r.ok = 1
   and exists (select 1 from field_observation f where f.run_id = r.run_id and f.stage = 'draft')
@@ -43,7 +43,7 @@ where r.ok = 1
 
 def load_coils(conn: sqlite3.Connection, category: str) -> list[dict]:
     coils = []
-    for run_id, project in conn.execute(_LATEST_DRAFT_RUNS).fetchall():
+    for run_id, project, input_hash in conn.execute(_LATEST_DRAFT_RUNS).fetchall():
         rows = conn.execute(
             """select c.coil_uid, c.tag, c.circuits, f.stage, f.field_key, f.value_json, f.unit, f.status,
                       f.blocked_reason
@@ -59,7 +59,9 @@ def load_coils(conn: sqlite3.Connection, category: str) -> list[dict]:
             if stage == "slot":  # the drawing slot is the ledger's only record of the stated tube surface
                 tube_surface[uid] = value
                 continue
-            coil = per.setdefault(uid, {"project": project, "tag": tag, "sources": {"tag": tag}})
+            # input_hash = sha1 of the PDF this draft was read from (pairs canonical values with it)
+            coil = per.setdefault(uid, {"project": project, "tag": tag, "input_hash": input_hash,
+                                        "sources": {"tag": tag}})
             if circuits is not None:  # the run's extracted circuit count (coil table), not a draft field
                 coil["sources"].setdefault("geometry.circuits", {"value": circuits, "status": "review_required"})
             # ``unit`` carries the material of tube/fin ("0.016" + "Copper") — D1

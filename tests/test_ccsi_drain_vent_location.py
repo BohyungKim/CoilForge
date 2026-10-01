@@ -9,11 +9,11 @@ three are pinned equal here.
 It is deliberately NOT tied to the engine's R-066 ``vent_drain = ConnEnd``: that is the
 EZ Coil / Coil Checklist vocabulary for a different field, and John keeps them separate.
 
-The CCSI select's id and option values have not been captured live, so the target is
-found by label and chosen by OPTION TEXT, and the entry is ``selector_verified: false``
-until a capture pins it. The same edit makes the userscript honour the ``{strategy:
-"css"}`` selector form, which the live-captured ``#DrawingNotes`` has used since
-2026-08-05 without ever resolving.
+The option values have not been captured, so the option is chosen by OPTION TEXT. The
+select's id was captured live on 2026-10-01 (``#DrawingNotes``-style: ``#DrainAndVentLocation``),
+which retired ``selector_verified: false``. The same 2026-09-23 edit made the userscript honour
+the ``{strategy: "css"}`` selector form, which ``#DrawingNotes`` had used since 2026-08-05
+without ever resolving.
 """
 from __future__ import annotations
 
@@ -57,8 +57,28 @@ def test_payload_carries_it_as_a_top_level_key_for_water_coils_only():
     entry = _fn(_APP_JS, "ccsiDrainVentLocation")
     assert 'if (!CCSI_WATER_CATEGORIES.has(String(coilCategory || "").toUpperCase())) return null;' in entry
     assert 'const CCSI_WATER_CATEGORIES = new Set(["CWC", "HWC"]);' in _APP_JS
-    for fragment in ('match: "option_text"', "selector_verified: false", 'type: "select"'):
+    for fragment in ('match: "option_text"', 'type: "select"'):
         assert fragment in entry, fragment
+
+
+def test_the_select_id_is_the_live_captured_one_in_all_three_copies():
+    """Captured 2026-10-01 off coil.ccsi.ie/Coils/Edit (3031 CCWC-1): `#DrainAndVentLocation`.
+
+    This retires the guard that kept the entry `selector_verified: false`. The first live
+    Run all on a water coil showed why it mattered: the labelText-only entry reported
+    "selector not found" — CCSI prints the caption in a sibling element, not a <label>, so
+    nothing resolved and the push was silently a no-op (the Drawing Notes story again).
+    labelText stays as the SECOND choice, after the id.
+    """
+    entry = _fn(_APP_JS, "ccsiDrainVentLocation")
+    assert '{ strategy: "css", selector: "#DrainAndVentLocation" }' in entry
+    assert "selector_verified: true" in entry
+    assert entry.index("#DrainAndVentLocation") < entry.index('strategy: "labelText"')
+    mirror = _fn(_USERSCRIPT, "drainVentLocationEntry")
+    assert '{ strategy: "css", selector: "#DrainAndVentLocation" }' in mirror
+    assert "selector_verified: true" in mirror
+    assert "{strategy:'css', selector:'#DrainAndVentLocation'}" in _SKILL
+    assert "selector_verified:true, blocked_reason:null} : null;" in _SKILL
 
 
 def test_the_dimension_field_map_is_untouched():
@@ -110,3 +130,22 @@ def test_the_userscript_version_was_bumped_in_both_places():
     runtime = re.search(r'const SCRIPT_VERSION = "([^"]+)";', _USERSCRIPT).group(1)
     assert header == runtime
     assert tuple(int(p) for p in header.split(".")) >= (2, 2, 3)
+
+
+# --- water ZD (John 2026-10-01 "A") -----------------------------------------------------
+def test_water_zd_is_withheld_not_warned_in_all_three_copies():
+    """CCSI's water-coil dimension grid has no ZD field (live 2026-10-01: CD/HS/BF/VS/TF/HR/EF/
+    VR/FF/HD/CH/CS), so every water Run all ended with "⚠ ZD — selector not found". The push is
+    now `blocked` with a reason, which the filler counts as skipped; DX/HGRH are untouched and
+    the drawing's own ZD (owner rule 4.5) is not affected.
+    """
+    builder = _fn(_APP_JS, "buildCcsiAutofillPayload")
+    assert "const noCcsiTarget = isWater && CCSI_WATER_NO_ZD.test(key);" in builder
+    assert 'hasValue && !noCcsiTarget ? parameter.status || "review_required" : "blocked"' in builder
+    assert "CCSI_WATER_NO_ZD_REASON" in builder
+    assert "const CCSI_WATER_NO_ZD = /^ZD\d*$/;" in _APP_JS
+    bridge = _fn(_USERSCRIPT, "buildPayloadFromDom") if "function buildPayloadFromDom(" in _USERSCRIPT else _USERSCRIPT
+    assert 'const noCcsiTarget = isWater && /^ZD\d*$/.test(key);' in bridge
+    assert 'status: has && !noCcsiTarget ? "review_required" : "blocked"' in bridge
+    assert "const noZd = water && /^ZD\d*$/.test(k);" in _SKILL
+    assert "status:has&&!noZd?'review_required':'blocked'" in _SKILL

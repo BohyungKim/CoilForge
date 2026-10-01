@@ -22,13 +22,13 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `(repo root)` | 1 |
 | `.claude/hooks` | 1 |
 | `mcp_servers/plan_review` | 1 |
-| `scripts` | 22 |
+| `scripts` | 24 |
 | `src/coilforge` | 4 |
 | `src/coilforge/accuracy` | 2 |
 | `src/coilforge/adapters` | 3 |
 | `src/coilforge/ambient` | 13 |
 | `src/coilforge/capture` | 9 |
-| `src/coilforge/ccsi` | 5 |
+| `src/coilforge/ccsi` | 8 |
 | `src/coilforge/checklist` | 8 |
 | `src/coilforge/coil_utilities` | 5 |
 | `src/coilforge/common` | 2 |
@@ -52,7 +52,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 143 |
+| `tests` | 149 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 2 |
@@ -67,6 +67,8 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `scripts/build_submittal_index.py` | Build the download-free submittal PDF index (metadata only; no PDF is opened) |
 | `scripts/ccsi_coil_data_readiness.py` | Replay the capture ledger through the CCSI coil-data mapping contract |
 | `scripts/ccsi_crosscheck.py` | Cross-check harvested CCSI selections against the capture ledger's submittal extraction |
+| `scripts/ccsi_order_gate.py` | The past-order gate for the CCSI coil-data mappings: John's decision tables |
+| `scripts/ccsi_report_crosscheck.py` | Cross-check CCSI selection reports (filed in the PO folders) against CoilForge's CURRENT extraction |
 | `scripts/draw_audit_sample.py` | Draw a flag-INDEPENDENT random audit sample (1d): pick N coils for ground-truth review, |
 | `scripts/execute.py` | Harness Step Executor — phase 내 step을 순차 실행하고 자가 교정한다 |
 | `scripts/find_similar.py` | Case Retrieval (Stage 2): "have I seen this coil before?" |
@@ -118,6 +120,9 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/ccsi/compare.py` | Compare CoilForge drawing-parameter values against values read back from the |
 | `src/coilforge/ccsi/crosscheck.py` | Cross-check a harvested CCSI coil form against CoilForge's submittal extraction |
 | `src/coilforge/ccsi/export_audit.py` | Offline CCSI-export audit — run the green/red compare from a downloaded CCSI |
+| `src/coilforge/ccsi/order_gate.py` | Order cross-check gate — John's decision tables over the CCSI report cross-check |
+| `src/coilforge/ccsi/report_extras.py` | Coil-data fields a CCSI report PDF states OUTSIDE its coil report pages |
+| `src/coilforge/ccsi/selection_report.py` | Parse CCSI coil selection reports — the PDFs filed in each PO folder — into harvest-shaped records |
 | `src/coilforge/checklist/__init__.py` | Coil Checklist auto-fill subsystem (review aid) |
 | `src/coilforge/checklist/compare.py` | Build the in-app review table: checklist (formula) vs CoilForge (engine) |
 | `src/coilforge/checklist/excel_writer.py` | Excel writer for the Coil Checklist (I/O layer — Windows + Excel COM only) |
@@ -206,12 +211,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_capture_retrieve.py` | Case retrieval (Stage 2.0): masked-Gower nearest-neighbor over the ledger |
 | `tests/test_case_prefill.py` | PO Release board case prefill (?case= deep link) |
 | `tests/test_case_tuning.py` | Case-retrieval weight tuning harness (Stage 2, Part A5) |
-| `tests/test_ccsi_coil_data_map.py` | CCSI coil-data mapping contract (Rating-mode push, Phase 1) |
-| `tests/test_ccsi_coil_data_payload.py` | CCSI coil-data push payload (Step E stage 1): candidate + Direct Coil draft -> coil_data |
-| `tests/test_ccsi_compare.py` | CCSI-vs-CoilForge compare core (Phase 3): reuses the checklist comparator, so a |
-| `tests/test_ccsi_crosscheck.py` | CCSI harvest cross-check (Step C) + the harvest's read-only guarantee |
-| `tests/test_ccsi_drain_vent_location.py` | CCSI "Drain and Vent Location" for water coils (John 2026-09-23) |
 
-_325 source files, 233 with a header comment. 83 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_336 source files, 244 with a header comment. 94 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

@@ -2025,6 +2025,9 @@ const CCSI_AUTOFILL_SCHEMA = "coilforge.ccsi.autofill/1";
 // Coil Checklist vocabulary for a different field, and John keeps the two separate.
 const CCSI_WATER_DRAIN_VENT_LOCATION = "Hdr Side In Airflow Dir.";
 const CCSI_WATER_CATEGORIES = new Set(["CWC", "HWC"]);
+// ZD / ZD2 … have no field on CCSI's water-coil dimension grid (live 2026-10-01).
+const CCSI_WATER_NO_ZD = /^ZD\d*$/;
+const CCSI_WATER_NO_ZD_REASON = "CCSI water-coil dimension grid has no ZD field — not pushed.";
 // Single source of truth for the scoped keys: the same 13 the panel lays out.
 const CCSI_DRAWING_PARAM_KEYS = DRAWING_PARAM_COLUMNS.flat();
 
@@ -2084,16 +2087,23 @@ function ccsiFillKeys(parameters, fieldMap) {
 
 function buildCcsiAutofillPayload(uiState, fieldMap) {
   const parameters = uiState.drawing_parameters?.parameters || {};
+  const isWater = CCSI_WATER_CATEGORIES.has(
+    String(uiState.template_drawing?.extracted?.coil_category || "").toUpperCase(),
+  );
   const fields = ccsiFillKeys(parameters, fieldMap).map((key) => {
     const parameter = parameters[key] || {};
     const mapEntry = fieldMap.fields?.[key] || {};
     const hasValue =
       parameter.value !== null && parameter.value !== undefined && parameter.value !== "";
+    // CCSI's water-coil dimension grid has no ZD field (live 2026-10-01, John "A"): the push
+    // is withheld so the filler counts it as skipped instead of warning "selector not found"
+    // on every water Run all. The drawing's own ZD is untouched.
+    const noCcsiTarget = isWater && CCSI_WATER_NO_ZD.test(key);
     // Confidence gate carried one step further into the external form: a no-value
     // or unmapped parameter is "blocked" for fill purposes so the userscript skips
     // it. A real value rides along, but only ever as review_required — never an
     // auto-applied "ready" (the resolver emits no ready path for these 13).
-    const status = hasValue ? parameter.status || "review_required" : "blocked";
+    const status = hasValue && !noCcsiTarget ? parameter.status || "review_required" : "blocked";
     return {
       key,
       ccsi_label: mapEntry.ccsi_label || parameter.label || key,
@@ -2106,9 +2116,11 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
       // enable checkmark is off.
       ccsi_readonly: mapEntry.ccsi_readonly === true,
       selectors: Array.isArray(mapEntry.selectors) ? mapEntry.selectors : [],
-      blocked_reason: hasValue
-        ? null
-        : parameter.blocked_reason || "No value derived from the source or rule engine; review required.",
+      blocked_reason: noCcsiTarget
+        ? CCSI_WATER_NO_ZD_REASON
+        : hasValue
+          ? null
+          : parameter.blocked_reason || "No value derived from the source or rule engine; review required.",
     };
   });
   return {
@@ -2194,10 +2206,11 @@ function readStampedCcsiCoilData() {
 }
 
 // The CCSI select is chosen by OPTION TEXT (`match: "option_text"`): the option values are
-// CCSI's own codes and have never been captured. The select's id has not been captured
-// either, so the target is found by its label and marked `selector_verified: false` — the
-// filler panel then shows exactly which element it would write, for John to confirm, until
-// a live capture pins a `#id` (the Drawing Notes Phase F procedure). Null for non-water coils.
+// CCSI's own codes and have never been captured. Its id WAS captured live on 2026-10-01
+// (3031 CCWC-1, `#DrainAndVentLocation`): the labelText-only entry resolved to nothing on the
+// real form, because CCSI prints the caption in a sibling element, not a <label> — the same
+// "unverified selector is a silent no-op" failure the Drawing Notes capture found. labelText
+// stays as a SECOND choice, as for the notes. Null for non-water coils.
 function ccsiDrainVentLocation(coilCategory) {
   if (!CCSI_WATER_CATEGORIES.has(String(coilCategory || "").toUpperCase())) return null;
   return {
@@ -2206,8 +2219,11 @@ function ccsiDrainVentLocation(coilCategory) {
     status: "review_required",
     type: "select",
     match: "option_text",
-    selectors: [{ strategy: "labelText", text: "Drain and Vent Location" }],
-    selector_verified: false,
+    selectors: [
+      { strategy: "css", selector: "#DrainAndVentLocation" },
+      { strategy: "labelText", text: "Drain and Vent Location" },
+    ],
+    selector_verified: true,
     blocked_reason: null,
   };
 }
@@ -5327,8 +5343,13 @@ elements.copyCcsiPayload?.addEventListener("click", async () => {
       return;
     }
     const fillable = payload.fields.filter((field) => field.value !== null).length;
+    const coilData = (payload.coil_data?.entries || []).filter((entry) => entry.pushable).length;
     elements.ccsiAutofillStatus.textContent =
-      `Copied CCSI payload — ${fillable}/${payload.fields.length} fields have a value to review (map v${payload.field_map_version}). Switch to the CCSI form and run the userscript.`;
+      `Copied CCSI payload — ${fillable}/${payload.fields.length} drawing fields` +
+      (coilData
+        ? ` + ${coilData} coil-data fields (Run all ready)`
+        : " · coil data not ready yet — wait a moment and copy again for Run all") +
+      ` (map v${payload.field_map_version}). Switch to the CCSI form and run the filler.`;
   } catch (error) {
     elements.ccsiAutofillStatus.textContent = `Could not build payload: ${error.message}`;
   }

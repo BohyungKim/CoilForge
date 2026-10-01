@@ -94,13 +94,14 @@ def crosscheck_coil(
     rows: list[dict[str, Any]] = []
     for ccsi_id, entry in resolved.items():
         if ccsi_id not in form:
-            rows.append(_row(ccsi_id, entry.ccsi_label, entry.role, entry.source_key, entry.value, None, "absent_on_form", entry.reason))
+            rows.append(_row(ccsi_id, entry.ccsi_label, entry.role, entry.source_key, entry.value, None, "absent_on_form",
+                             entry.reason, entry.reason_code))
             continue
         field = form[ccsi_id]
         verdict = _verdict(entry, str(field.get("kind")), field.get("value"))
         rows.append(_row(ccsi_id, entry.ccsi_label, entry.role, entry.source_key,
                          entry.value if entry.value is not None else entry.source_value,
-                         field.get("value"), verdict, entry.reason))
+                         field.get("value"), verdict, entry.reason, entry.reason_code))
     for ccsi_id, field in form.items():
         if ccsi_id in resolved or ccsi_id in _IGNORED_IDS or ccsi_id in ignore_ids:
             continue
@@ -110,6 +111,7 @@ def crosscheck_coil(
 
 
 def _row(ccsi_id: str, label: Any, role: Any, source_key: Any, coilforge: Any, ccsi: Any,
-         verdict: Verdict, reason: str) -> dict[str, Any]:
+         verdict: Verdict, reason: str, reason_code: str | None = None) -> dict[str, Any]:
+    # reason_code separates a default-profile or re-selection verdict from one on an extracted value.
     return {"ccsi_id": ccsi_id, "label": label, "role": role, "source_key": source_key,
-            "coilforge": coilforge, "ccsi": ccsi, "verdict": verdict, "reason": reason}
+            "coilforge": coilforge, "ccsi": ccsi, "verdict": verdict, "reason": reason, "reason_code": reason_code}

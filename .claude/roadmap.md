@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-09-23 (**[CCSI 트랙] 38bc5fb** — 물코일 CCSI "Drain and Vent Location" = `Hdr Side In Airflow Dir.`(전 제품군 CWC/HWC, 미러 기본값 + CCSI fill 시 옵션-텍스트 선택, select id 미캡처라 `selector_verified:false`). 곁가지로 **userscript `resolve()`가 `{strategy:"css"}`를 처리 못 해 8월 캡처한 `#DrawingNotes`가 한 번도 해석되지 않았고 Tampermonkey 경로의 Notes 푸시가 무동작이었음**을 모의 CCSI 폼에서 재현·수정. R-066 `ConnEnd`는 별개 어휘로 유지(John). 🔴 같은 날 **Coil Checklist 템플릿(OneDrive/SharePoint)을 Excel이 열지 못함** — 파일은 읽히나 Excel "cannot access"(12:59 수정 이후) → Excel 테스트 11개 skip, 실사용 자동채움도 실패 가능. 이전 갱신 2026-09-23 (**[HITL 막힘 해제 트랙]** — John: "CWC/HWC 데이터를 못 가져오면 도면 파라미터가 하나도 안 채워져 완전히 막힌다". 막힘의 실체는 데이터 부재가 아니라 **레버가 사라지는 3개 상태**였다: ①Terra 물코일 게이트(`_omit_drawing`→`template_found=False`)가 fill plan을 비우고 product 피커까지 숨김 ②도면 경로 예외가 맨 `{"error"}`로 떨어져 "Template not registered" 막다른 길 ③거부된 `/derive` 스텁이 정상 페이지를 덮어써 재분석 전까지 벽돌. 레버를 도면과 분리해 전부 복구 + **critical 등급**(CD·CH·HD/HDx·S·I, 입력 레버 product/size/hand/conn — `DrawingParameter.criticality` computed field) 굵은 빨강·인라인 편집·reason 커밋 시 자동 derive + Tier-A/피커 값 확정 즉시 재생성 + **체크리스트 채택**(입력 먼저→엔진 재계산, 빈 행에만 시트 결과, 새 verdict `adopted`) + 물코일 inlet/outlet 레버(사람이 친 값만 R-071 트리거). 브라우저 fill store를 **누적 merge**로 바꿔 자동 derive가 앞선 채움을 지우던 구조 결함도 해소. plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 1740 green, headless Chrome 실페이지 스모크 통과. 이전 갱신 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
+> 마지막 갱신: 2026-09-30 (**[CCSI coil-data 트랙]** 3세션 병행. v3.1 원버튼 Run all은 2803에서 submittal과 정확히 일치했다(32.37 MBH / 52.14 °F). 과거 오더 교차검증 게이트와 어댑터 보정 PASS, 리포트 보조 파서, 코팅 규칙(드롭다운·노트·도면·AA 인식), 전체 오더 배치는 러너 세션이 진행 중이다. 통합 테스트는 한 번에 몰아서 한다. 전부 미커밋). 이전 갱신 2026-09-24 (**[물코일·체크리스트 정렬 트랙] 7b562f1…eafd8a0** — 물코일 O를 **datum 문제**로 재정의(아트워크 속성 `TEMPLATE_O_DATUM`, Terra CWC/HWC = CH − I, 체크리스트는 헤더 끝 기준으로 비교, KD-024..027 은퇴) · **Terra HWC 템플릿 시딩**(37 버킷, Terra 물코일 게이트 해제, John 눈검증 완료) · **J-1b** IN/OUT CONN SZ 코일별 채택 · **KD-001 재판정: Terra V HGRH CD = 체크리스트 else-branch**(KD-001/002/003/028/029 은퇴) · **물코일 FEEDS 게이트 제거**(John A) · **Excel 템플릿 접근 해소**(OneDrive 바로가기 경로 → 바이트 복사 fallback + 고아 EXCEL.EXE 누수 수정) · RP-003 갱신 + **RP-004(Dave 요청서)** 작성. 전부 푸시, 1798 green. 다음: Dave에게 RP-004 전달. 이전 갱신 2026-09-23 (**[CCSI 트랙] 38bc5fb** — 물코일 CCSI "Drain and Vent Location" = `Hdr Side In Airflow Dir.`(전 제품군 CWC/HWC, 미러 기본값 + CCSI fill 시 옵션-텍스트 선택, select id 미캡처라 `selector_verified:false`). 곁가지로 **userscript `resolve()`가 `{strategy:"css"}`를 처리 못 해 8월 캡처한 `#DrawingNotes`가 한 번도 해석되지 않았고 Tampermonkey 경로의 Notes 푸시가 무동작이었음**을 모의 CCSI 폼에서 재현·수정. R-066 `ConnEnd`는 별개 어휘로 유지(John). 🔴 같은 날 **Coil Checklist 템플릿(OneDrive/SharePoint)을 Excel이 열지 못함** — 파일은 읽히나 Excel "cannot access"(12:59 수정 이후) → Excel 테스트 11개 skip, 실사용 자동채움도 실패 가능. 이전 갱신 2026-09-23 (**[HITL 막힘 해제 트랙]** — John: "CWC/HWC 데이터를 못 가져오면 도면 파라미터가 하나도 안 채워져 완전히 막힌다". 막힘의 실체는 데이터 부재가 아니라 **레버가 사라지는 3개 상태**였다: ①Terra 물코일 게이트(`_omit_drawing`→`template_found=False`)가 fill plan을 비우고 product 피커까지 숨김 ②도면 경로 예외가 맨 `{"error"}`로 떨어져 "Template not registered" 막다른 길 ③거부된 `/derive` 스텁이 정상 페이지를 덮어써 재분석 전까지 벽돌. 레버를 도면과 분리해 전부 복구 + **critical 등급**(CD·CH·HD/HDx·S·I, 입력 레버 product/size/hand/conn — `DrawingParameter.criticality` computed field) 굵은 빨강·인라인 편집·reason 커밋 시 자동 derive + Tier-A/피커 값 확정 즉시 재생성 + **체크리스트 채택**(입력 먼저→엔진 재계산, 빈 행에만 시트 결과, 새 verdict `adopted`) + 물코일 inlet/outlet 레버(사람이 친 값만 R-071 트리거). 브라우저 fill store를 **누적 merge**로 바꿔 자동 derive가 앞선 채움을 지우던 구조 결함도 해소. plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 1740 green, headless Chrome 실페이지 스모크 통과. 이전 갱신 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
 > 멀티헤더 결함 4건. 도면이 **시드 코일의 as-built을 인쇄**(`-0.25 S1`; slot_map에 없어 치환 대상조차 아님),
 > 9abe5a7의 Terra V 가드가 **실제 PDF 경로에서 死**(R-052의 `qty or circuits` 무언 대체), 그 결과 **S 음수 발산**,
 > 패널 I2/O2 비대칭 미설명. 조사 중 결론이 한 번 뒤집혔다 — 참조를 **그 입력으로 재구성**하면 우리 공식이
@@ -1225,6 +1225,101 @@
   자동검증은 완료(1513 green · invariant clean · 실 제출물 12개 대조 · 다중피드 byte-identical); 남은 건 실 렌더.
 
 ## ▶️ 지금
+- [ ] **[CCSI coil-data 트랙] 과거 오더(source of truth) 교차검증 — 필수 게이트 (John 2026-09-30: "가장 중요한 핵심")** —
+  Step A–E + D1이 커밋됐고(e038171·c44ca77) 라이브 1단계 push도 통과했다(3237·2942 RHHGRC-1, Tube Material 21/21·2/2 ok).
+  하지만 **지금 근거는 하베스트 11코일(6프로젝트)뿐**이고, 그게 실제로 오더된 revision인지는 확인하지 않았다.
+  **업데이트된 모든 매핑은 실제 오더된 프로젝트와 교차검증해야 한다.** 대상: D1 재질(`option_material_gauge`, Smooth = Plain),
+  D2 default profile, D3 connection size = computed, D6 circuits → System Type, D7 geometry 재선정 게이트,
+  그리고 `validated`로 승격된 필드 전부(HGRH TubeMaterial 포함). 검증이 끝나기 전까지 push 결과는 review aid다.
+  방법: 오더된 코일을 read-only로 더 하베스트(`/ccsi-harvest`) → `scripts/ccsi_crosscheck.py` → 필드별 match/mismatch를 낸다.
+  불일치는 4가지로 분류한다(추출 오류 / 표기·단위 / 어휘 / 실제 재선정). 자동 수정은 하지 않는다.
+  **🔁 검증 소스 전환(John 2026-09-30): 라이브 폼 하베스트 → PO 폴더의 CCSI selection 리포트 PDF.**
+  `02 - POs/<project>/Accessory Order Forms/(DirectCoil/)<…>_REV<n>_<date>.pdf` — CCSI가 계산을 마친 뒤 낸 리포트다.
+  코일마다 Tube/Fin Material, Rows, FPI, Feeds, 공기·냉매 조건, LDB·용량이 한 장에 있다.
+  규모는 **160개 프로젝트 / 190개 파일**(REV0 69 · REV1 112 · REV2+ 9; 2026-09-30 재집계, 예전 "137/159"는 필터 차이). REV0만 있는 프로젝트가 48개다. 라이브 하베스트는 6개 프로젝트였다.
+  **REV 규칙(John "둘 다 비교"):** 정본은 **마지막 REV**(오더 시점). REV0(application 엔지니어 원본)가 있으면 보조로 비교해
+  "오더 때 바뀐 것"(REV0→RFO)과 "CoilForge 불일치"를 구분한다. 같은 REV를 여러 번 내보냈으면 마지막 export를 쓰고,
+  `Revised`·`Copy`(CoilForge 산출물)는 제외한다. REV0 태그가 submittal과 다른 경우가 있다(`OAU-1_DX`, `MAU-2-1`, `ERV-1_DX`).
+  **D4 재검토 필요:** 라이브 폼의 LDB(HGRH 90 / DX 55)를 "CCSI 고정 기본값"으로 결론 냈지만,
+  3237 REV0 리포트는 70.88 / 50.75(= submittal 값)를 찍었다. 라이브 폼이 Calculate 전 상태였을 가능성이 크다.
+  아래 RFO·공급사 revision 결정(A/B)은 라이브 하베스트용이다. 이제 라이브 하베스트는 보조 수단이다.
+  (이전) **정본 = CCSI의 오더 revision(RFO)** (John 2026-09-30 "A"). PO 폴더 문서는 불일치가 나왔을 때 원인을 가리는 보조 근거.
+  **✅ 1단계 확인(2026-09-30):** 기존 하베스트 12코일은 **전부 RFO revision 소속**이다
+  (코일 폼의 hidden `ProjectId`/`RevisionId` → 프로젝트 revision 목록의 Note=RFO; 2954·3031·3154·3183·3232·3237, RFO 9/17–9/28).
+  따라서 D1–D7 결정과 승격은 이미 오더 기록을 근거로 했다. 완료 코퍼스는 DX 3 / HGRH 3 / CWC 3 / HWC 2
+  (3031 HHWC-1은 RFO에서도 `Optimise`라 제외).
+  **남은 것:** ① 코퍼스 확대. John 계정의 프로젝트 목록에는 자기 프로젝트 3개만 보이고, RFO는 동료 프로젝트 안에 있다.
+  `/Coils/Edit/{id}` 직접 이동은 동료 프로젝트도 열리지만(3237로 확인, 과거의 "튕긴다" 기록과 다름) id를 알아야 한다.
+  → 오더 프로젝트 번호나 링크를 John에게 받는다. id를 차례로 훑는 크롤링은 하지 않는다.
+  ② **3154에 RFO(9/17) 이후 공급사가 만든 Revision2(joberoi@directcoil.com, 9/29)가 있다.**
+  공급사가 RFO를 고쳤다면 RFO는 실제 제작된 코일이 아니다. 내용은 못 읽었다(제품 목록 엔드포인트가 단순 GET에 500).
+  → **John 결정 B(2026-09-30): RFO 뒤에 공급사 revision이 있으면 공급사의 마지막 revision이 정본**(실제 제작 기준).
+  RFO와 다르면 그 차이 자체를 기록한다(공급사가 무엇을 고쳤는지 = 추출·매핑 쪽 신호).
+  **3154 적용 결과(2026-09-30):** 공급사 Revision2(572671)의 제품 목록이 RFO(568934)와 **완전히 같다**.
+  Unit Name(`5W-01-10.5-08-14.3-1` / `…-11-14.3-1`), 수량 3/1, 무게, 가격, 코일 수정 시각(9/24 10:43:01·10:42:25)까지 일치한다.
+  공급사가 바꾼 것은 없다고 보고(Likely) 3154 RFO 하베스트를 정본으로 유지한다.
+  필드 단위 비교는 못 했다. 공급사 revision 코일(8980283/8980284)은 `john@oxygen8.ca`에게 **Access Denied**였다.
+  **접근 규칙 정정:** 코일 편집 권한은 프로젝트 소유가 아니라 **revision을 만든 사람** 기준으로 보인다.
+  John이 만든 RFO의 코일은 동료 프로젝트여도 열리지만(3237), 동료의 Revision0과 공급사 revision은 안 열린다.
+  → 코퍼스 확대는 **John이 RFO를 만든 프로젝트**에서 하면 된다. 그 CCSI 링크(프로젝트 또는 RFO 코일 URL)를 John에게 받는다.
+  **✅ 리포트 러너 스모크(2026-09-30 13:42, 3154·3232·3237):** 스킵 0, 코일 6개(DX 2 · HGRH 2 · HWC 2)가 모두 tag로 짝지어졌다.
+  비교 가능한 입력 필드는 대부분 match. 불일치는 다섯 갈래다.
+  ① **매핑 결함 후보:** HWC `GlycolRatio`. submittal의 "Fluid Percent (%)" = 100은 Water 100%라는 뜻이고, CCSI Fluid Ratio는 글리콜 비율이라 0이다.
+  ② **맵 캡처 공백:** HGRH `CondenserReturnConnectionSize`의 옵션이 `["Calculate"]` 하나뿐이다. 리포트 1/2"는 CoilForge 값 0.5와 같다.
+  ③ **default 후보(John 결정):** HWC Tube `Copper 0.018 Plain` / Fin `Aluminum 0.008`, HGRH `VaporTemperature` 140, `RefrigerationSystemType` Single-Circuit, HGRH supply connection 크기.
+  ④ **실제 선정 차이:** 3232 DX Feeds 6→7, Tube 0.016→0.020, 그리고 그에 따른 LDB·용량. 3154 HHWC-1은 EFT 122→123, 그래서 유량이 0.66→0.62 GPM/coil로 바뀌었다. 3154 Altitude는 submittal 13 ft, CCSI 0.
+  ⑤ **CCSI와 Oxygen8 레이팅 차이:** 3154 HHWC-2 LDB 70.5 vs 70.68, 용량 9.7 vs 9.55. 입력은 모두 같다.
+  → 다음: 전체 배치(로컬 파일만), 그리고 ①·③ John 결정.
+  **✅ 게이트 구축(2026-09-30, ccsi-coil-data-mapping 세션, 미커밋):** `ccsi/order_gate.py` + `scripts/ccsi_order_gate.py` (+ 테스트 26).
+  러너의 `crosscheck.json`을 읽어 **증거 등급**(보정용 / 오더 REV≥1 / 견적만 REV0)을 나누고, `mismatch` 행에만 원인을 붙인다.
+  원인마다 결함 여부를 둔다. 틀린 D2 기본값, 수량 배수, CoilForge≠REV0인 오더 변경은 결함이다.
+  승격·강등은 **제안만** 한다(John: "설명 안 된 불일치만", 승격 = 오더 3개 이상 + 값 2종 이상 + input + 소스 있음).
+  덧붙여 물 유체 패턴표(EWT/LWT/GPM 중 무엇이 오더와 맞았나)와 **규칙 후보 표**를 낸다.
+  **어댑터 보정 PASS:** 하베스트 12코일 모두 리포트와 짝이 됐고 불일치 0. 리포트→CCSI id 변환은 믿을 수 있다.
+  **리포트 보조 파서 `ccsi/report_extras.py`**(John "캡처 안 되는 항목도 캡처", 미커밋):
+  견적·도면에서 코팅, 캐필러리(분배기 `1620-4-1/4`), Vent/Drain, HGRH·물 feeds를 읽는다. (리포트 노트 "OPPOSITE END COIL REQUIRED"는 Connection Ends가 **아니다**: 보정 결과 그 노트가 있는 하베스트 4코일 모두 폼 값이 Same End Only였다. 노트가 무엇을 뜻하는지는 John 질문으로 남긴다.)
+  feeds는 모델번호 마지막 자리이고, DX 275/275에서 리포트 값과 일치, 도면 충돌 0이다. 연결(`parse_report_pages` 2줄)은 러너 세션이 배치 후에 한다.
+  **John 결정(2026-09-30):**
+  - HGRH 용량 = Total Capacity /Coil
+  - D4 개정: 리포트·`#mainResult`의 LDB를 비교하고, 폼 LDB 입력은 push하지 않는다
+  - 물 GPM은 오더 데이터로 판정한다(유체 패턴표)
+  - **A: submittal에 적힌 것만 추출한다.** Connection Ends·Vent/Drain·캐필러리·드레인 트레이·Coil Type·Temperature Input·물 feeds는 submittal 105개 어디에도 없어서, 오더 근거 규칙으로 정한다
+  **코팅 규칙(John 2026-09-30, 구현 완료·미커밋, 2840 실검증):**
+  - CCSI 드롭다운(`Plain`/`AA Coating`)에 같은 이름이 있으면 그 선택지, 없으면 `AA Coating`을 고른다(`option_coating`)
+  - Drawing Notes → CCSI `#DrawingNotes` 맨 앞에 `<코팅> COATING REQUIRED`를 붙인다
+  - 도면은 원래 모든 템플릿에 같은 문구를 찍고 있었다
+  - 실제 빈틈은 intake가 커버의 두 줄짜리 `AA coil / coating adder`를 몰라서 `Plain`을 보내던 것이었다
+  - 옛 규칙("선택지 밖 코팅 = push 안 함")을 고정하던 테스트 2개는 새 규칙으로 갱신했다
+  **submittal-index 인계 패치 적용(미커밋):** 태그 짝짓기 버그를 고쳤고, 원장이 읽은 같은 PDF로만 짝짓는다(`--submittal-from-ledger`).
+  **✅ 오더 교차검증 결정 반영(2026-09-30 밤, John "A + altitude①", 오더 77개 프로젝트 · 212코일, 보정 PASS):**
+  - 승격: HGRH 냉매 Subcooling·Condensing, 물 Fluid Type·Glycol·EWT·LWT, CoilQuantity, CWC EWB
+  - HGRH Vapor 기본값 140(74/74)
+  - 물 GPM 강등: CCSI가 EWT/LWT로 계산
+  - 90% 이상 일치 필드는 유지, Altitude는 submittal 값 유지
+  - push되는 입력이 **DX 31/34 · HGRH 30/34 · CWC 30/39 · HWC 29/38**로 늘었다. 이제 HGRH·물코일 Run all도 레이팅 입력이 채워진다.
+  - 남은 것: ACFM(오더가 Actual/Standard로 갈려 규칙 없음), Tube/Fin 재질 일부, 물 feeds·Altitude·Drain&Vent 위치·최대 PD, HGRH 서브쿨링 튜브/회로
+  - 추출이 30분을 넘는 submittal 3개(2982·3037·3191)는 원인 미조사. 자세한 내용은 `docs/ccsi/mapping_findings.md` "Decided 2026-09-30 — order cross-check A"
+  (아래는 결정 전 기록) **남은 매핑(2026-09-30):** push되는 입력은 DX 30/34 · HGRH 26/34 · CWC 26/39 · HWC 25/38이다. push 안 되는 것은 아래와 같다.
+  - 공통: `CoilQuantity`(captured), `ACFM`(소스 없음. 리포트의 ACFM/SCFM 표기가 규칙 후보)
+  - DX: `TubeMaterial`(3232 D5 예외), `FinMaterial`
+  - 🔴 **HGRH 냉매 조건 `VaporTemperature`/`CondensingTemperature`/`Subcooling` 미승격.** 지금 HGRH Run all은 폼에 남아 있는 값으로 레이팅한다. 그 외 `FinMaterial`, 서브쿨링 튜브/회로(소스 없음)
+  - 🔴 **물코일 `EnteringFluidTemp`/`LeavingFluidTemp`/`FluidType`/`GlycolRatio` 미승격.** GPM만 push되니 물코일 Run all은 온도를 폼 값으로 레이팅한다. ✅ `GlycolRatio` Water 100% 버그는 수정했다(2026-09-30, `glycol_ratio` + `FluidType` Propylene→Propylene Glycol, 2954 재확인 0=0). 그 외 `NumberOfFeeds`, Tube/Fin 재질, `Altitude`, CWC `EnteringWetBulb`, HWC `LeavingDryBulb`, `DrainAndVentLocation`, `MaxFluidPressureDrop`
+  - 전부 전체 배치 → 게이트의 승격 후보 / 유체 패턴 → John 결정 순서로 진행한다.
+- [x] **통합 테스트 (John, 한 번에 — 2026-09-30 누적분)** — 서버 재시작(`run_server.bat`, --reload 없음) → 재분석 후 확인:
+  ① **코팅**: 2840(AA) 또는 코팅된 프로젝트에서 Drawing Notes 첫 줄 `AA COATING REQUIRED`, 도면 왼쪽 위 빨간 노트, CCSI Run all → Coil Coating = `AA Coating` + `#DrawingNotes`
+  ② **v3.1 Run all**: 북마크를 다시 드래그(스냅샷) → HGRH·물코일에서도 Run all(지금까지는 DX만 라이브)
+  ③ **Copy 상태 문구**("+ N coil-data fields (Run all ready)")
+  ④ 게이트 결과로 바뀐 push 항목이 있으면 그 필드도 함께 확인한다
+  **✅ 2026-10-01 실행 결과(Claude-in-Chrome, 저장 0건):** ①②③④ 통과. 2840(AA, DX 3) 노트·빨간 도면 노트·`AA Coating` 3코일 모두 확인.
+  Run all 4종 — DX(2840 값 → 2803 벤치) 185.61 MBH / LDB 55.9 vs submittal 182.55 / 55.77 · HGRH 3237 RHHGRC-1 44.58 / 70.88 **정확 일치** ·
+  CWC 3031 CCWC-1 61.46 / 66.21 / 9.59 GPM 일치(GPM 강등 타당) · HWC 3154 HHWC-2 9.55 / 70.68 vs 9.7 / 70.5(09-30 스모크 ⑤와 동일한 레이팅 차이).
+  Copy 문구 DX 30 · HGRH 29 · CWC 30 · HWC 29. **실행 중 발견·수정:** 물코일 `Drain and Vent Location`이 labelText만으로는
+  해석 불가(CCSI 캡션이 `<label>`이 아님) → 라이브 캡처 `#DrainAndVentLocation` 3사본 반영 + userscript **v3.1.1**, HWC에서 `✓ filled` 재확인.
+  **물코일 ZD(John "A"):** CCSI 물코일 치수 그리드에 ZD 필드가 없다(CD/HS/BF/VS/TF/HR/EF/VR/FF/HD/CH/CS) → 3사본에서 물코일 ZD를
+  `blocked`(사유 표시, skipped 집계)로 보류, userscript **v3.1.2**. HHWC-2 재실행 `10/10 drawing parameters set`, ⚠ 없음 ✅.
+  트랙 B 물코일 새 아트(3031 CCWC-1: 빈 NOTES, O2 = I1, 슬롯 전부 채움 — LIFTING LUGS/Stacking은 `_strip_intruding_chrome`이 설계대로 제거) ✅ ·
+  트랙 D 원장 새 기본 경로에 오늘 run 기록 ✅ · 트랙 C Deliverable 다이얼로그(3154: 3/3 ✓, move 해제→draft 비활성, Not now/Esc/배경 → 파일링 0, 재오픈) ✅.
+  **2132 green.** 남은 것: shipit(트랙별 커밋).
 - [ ] **2단계 Case Retrieval — 원장 채우기 단계** (엔진은 Phase 2.0으로 구축·커밋 완료, 66087fd) — 다음 걸음:
   **실사용으로 코퍼스 + 교정 축적**. 현황 **46/50 · 교정 0**. 착수조건 n≥50까지 4개 부족하나, **개수보다
   교정이 진짜 관건** — John이 "거의 안 고침"이라 교정 0은 정직한 수치(캡처 버그 아님). Stage 2가 실제로 유용해지려면

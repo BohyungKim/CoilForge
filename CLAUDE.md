@@ -407,7 +407,8 @@ multi-header keys (I2/S2…) push only when present in `parameters` AND in the f
 (`ccsi/coil_data_map.py`, `web/ccsi/ccsi_coil_data_map.dx.json`, `docs/ccsi/form_structure_dx.md`,
 `scripts/ccsi_coil_data_readiness.py`) — push the rest of the CCSI form (geometry, options, air,
 refrigerant) so CCSI rates the coil from CoilForge's extraction and the application team stops
-re-selecting. John clicks Calculate; nothing auto-saves. A **separate** map: the dimension map stays
+re-selecting. Nothing auto-saves: the userscript's "▶ Run all" (v3.1, behind John's review checkbox)
+presses only `#calcBtn` and `#customDimensionsButton`, then stops before Save. A **separate** map: the dimension map stays
 dimension-only (`test_ccsi_field_map.py`). Each entry has a `role` (`input` pushable; `computed`/`locked`
 read back only), an exact captured option list (a value off it is `CCSI_OPTION_UNMAPPED`, never the
 nearest option), and a `mapping_status` — every entry is `captured` today, so **nothing is pushable**
@@ -418,6 +419,10 @@ submittal side of validation replays the capture ledger's draft stage (read-only
 `0.016` + unit `Copper`, so a reader that takes only `value` sees a bare gauge — the material was never
 lost. `option_material_gauge` reads both plus the canonical `tube_surface` (the ledger keeps it only as
 the drawing's `slot.TUBE_MATERIAL_2`; Smooth = Plain, John); no stated surface or material → unmapped.
+**Water-coil form (live 2026-10-01):** Drain and Vent Location is `#DrainAndVentLocation` — its caption
+is a sibling element, not a `<label>`, so a labelText-only selector resolves nothing; and CCSI's water
+dimension grid (CD/HS/BF/VS/TF/HR/EF/VR/FF/HD/CH/CS) has **no ZD**, so every payload builder (app.js,
+userscript bridge, `/ccsi-fill`) sends water ZD as `blocked` (skipped, never a "selector not found").
 
 **Submittal corpus index + page-text cache (2026-09-30)** (`corpus/`, `scripts/build_submittal_index.py`,
 `scripts/pre_extract_submittals.py`, `docs/corpus/`) — indexes every PDF in the OneDrive PO tree by

@@ -59,7 +59,8 @@ MAP_DIR = Path(__file__).resolve().parents[3] / "web" / "ccsi"
 Role = Literal["input", "computed", "locked"]
 Transform = Literal[
     "text", "number", "number_times_quantity", "option_exact", "option_number", "option_inch_fraction",
-    "option_refrigerant", "value_map", "option_material_gauge",
+    "option_refrigerant", "value_map", "option_material_gauge", "option_coating", "option_fluid_type",
+    "glycol_ratio",
 ]
 MappingStatus = Literal["captured", "validated", "confirmed"]
 ReasonCode = Literal[
@@ -90,6 +91,8 @@ CANONICAL_GROUPS: tuple[str, ...] = (
 )
 # The tube's surface (D1) — a canonical field, not a draft field; read only for TubeMaterial.
 TUBE_SURFACE_SOURCE = "materials_construction.tube_surface"
+# The fluid the submittal's "Fluid Percent (%)" is a percentage OF — read only for GlycolRatio.
+FLUID_TYPE_SOURCE = "airside_conditions.fluid_type"
 # Submittal tube-surface word -> CCSI's. Smooth = Plain is John's ruling (2026-09-30; 6/6 harvested
 # DX/HGRH coils: submittal Smooth, CCSI Plain). CCSI's own words map to themselves; nothing else does.
 _TUBE_SURFACE_TO_CCSI: dict[str, str] = {"smooth": "plain", "plain": "plain", "rifled": "rifled"}
@@ -205,7 +208,8 @@ def _pick_option(candidate: str | None, options: list[str]) -> str | None:
 
 
 def _transform(
-    entry: CcsiCoilDataEntry, value: Any, quantity: Any = None, *, unit: str | None = None, surface: Any = None
+    entry: CcsiCoilDataEntry, value: Any, quantity: Any = None, *, unit: str | None = None, surface: Any = None,
+    fluid: Any = None,
 ) -> tuple[str | None, ReasonCode | None, str]:
     """Return (ccsi_text, failure_code, explanation). failure_code None = resolved.
 
@@ -215,6 +219,15 @@ def _transform(
     ``option_material_gauge``: ``unit`` carries the material, ``surface`` the tube surface (D1).
     """
     options = entry.options or []
+    if entry.transform == "glycol_ratio":
+        return _glycol_ratio(value, fluid)
+    if entry.transform == "option_fluid_type":
+        picked = _fluid_type_option(value, options)
+        return (picked, None, "") if picked is not None else (
+            None, "CCSI_OPTION_UNMAPPED", f"{value!r} is not a CCSI fluid ({', '.join(options)})")
+    if entry.transform == "option_coating":
+        picked, why = _coating_option(value, options)
+        return (picked, None, why) if picked is not None else (None, "CCSI_OPTION_UNMAPPED", why)
     if entry.transform == "option_material_gauge":
         picked, why = _material_gauge_option(value, unit, surface, options)
         return (picked, None, "") if picked is not None else (None, "CCSI_OPTION_UNMAPPED", why)
@@ -251,6 +264,69 @@ def _transform(
     if picked is None:
         return None, "CCSI_OPTION_UNMAPPED", f"{value!r} has no exact CCSI option (tried {candidate!r})"
     return picked, None, ""
+
+
+def _fluid_type_option(value: Any, options: list[str]) -> str | None:
+    """The submittal's fluid on CCSI's list: ``Water`` as is, ``Propylene`` -> ``Propylene Glycol``
+    (Oxygen8 submittals name the glycol without the word). Nothing else is guessed."""
+    text = " ".join(str(value).split())
+    exact = _pick_option(text, options)
+    if exact is not None:
+        return exact
+    return _pick_option(f"{text} Glycol", options)
+
+
+def _glycol_ratio(value: Any, fluid: Any) -> tuple[str | None, ReasonCode | None, str]:
+    """CCSI Fluid Ratio (%) = the GLYCOL share; the submittal's Fluid Percent (%) is the share of the
+    fluid it names (2026-09-30: "Water" + 100 read as 100 % glycol on 3154 / 2954).
+
+    Water -> 0 (only at 100 %, anything else contradicts itself); a glycol -> its percent; no stated
+    fluid -> unresolved, since the same number means opposite things for water and glycol.
+    """
+    x = _as_float(value)
+    if x is None:
+        return None, "CCSI_VALUE_UNPARSEABLE", f"{value!r} is not a percent"
+    name = " ".join(str(fluid or "").split()).casefold()
+    if not name:
+        return None, "CCSI_SOURCE_MISSING", "fluid type not stated — a fluid percent cannot be read as glycol without it"
+    if name == "water":
+        if abs(x - 100) > 1e-9:
+            return None, "CCSI_VALUE_UNPARSEABLE", f"Water at {_number_text(x)} % contradicts itself"
+        return "0", None, ""
+    if "glycol" in name or name in ("propylene", "ethylene", "tri ethylene"):
+        return _number_text(x), None, ""
+    return None, "CCSI_OPTION_UNMAPPED", f"fluid {fluid!r} is neither water nor a glycol"
+
+
+_NO_COATING = frozenset({"none", "plain", "standard", "std", "n/a"})
+
+
+def _coating_key(text: str) -> str:
+    return re.sub(r"\s+coating$", "", " ".join(str(text).split()).casefold())
+
+
+def _coating_option(value: Any, options: list[str]) -> tuple[str | None, str]:
+    """(CCSI option, note) for a stated coil coating (John 2026-09-30).
+
+    A coating the dropdown offers is selected by name (``AA`` -> ``AA Coating``). A stated
+    coating the dropdown lacks (ElectroFin, Finkote, Heresite ...) selects the dropdown's one
+    coating option, and the Drawing Notes carry the actual coating name
+    (``submittal_to_drawing._engine_drawing_notes``). No coating -> ``Plain``.
+    """
+    from coilforge.submittal.pdf_intake import coating_family
+
+    text = str(value).strip()
+    plain = next((o for o in options if o.casefold() == "plain"), None)
+    if not text or text.casefold() in _NO_COATING:
+        return (plain, "") if plain else (None, "no Plain option on this form")
+    family = coating_family(text) or text
+    named = [o for o in options if _coating_key(o) == _coating_key(family)]
+    if len(named) == 1:
+        return named[0], ""
+    coated = [o for o in options if o is not plain]
+    if len(coated) != 1:
+        return None, f"{text!r} is not a CCSI option and the form offers {len(coated)} coating options"
+    return coated[0], f"{family} is not a CCSI option — {coated[0]} selected; Drawing Notes name the coating"
 
 
 _GAUGE_RE = re.compile(r"\d*\.\d+")
@@ -357,6 +433,8 @@ def resolve_coil_data(
     reselect = geometry_reselect_reason(sources, cmap)
     surface, surface_status, _ = _unwrap(sources.get(TUBE_SURFACE_SOURCE))
     tube_surface = None if surface_status == "blocked" else surface
+    fluid, fluid_status, _ = _unwrap(sources.get(FLUID_TYPE_SOURCE))
+    fluid_type = None if fluid_status == "blocked" else fluid
     for ccsi_id, entry in cmap.fields.items():
         source_key = entry.draft_key or entry.canonical_path
         raw = sources.get(source_key) if source_key else None
@@ -396,6 +474,7 @@ def resolve_coil_data(
         text, failure, why = _transform(
             entry, value, _unwrap(sources.get("coil_quantity"))[0], unit=_unit(raw),
             surface=tube_surface if entry.draft_key == "tube_material" else None,
+            fluid=fluid_type if entry.transform == "glycol_ratio" else None,
         )
         if failure is not None:
             emit(failure, why)
@@ -406,7 +485,10 @@ def resolve_coil_data(
         elif entry.mapping_status not in PUSHABLE_STATUSES:
             emit("CCSI_NOT_VALIDATED", "mapping is captured, not yet validated against past CCSI selections", text)
         else:
-            emit("CCSI_OK", "ready to push (review before Calculate)", text, pushable=True)
+            # ``why`` on a resolved value is a caveat the reviewer must see (a coating the
+            # dropdown lacks, pushed as its one coating option).
+            emit("CCSI_OK", "ready to push (review before Calculate)" + (f" — {why}" if why else ""),
+                 text, pushable=True)
     return out
 
 
@@ -434,29 +516,48 @@ def coil_type_for_tag(tag: str | None) -> str | None:
     return _TYPE_BY_CATEGORY.get(coil_category_of_tag(tag or "") or "")
 
 
-def build_coil_data_payload(
-    *, candidate: Any = None, draft: Any = None, coil_type: str | None = None
-) -> dict[str, Any]:
-    """The ``coil_data`` block of the CCSI push payload for one coil.
-
-    Sources = the Direct Coil draft fields + its coil quantity + the candidate's canonical
-    groups (``group.key``); the draft wins on a shared key. Every entry — pushable or not — is
-    returned with its reason so the userscript and the review panel show why a field is held.
-    """
+def _as_candidate_and_draft(candidate: Any, draft: Any) -> tuple[Any, dict[str, Any]]:
     from coilforge.submittal.candidate import SubmittalCoilCandidate
 
     if isinstance(candidate, Mapping):
         candidate = SubmittalCoilCandidate.model_validate(candidate)
     if hasattr(draft, "model_dump"):
         draft = draft.model_dump()
-    draft = draft or {}
+    return candidate, draft or {}
+
+
+def _coil_tag(candidate: Any, draft: Mapping[str, Any]) -> str | None:
+    tag = _unwrap(candidate.tag)[0] if candidate is not None and candidate.tag is not None else None
+    return tag or _unwrap((draft.get("fields") or {}).get("tag"))[0]
+
+
+def coil_data_sources(candidate: Any = None, draft: Any = None) -> dict[str, Any]:
+    """The ``resolve_coil_data`` sources for one coil — shared by the push payload and the
+    selection-report cross-check so the two can never resolve a coil differently.
+
+    The candidate's canonical groups (``group.key``) + the Direct Coil draft fields (the draft
+    wins on a shared key) + its coil quantity + the coil tag.
+    """
+    candidate, draft = _as_candidate_and_draft(candidate, draft)
     sources: dict[str, Any] = dict(canonical_sources(candidate)) if candidate is not None else {}
     sources.update(draft.get("fields") or {})
     if draft.get("coil_quantity") is not None:
         sources["coil_quantity"] = draft["coil_quantity"]
-    tag = _unwrap(candidate.tag)[0] if candidate is not None and candidate.tag is not None else None
-    tag = tag or _unwrap((draft.get("fields") or {}).get("tag"))[0]
-    sources.setdefault("tag", tag)
+    sources.setdefault("tag", _coil_tag(candidate, draft))
+    return sources
+
+
+def build_coil_data_payload(
+    *, candidate: Any = None, draft: Any = None, coil_type: str | None = None
+) -> dict[str, Any]:
+    """The ``coil_data`` block of the CCSI push payload for one coil.
+
+    Sources come from ``coil_data_sources``. Every entry — pushable or not — is returned with
+    its reason so the userscript and the review panel show why a field is held.
+    """
+    candidate, draft = _as_candidate_and_draft(candidate, draft)
+    sources = coil_data_sources(candidate, draft)
+    tag = _coil_tag(candidate, draft)
     resolved_type = coil_type or coil_type_for_tag(tag)
     if resolved_type is None:
         return {"coil_type": None, "tag": tag, "entries": [], "error": f"no coil-data map for tag {tag!r}",

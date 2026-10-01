@@ -75,7 +75,8 @@ _APP_JS = (ROOT / "web/app.js").read_text(encoding="utf-8")
 
 def _stage1_source() -> str:
     start = _USERSCRIPT.index("// ===================== Stage 1: coil data")
-    end = _USERSCRIPT.index("function watchDimensionGrid")
+    # stage 1 ends where the v3.1 one-button block begins (that block DOES press Calculate)
+    end = _USERSCRIPT.index("// ===================== One button (v3.1)")
     # code only: the explanatory comments name the CCSI endpoints the stage deliberately avoids
     code = [line for line in _USERSCRIPT[start:end].splitlines() if not line.strip().startswith("//")]
     return "\n".join(code)
@@ -108,3 +109,72 @@ def test_stage1_option_match_survives_ccsi_rerendering_the_select() -> None:
     assert "optionForCoilData(target, entry.value)" in src
     assert "coilOptionKey(o.textContent) === want || coilOptionKey(o.value) === want" in src
     assert 'replace(/\\s+-\\s+/g, " ")' in src
+
+
+# --- userscript v3.1 one button: static guarantees ----------------------------------
+
+def _run_all_source() -> str:
+    start = _USERSCRIPT.index("// ===================== One button (v3.1)")
+    end = _USERSCRIPT.index("// Stage 2 (drawing parameters) needs CCSI's dimension grid")
+    code = [line for line in _USERSCRIPT[start:end].splitlines() if not line.strip().startswith("//")]
+    return "\n".join(code)
+
+
+def test_run_all_presses_exactly_calculate_and_custom_dimensions() -> None:
+    import re
+
+    src = _run_all_source()
+    assert src.count(".click()") == 2
+    assert "calcButton.click()" in src and "cdButton.click()" in src
+    assert 'document.getElementById("calcBtn")' in src
+    assert 'document.getElementById("customDimensionsButton")' in src
+    ids = set(re.findall(r'getElementById\("([^"]+)"\)', src))
+    assert ids <= {"calcBtn", "customDimensionsButton", "mainResult", "cdFormId", "cf-calc-marker", "cf-grid-marker"}, ids
+
+
+def test_run_all_never_saves_or_leaves_the_page() -> None:
+    src = _run_all_source()
+    for forbidden in ("saveToProject", "saveAndContinueToProject", "submitCoilData", "navigateTo",
+                      "customDimensionsApply", ".submit(", "fetch(", "XMLHttpRequest", "location."):
+        assert forbidden not in src, forbidden
+
+
+def test_run_all_stops_early_and_bounds_every_wait() -> None:
+    src = _run_all_source()
+    # a coil-data failure other than a CCSI-locked field stops before anything is calculated
+    assert 'r.status !== "ok" && r.status !== "locked"' in src
+    assert src.index("return;") < src.index("calcButton.click()")
+    # every wait is bounded, and arrival is detected by the marker CCSI's re-render removes
+    assert src.count("60000") == 2 and "cf-calc-marker" in src and "cf-grid-marker" in src
+    assert "Nothing was saved" in src
+
+
+def test_userscript_is_v3_1() -> None:
+    import re
+
+    header = re.search(r"// @version\s+(\S+)", _USERSCRIPT).group(1)
+    runtime = re.search(r'const SCRIPT_VERSION = "([^"]+)";', _USERSCRIPT).group(1)
+    # 3.1.1 = + live-captured #DrainAndVentLocation; 3.1.2 = water ZD withheld (2026-10-01)
+    assert header == runtime == "3.1.2"
+    assert "runAllSection(payload, gateCheck)," in _USERSCRIPT
+
+
+def test_run_all_does_not_require_the_hidden_result_block_to_be_visible() -> None:
+    # live 2026-09-30: with the dimension grid open CCSI renders #mainResult display:none, so a
+    # visibility test on it never passes and Run all timed out after a successful Calculate.
+    src = _run_all_source()
+    assert 'visible(document.getElementById("mainResult"))' not in src
+    assert 'visible(document.getElementById("customDimensionsButton"))' in src
+
+
+def test_run_all_refuses_a_payload_without_coil_data() -> None:
+    # without stage 1, Calculate would rate whatever the CCSI form already holds
+    src = _run_all_source()
+    guard = src.index("coilDataTargets(payload.coil_data).length")
+    assert guard < src.index("calcButton.click()")
+    assert "nothing was calculated" in src
+
+
+def test_copy_status_says_whether_coil_data_is_included() -> None:
+    assert "coil-data fields (Run all ready)" in _APP_JS
+    assert "coil data not ready yet" in _APP_JS
