@@ -22,7 +22,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `(repo root)` | 1 |
 | `.claude/hooks` | 1 |
 | `mcp_servers/plan_review` | 1 |
-| `scripts` | 20 |
+| `scripts` | 21 |
 | `src/coilforge` | 4 |
 | `src/coilforge/accuracy` | 2 |
 | `src/coilforge/adapters` | 3 |
@@ -30,11 +30,11 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/capture` | 9 |
 | `src/coilforge/ccsi` | 5 |
 | `src/coilforge/checklist` | 8 |
-| `src/coilforge/coil_utilities` | 4 |
+| `src/coilforge/coil_utilities` | 5 |
 | `src/coilforge/common` | 2 |
 | `src/coilforge/compatibility` | 10 |
 | `src/coilforge/contracts` | 4 |
-| `src/coilforge/corpus` | 5 |
+| `src/coilforge/corpus` | 6 |
 | `src/coilforge/deliverable` | 4 |
 | `src/coilforge/direct_coil` | 7 |
 | `src/coilforge/drawing` | 9 |
@@ -52,7 +52,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 141 |
+| `tests` | 143 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 2 |
@@ -73,6 +73,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `scripts/generate_coverage_dashboard.py` | Generate the template-coverage dashboard from the live drawing catalog |
 | `scripts/inventory_ventum_selection.py` | Phase 0 (READ-ONLY): inventory the Ventum+ coil-selection PDFs page-by-page so we |
 | `scripts/override_rate.py` | Review Triage measurement (Stage 3.0): "which fields does John actually override?" |
+| `scripts/performance_consistency_report.py` | Measure the performance self-consistency checks on the ordered-coil corpus (read-only) |
 | `scripts/pre_extract_submittals.py` | Pre-extract submittal page text into the on-disk cache (``coilforge.corpus.page_cache``) |
 | `scripts/preview_schematic.py` | Eyeball gate for the parametric drawing engine (Phase 1 / 1.5 / 2) |
 | `scripts/promote_divergences.py` | Promote adjudicated divergences from the working file into the tracked registry |
@@ -127,6 +128,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/coil_utilities/__init__.py` | Coil Utilities — Oxygen8's internal coil data charts, ported to a reusable table |
 | `src/coilforge/coil_utilities/charts.py` | Raw per-kit source charts, transcribed from the Coil Utilities workbook |
 | `src/coilforge/coil_utilities/geometry.py` | Coil geometry engine — the left-block calculators shared across the workbook |
+| `src/coilforge/coil_utilities/performance_consistency.py` | Performance self-consistency — do one coil's extracted values agree with each other? |
 | `src/coilforge/coil_utilities/ranges.py` | Kit lookup + acceptance ranges scaled by circuits, and the Allowable Ranges criteria |
 | `src/coilforge/common/__init__.py` | Small cross-cutting helpers shared by otherwise independent CoilForge packages |
 | `src/coilforge/common/excel_lock.py` | Single-flight guard for the Excel COM writers (in-process + cross-process) |
@@ -137,6 +139,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/corpus/fs.py` | Filesystem helpers for the submittal corpus |
 | `src/coilforge/corpus/ledger_link.py` | Link the capture ledger's submittal PDFs to indexed files, and pick each project's |
 | `src/coilforge/corpus/page_cache.py` | On-disk cache of the slow pdfplumber page extraction, keyed by the PDF's sha1 |
+| `src/coilforge/corpus/performance_consistency_report.py` | Run the performance self-consistency checks over the ordered-coil corpus (read-only) |
 | `src/coilforge/corpus/submittal_index.py` | Download-free index of the submittal PDFs in the PO tree (and optional extra roots) |
 | `src/coilforge/deliverable/__init__.py` | DirectCoil deliverable finalization — file the docs + draft the hand-off email |
 | `src/coilforge/deliverable/finalize.py` | Pure / filesystem layer for finalizing a DirectCoil deliverable |
@@ -208,10 +211,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_ccsi_crosscheck.py` | CCSI harvest cross-check (Step C) + the harvest's read-only guarantee |
 | `tests/test_ccsi_drain_vent_location.py` | CCSI "Drain and Vent Location" for water coils (John 2026-09-23) |
 | `tests/test_ccsi_export_audit.py` | Offline CCSI-export audit (`ccsi/export_audit.py`) |
-| `tests/test_ccsi_field_map.py` | Contract guard for the CCSI Direct Coil autofill field map |
-| `tests/test_checklist_adopt.py` | Adopt from Coil Checklist (John 2026-09-22) |
-| `tests/test_checklist_cache.py` | Bounded sha1 memoization of the Coil Checklist fill (_run_or_reuse_checklist) |
 
-_319 source files, 229 with a header comment. 79 documented files not shown (cap 150). 90 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_324 source files, 232 with a header comment. 82 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->
