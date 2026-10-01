@@ -290,8 +290,9 @@ gate) deliberately passes none — it reads the machine proposal.
 `POST /api/deliverable/finalize`, `web/app.js::fileDeliverable`) — "Build quote package" now
 files the deliverable in the same click (`skip_draft: true`); the second button is
 **"Open Outlook draft"** only. **Amended 2026-09-09 (John):** the build click no longer
-decides — once all three documents exist it opens a `<dialog>` confirmation
-(`showDeliverableChoiceDialog` / `runDeliverableChoiceFlow`) listing each document as
+decides — once all three documents exist it opens a confirmation overlay
+(`showDeliverableChoiceDialog` / `runDeliverableChoiceFlow`; a positioned `.cf-dialog-backdrop`,
+NOT `<dialog>.showModal()`, whose top-layer panel wedges browser automation) listing each document as
 captured (✓) or not (⚠ with its reason), and John picks *move to the PO folder's DirectCoil*
 and/or *open the Outlook draft* — the two checkboxes map to nothing more than `skip_draft`.
 **The draft checkbox is disabled while the move is unchecked**, because the draft attaches
