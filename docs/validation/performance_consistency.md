@@ -53,9 +53,9 @@ a value that fits neither is `inconsistent`. Altitude is never assumed to be 0.
 | Sensible factor F | 1.085 | in repo; decided (John 2026-10-01) | `coil_utilities/geometry.py` (workbook Extras). CCSI Standard reports measure 1.082–1.092, mostly 1.084; verdicts are identical at ±0.02. The number is printed in neither the submittal nor the CCSI report — it is back-calculated |
 | k tolerance | ±0.02 | decided (John 2026-10-01) | sweep below |
 | Actual factor | `F x 529.67 / (459.67 + EDB) x (1 − 6.8754e-6 x altitude)^5.2559` | cited | ideal-gas temperature ratio at the entering air x standard-atmosphere pressure ratio; not taken from a CCSI document |
-| Face-velocity tolerance | 1 % | assumption | 3 of 278 coils fail at 0.5 %, 1 % and 2 % alike |
+| Face-velocity tolerance | 1 % | decided (John 2026-10-01) | 275 of 278 coils are within 0.12 %, none between 0.12 % and 6 %, 3 above 6 %: any tolerance from 0.2 % to 5 % gives the same result |
 | Fluid bands | water 488–503, PG 40 % 457–467, PG 50 % 443–453 | captured | unrounded extremes of the ordered corpus, rounded outward |
-| Fluid band margin | ±3 % | assumption | GPM is printed to two significant figures; the factor drifts with fluid temperature; no water coil above 160 °F was measured |
+| Fluid band margin | ±3 % | decided (John 2026-10-01) | GPM is printed to two significant figures; the factor drifts with fluid temperature; no water coil above 160 °F was measured |
 
 The fluid bands are measurements, not a property table. Any other fluid or percent is
 `PERF_NO_REFERENCE`. A value outside band + margin is `inconsistent` with
@@ -89,7 +89,10 @@ batch is re-run.
 | DX sensible (push-time sources) | 153 of 156 | 67 | 64 | 15 | 7 |
 
 - 8 of the 13 inconsistent heating coils sit at k ≈ 1.00 (projects 2623, 2813, 2830, 2835,
-  2847); their CCSI capacity is the submittal's x 1.083–1.084. Cause not established.
+  2847); their CCSI capacity is the submittal's x 1.083–1.084 while the CCSI leaving dry bulb
+  equals the submittal's on all 8 — the temperatures agree and the printed capacity is the
+  odd value. All 8 are quote-only projects (no order), and none of the 57 HGRH coils from
+  project 2900 on is in the cluster. Cause not established.
 - 6 of the 7 inconsistent DX coils have k 1.106–1.156; cause not established.
 - Inferred basis against the report's ACFM, capacity-matched heating coils: `actual` → Actual
   26 of 26; `standard` → Standard 14 of 16.
@@ -150,12 +153,17 @@ value to push: the form reports it locked, which is expected, and the order cros
    pushed and does not enter CCSI's rating.
 2. ~~k tolerance~~ — **decided 2026-10-01: ±0.02.** Narrowing it on the heating numbers alone
    would flag 16–30 % of DX coils.
-3. Whether the Actual-density relation is an acceptable cited reference. Evidence since:
-   every evaluable heating coil from project 3100 on fits it (actual 21, both 6, neither 0).
-4. The k ≈ 1.00 cluster: keep `inconsistent`, or recognise it as a known convention.
-5. Fluid bands as measured + 3 %, or a supplied glycol property table.
-6. Face-velocity tolerance.
-7. On `inconsistent` at push time: warn or block (integration, with the CCSI session).
+3. ~~Actual-density relation~~ — **decided 2026-10-01: accepted as the cited reference.** Every
+   evaluable heating coil from project 3100 on fits it (actual 21, both 6, neither 0).
+4. ~~The k ≈ 1.00 cluster~~ — **decided 2026-10-01: stays `inconsistent`.** No third basis is
+   added for a convention whose cause is not established.
+5. ~~Fluid band margin~~ — **decided 2026-10-01: measured bands + 3 %.** A wrong GPM lands far
+   outside (3197 HHWC: factor 1133 against a 488–503 band).
+6. ~~Face-velocity tolerance~~ — **decided 2026-10-01: 1 %.** The three coils it flags look like
+   dimension discrepancies: 2674 HHWC-1 / -2 print a velocity that matches FH 10.5 while FH 9
+   was extracted; 2873 CDXC-1 prints one that matches FL 16 while FL 15 was extracted. FH and
+   FL are pushed to CCSI, so these are worth checking against the page.
+7. On `inconsistent` at push time: warn or block (integration, with the CCSI session). **Open.**
 
 ## Running the report
 

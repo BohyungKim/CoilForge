@@ -18,7 +18,7 @@ latent load and has no two-sided relation at all — only its sensible capacity 
 
 Reference status of each relation (mirrors the project's captured / validated vocabulary):
 ``in_repo`` — the constant already lives in the repo; ``cited`` — a standard physical
-relation, pending John's confirmation; ``captured`` — a band measured on the ordered-coil
+relation John accepted, not one read from a CCSI document; ``captured`` — a band measured on the ordered-coil
 corpus, not a formula. Constants and their evidence: ``docs/validation/performance_consistency.md``.
 
 Pure: no I/O, no ``eval``, the input mapping is not mutated.
@@ -55,11 +55,12 @@ PERF_COIL_TYPE_UNKNOWN = "PERF_COIL_TYPE_UNKNOWN"
 # 1.085. CCSI's Standard reports measure 1.084; at +/-0.02 the two give identical verdicts.
 SENSIBLE_FACTOR = 1.085
 K_TOLERANCE = 0.02  # John 2026-10-01 (decision 2). Narrower flags 16-30 % of DX coils (38 sit at k 1.095-1.105).
-FACE_VELOCITY_REL_TOLERANCE = 0.01  # Assumption (decision 6).
+FACE_VELOCITY_REL_TOLERANCE = 0.01  # John 2026-10-01 (decision 6). 0.2 % to 5 % all give the same corpus result.
 
 # Actual-air density relative to standard air (70 degF, sea level): ideal-gas temperature
-# ratio at the entering air x the standard-atmosphere pressure ratio. Cited, not measured
-# from a CCSI document (decision 3).
+# ratio at the entering air x the standard-atmosphere pressure ratio. Not taken from a CCSI
+# document; John accepted it as the cited reference 2026-10-01 (decision 3) — every evaluable
+# heating coil from project 3100 on fits it.
 _STANDARD_AIR_RANKINE = 529.67
 _RANKINE_OFFSET = 459.67
 _ALTITUDE_LAPSE_PER_FT = 6.8754e-6
@@ -73,8 +74,8 @@ FLUID_FACTOR_BANDS: dict[tuple[str, float], tuple[float, float, int]] = {
     ("propylene glycol", 40.0): (457.0, 467.0, 8),
     ("propylene glycol", 50.0): (443.0, 453.0, 9),
 }
-# Assumption (decision 5): room for 2-significant-figure GPM rounding and for fluid
-# temperatures the corpus does not reach (no water coil above 160 degF was measured).
+# John 2026-10-01 (decision 5): keep 3 %. Room for 2-significant-figure GPM rounding and for
+# fluid temperatures the corpus does not reach (no water coil above 160 degF was measured).
 FLUID_BAND_MARGIN = 0.03
 
 _FLUID_ALIASES = {"water": "water", "propylene": "propylene glycol", "propylene glycol": "propylene glycol"}
