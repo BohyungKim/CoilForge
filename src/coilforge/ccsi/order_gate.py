@@ -39,6 +39,7 @@ CAUSES: dict[str, bool] = {
     "changed_at_order": False,         # REV0 == CoilForge, the order changed it
     "notation": False,                 # computed field, per-coil vs all-coils
     "rounding": False,                 # printed precision only (77.9 vs 77.89, 1050 vs 1048)
+    "air_basis": False,                # order rated on Standard air; CoilForge pushes Actual (John 2026-10-01)
     "default_counterexample": True,    # a D2 default the order contradicts
     "quantity_semantics": True,        # pushed airflow / GPM off by the coil quantity
     "changed_at_order_cf_differs": True,  # changed at order, and CoilForge matched neither side
@@ -153,6 +154,29 @@ def _ratio_is(a: Any, b: Any, qty: float | None) -> bool:
     return any(abs(r - qty) <= 0.01 * qty for r in (x / y, y / x))
 
 
+def _order_air_basis(coil: Mapping[str, Any]) -> str | None:
+    """The basis the ordered selection was rated on (report airflow unit -> CCSI ACFM option)."""
+    for row in coil.get("rows", []):
+        if row.get("ccsi_id") == "ACFM" and not _blank(row.get("ccsi")):
+            return str(row["ccsi"]).strip().lower()
+    return None
+
+
+# Fields a Standard-air selection moves away from an Actual-basis push (John 2026-10-01: Direct Coil
+# selections were calculated in ACFM, so CoilForge pushes Actual): the basis itself, Altitude (CCSI locks
+# it to 0 under Standard) and the rating (an Actual-basis submittal re-rated on Standard air).
+_AIR_BASIS_IDS: frozenset[str] = frozenset({"ACFM", "Altitude", "Capacity", "LeavingDryBulb"})
+
+
+def _is_air_basis(row: Mapping[str, Any], coil: Mapping[str, Any]) -> bool:
+    ccsi_id = row["ccsi_id"]
+    if ccsi_id not in _AIR_BASIS_IDS or _order_air_basis(coil) != "standard":
+        return False
+    if ccsi_id == "Altitude":
+        return _number(row.get("ccsi")) == 0  # the lock, not a different site altitude
+    return True
+
+
 def _within_rounding(a: Any, b: Any) -> bool:
     """Two numbers that differ only at printed precision: <= 0.015 apart or within 0.2 %."""
     x, y = _number(a), _number(b)
@@ -173,6 +197,10 @@ def mismatch_cause(row: Mapping[str, Any], coil: Mapping[str, Any], info: FieldI
     code = row.get("reason_code")
     if code == "CCSI_GEOMETRY_RESELECT":
         return "reselect_predicted"
+    # Before the default check: ACFM is now a default (Actual), and a Standard-air order is a known basis
+    # difference, not a counterexample to that default.
+    if _is_air_basis(row, coil):
+        return "air_basis"
     if code == "CCSI_DEFAULT_PROFILE":
         return "default_counterexample"
     if row.get("changed_at_order"):

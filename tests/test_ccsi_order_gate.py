@@ -290,3 +290,36 @@ def test_a_printed_precision_difference_is_rounding_not_a_defect() -> None:
     assert og.mismatch_cause(row("1050", "1048"), {"coil_type": "DX", "rows": []}, None) == "rounding"
     assert og.mismatch_cause(row("68.4", "68"), {"coil_type": "DX", "rows": []}, None) == "unexplained"
     assert og.CAUSES["rounding"] is False
+
+
+def test_a_standard_air_order_is_an_air_basis_difference_not_a_defect() -> None:
+    """John 2026-10-01: CoilForge pushes Actual (Direct Coil selections were calculated in ACFM).
+
+    An order rated on Standard air therefore disagrees on the basis itself, on Altitude (CCSI locks it
+    to 0 under Standard) and on the rating — a known basis difference, never a defect. The basis row
+    is now a default, so this must win over `default_counterexample`.
+    """
+    def row(ccsi_id, cf, rep, code="CCSI_OK", role="input"):
+        return {"ccsi_id": ccsi_id, "verdict": "mismatch", "reason_code": code,
+                "coilforge": cf, "ccsi": rep, "role": role}
+
+    basis = row("ACFM", "Actual", "Standard", code="CCSI_DEFAULT_PROFILE")
+    altitude = row("Altitude", "650", "0")
+    capacity = row("Capacity", "48.2", "44.9", role="computed")
+    standard = {"coil_type": "DX", "rows": [basis, altitude, capacity]}
+    assert og.mismatch_cause(basis, standard, None) == "air_basis"
+    assert og.mismatch_cause(altitude, standard, None) == "air_basis"
+    assert og.mismatch_cause(capacity, standard, None) == "air_basis"
+    assert og.CAUSES["air_basis"] is False
+
+    # a different site altitude under Standard is NOT the lock
+    other_site = row("Altitude", "650", "400")
+    assert og.mismatch_cause(other_site, {"coil_type": "DX", "rows": [basis, other_site]}, None) == "unexplained"
+    # on an Actual-air order nothing is explained by the basis: a wrong default stays a defect
+    actual_basis = row("ACFM", "Standard", "Actual", code="CCSI_DEFAULT_PROFILE")
+    actual = {"coil_type": "DX", "rows": [actual_basis, row("Capacity", "48.2", "44.9", role="computed")]}
+    assert og.mismatch_cause(actual_basis, actual, None) == "default_counterexample"
+    assert og.mismatch_cause(actual["rows"][1], actual, None) == "unexplained"
+    # unrelated fields are untouched by a Standard basis
+    edb = row("EnteringDryBulb", "80", "75")
+    assert og.mismatch_cause(edb, {"coil_type": "DX", "rows": [basis, edb]}, None) == "unexplained"
