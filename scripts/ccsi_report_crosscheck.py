@@ -195,14 +195,86 @@ def _sha1(path: Path) -> str:
     return hashlib.sha1(Path(long_path(path)).read_bytes()).hexdigest()
 
 
-def pick_submittal(project_dir: Path, hashes: dict[str, str]) -> tuple[Path | None, str]:
+# The Oxygen8 cover: its Qty/Tag/Item/Model table and the footer "Version 1.0.0.x Project #NNNN / Rev #r".
+_O8_COVER_FOOTER = re.compile(r"Version\s+1\.0\.0\.\d+\s+Project\s*#\s*(\d{3,5})", re.I)
+# The revision is the cover's own "Revision No." field, NOT the footer's "Rev #": 3031's As-built prints
+# footer "Rev #0" with "Revision No.: 2a", and 2814's footer wraps "#1_AsBuilt" onto another line.
+_O8_COVER_REVISION = re.compile(r"Revision\s+No\.?\s*:\s*(\d+)?\s*([a-z])?(?![a-z])[\s_-]*(as[\s_-]*built)?", re.I)
+_O8_COVER_HEADER = re.compile(r"Qty\s+Tag\s+Item\s+Model", re.I)
+COVER_SCAN_PAGES = 20  # a signed copy leads with the engineer's review sheets (2982: cover on p.11)
+
+
+def cover_revision_key(text: str) -> tuple[int, str, int]:
+    """(number, letter, as_built) from the cover's "Revision No." — "2a" (2,'a',0), "1_AsBuilt" (1,'',1),
+    "As built" (-1,'',1). As-built ranks above the same number; an unreadable field is (-1,'',0)."""
+    match = _O8_COVER_REVISION.search(text)
+    if not match:
+        return -1, "", 0
+    number, letter, as_built = match.groups()
+    return (int(number) if number else -1), (letter or "").casefold(), (1 if as_built else 0)
+
+
+def signed_cover(path: Path) -> tuple[str, tuple[int, str, int]] | None:
+    """(project number, cover revision key) from the first Oxygen8 cover in ``path``'s first pages, else None."""
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(long_path(path)) as pdf:
+            for page in pdf.pages[:COVER_SCAN_PAGES]:
+                text = page.extract_text() or ""
+                match = _O8_COVER_FOOTER.search(text)
+                if match and _O8_COVER_HEADER.search(text):
+                    return match.group(1), cover_revision_key(text)
+    except Exception:  # noqa: BLE001 -- an unreadable file is simply not a cover
+        return None
+    return None
+
+
+def _signed_final_by_cover(project_dir: Path, number: str) -> tuple[Path | None, str] | None:
+    """John's rule "Signed Final over Final Working", by CONTENT (decision A, 2026-10-01).
+
+    Signed copies are named by the engineer, not "Oxygen8 Submittal" (2982: "95 Berkely - ERVs REV0 - AAN
+    (002).pdf"), so the name filter never saw them and the batch compared the superseded Rev0 (CDXC-2 LH
+    where the As-built and the order say RH). A local Signed Final PDF counts when its own Oxygen8 cover
+    names THIS project. Cloud-only files are never hydrated (on 2026-10-01 every cloud-only one was a
+    ProductionRelease, and no local ProductionRelease carried a cover). Several covered files: an
+    Oxygen8-named original beats every engineer copy — a stamp over the text can split numbers (2814's
+    stamped copy read 2300 CFM as "2" and 58 F as "5") — and the engineer copy is used only when no
+    original is filed (2982, 2541). Within that pool the highest cover "Revision No." wins (As-built above
+    the same number). Still two different files -> skip, never guess. None = no covered file, the name
+    rules decide as before."""
+    signed = project_dir / "Signed Final Submittal"
+    if not signed.is_dir():
+        return None
+    covered = []
+    for path, cloud in iter_pdfs(signed):
+        info = None if cloud else signed_cover(path)
+        if info and info[0] == number:
+            covered.append((info[1], path))
+    if not covered:
+        return None
+    originals = [(rev, p) for rev, p in covered if "oxygen8 submittal" in p.name.casefold()]
+    pool = originals or covered
+    top_rev = max(rev for rev, _p in pool)
+    top = [p for rev, p in pool if rev == top_rev]
+    if len({_sha1(p) for p in top}) == 1:
+        return top[0], "signed_final_cover"
+    return None, "ambiguous_submittal"
+
+
+def pick_submittal(project_dir: Path, hashes: dict[str, str], number: str | None = None) -> tuple[Path | None, str]:
     """(submittal PDF, how it was chosen) or (None, skip reason). Never guesses between ties and
-    never reads a cloud-only file: when the right file might be one, the project is skipped."""
-    candidates = [(p, cloud) for sub in ("Final Working", "Signed Final Submittal") if (project_dir / sub).is_dir()
-                  for p, cloud in iter_pdfs(project_dir / sub) if "submittal" in p.name.casefold()]
+    never reads a cloud-only file: when the right file might be one, the project is skipped.
+    Order: ledger hash > Signed Final by cover (needs ``number``) > the name heuristic."""
+    every_pdf = [(p, cloud) for sub in ("Final Working", "Signed Final Submittal") if (project_dir / sub).is_dir()
+                 for p, cloud in iter_pdfs(project_dir / sub)]
+    candidates = [(p, cloud) for p, cloud in every_pdf if "submittal" in p.name.casefold()]
     if hashes:
+        # The ledger match is by sha1, so it needs no name filter — and a name filter here dropped the
+        # very file CoilForge ran on whenever it was an engineer-named signed copy (2757, 2982, 3016, 3191
+        # are LEDGER_MATCH in the submittal index but fell to the name heuristic here).
         found = []
-        for path, cloud in candidates:
+        for path, cloud in every_pdf:
             if cloud:
                 continue
             try:
@@ -214,6 +286,10 @@ def pick_submittal(project_dir: Path, hashes: dict[str, str]) -> tuple[Path | No
         if found:
             found.sort()
             return found[-1][1], "ledger_hash"
+    if number:
+        by_cover = _signed_final_by_cover(project_dir, number)
+        if by_cover is not None:
+            return by_cover
     named = [(p, cloud) for p, cloud in candidates
              if "oxygen8 submittal" in p.name.casefold() and not _SUBMITTAL_EXCLUDE.search(p.name)]
     if not named:
@@ -432,7 +508,7 @@ def main() -> int:
         if reports["skip"]:
             skips[f"report:{reports['skip']}"] += 1
             continue
-        submittal, how = pick_submittal(project_dir, ledger_hashes(conn, number))
+        submittal, how = pick_submittal(project_dir, ledger_hashes(conn, number), number)
         if submittal is None:
             if how == "cloud_only_submittal":
                 cloud_only.setdefault(number, {})["submittal"] = True
