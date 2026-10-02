@@ -26,7 +26,7 @@
   "slot_evidence": [
     {
       "slot_id": "slot.BF",
-      "value": "0.63",
+      "value": "1.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -50,7 +50,7 @@
     },
     {
       "slot_id": "slot.CD",
-      "value": "6.38",
+      "value": "5.50",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -58,7 +58,7 @@
     },
     {
       "slot_id": "slot.CH",
-      "value": "13.25",
+      "value": "20.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -66,7 +66,7 @@
     },
     {
       "slot_id": "slot.CIRCUITING",
-      "value": "3 Feed / 20 Pass",
+      "value": "6 Feed / 12 Pass",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -82,7 +82,7 @@
     },
     {
       "slot_id": "slot.CL",
-      "value": "27.00",
+      "value": "45.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -90,7 +90,7 @@
     },
     {
       "slot_id": "slot.COIL_TUBE_FACE",
-      "value": "Tube Face = 12",
+      "value": "Tube Face = 18",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -98,7 +98,7 @@
     },
     {
       "slot_id": "slot.DISTRIBUTORS",
-      "value": "(1)501-3-3/16-2(0 ASC)",
+      "value": "(1)501-6-3/16-3(0 ASC)",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -114,7 +114,7 @@
     },
     {
       "slot_id": "slot.DRY_WEIGHT",
-      "value": "33.1 Lbs. Per Coil",
+      "value": "61.1 Lbs. Per Coil",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -130,7 +130,7 @@
     },
     {
       "slot_id": "slot.FH",
-      "value": "12",
+      "value": "18",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -138,7 +138,7 @@
     },
     {
       "slot_id": "slot.FIN_MATERIAL",
-      "value": "11 Fins Per Inch",
+      "value": "13 Fins Per Inch",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -162,7 +162,7 @@
     },
     {
       "slot_id": "slot.FL",
-      "value": "24",
+      "value": "42",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -202,7 +202,7 @@
     },
     {
       "slot_id": "slot.I1",
-      "value": "3.00",
+      "value": "12.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -210,7 +210,7 @@
     },
     {
       "slot_id": "slot.MODEL_NUMBER",
-      "value": "DX-F-F-05-11-12.00x24.00-L",
+      "value": "DX-F-F-04-13-18.00x42.00-L",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -226,7 +226,7 @@
     },
     {
       "slot_id": "slot.OAL",
-      "value": "29.25",
+      "value": "47.25",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -234,7 +234,7 @@
     },
     {
       "slot_id": "slot.R2",
-      "value": "0.88",
+      "value": "1.13",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -250,7 +250,7 @@
     },
     {
       "slot_id": "slot.RETURN_CONN_SIZE",
-      "value": "0.875\" OD Header",
+      "value": "1.125\" OD Header",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -258,7 +258,7 @@
     },
     {
       "slot_id": "slot.RETURN_CONN_SIZE_2",
-      "value": "0.875\" SWT-Copper",
+      "value": "1.125\" SWT-Copper",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -274,7 +274,7 @@
     },
     {
       "slot_id": "slot.ROWS",
-      "value": "5.00",
+      "value": "4.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -282,7 +282,7 @@
     },
     {
       "slot_id": "slot.S1",
-      "value": "3.50",
+      "value": "2.75",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -290,7 +290,7 @@
     },
     {
       "slot_id": "slot.SL2",
-      "value": "8.00",
+      "value": "10.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -298,7 +298,7 @@
     },
     {
       "slot_id": "slot.TAG",
-      "value": "CDXC-1",
+      "value": "CDXC-4",
       "source_channels": [
         "ez_drawing_pdf"
       ],
@@ -306,7 +306,7 @@
     },
     {
       "slot_id": "slot.TF",
-      "value": "0.63",
+      "value": "1.00",
       "source_channels": [
         "ez_drawing_pdf"
       ],

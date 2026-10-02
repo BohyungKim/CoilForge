@@ -56,8 +56,17 @@ def test_the_option_changes_the_width_rather_than_being_decorative():
 # E3: the Terra V guard, at BOTH callers
 # --------------------------------------------------------------------------- #
 def test_terra_v_never_borrows_the_terra_h_width_in_the_lookup():
-    assert _drain_pan_row("TERRA_V", "072", "D1") is None
-    assert _drain_pan_row("TERRA_V", "072", None) is None
+    """Since the 2026-09-22 template Terra V has its OWN size-keyed R-077 rows. The guard
+    that matters is unchanged: a D-option (which can still arrive by payload) must never
+    route a Terra V coil to the `TERRA|D*` rows, which are Terra H widths."""
+    terra_h_d1 = _drain_pan_row("TERRA_H", "012", "D1")
+    for option in ("D1", None):
+        row = _drain_pan_row("TERRA_V", "072", option)
+        assert row == {"drain_pan_width": 32}, option      # Install!B22 032-100 -> 32
+        assert row != terra_h_d1, option
+    # An unlisted Terra V size returns None -- it does not fall back to coarse TERRA.
+    assert _drain_pan_row("TERRA_V", "999", "D1") is None
+    assert _drain_pan_row("TERRA_V", None, "D1") is None
 
 
 def test_terra_v_never_borrows_the_terra_h_width_in_the_checklist_path():
@@ -65,15 +74,40 @@ def test_terra_v_never_borrows_the_terra_h_width_in_the_checklist_path():
     assert _FAMILY_FROM_UNIT["TERRA V"] == "TERRA_V", (
         "folding TERRA V onto coarse TERRA is the route around the guard"
     )
-    assert _install_widths("TERRA V", "072", "D1") == (None, None)
+    # Terra V is size-keyed: a drain-pan width (32), no INSTALL WIDTH (that column is
+    # Ventum+-only), and the D-option is ignored rather than routed to a Terra H row.
+    assert _install_widths("TERRA V", "072", "D1") == (None, 32)
+    assert _install_widths("TERRA V", "072", None) == (None, 32)
+    assert _install_widths("TERRA V", "006", None) == (None, 28)
+    assert _install_widths("TERRA V", "018", None) == (None, 29)
     # Terra H with the same option DOES resolve -- proving the guard is Terra-V-specific
     # and did not simply break the feature for everyone.
     assert _install_widths("TERRA H", "012", "D1") != (None, None)
 
 
+def test_terra_v_install_fit_now_evaluates_from_its_own_size_row():
+    """2026-09-22 template: Terra V 032-100 -> 32. The pair CD (7.5) fits; a D-option on
+    the payload changes nothing (ignored, never routed to Terra H)."""
+    for option in ("D1", None):
+        result = evaluate_drain_pan_fit(
+            product_family="TERRA_V", unit_size="072", this_cd=3.75, partner_cd=3.75,
+            partner_tag="RHHGRC-1", installed_on_drain_pan=True, drain_pan_option=option,
+        )
+        assert result.verdict == "PASS", option
+        assert [c.column for c in result.columns] == ["drain_pan_width"]
+        assert result.columns[0].width == 32
+    fail = evaluate_drain_pan_fit(
+        product_family="TERRA_V", unit_size="006", this_cd=14.5, partner_cd=14.0,
+        partner_tag="RHHGRC-1", installed_on_drain_pan=True,
+    )
+    assert fail.verdict == "FAIL" and fail.columns[0].width == 28
+
+
 def test_terra_v_gets_a_reason_it_can_act_on_rather_than_an_impossible_instruction():
+    # An unlisted Terra V size: still blocked, still the size-keyed reason, never the
+    # D1/D2/D3 instruction (which cannot be followed for a Terra V).
     result = evaluate_drain_pan_fit(
-        product_family="TERRA_V", unit_size="072", this_cd=3.75, partner_cd=3.75,
+        product_family="TERRA_V", unit_size="999", this_cd=3.75, partner_cd=3.75,
         partner_tag="RHHGRC-1", installed_on_drain_pan=True, drain_pan_option="D1",
     )
     assert result.verdict == "CANNOT_EVALUATE"
@@ -140,9 +174,9 @@ def test_terra_v_keeps_its_own_reason_even_when_a_reader_reason_is_supplied():
     """Terra V's blocker is structural and outranks the option story: no option, borrowed
     or supplied, would unblock it."""
     result = evaluate_drain_pan_fit(
-        product_family="TERRA_V", unit_size="072", this_cd=3.75, partner_cd=3.75,
+        product_family="TERRA_V", unit_size="999", this_cd=3.75, partner_cd=3.75,
         partner_tag="RHHGRC-1", installed_on_drain_pan=True, drain_pan_option=None,
-        drain_pan_option_reason="no unit model code for size 072 appears in this submittal",
+        drain_pan_option_reason="no unit model code for size 999 appears in this submittal",
     )
     assert "keyed by unit size" in result.detail
     assert "no unit model code" not in result.detail

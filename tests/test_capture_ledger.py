@@ -12,6 +12,7 @@ stores raw bytes, never lands inside the repo, and never fails silently.
 from __future__ import annotations
 
 import ast
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -268,6 +269,129 @@ def test_capture_db_refuses_a_path_inside_a_git_repo(tmp_path, monkeypatch):
     monkeypatch.setenv(db.ENV_CAPTURE_DB, str(worktree / "capture.sqlite3"))
     with pytest.raises(db.CaptureConfigError):
         db.connect()
+
+
+def test_default_ledger_path_is_not_msix_redirectable(monkeypatch):
+    """The Windows default must stay OUT of %LOCALAPPDATA% / %APPDATA%.
+
+    Measured 2026-08-11: the launcher's first interpreter is the Store Python, an MSIX
+    package, and MSIX silently redirects a packaged app's LocalAppData writes into its
+    own LocalCache. The 37 MB corpus was therefore NOT at the path the code named — it
+    sat inside a container Windows empties on an app Reset — and run_server.bat's
+    `py` fallback (non-packaged) resolved the same code to a DIFFERENT file, which
+    would have split the corpus with no error anywhere.
+
+    Asserted as a property, not a literal path: any AppData-rooted default reintroduces
+    both failures, whichever directory name a future edit picks.
+    """
+    monkeypatch.delenv(db.ENV_CAPTURE_DB, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\someone\AppData\Local")
+    monkeypatch.setenv("APPDATA", r"C:\Users\someone\AppData\Roaming")
+
+    parts = [p.lower() for p in db._default_db_path().parts]
+    if os.name == "nt":
+        assert "appdata" not in parts
+        assert "packages" not in parts
+    assert db._default_db_path().name == "coilforge.sqlite3"
+
+
+def test_default_ledger_path_survives_the_outside_repo_guard(monkeypatch):
+    """The two guards must not contradict each other: a default that assert_outside_repo
+    rejects would make every capture on a fresh machine raise CaptureConfigError."""
+    monkeypatch.delenv(db.ENV_CAPTURE_DB, raising=False)
+    db.assert_outside_repo(db._default_db_path())
+
+
+def test_env_override_still_wins_and_blank_falls_back(tmp_path, monkeypatch):
+    """Pinning the default must not disturb the override contract the tests, the
+    worktree servers and conftest's isolation fixture all depend on."""
+    monkeypatch.setenv(db.ENV_CAPTURE_DB, str(tmp_path / "explicit.sqlite3"))
+    assert db.capture_db_path() == tmp_path / "explicit.sqlite3"
+
+    # Blank / whitespace falls back to the default (the journal_dir idiom), rather
+    # than resolving to Path("") in the current working directory — which on this repo
+    # would be inside a checkout and blow up in assert_outside_repo.
+    monkeypatch.setenv(db.ENV_CAPTURE_DB, "   ")
+    assert db.capture_db_path() == db._default_db_path()
+
+
+def test_legacy_db_paths_reports_only_existing_strays(tmp_path, monkeypatch):
+    """A half-finished migration is the dangerous state: the server starts filling a
+    fresh empty ledger while the real corpus sits at the old path. That has to be an
+    explicit signal, so the helper reports strays that EXIST and excludes the ledger
+    currently in use (which is not stranded, by definition)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv(db.ENV_CAPTURE_DB, str(tmp_path / "current.sqlite3"))
+
+    # Nothing on disk yet -> nothing stranded.
+    assert db.legacy_db_paths() == []
+
+    old = tmp_path / "CoilForge" / "capture" / "coilforge.sqlite3"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"x")
+    # ...and the MSIX-redirected copy, whose package folder carries a per-version hash
+    # and so must be globbed rather than hardcoded.
+    redirected = (
+        tmp_path / "Packages" / "PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0"
+        / "LocalCache" / "Local" / "CoilForge" / "capture" / "coilforge.sqlite3"
+    )
+    redirected.parent.mkdir(parents=True)
+    redirected.write_bytes(b"xx")
+    # Physical location first: it is the one that survives uninstalling Store Python.
+    assert db.legacy_db_paths() == [redirected, old]
+
+    # The ledger in use is never reported as stranded, even sitting at a legacy path.
+    monkeypatch.setenv(db.ENV_CAPTURE_DB, str(old))
+    assert db.legacy_db_paths() == [redirected]
+
+
+def test_legacy_db_paths_collapses_one_file_seen_through_two_paths(tmp_path, monkeypatch):
+    """Measured 2026-08-11: under the Store Python BOTH candidate paths exist and
+    report the same st_ino, because MSIX redirects reads as well as writes. Reporting
+    them as two ledgers sent the migration script into "several stranded ledgers found"
+    on a machine that had exactly one, and would have named a phantom path as the file
+    to delete by hand.
+
+    A hardlink reproduces the property that matters (one file, two paths, shared
+    st_ino) without needing an app container. Path.resolve() cannot collapse either.
+    """
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv(db.ENV_CAPTURE_DB, str(tmp_path / "current.sqlite3"))
+
+    real = (
+        tmp_path / "Packages" / "PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0"
+        / "LocalCache" / "Local" / "CoilForge" / "capture" / "coilforge.sqlite3"
+    )
+    real.parent.mkdir(parents=True)
+    real.write_bytes(b"one ledger")
+    phantom = tmp_path / "CoilForge" / "capture" / "coilforge.sqlite3"
+    phantom.parent.mkdir(parents=True)
+    try:
+        os.link(real, phantom)
+    except (OSError, NotImplementedError, AttributeError):  # pragma: no cover
+        pytest.skip("filesystem does not support hardlinks")
+
+    assert phantom.resolve() != real.resolve()  # the trap: resolve() still sees two
+    assert db.legacy_db_paths() == [real]  # samefile collapses them to the real one
+
+
+def test_health_reports_db_path_and_strays_even_before_the_ledger_exists(tmp_path, monkeypatch):
+    """Both keys must survive health()'s exists:False early return — that branch IS
+    the half-migrated state (new path empty, corpus still at the old one)."""
+    from coilforge.capture.observe import health
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv(db.ENV_CAPTURE_DB, str(tmp_path / "brand-new.sqlite3"))
+    old = tmp_path / "CoilForge" / "capture" / "coilforge.sqlite3"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"0123456789")
+
+    report = health()
+    assert report["exists"] is False
+    assert report["db_path"] == str(tmp_path / "brand-new.sqlite3")
+    assert report["legacy_ledgers"] == [{"path": str(old), "byte_len": 10}]
+    # A GET must still not materialize the ledger it reports on.
+    assert not (tmp_path / "brand-new.sqlite3").exists()
 
 
 def test_artifact_stores_hashes_never_bytes(ledger):

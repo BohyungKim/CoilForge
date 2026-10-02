@@ -43,9 +43,26 @@ digit and no `{{slot}}`.)
 
 ## Open questions to resolve before redacting (the "(가)" path)
 
-1. **`X` label** — which dimension/slot does the `… X` callout map to? (appears near CD.)
+1. **`X` label** — which dimension/slot does the `… X` callout map to?
+   **PARTIALLY ANSWERED, then re-opened (2026-09-05).** `slot.X` is the drawing's `X` column.
+   *Settled:* it exists only on header-connected coils — over 328 measured HGRH pages, a
+   `… " OD Header` return connection always prints `X` (186/186) and a `… " swt` one always
+   leaves it blank (142/142, together with `I`/`S`/`O`/`R`); no exceptions.
+   *Not settled:* what sets the value. The working reading (header-stack depth
+   `(h+1)*D + (h-1)*1.5`, the same shape as `R-073`'s header-bank term; `EZC-0016` has
+   `CD` == `X` == 5.50) explains only 96 of the 186 valued pages. Misses fall between the
+   formula's steps at every integer h, and two coils identical across
+   `FH·FL·CH·CL·CD·OAL·SL·I·S·O` differ in `X` (1.94 vs 2.00) — **the deciding input is not in
+   the title block.** Redaction is therefore still blocked: with no rule, slotting the seven
+   frozen callouts would blank `X` for every family (John 2026-09-05 forbade that regression).
+   Gate = an SOP/CoilMaster definition of the column, not another reference drawing.
+   Full record + reproduction details: `docs/wiki/concepts/x-header-stack-depth.md`.
 2. **`hgrh_lh_header1` bare `3.00`** — what dimension is this, and its slot?
 3. **Negative `S1` values** (`-0.25`, `-0.63`) — confirm these are normal slot targets.
+   (Cross-ref: `2f67dac` already records that a negative supply spacing is a **real CoilMaster
+   value**, not a parse artefact — the Nova/Ventum-H `S = CD - ((n+2)D + (n-1)1.5)` branch
+   genuinely yields it. That commit fixed `_CALLOUT_RE` so a leading minus reaches the
+   redactor; what remains open here is only whether these particular cells are slot targets.)
 
 ## When reactivated
 

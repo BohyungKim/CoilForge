@@ -52,8 +52,8 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_hgrh_lh_header2": ("hgrh", "EZC-0008", _SEEDED),
     "coilmaster_hgrh_rh_header3": ("hgrh", "EZC-0016", _SEEDED),
     "coilmaster_dx_lh_hgbp": ("dx", "EZC-0013", _SEEDED),
-    "coilmaster_cwc_lh": ("cwc", "EZC-0014", _SEEDED),
-    "coilmaster_hwc_lh": ("hwc", "EZC-0005", _SEEDED),
+    "coilmaster_cwc_lh": ("cwc", "WATER-CWC-JOHN-2026-09-24-L", _SEEDED),
+    "coilmaster_hwc_lh": ("hwc", "WATER-HWC-JOHN-2026-09-24-L", _SEEDED),
     # 2026-06-21: the 8 former mirror hands + the 4 header-4 buckets are now seeded
     # from real per-hand EZ drawing PDFs (Case/feed/), so every bucket is active.
     # Mirroring is retired; source_case_id is a provenance token (FEED-*) until
@@ -64,8 +64,8 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
     "coilmaster_dx_rh_hgbp": ("dx", "FEED-DX_HB_RH", _SEEDED),
     "coilmaster_hgrh_rh_header2": ("hgrh", "FEED-HG_2_RH", _SEEDED),
     "coilmaster_hgrh_lh_header3": ("hgrh", "FEED-HG_3_LH", _SEEDED),
-    "coilmaster_cwc_rh": ("cwc", "FEED-CW_RH", _SEEDED),
-    "coilmaster_hwc_rh": ("hwc", "FEED-HW_RH", _SEEDED),
+    "coilmaster_cwc_rh": ("cwc", "WATER-CWC-JOHN-2026-09-24-R", _SEEDED),
+    "coilmaster_hwc_rh": ("hwc", "WATER-HWC-JOHN-2026-09-24-R", _SEEDED),
     "coilmaster_dx_lh_header4": ("dx", "FEED-DX_4_LH", _SEEDED),
     "coilmaster_dx_rh_header4": ("dx", "FEED-DX_4_RH", _SEEDED),
     "coilmaster_hgrh_lh_header4": ("hgrh", "FEED-HG_4_LH", _SEEDED),
@@ -85,6 +85,24 @@ ACTIVE_TEMPLATES: dict[str, tuple[str, str | None, str]] = {
 # Populated as buckets are seeded (scripts/seed_templates_from_pdf.py); empty = the
 # fork is scaffolded but no dedicated template is active yet -> pure shared fallback.
 VENTUM_PLUS_FAMILY = "VENTUM_PLUS"
+# Omnia draws on the dedicated Ventum+ set (John 2026-08-25: same drawing template);
+# nothing is seeded under its own name, so a selection asked for OMNIA is answered from
+# the VENTUM_PLUS buckets. The bucket count is unchanged.
+# Terra H and Terra V share ONE dedicated water-coil artwork (John 2026-09-23); only the
+# printed values differ, and those come from the engine per variant. Every spelling a
+# Terra coil can arrive under is folded onto the one bucket family: the split tokens
+# `resolve_product_line` emits (TERRA_H / TERRA_V / TERRA_H_C) and the raw picker label
+# "TERRA H C", which `resolve_product_line` passes through unnormalised.
+TERRA_FAMILY = "TERRA"
+TEMPLATE_FAMILY_ALIAS = {
+    "OMNIA": VENTUM_PLUS_FAMILY,
+    "TERRA_H": TERRA_FAMILY,
+    "TERRA_V": TERRA_FAMILY,
+    "TERRA_H_C": TERRA_FAMILY,
+    "TERRA H": TERRA_FAMILY,
+    "TERRA V": TERRA_FAMILY,
+    "TERRA H C": TERRA_FAMILY,
+}
 VENTUM_PLUS_TEMPLATES: dict[
     str, tuple[str, str, str, str | None, str | None, str | None, str]
 ] = {
@@ -108,15 +126,48 @@ VENTUM_PLUS_TEMPLATES: dict[
         "hgrh", "HGRH", "RH", "Header 1", None, "VPLUS-2619-CONGRESS", _SEEDED),
     "coilmaster_vplus_hgrh_rh_header2": (
         "hgrh", "HGRH", "RH", "Header 2", None, "VPLUS-2839-FAIRMOUNT", _SEEDED),
-    "coilmaster_vplus_hwc_lh": (
-        "hwc", "HWC", "LH", "Header 1", None, "VPLUS-2802-MANCHESTER", _SEEDED),
-    "coilmaster_vplus_hwc_rh": (
-        "hwc", "HWC", "RH", "Header 1", None, "VPLUS-2523-WCALGARY", _SEEDED),
-    "coilmaster_vplus_cwc_lh": (
-        "cwc", "CWC", "LH", "Header 1", None, "VPLUS-2773-PAIZA", _SEEDED),
+    # Ventum+ WATER buckets (vplus_hwc_lh / vplus_hwc_rh / vplus_cwc_lh) retired
+    # 2026-09-24 (John: "Ventum+ 코일도 사실상 다 같아야하는거야 다른 코일들하고"): every
+    # non-Terra CWC/HWC -- Ventum+ and Omnia included -- draws on the shared
+    # coilmaster_{cwc,hwc}_{lh,rh} art re-seeded that day. Only DX/HGRH keep a Ventum+
+    # fork, because the R-032 ConnectionUP distributor is genuinely different art.
 }
 
-TEMPLATE_BUCKET_COUNT = _SHARED_BUCKET_COUNT + len(VENTUM_PLUS_TEMPLATES)
+# Dedicated Terra buckets (same tuple shape as VENTUM_PLUS_TEMPLATES). Seeded 2026-09-23
+# from John's own CoilMaster drawings of one CWC and one HWC in each hand
+# (scripts/seed_templates_from_pdf.py TERRA_BUCKETS).
+TERRA_TEMPLATES: dict[
+    str, tuple[str, str, str, str | None, str | None, str | None, str]
+] = {
+    "coilmaster_terra_cwc_lh": (
+        "cwc", "CWC", "LH", "Header 1", None, "TERRA-CWC-JOHN-2026-09-23-L", _SEEDED),
+    "coilmaster_terra_cwc_rh": (
+        "cwc", "CWC", "RH", "Header 1", None, "TERRA-CWC-JOHN-2026-09-23-R", _SEEDED),
+    "coilmaster_terra_hwc_lh": (
+        "hwc", "HWC", "LH", "Header 1", None, "TERRA-HWC-JOHN-2026-09-23-L", _SEEDED),
+    "coilmaster_terra_hwc_rh": (
+        "hwc", "HWC", "RH", "Header 1", None, "TERRA-HWC-JOHN-2026-09-23-R", _SEEDED),
+}
+
+TEMPLATE_BUCKET_COUNT = (
+    _SHARED_BUCKET_COUNT + len(VENTUM_PLUS_TEMPLATES) + len(TERRA_TEMPLATES)
+)
+
+# Datum of each artwork's water return-stubout callout `slot.O2` (John 2026-09-23).
+# Every bucket defaults to "header_side": O is measured from the header end, so it
+# prints the same number as I (every non-Terra water seed reads O == I). The Terra CWC
+# artwork measures O from the OPPOSITE end -- both seeds print CH 19.25, I1 2.75,
+# O2 16.50 = CH - I (seed_evidence.json) -- which is also how the Coil Checklist writes
+# the Terra O row (CH - 3.25 / CH - 2.75). The datum belongs to the artwork, not to a
+# rule: the same stubout position is a different number on a differently-drawn sheet.
+# The Terra HWC seeds read the same way (O2 13.50 = CH 16.25 - I1 2.75, both hands).
+# A new bucket goes here only after reading ITS seed's O2.
+TEMPLATE_O_DATUM: dict[str, str] = {
+    "coilmaster_terra_cwc_lh": "opposite",
+    "coilmaster_terra_cwc_rh": "opposite",
+    "coilmaster_terra_hwc_lh": "opposite",
+    "coilmaster_terra_hwc_rh": "opposite",
+}
 
 
 def _active_entry(
@@ -163,6 +214,8 @@ class DrawingTemplateEntry:
     blocked_reason: str | None = None
     # None = shared/product-agnostic bucket; a family string = dedicated to that family.
     product_family: str | None = None
+    # Datum of the water `slot.O2` callout on this artwork (see TEMPLATE_O_DATUM).
+    o_datum: str = "header_side"
 
 
 @dataclass(frozen=True)
@@ -312,14 +365,23 @@ def _build_catalog_entries() -> list[DrawingTemplateEntry]:
         for hand in ("LH", "RH"):
             entries.append(_entry_for_water_category(category, hand))
     entries.extend(_build_ventum_plus_entries())
+    entries.extend(_build_family_entries(TERRA_TEMPLATES, TERRA_FAMILY))
     return entries
 
 
 def _build_ventum_plus_entries() -> list[DrawingTemplateEntry]:
     """Dedicated Ventum+ buckets (product_family=VENTUM_PLUS), one per seeded id in
     VENTUM_PLUS_TEMPLATES. Empty until a real Ventum+ reference is seeded."""
+    return _build_family_entries(VENTUM_PLUS_TEMPLATES, VENTUM_PLUS_FAMILY)
+
+
+def _build_family_entries(
+    templates: dict[str, tuple[str, str, str, str | None, str | None, str | None, str]],
+    family: str,
+) -> list[DrawingTemplateEntry]:
+    """Dedicated per-family buckets, one per seeded id (shared by the Ventum+ and Terra forks)."""
     entries: list[DrawingTemplateEntry] = []
-    for template_id, spec in VENTUM_PLUS_TEMPLATES.items():
+    for template_id, spec in templates.items():
         cat_dir, coil_category, hand, header_type, special_feature, source, ref_status = spec
         folder = f"templates/drawing/coilmaster/{cat_dir}/{template_id}"
         entries.append(
@@ -337,7 +399,8 @@ def _build_ventum_plus_entries() -> list[DrawingTemplateEntry]:
                 metadata_path=f"{folder}/template_metadata.json",
                 source_case_id=source,
                 reference_status=ref_status,
-                product_family=VENTUM_PLUS_FAMILY,
+                product_family=family,
+                o_datum=TEMPLATE_O_DATUM.get(template_id, "header_side"),
             )
         )
     return entries
@@ -409,9 +472,9 @@ def _entry_for_water_category(category: str, hand: str) -> DrawingTemplateEntry:
         return _active_entry(template_id, category.upper(), hand, "Header 1", None)
     source = None
     if category == "cwc" and hand == "LH":
-        source = "EZC-0014"
+        source = "WATER-CWC-JOHN-2026-09-24-L"
     if category == "hwc" and hand == "LH":
-        source = "EZC-0005"
+        source = "WATER-HWC-JOHN-2026-09-24-L"
     return DrawingTemplateEntry(
         template_id=template_id,
         supplier="coilmaster",
@@ -444,10 +507,30 @@ def _known_source_case(category: str, header_number: int, hand: str) -> str | No
     return None
 
 
+def water_o_datum(coil_category: str | None, product_family: str | None) -> str:
+    """Datum the drawn water ``slot.O2`` is measured from for this category + line.
+
+    "opposite" only when the line has a DEDICATED bucket for the category whose artwork
+    declares it (today: Terra CWC, both hands); "header_side" otherwise -- including a
+    line that falls back to the shared artwork, which is header-side by construction.
+    Pure catalog lookup, so the slot layer, the checklist and the drawing agree.
+    """
+    category = _normalize_category(coil_category or "")
+    family = _normalize_product_family(product_family)
+    if category not in ("CWC", "HWC") or family is None:
+        return "header_side"
+    datums = {
+        entry.o_datum
+        for entry in load_drawing_template_catalog().entries
+        if entry.coil_category == category and entry.product_family == family
+    }
+    return "opposite" if datums == {"opposite"} else "header_side"
+
+
 def _normalize_product_family(value: str | None) -> str | None:
     """Uppercased family string, or None when unset/blank (= shared, no dedicated pref)."""
     text = str(value or "").strip().upper()
-    return text or None
+    return TEMPLATE_FAMILY_ALIAS.get(text, text) or None
 
 
 def _normalize_supplier(value: str) -> str:

@@ -243,3 +243,86 @@ def test_unrecognised_coil_hand_reads_not_defined_not_a_hand() -> None:
     assert "DC_COIL_HAND_UNDEFINED," in _APP_JS[_APP_JS.index("const DC_NON_VALUES"):][:200]
     caller = _function_body("addCandidateFallbackFields")
     assert "addUndefinedCoilHandField(fieldsByLabel)" in caller
+
+
+# --- System Type follows the CCSI push (John 2026-10-01) -------------------------------------
+
+
+def _function_source(name: str) -> str:
+    start = _APP_JS.index(f"function {name}(")
+    return _APP_JS[start : _APP_JS.index("{", start)] + _function_body(name)
+
+
+def test_condensing_system_type_reads_the_ccsi_coil_data_block() -> None:
+    """The mirror row has no rule of its own: it shows what the coil-data map resolved.
+
+    Before this the row read "unmapped" on every HGRH coil while Send to CCSI carried a value,
+    so the screen John reviews disagreed with what was pushed.
+    """
+    caller = _function_body("addCandidateFallbackFields")
+    condensing = caller[caller.index("} else if (condensingCandidate) {"):caller.index("} else if (waterCandidate) {")]
+    assert "addCcsiSystemTypeField(fieldsByLabel);" in condensing
+    body = _function_body("addCcsiSystemTypeField")
+    assert '"RefrigerationSystemType"' in body
+    # only a value the push would actually deliver, and only for the draft it was built from
+    assert "!entry.pushable" in body and "page.ccsiCoilDataKey !== ccsiCoilDataKey(page.workflow)" in body
+    # no System Type literal: the options live in the coil-data map, not here
+    for option in ("Single-Circuit", "Face-Split", "Intertwined"):
+        assert option not in body, option
+    # the block arrives after the first render, so the fetch redraws the mirror
+    assert "renderDirectCoilScreenMirror(state.ui);" in _function_body("stampCcsiCoilData")
+    assert "stampCcsiCoilData" not in _function_body("renderDirectCoilScreenMirror")  # no render loop
+
+
+def test_condensing_system_type_from_a_real_resolved_block() -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from coilforge.ccsi.coil_data_map import resolve_coil_data
+
+    def block(sources):
+        return {"entries": [e.model_dump() for e in resolve_coil_data(sources, coil_type="HGRH")]}
+
+    style = "manufacturing_options.coil_style"
+    standard = block({style: {"value": "Standard", "status": "review_required"}})
+    two = block({"geometry.circuits": {"value": 2, "status": "review_required"}})
+    unknown = block({style: {"value": "Custom", "status": "review_required"}})  # no rule -> stays unmapped
+    script = "\n".join([
+        "const fields = new Map();",
+        "let page = null;",
+        "function activePdfCoilPage() { return page; }",
+        _function_source("ccsiCoilDataKey"),
+        _function_source("setDcFieldAlias"),
+        _function_source("directCoilCompanyRuleField"),
+        _function_source("directCoilReviewField"),
+        _function_source("addCcsiSystemTypeField"),
+        "const workflow = { candidates: [{ candidate_id: 'C1' }], direct_coil_input_draft: { fields: { a: 1 } } };",
+        "const out = JSON.parse(require('fs').readFileSync(0, 'utf8')).map(([block, stale]) => {",
+        "  fields.clear();",
+        "  page = block && { workflow, ccsiCoilData: block, ccsiCoilDataKey: stale ? 'another draft' : ccsiCoilDataKey(workflow) };",
+        "  addCcsiSystemTypeField(fields);",
+        "  const field = fields.get('System Type');",
+        "  return field ? [field.value, field.status, field.mapping_rule] : null;",
+        "});",
+        "console.log(JSON.stringify(out));",
+    ])
+    cases = [[standard, False], [two, False], [unknown, False], [standard, True], [None, False]]
+    # stdin, not argv: three full coil-data blocks overflow the Windows command line
+    run = subprocess.run([node, "-e", script], input=json.dumps(cases), capture_output=True, text=True, encoding="utf-8")
+    assert run.returncode == 0, run.stderr
+    rule = "ccsi_coil_data_refrigeration_system_type"
+    assert json.loads(run.stdout) == [
+        ["Single-Circuit", "review_required", rule],            # 2755 RHHGRC-1: Coil Style "Standard"
+        ["Dual-Circuit Face-Split", "review_required", rule],   # two circuits on an HGRH coil
+        None,                                                   # unresolved -> the row stays unmapped
+        None,                                                   # a block built from another draft is not shown
+        None,                                                   # no block yet -> nothing is guessed
+    ]

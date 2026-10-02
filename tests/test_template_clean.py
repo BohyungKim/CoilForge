@@ -32,9 +32,14 @@ def test_clean_keeps_value_and_label_on_callouts() -> None:
     out = _clean_template_svg(_SVG)
     # value + label kept together (existing drawing style)
     assert ">3.5 HD2</tspan>" in out and ">12 FH</tspan>" in out
-    # blank-slot placeholder: value gone, label kept so the dim stays identified
+    # blank-slot placeholder: the "REVIEW REQUIRED" sentinel never reaches the drawing,
+    # the label is kept so the dim stays identified, AND the withholding is visible.
+    # The bare label used to stand alone, which reads as a rendering slip rather than a
+    # deliberate refusal -- on a real Terra V HGRH header-2 the SOP-withheld I3 (R-046
+    # covers Supply 1 only) drew as nothing but "I3". John 2026-08-30.
     assert "REVIEW REQUIRED" not in out
-    assert ">OAL</tspan>" in out
+    assert ">— OAL</tspan>" in out
+    assert ">OAL</tspan>" not in out
 
 
 def test_clean_does_not_touch_non_callout_text() -> None:

@@ -114,9 +114,10 @@ def test_only_an_unexplained_disagreement_is_painted_red():
 
 
 def test_border_precedence_puts_the_blank_first_and_the_checklist_before_ccsi():
-    """One border class wins; the order encodes which problem is bigger."""
+    """One border class wins; the order encodes which problem is bigger. A blank CRITICAL
+    row (John 2026-09-22) outranks an ordinary blank, which outranks any disagreement."""
     assert (
-        "const borderClass = emptyControl || chkView.controlClass || compareClass;"
+        "const borderClass = criticalEmpty || emptyControl || chkView.controlClass || compareClass;"
         in _APP_JS
     )
 

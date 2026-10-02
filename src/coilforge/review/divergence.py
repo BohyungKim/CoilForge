@@ -457,9 +457,10 @@ def annotate_known_divergences(
         for row in sheet.get("comparisons") or []:
             if not isinstance(row, dict):
                 continue
-            # `match` and `overridden` are not open questions -- annotating them would
-            # attach a ruling to a row that is not asking anything.
-            if row.get("verdict") in (None, "match", "overridden", "both_missing"):
+            # `match`, `overridden` and `adopted` are not open questions -- annotating them
+            # would attach a ruling to a row that is not asking anything (an adopted row
+            # is a copy of the sheet, so a KD amber on it would be noise).
+            if row.get("verdict") in (None, "match", "overridden", "adopted", "both_missing"):
                 continue
             entry = _lookup(reg, category, family, variant, unit_size, _norm(row.get("slot")))
             if entry is None:

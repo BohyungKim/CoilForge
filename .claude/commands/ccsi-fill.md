@@ -36,11 +36,16 @@ Hard rules:
    const map = await fetch('/static/ccsi/ccsi_dx_field_map.json',{cache:'no-store'}).then(r=>r.json());
    const dom = {};
    document.querySelectorAll('#drawing-parameters [data-drawing-param]').forEach(i=>{dom[i.dataset.drawingParam]=i.value;});
+   // CCSI's water-coil dimension grid has no ZD field (live 2026-10-01) — withheld, not warned.
+   const wcat = (document.querySelector('#drawing-parameters')?.dataset.coilCategory||'').toUpperCase();
+   const water = wcat==='CWC'||wcat==='HWC';
    const fields = Object.keys(map.fields).map(k=>{
      const raw=dom[k], has=raw!==undefined&&raw!==''&&raw!==null, n=Number(raw), e=map.fields[k]||{};
+     const noZd = water && /^ZD\d*$/.test(k);
      return {key:k, ccsi_label:e.ccsi_label||k, value:has?(Number.isFinite(n)?n:raw):null, unit:e.unit||'in',
-       status:has?'review_required':'blocked', type:e.type||'number',
-       selectors:Array.isArray(e.selectors)?e.selectors:[], blocked_reason:has?null:'No value derived; review required.'};
+       status:has&&!noZd?'review_required':'blocked', type:e.type||'number',
+       selectors:Array.isArray(e.selectors)?e.selectors:[],
+       blocked_reason:noZd?'CCSI water-coil dimension grid has no ZD field — not pushed.':(has?null:'No value derived; review required.')};
    });
    // Drawing Notes is a SEPARATE top-level key, never a 14th `fields` entry — the field map's
    // contract test rejects any non-dimension key, and the filler's entriesOf() adapter is what
@@ -53,16 +58,26 @@ Hard rules:
      status:notesValue?'review_required':'blocked', type:'text',
      selectors:[{strategy:'css', selector:'#DrawingNotes'},{strategy:'labelText', text:'Drawing Notes'}],
      selector_verified:true, blocked_reason:notesValue?null:'No drawing notes assembled for this coil.'};
+   // CCSI "Drain and Vent Location" = "Hdr Side In Airflow Dir." for every CWC/HWC, all product
+   // lines (John 2026-09-23) — must equal web/app.js::CCSI_WATER_DRAIN_VENT_LOCATION. Chosen by
+   // OPTION TEXT; the select's #id was captured live 2026-10-01 (#DrainAndVentLocation —
+   // labelText alone resolved to nothing on the real form).
+   const cat = (document.querySelector('#drawing-parameters')?.dataset.coilCategory||'').toUpperCase();
+   const drain_vent_location = (cat==='CWC'||cat==='HWC') ? {ccsi_label:'Drain and Vent Location',
+     value:'Hdr Side In Airflow Dir.', status:'review_required', type:'select', match:'option_text',
+     selectors:[{strategy:'css', selector:'#DrainAndVentLocation'},{strategy:'labelText', text:'Drain and Vent Location'}],
+     selector_verified:true, blocked_reason:null} : null;
    ({schema:'coilforge.ccsi.autofill/1', generated_at:new Date().toISOString(),
      coil_tag:(document.querySelector('#edit-coil-name')||{}).value||null, review_aid_only:true,
      export_allowed:false, form:map.form||'CCSI Online Direct Coil — DX', field_map_version:map.version||'unknown',
-     hot_gas_bypass:false, drawing_notes, fields})
+     hot_gas_bypass:false, drawing_notes, drain_vent_location, fields})
    ```
    If every `value` is null, stop and tell John to analyze a coil in CoilForge first.
 
    ⚠️ This inline builder is a MIRROR of `web/app.js`'s own payload builder. They drifted
    once — this one iterated `map.fields` only, so the skill path pushed 25 dimensions and
-   **no notes**, while the app path pushed both. If you change one, change the other.
+   **no notes**, while the app path pushed both. If you change one, change the other
+   (`drain_vent_location` included — `tests/test_ccsi_drain_vent_location.py` pins all three copies).
 
 4. **Inject the filler onto the CCSI tab.** Read `web/ccsi/ccsi_autofill.user.js` and run its
    full source via `javascript_tool` on the CCSI `tabId`. (The `@grant`/`GM_*` lines are inert

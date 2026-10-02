@@ -315,7 +315,9 @@ _TERRA_V_COIL = {
 
 
 def _stub_review_with_cd_mismatch(monkeypatch):
-    """A one-row review whose CD disagrees — the shape KD-001 rules on."""
+    """A one-row review whose second return I/O disagrees — the shape KD-005 rules on
+    (Terra V HGRH O4: the sheet gives 2, CoilForge keeps 2.75). Was KD-001 (CD) until
+    that ruling was retired on 2026-09-23 when Terra V HGRH CD began following the sheet."""
     monkeypatch.setattr(
         web_app, "build_review",
         lambda fill, writer_result: {
@@ -323,8 +325,8 @@ def _stub_review_with_cd_mismatch(monkeypatch):
             "sheets": [{
                 "tag": "RHHGRC-1", "category": "HGRH", "inputs": [],
                 "comparisons": [{
-                    "label": "CD", "slot": "slot.CD", "coilforge": 7.5,
-                    "checklist": 6.0, "verdict": "mismatch", "override": None,
+                    "label": "O4", "slot": "slot.O4", "coilforge": 2.75,
+                    "checklist": 2.0, "verdict": "mismatch", "override": None,
                 }],
                 "mismatch_count": 1, "override_count": 0,
             }],
@@ -341,7 +343,7 @@ def test_a_ruling_annotates_on_the_fresh_fill(monkeypatch, tmp_path) -> None:
     outcome = _run(b"%PDF-divergence-A", filename="a.pdf")
 
     row = outcome.review["sheets"][0]["comparisons"][0]
-    assert row["divergence"]["id"] == "KD-001"
+    assert row["divergence"]["id"] == "KD-005"
     assert row["divergence"]["severity"] == "known_gap"
 
 
@@ -354,7 +356,7 @@ def test_a_ruling_also_annotates_on_a_cache_hit(monkeypatch, tmp_path) -> None:
     hit = _run(pdf, filename="b.pdf")
 
     assert calls[0] == 1, "still one Excel run — annotation must not defeat the cache"
-    assert hit.review["sheets"][0]["comparisons"][0]["divergence"]["id"] == "KD-001"
+    assert hit.review["sheets"][0]["comparisons"][0]["divergence"]["id"] == "KD-005"
 
 
 def test_the_cached_original_stays_un_annotated_so_a_later_ruling_appears(

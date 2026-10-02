@@ -108,15 +108,13 @@ _BLANK_REASON_AFTER_PRODUCT: dict[str, str] = {
     "R": "Needs the return connection size — not found in the submittal extract.",
 }
 
-# Per-(coil category, key) override. The generic R message names the connection size, which
-# is right for DX/HGRH but was a MISDIAGNOSIS on water coils (John 2026-07-28): a water
-# coil's connection size IS extracted (Inlet/Outlet Conn. Size), and water R mirrors the
-# supply spacing S rather than the connection size at all. Sending the engineer to hunt for
-# a value that is already present is worse than saying nothing.
+# Per-(coil category, key) override. The generic R message names the RETURN connection,
+# which is right for DX/HGRH; a water coil's R is the OUTLET connection size (Coil
+# Checklist CWC!C28 / HWC!C32, John 2026-09-23), so the message names that field.
 _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
     (category, "R"): (
-        "Water-coil R mirrors the supply spacing S, and S is the connection size — "
-        "no connection size was read from the submittal."
+        "Water-coil R is the outlet connection size (Coil Checklist) — no outlet or "
+        "connection size was read from the submittal."
     )
     for category in ("CWC", "HWC")
 }
@@ -129,14 +127,14 @@ _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
 # then paints it red with no explanation. Keyed on the base letter so every header
 # index (I2/I3/I4) inherits the same reason.
 _WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {
-    ("HGRH", "TERRA_V", "I"): (
-        "Terra V HGRH Supply I/O is SOP-confirmed for Supply 1 only (R-046); Supply 2+ "
-        "is a software default, not derivable — fill it in if the drawing needs it."
-    ),
-    ("HGRH", "TERRA_V", "S"): (
-        "Terra V HGRH supply spacing is S = CD − Rn (SOP), and Rn only runs to the "
-        "connections-per-header count — this header has no Rn to subtract."
-    ),
+    # Terra water artwork dimensions O from the opposite end (O = CH - I, 2026-09-23);
+    # `apply_water_o_datum` blanks O rather than print I on that dimension line.
+    (category, variant, "O"): (
+        f"On the Terra {category} drawing O is measured from the opposite end (O = CH − I), "
+        "so it needs CH (finned height + flanges) and I — left blank rather than printing I."
+    )
+    for category in ("CWC", "HWC")
+    for variant in ("TERRA_H", "TERRA_H_C", "TERRA_V")
 }
 
 _KEY_BASE_RE = re.compile(r"^([A-Za-z]+)")
@@ -148,8 +146,20 @@ def _key_base(key: str) -> str:
     return m.group(1) if m else (key or "")
 
 
+# NOTE (2026-09-09): the two Terra V HGRH supply-S withholding causes that used to live
+# here are gone. Both rested on S = CD - Rn, which the slot layer no longer uses for
+# HGRH -- the SOP scopes Terra V's spacing special to DX (R-023) and gives HGRH the
+# general RHHGRC formula, which is defined for every supply header and may legitimately
+# be negative. Terra V HGRH supply S is therefore never blank on SOP grounds.
+
+
 def _blank_reason(
-    key: str, *, coil_category: str, terra_variant: str | None, product_chosen: bool
+    key: str,
+    *,
+    coil_category: str,
+    terra_variant: str | None,
+    product_chosen: bool,
+    slot_values: dict[str, Any] | None = None,
 ) -> str:
     """The message a blank drawing-parameter row shows in place of a number.
 
@@ -159,9 +169,9 @@ def _blank_reason(
     """
     if not product_chosen:
         return "Pick a product line + unit size to derive this dimension."
-    withheld = _WITHHELD_REASON_BY_VARIANT.get(
-        (coil_category, (terra_variant or "").upper(), _key_base(key))
-    )
+    variant = (terra_variant or "").upper()
+    base = _key_base(key)
+    withheld = _WITHHELD_REASON_BY_VARIANT.get((coil_category, variant, base))
     if withheld:
         return withheld
     return _BLANK_REASON_BY_CATEGORY.get(
@@ -546,6 +556,7 @@ def parameter_set_from_template_drawing(
                 coil_category=coil_category,
                 terra_variant=terra_variant,
                 product_chosen=product_chosen,
+                slot_values=slot_values,
             )
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
@@ -575,6 +586,7 @@ def parameter_set_from_template_drawing(
                     coil_category=coil_category,
                     terra_variant=terra_variant,
                     product_chosen=product_chosen,
+                    slot_values=slot_values,
                 ),
             )
         else:
@@ -607,6 +619,7 @@ def parameter_set_from_template_drawing(
             review_required=True,
             blocked_reason=None,
             manual_override=True,
+            source=override.source,
         )
         if override.key not in review_required:
             review_required.append(override.key)
@@ -641,7 +654,37 @@ _ENGINE_INPUT_META: dict[str, tuple[str, str]] = {
     "qty_conn_per_header": ("Connections per header", ""),
     "application": ("Application (casing class)", ""),
     "header_count": ("Header count (1HD–4HD)", ""),
+    "inlet_conn_size": ("Inlet connection size", "in"),
+    "outlet_conn_size": ("Outlet connection size", "in"),
 }
+
+# Coil categories the classification lever may SUPPLY (never re-classify: J-0a, John).
+COIL_CATEGORY_CHOICES: tuple[str, ...] = ("DX", "HGRH", "CWC", "HWC")
+
+# Criticality (John 2026-09-22): the rows without which a drawing cannot be trusted at
+# all get a stronger highlight than an ordinary blank. Two separate tables because they
+# describe different things — panel DIMENSIONS (by key base, so every header index
+# HDx1 / S2 / I3 inherits it) and the fill-panel INPUT levers that feed them.
+# Deliberately NOT the registry's `required` flag ({CD, BF, TF, CH}): that is the preview
+# gate, with different members and a different meaning; reusing it would change gating.
+CRITICAL_PARAM_BASES: frozenset[str] = frozenset({"CD", "CH", "HD", "HDx", "S", "I"})
+CRITICAL_FILL_KEYS: frozenset[str] = frozenset(
+    {
+        "product_type", "unit_size", "coil_hand", "coil_category",
+        "suction_conn_size", "conn_size", "inlet_conn_size", "outlet_conn_size",
+    }
+)
+
+
+def criticality_for_param_key(key: str) -> Literal["critical", "standard"]:
+    """Panel key -> ``"critical"`` | ``"standard"`` (``"S2"`` -> ``S`` -> critical)."""
+    return "critical" if _key_base(key) in CRITICAL_PARAM_BASES else "standard"
+
+
+_WATER_CONN_REASON = (
+    "Coil Checklist: CD = max(rows base, connection term) (R-071), CWC S = IN/2 + 3, "
+    "HWC S = IN, R = OUT. Uses the submittal's sizes; type here only to correct them."
+)
 
 
 class ManualFillItem(BaseModel):
@@ -661,12 +704,19 @@ class ManualFillItem(BaseModel):
     allowed: list[Any] = Field(default_factory=list)
     current_value: Any = None
     unit: str = "in"
+    # Stronger highlight in the fill panel (CRITICAL_FILL_KEYS / critical dimensions).
+    critical: bool = False
 
 
 class ManualFillPlan(BaseModel):
     """The auto-surfaced 'fill these to complete the drawing' list for one coil.
-    ``withheld_reason`` is set (and ``items`` empty) when the drawing is gate-omitted
-    — filling cannot un-gate it, so no fill inputs are offered."""
+
+    ``withheld_reason`` is a BANNER, not an empty plan (John 2026-09-22): a gate withholds
+    the drawing ARTWORK, while product line / unit size / hand are exactly the inputs that
+    decide which gate applies — and Tier-B overrides still reach ``slot_values`` and the
+    Coil Checklist without an SVG. Returning no items there (the pre-2026-09-23 behaviour)
+    left a withheld Terra water coil with no lever at all, including the one that would
+    undo a wrong product pick."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -693,25 +743,43 @@ def build_manual_fill_plan(
     Never invents a value — every item names WHAT to supply and WHY, review-aid only.
     """
     td = template_drawing or {}
+    extracted = td.get("extracted") or {}
+    coil_category = str(extracted.get("coil_category") or "").strip().upper()
 
-    # Gate-omit: the drawing is withheld regardless of fills (unseeded Ventum+ DX,
-    # unsupported HGBP line). Do NOT present its dims as fillable — filling cannot
-    # un-gate it.
+    # Gate-omit: the drawing ARTWORK is withheld (Terra water re-seed, unseeded Ventum+
+    # DX, unsupported HGBP line). That is surfaced as a banner, but the levers are still
+    # built below — see ManualFillPlan.
     withheld = td.get("not_registered_reason")
-    if withheld:
-        return ManualFillPlan(items=[], withheld_reason=str(withheld))
+    withheld_reason = str(withheld) if withheld else None
 
     items: list[ManualFillItem] = []
     seen: set[str] = set()
 
-    # Coil hand picker — offered whenever a drawing exists, NOT only when the hand was
-    # assumed. Gating it on `coil_hand_defaulted` made the lever vanish the moment the
-    # engineer supplied a hand, so a mis-click (RH -> LH) could not be undone: the fill
-    # that set it also removed the only control for changing it (John 2026-07-29).
-    # It is a legitimate standing correction either way — a MISREAD hand is as damaging
-    # as a missing one, because the hand selects the LH vs RH template and therefore
-    # mirrors the entire drawing.
-    if td.get("svg"):
+    # Coil category — SUPPLY only, when classification failed outright. It selects the
+    # template, the rule set and the checklist sheet; re-classifying a category that WAS
+    # read is John's open decision J-0a and deliberately not offered.
+    if not coil_category:
+        items.append(
+            ManualFillItem(
+                key="coil_category", kind="template_input", label="Coil type",
+                reason=(
+                    "Coil type could not be classified from the submittal — it selects "
+                    "the template, the engine rules and the checklist sheet."
+                ),
+                allowed=list(COIL_CATEGORY_CHOICES), current_value=None, unit="",
+                critical=True,
+            )
+        )
+        seen.add("coil_category")
+
+    # Coil hand picker — offered whenever the coil is classified, NOT only when the hand
+    # was assumed, and NOT only when artwork exists. Gating it on `coil_hand_defaulted`
+    # made the lever vanish the moment the engineer supplied a hand, so a mis-click
+    # (RH -> LH) could not be undone (John 2026-07-29); gating it on `svg` removed it from
+    # every withheld/errored coil, which is exactly where it is needed (2026-09-23). The
+    # hand is a classification input, not a property of the artwork: it selects the LH
+    # vs RH template and therefore mirrors the entire drawing.
+    if coil_category:
         items.append(
             ManualFillItem(
                 key="coil_hand", kind="template_input", label="Coil hand",
@@ -730,6 +798,7 @@ def build_manual_fill_plan(
                     (td.get("extracted") or {}).get("hand"),
                 ),
                 unit="",
+                critical=True,
             )
         )
         seen.add("coil_hand")
@@ -753,6 +822,7 @@ def build_manual_fill_plan(
                     key="product_type", kind="engine_input", label="Product line",
                     reason="Pick a product line to derive dimensions.",
                     allowed=sorted(opts.keys()), current_value=product_type,
+                    critical=True,
                 )
             )
             seen.add("product_type")
@@ -771,6 +841,7 @@ def build_manual_fill_plan(
                 ManualFillItem(
                     key="unit_size", kind="engine_input", label="Unit size",
                     reason=reason, allowed=sizes, current_value=unit_size,
+                    critical=True,
                 )
             )
             seen.add("unit_size")
@@ -795,8 +866,29 @@ def build_manual_fill_plan(
                 key=inp, kind="engine_input", label=label,
                 reason="Required by the rule engine to derive dimensions — supply to un-gate.",
                 unit=unit or "in",
+                critical=inp in CRITICAL_FILL_KEYS,
             )
         )
+
+    # Water inlet/outlet connection sizes. R-071 never lists them in `missing_inputs`
+    # ("with either absent the base stands alone"), so the loop above can never surface
+    # them — offered explicitly for every water coil. `current_value` shows what intake
+    # extracted (`water_conn_extracted`, which already drives CD/S/R since 2026-09-23);
+    # the lever is a CORRECTION: it fires only when the engineer types a value, and only
+    # that typed value is written to the manual-override audit trail.
+    if coil_category in ("CWC", "HWC"):
+        extracted_conn = td.get("water_conn_extracted") or {}
+        for key, side in (("inlet_conn_size", "inlet"), ("outlet_conn_size", "outlet")):
+            if key in seen:
+                continue
+            seen.add(key)
+            label, unit = _ENGINE_INPUT_META[key]
+            items.append(
+                ManualFillItem(
+                    key=key, kind="engine_input", label=label, reason=_WATER_CONN_REASON,
+                    current_value=extracted_conn.get(side), unit=unit, critical=True,
+                )
+            )
 
     # Drawing-param items: panel params the engine left blocked (mode=='blocked' ONLY —
     # NOT value is None, which also matches 'unmapped' non-fillable rows).
@@ -812,7 +904,8 @@ def build_manual_fill_plan(
                             or "Engine did not derive this dimension; supply directly."
                         ),
                         unit=parameter.unit or "in",
+                        critical=criticality_for_param_key(key) == "critical",
                     )
                 )
 
-    return ManualFillPlan(items=items)
+    return ManualFillPlan(items=items, withheld_reason=withheld_reason)

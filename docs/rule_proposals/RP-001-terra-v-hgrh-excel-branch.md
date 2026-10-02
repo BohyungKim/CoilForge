@@ -1,5 +1,7 @@
 # RP-001 — Add a TERRA V branch to the Coil Checklist HGRH sheet
 
+> **PARTLY SUPERSEDED by the 2026-09-22 template refresh.** The sheet gained Terra V arms for O2 (2.75), TF/BF, SL2 and the FIT rows, so KD-004 is retired. C27 (CD) and C46 (supply S) still have no Terra V arm — KD-001..003 stand, and the CD ruling is open for re-adjudication (see the registry). The new O4/O6/O8 Terra V arms (= 2 while O2 = 2.75) are a fresh defect, filed as RP-003.
+
 **Status:** proposed · **Target:** Oxygen8's `Coil Checklist Template.xlsx`, not CoilForge
 **Raised by:** KD-001 … KD-005 (`src/coilforge/rules/known_divergences.yaml`)
 **Adjudicated:** 2026-08-04 · John

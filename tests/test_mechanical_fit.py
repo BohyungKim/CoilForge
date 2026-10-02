@@ -72,20 +72,22 @@ def test_dx_terra_uses_ch_for_height():
 
 
 def test_terra_split_families_evaluate_via_coarse_lookup():
-    # Terra split phase 2: the resolver now emits TERRA_H / TERRA_V, and the R-078/R-077
-    # lookup tables are still keyed by coarse TERRA. The fit lookups must normalize the
-    # split family so a Terra V / Terra H coil evaluates identically to coarse TERRA
-    # (no silent CANNOT_EVALUATE regression).
+    # Terra split phase 2: the resolver emits TERRA_H / TERRA_V. Terra H has no R-078 row
+    # of its own, so it normalizes to coarse TERRA and evaluates identically (no silent
+    # CANNOT_EVALUATE regression). Terra V has had its OWN rows since the 2026-09-22
+    # template (see test_terra_v_fit.py) and must NOT be folded onto Terra H any more.
     kw = dict(
         coil_type="DX", size_class=None,
         casing_width=44, casing_height=20, fl=30, fh=99, ch=15, oal=None,
     )
     base = evaluate_coil_fit(product_family="TERRA", **kw)
-    for fam in ("TERRA_H", "TERRA_V"):
-        res = evaluate_coil_fit(product_family=fam, **kw)
-        assert res.width.verdict == base.width.verdict == "PASS", fam
-        assert res.width.margin == base.width.margin, fam
-        assert res.height.basis == "CH" and res.height.verdict == "PASS", fam
+    res = evaluate_coil_fit(product_family="TERRA_H", **kw)
+    assert res.width.verdict == base.width.verdict == "PASS"
+    assert res.width.margin == base.width.margin
+    assert res.height.basis == "CH" and res.height.verdict == "PASS"
+    tv = evaluate_coil_fit(product_family="TERRA_V", unit_size="024", **kw)
+    assert tv.width.basis == "OAL" and tv.width.clearance == 9.75   # own row, not Terra H's
+    assert tv.height.basis == "FH"                                  # FH cap, not CH - 3.875
 
 
 def test_ventum_plus_dx_half_height():

@@ -75,9 +75,29 @@ def capture_enabled() -> bool:
 
 
 def _default_db_path() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME")
-    if not base:
-        base = str(Path.home() / ".local" / "share")
+    """Where the ledger lives when ``COILFORGE_CAPTURE_DB`` is unset.
+
+    On Windows this DELIBERATELY avoids ``%LOCALAPPDATA%``. The launcher's first
+    interpreter is the Microsoft Store Python, which is an MSIX package, and MSIX
+    silently redirects a packaged app's LocalAppData writes into its own
+    ``LocalCache``. Two things followed from that, both measured on 2026-08-11:
+
+    - The 37 MB corpus was not at the path this function returned; it was inside
+      ``...\\Packages\\PythonSoftwareFoundation.Python.3.11_*\\LocalCache\\Local\\``,
+      a container Windows empties when the Python app is Reset or reinstalled.
+    - ``run_server.bat`` falls back from ``python`` to ``py`` (a NON-packaged 3.12).
+      Same code, same env, but no redirection -> a second, empty ledger, and the
+      corpus splits in half with no error anywhere.
+
+    A plain profile directory is redirected for neither interpreter (verified: both
+    3.11-Store and 3.12 resolve AND write to the same file), so pinning the default
+    here closes both failure modes without the launcher needing to know anything.
+
+    POSIX is unchanged. Kept pure -- the legacy-location check is ``legacy_db_paths``.
+    """
+    if os.name == "nt":
+        return Path.home() / "CoilForgeData" / "capture" / "coilforge.sqlite3"
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     return Path(base) / "CoilForge" / "capture" / "coilforge.sqlite3"
 
 
@@ -86,6 +106,58 @@ def capture_db_path() -> Path:
     back to the default (the ``case_journal.journal_dir`` idiom)."""
     raw = os.environ.get(ENV_CAPTURE_DB, "").strip()
     return Path(raw) if raw else _default_db_path()
+
+
+def legacy_db_paths() -> list[Path]:
+    """Ledgers left behind at a pre-2026-08-11 location, newest-relevant first.
+
+    Returns only paths that EXIST and are not the currently-resolved ledger, so an
+    empty list means "nothing stranded". Two candidates, both Windows-only:
+
+    1. each installed Store-Python package's ``LocalCache`` -- where MSIX ACTUALLY
+       put the file. Globbed, because the package folder carries a per-version
+       publisher hash and hardcoding one would miss the next upgrade.
+    2. ``%LOCALAPPDATA%\\CoilForge\\capture\\`` -- what the old default merely named.
+
+    Physical location first, so that when both resolve to one file the caller is told
+    the path that still exists after the Store Python is uninstalled -- the phantom is
+    the wrong thing to print next to "delete this yourself".
+
+    Identity is ``os.path.samefile``, NOT ``Path.resolve()``. MSIX redirection is
+    bidirectional -- a packaged interpreter READS 2. and transparently gets 1. -- so
+    under the Store Python both candidates exist, report the same st_ino, and
+    ``resolve()`` (which knows about symlinks, not app containers) reports them as
+    two. That is what made the original bug invisible: the code wrote to
+    %LOCALAPPDATA%, read back from %LOCALAPPDATA%, and nothing ever looked wrong.
+    """
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        return []
+    root = Path(base)
+    tail = Path("CoilForge") / "capture" / "coilforge.sqlite3"
+    candidates = [
+        package / "LocalCache" / "Local" / tail
+        for package in sorted(root.glob("Packages/PythonSoftwareFoundation.Python.*"))
+    ]
+    candidates.append(root / tail)
+    current = capture_db_path()
+    found: list[Path] = []
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        if _same_file(candidate, current) or any(_same_file(candidate, f) for f in found):
+            continue
+        found.append(candidate)
+    return found
+
+
+def _same_file(left: Path, right: Path) -> bool:
+    """``os.path.samefile`` that answers False instead of raising when either side is
+    missing -- the common case here (the destination does not exist yet)."""
+    try:
+        return left.samefile(right)
+    except OSError:
+        return False
 
 
 def assert_outside_repo(path: Path) -> None:
