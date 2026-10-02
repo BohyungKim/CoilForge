@@ -812,6 +812,7 @@ function addCandidateFallbackFields(fieldsByLabel, candidate, uiState) {
     addSharedConstructionFallbackFields(fieldsByLabel, candidate);
     addSharedAirFallbackFields(fieldsByLabel, candidate);
     addSharedFoulingFallbackFields(fieldsByLabel);
+    addCcsiSystemTypeField(fieldsByLabel);
   } else if (waterCandidate) {
     // Construction rules only + the EXTRACTED air subset. Deliberately NOT
     // addSharedAirFallbackFields: its two review defaults would overwrite the water coil's
@@ -1028,6 +1029,29 @@ function addDxOnlyOptionsFallbackFields(fieldsByLabel, candidate) {
   if (systemTypeField) {
     setDcFieldAlias(fieldsByLabel, "System Type", systemTypeField);
   }
+}
+
+// The condensing mirror's System Type has no draft field and no derivation of its own, so it
+// read "unmapped" on every HGRH coil while the CCSI push carried a value (John 2026-10-01:
+// "RHHGRC 는 아직도 system type 이 missing"). The rule he approved lives in the coil-data map
+// (`RefrigerationSystemType`), so the mirror shows exactly what that resolved for THIS draft —
+// one implementation, and the row cannot disagree with what Send to CCSI delivers. Nothing is
+// shown for a held or unresolved entry: the row stays unmapped rather than guessing.
+function addCcsiSystemTypeField(fieldsByLabel) {
+  const page = activePdfCoilPage();
+  const block = page && page.ccsiCoilData;
+  if (!block || page.ccsiCoilDataKey !== ccsiCoilDataKey(page.workflow)) {
+    return;
+  }
+  const entry = (block.entries || []).find((item) => item.ccsi_id === "RefrigerationSystemType");
+  if (!entry || !entry.pushable || entry.value === null || entry.value === undefined) {
+    return;
+  }
+  setDcFieldAlias(
+    fieldsByLabel,
+    "System Type",
+    directCoilReviewField("system_type", entry.value, entry.reason, "ccsi_coil_data_refrigeration_system_type"),
+  );
 }
 
 function directCoilTubeMaterialField(candidate) {
@@ -2154,6 +2178,15 @@ function buildCcsiAutofillPayload(uiState, fieldMap) {
   };
 }
 
+function ccsiCoilDataKey(workflow) {
+  const candidate = (workflow?.candidates || [])[0] || null;
+  const draft = workflow?.direct_coil_input_draft || null;
+  if (!candidate || !draft) {
+    return null;
+  }
+  return JSON.stringify([candidate.candidate_id, draft.coil_quantity?.value ?? null, draft.fields || {}]);
+}
+
 // The coil-data block is keyed by the draft it was built from, so a manual fill that changes
 // the draft re-fetches, while re-renders of the same coil reuse the stamped block.
 async function stampCcsiCoilData() {
@@ -2168,7 +2201,7 @@ async function stampCcsiCoilData() {
   if (!candidate || !draft) {
     return;
   }
-  const key = JSON.stringify([candidate.candidate_id, draft.coil_quantity?.value ?? null, draft.fields || {}]);
+  const key = ccsiCoilDataKey(workflow);
   if (page.ccsiCoilDataKey === key && page.ccsiCoilData) {
     container.dataset.ccsiCoilData = JSON.stringify(page.ccsiCoilData);
     return;
@@ -2187,6 +2220,11 @@ async function stampCcsiCoilData() {
     page.ccsiCoilDataKey = key;
     if (activePdfCoilPage() === page) {
       container.dataset.ccsiCoilData = JSON.stringify(block);
+      // The mirror rendered before this block arrived; redraw it so the rows that read the
+      // block (condensing System Type) show the value. The mirror never calls back here.
+      if (state.ui) {
+        renderDirectCoilScreenMirror(state.ui);
+      }
     }
   } catch (_error) {
     // Review aid: a failed fetch leaves stage 1 empty (the panel says so), never half-filled.
