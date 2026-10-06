@@ -467,6 +467,28 @@ a multi-coil re-analyze re-applies fills via the frontend (headless `/derive` pe
 — the PDF workflow is PDF-bytes-memoized, so a server header would hit the pre-fill cache. Every value
 stays `review_required`/`manual_override` and `export_allowed` stays False; a `ManualOverride` audit
 entry is logged per fill; env `COILFORGE_MANUAL_FILL=0` disables the feature (rollback without reverting).
+**An offered lever must reach the DRAWING (John 2026-10-02).** Three did not: the Tier-A re-run
+(`_rerun_slots_with_manual_inputs`) merged `slot_values` but never re-populated the SVG (shared buckets
+only -- a dedicated template is re-populated later and hides it), the connection-size fill keys
+(`suction_conn_size`/`conn_size`) were never sent, and FH/FL had no lever at all. Every re-run now goes
+through `_merge_rerun_slots` (drop declined per-header slots, re-populate), and the Tier-A re-run carries
+the stated qty itself (`_stated_qty_in_scope`, same Terra V HGRH scope; a typed qty wins) -- an
+unrelated `application` fill used to drop it and move CD. **Typed submittal inputs travel as two values**
+(`_MANUAL_INPUT_KEYS` = rows/feeds/FH/FL/`return_conn_size`): `input_baseline` (what the submittal said,
+stamped by analyze from `extracted`, round-tripped like `water_conn_extracted`) and `manual_inputs` (typed
+only; rows/feeds whole numbers). With a baseline present the browser's plain keys are IGNORED -- they are
+the previous derive's echo, so folding typed values into them made a cleared value stick on the drawing
+while the checklist reverted. The title block's conn/`N Feed` text comes from `panel`, so typed conn/feeds
+overlay a ctx-only copy and `result["panel"]` is restored after the frozen call. A typed input with no
+Spec-data row gets a synthesised `spec_overrides` row against the baseline (the ledger's only persisted
+correction channel; `manual_overrides` on the result is read by nothing). Fill items carry `unresolved`
+(red only when critical AND outstanding) and `mirror_field`; `_absent_inputs` is the ONE definition of
+"missing"; the plan's `critical_missing` drives the coil-list badge and the Direct Coil screen's red rows;
+a blank row's `needs_inputs` (`_NEEDS_BY_BASE`/`_NEEDS_BY_CATEGORY_BASE`, each entry re-proved by
+`tests/test_blank_row_needs_inputs.py`) names the input that unblocks it. An HGRH with no connection size
+now leaves supply S blank (was the DX even spacing -- John). Tests that model a second request must build
+it from the first RESPONSE (`tests/derive_roundtrip.py`); `tests/test_no_fill_derive_pinned.py` pins
+no-fill drawings against a recording, with John-ruled changes listed in `RULED_DELTAS`.
 
 **Engineering Wiki** (`docs/wiki/`, schema `docs/wiki/WIKI.md`) — an LLM-maintained,
 interlinked markdown knowledge base (Karpathy "LLM Wiki" pattern) that is the human-readable

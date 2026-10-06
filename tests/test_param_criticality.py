@@ -64,7 +64,9 @@ def test_fill_items_carry_the_critical_flag():
     for key in ("product_type", "unit_size", "coil_hand", "inlet_conn_size", "outlet_conn_size"):
         assert items[key].critical is True, key
     assert items["application"].critical is False
-    assert items["rows"].critical is False
+    # John 2026-10-02: rows and feeds are critical submittal data (rows sets CD).
+    assert items["rows"].critical is True
+    assert {"rows", "feeds", "finned_height", "finned_length"} <= CRITICAL_FILL_KEYS
     assert {"coil_hand", "product_type", "unit_size"} <= CRITICAL_FILL_KEYS
 
 
@@ -119,6 +121,8 @@ def test_critical_styles_use_only_tokens_defined_in_both_themes():
         ".manual-fill-row.is-critical .manual-fill-key {",
         ".coil-drawing-picker.is-critical {",
         ".checklist-adopt-bar {",
+        ".dc-needs-input {",
+        ".tree-missing {",
     ):
         used = _token_block(selector)
         assert used, selector

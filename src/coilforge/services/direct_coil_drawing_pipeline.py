@@ -558,6 +558,13 @@ def build_drawing_slots(
                     # computed. A negative S is legitimate here -- the SOP states outright
                     # that "Supply S/R values may be negative".
                     slots[f"slot.S{supply_id}"] = _hgrh_supply_s(request, cd, conn_size)
+                elif is_hgrh:
+                    # No connection size -> no supply S (John 2026-10-02). It used to fall
+                    # through to the safety net below and print the DX even spacing
+                    # k*CD/(n+1): a plausible number on a critical dimension, standing in
+                    # for an input the submittal never gave. Blank, so the panel shows it
+                    # red and names the connection size the engineer has to supply.
+                    pass
                 elif is_dx:
                     # CHK DX!C46:C49 = ROUND(k*CD/(n+1)*8,0)/8 -- the sheet snaps the
                     # distributor centre to the nearest 1/8 (CD=5.5, n=2 -> 1.875 /

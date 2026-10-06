@@ -52,7 +52,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 149 |
+| `tests` | 156 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 2 |
@@ -196,6 +196,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/workflows/__init__.py` | Backend workflow orchestration helpers |
 | `src/coilforge/workflows/drawing_package.py` | Drawing-package workflow: combine the Direct Coil drawing with ours |
 | `tests/conftest.py` | Suite-wide isolation for the capture ledger |
+| `tests/derive_roundtrip.py` | Build a ``/derive`` spec from a template-drawing result the way the browser does |
 | `tests/test_ambient_coil_volume.py` | Phase 1 — Ambient coil-volume formula port (pure; no I/O) |
 | `tests/test_ambient_compare.py` | Phase 4 — Ambient comparator tolerance + the shared _match regression guard |
 | `tests/test_ambient_excel.py` | Ambient comparison Excel write-back — pure mapping + route contract |
@@ -205,13 +206,12 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_ambient_quote_request_pdf.py` | Phase 5 — the Ambient quote-request PDF (builder + /api/ambient/quote-request-pdf) |
 | `tests/test_ambient_range_provider.py` | Phase 3 wiring — the Coil-Utilities range provider drives real acceptance verdicts |
 | `tests/test_ambient_web.py` | Phase 5 — /api/ambient/* route contract (TestClient; parsing monkeypatched) |
+| `tests/test_blank_row_needs_inputs.py` | A blank drawing row names the input that unblocks it (John 2026-10-02) |
 | `tests/test_blocked_state_unblock.py` | Un-blocking a coil whose Drawing Parameters are empty (John 2026-09-22) |
 | `tests/test_capture_ledger.py` | Capture ledger (1a): every coil selection's (inputs -> proposal -> correction) |
 | `tests/test_capture_observe.py` | Capture-ledger observability (1d): run_dedup view, /api/capture/health, the |
 | `tests/test_capture_retrieve.py` | Case retrieval (Stage 2.0): masked-Gower nearest-neighbor over the ledger |
-| `tests/test_case_prefill.py` | PO Release board case prefill (?case= deep link) |
-| `tests/test_case_tuning.py` | Case-retrieval weight tuning harness (Stage 2, Part A5) |
 
-_336 source files, 244 with a header comment. 94 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_343 source files, 251 with a header comment. 101 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

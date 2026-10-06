@@ -47,6 +47,10 @@ _ENGINE_KEY_TO_COIL_KEY: dict[str, str] = {
     "rows": "rows",
     "feeds": "feeds",
     "circuits": "circuits",
+    # Typed FH / FL (John 2026-10-02): the sheet's FH/FL are input cells the CH and OAL
+    # formulas read, so a value the drawing uses must be the value the sheet is filled with.
+    "finned_height": "finned_height",
+    "finned_length": "finned_length",
     "qty_conn_per_header": "qty_conn_per_header",
     "suction_conn_size": "suction_conn_size",
     "conn_size": "conn_size",
