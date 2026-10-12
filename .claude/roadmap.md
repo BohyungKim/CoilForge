@@ -1121,6 +1121,7 @@
   ① 상태창에 문서 **3줄** 로그(`✓ Quote / ✓ Revised / ✓ Checklist`)와 `Filed 3/3` + 시각
   ② "Open the DirectCoil folder" 버튼이 실제로 해당 폴더를 연다
   ③ `DirectCoil` 폴더에 `.xlsx` 포함 **3개** 파일, Downloads에 잔존물 없음.
+- [ ] **[TR-16] 수동 입력 → 도면 브라우저 눈확인 (John)** — 워크트리 `.claude/worktrees/manual-fill`(또는 병합 후 메인)에서 `run_server.bat 8012` → 제출물 분석 → ①코일 목록 `N missing` 배지와 Direct Coil 화면 빨간 행 ②빈 도면 행의 `Needs:` 칩을 누르면 입력 칸으로 이동 ③값 입력 → 도면 치수·타이틀 블록(connection size, `N Feed`)·체크리스트 반영 ④그 값을 지우고 다른 코일에 갔다 오기 → 전부 원상복구. 헤드리스 Playwright로는 확인됨(2857 HHWC-1/2, 2870 CDXC-1); `Needs:` 칩은 실제 제출물에 빈 행이 없어 단위 테스트로만 고정.
   누락이 재현되면 이제 로그가 **어느 분기에서 빠졌는지 이름으로** 알려준다(= 재현 조건 확정 수단).
 - [ ] **[TR-1] Phase 1 편집 Drawing Params 브라우저 눈확인 (John)** — 서버(:8011) 실행 중 + 브라우저 열림 +
   바탕화면 `CoilForge_TEST_CDXC-1.pdf`(DX) 스테이징 완료(2026-07-16 세팅). 절차: PDF 드래그→분석 → "Manual
@@ -1391,7 +1392,21 @@
   **2026-08-07 보강:** 4a3c403이 **돌릴 제출물을 하나 만들어 줬다** — 3095 Harrison은 John이 어차피 눈으로
   확인해야 하는 파일이고(RHHGRC-1 헤더 2조 검증), 그 한 번의 재분석이 곧 `rule_firing` 첫 실측이 된다.
   ⚠️ 다만 **재시작 없이는 둘 다 무의미**하다 — 옛 프로세스는 헤더 수정도 1c'도 안 물고 있다.
+- [ ] **[수동 입력 → 도면 트랙] 제시된 입력 칸이 도면까지 가도록 수리 + 누락 강조 (John 2026-10-02~06, 브랜치 `claude/manual-fill-reaches-drawing`)** —
+  John: "submittal 데이터 누락은 항상 있으니 critical data를 확실히 highlight → 내가 직접 입력 → re-run으로 도면까지". 뼈대(HITL 막힘 해제, 09-23)는 있었고,
+  결함은 **입력 칸이 제시되는데 SVG까지 안 가는 경로 3개**였다: ①Tier-A 재실행이 `slot_values`만 갱신(shared 버킷 도면은 그대로 — 패널과 도면이 조용히 어긋남)
+  ②connection size fill 키(`suction_conn_size`/`conn_size`)가 체크리스트에만 감 ③FH/FL 입력 칸 없음. 고치는 중 드러난 것: 무관한 Tier-A 입력이 Terra V HGRH의
+  stated qty를 버려 CD가 바뀜(SVG가 안 바뀌어 안 보였을 뿐), 입력값을 `extracted`에 섞으면 **지워도 도면에 남음**(→ `input_baseline`/`manual_inputs` 분리),
+  타이틀 블록 문구는 `panel`에서 나와 치수만 바뀜. 강조 3건: 빈 행 `needs_inputs` 칩, 코일 목록 `N missing`, Direct Coil 화면 빨강.
+  **John 결정:** HGRH + connection size 없음 → S 공란+사유(CD/2 모양 숫자 대신) · Rows·Feeds critical · 물코일 feeds는 circuits가 적혀 있으면 읽힘(A).
+  plan-review 2라운드 + invariant-guard 2회 위반 0, **2278 green**, 실제 2857·2870 헤드리스 확인. 남은 것: TR-16 눈확인, `claude/ambient-supplier` 병합
+  (메인 트리의 미커밋 roadmap 수정과 같은 파일이라 병합 전에 그쪽을 먼저 커밋/정리).
 ## ⬜ 앞으로
+- [ ] **[수동 입력 → 도면 트랙] John 결정 대기 — connection size가 없을 때 S를 다른 근거로 그리는 곳 2곳** — HGRH와 같은 종류(근거 없는 숫자)인데 이번에 손대지 않았다:
+  Terra V DX는 `CD − Rn` 대신 even spacing으로 떨어지고(`direct_coil_drawing_pipeline.py` Terra V 분기 → DX 분기: conn 없이 1.875/3.625, conn 1.125면 4.1875/1.5625),
+  텍스트 워크플로 경로는 모든 코일 타입에 `CD/(circuits+1)`을 낸다(`drawing_param_resolver.py` 텍스트 워크플로 S). 공란+사유로 바꿀지 결정 필요.
+- [ ] **[수동 입력 → 도면 트랙] 남겨 둔 것(후속)** — circuits·hand 입력은 아직 `pick` 경로라 원장 기록 없음·kill switch 밖 / 새로고침하면 입력 사라짐(메모리 store만) +
+  태그만으로 재적용 / 입력 후 이미 만든 quote package PDF 무효화·`reviewedCoils` 초기화 / 입력값이 Direct Coil 화면 값·paste-ready 52필드·CCSI push에는 안 실림(의도로 고정된 동작).
 - [ ] **[CCSI coil-data 트랙] DX 화면 미러의 System Type이 push와 다른 계산을 쓴다 (2026-10-01 발견, 미착수)** — HGRH 칸은 push 결과를 읽게 고쳤지만(24ff94b) DX 칸은 여전히 `directCoilSystemTypeField`(헤더당 연결 수)로 계산한다. 4서킷이면 화면은 `4-Circuit Intertwined`를 보여 주는데 CCSI로는 아무것도 안 간다(John: DX 4서킷 매핑하지 않음). 그 칸은 `drawingTemplateState`의 등록 판정에도 쓰이므로, 바꾸기 전에 영향 범위부터 확인한다.
 - [ ] **[제출물 파싱 트랙] 마지막 코일의 상세 블록 누락 + 추출 지연 (성능 검증 세션 트랙 B, 미착수)** — 2873 CDXC-2 · 2974 CDXC-8은 상세 블록이 없어 코일 데이터 대부분이 `CCSI_SOURCE_MISSING`이다. 2755는 추출에 12분이 걸린다(2026-10-01 실측 743초). 원인 미조사.
 - [ ] **[문서] 프로젝트 `CLAUDE.md`의 CCSI coil-data 문단이 낡았다** — "every entry is `captured` today, so nothing is pushable"는 2026-09-29 승격 이후 사실이 아니다. 대체 규칙·D7 축소·물코일 소스·화면 System Type도 반영해야 한다.

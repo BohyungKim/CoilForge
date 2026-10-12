@@ -396,8 +396,14 @@ function renderProjectTree(uiState) {
     pageButton.className = `tree-item child ${index === state.activePdfCoilPageIndex ? "active" : ""}`;
     pageButton.type = "button";
     pageButton.dataset.coilPageIndex = String(index);
+    // Outstanding critical inputs for this coil (backend plan), so a coil the submittal
+    // left incomplete is visible from the list without opening it.
+    const missing = page.workflow?.template_drawing?.manual_fill_plan?.critical_missing || [];
+    const missingBadge = missing.length
+      ? ` <b class="tree-missing" title="${escapeHtml(`Missing: ${missing.map((k) => String(k).replace(/_/g, " ")).join(", ")}`)}">${missing.length} missing</b>`
+      : "";
     pageButton.innerHTML = `
-      <span>${reviewed ? "✓ " : ""}${escapeHtml(page.tag || `Coil ${index + 1}`)} x ${escapeHtml(page.quantity ?? "review")}</span>
+      <span>${reviewed ? "✓ " : ""}${escapeHtml(page.tag || `Coil ${index + 1}`)} x ${escapeHtml(page.quantity ?? "review")}${missingBadge}</span>
       <em>${escapeHtml(page.coil_type || page.product_type || "current draft")}</em>
     `;
     pageButton.addEventListener("click", () => {
@@ -1710,6 +1716,20 @@ function isDcDutyLabel(label) {
   return DC_DUTY_HIGHLIGHT_LABELS.has(normalizeDcLabel(label));
 }
 
+// Labels of the submittal-data rows whose critical input is still outstanding for the
+// active coil -- read from the backend plan (`mirror_field`), never from row emptiness:
+// this screen keeps showing analyze-time values, so an emptiness test would stay red after
+// the engineer typed the value in.
+function dcMissingCriticalLabels() {
+  const items = activeTemplateDrawing()?.manual_fill_plan?.items || [];
+  return new Set(
+    items
+      .filter((it) => it.critical && it.unresolved !== false && it.mirror_field)
+      .flatMap((it) => directCoilLabelsForDraftKey(it.mirror_field))
+      .map(normalizeDcLabel),
+  );
+}
+
 function renderDcInputRow(label, controlType, field, fallbackValue = null) {
   const fixedValue = fixedDcDrawingValue(label);
   // A declared fallbackValue applies whenever the row has no USABLE value — not only when the
@@ -1748,7 +1768,10 @@ function renderDcInputRow(label, controlType, field, fallbackValue = null) {
   // is sensible-only and reports no leaving WB, and an absent duty point must keep reading as
   // unmapped rather than becoming a highlighted empty box.
   const dutyClass = isDcDutyLabel(label) && status !== "unmapped" ? " dc-control--duty" : "";
-  const className = `dc-control ${statusClass(status)}${dutyClass}`;
+  const missingClass = dcMissingCriticalLabels().has(normalizeDcLabel(label))
+    ? " dc-control--critical-empty"
+    : "";
+  const className = `dc-control ${statusClass(status)}${dutyClass}${missingClass}`;
   if (controlType === "airflow") {
     return `
       <label class="dc-form-row">
@@ -2977,6 +3000,9 @@ function siblingCoilsForPairing() {
     .filter(Boolean);
 }
 
+// Submittal inputs the engineer may type over (mirrors submittal_to_drawing._MANUAL_INPUT_KEYS).
+const MANUAL_INPUT_KEYS = ["rows", "feeds", "finned_height", "finned_length", "return_conn_size"];
+
 // Build the /api/coil-drawing/derive request body from a coil's extracted geometry
 // plus the engineer's product/size pick and any human-in-the-loop manual fills. Manual
 // engine inputs OVERRIDE the extracted spec value (a filled `rows` beats a blank/wrong
@@ -2999,13 +3025,21 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
     circuits: pick("circuits", ex.circuits),
     special_feature: ex.special_feature,
     tag: ex.tag,
-    rows: pick("rows", ex.rows),
-    feeds: pick("feeds", ex.feeds),
+    // The submittal's geometry travels as TWO values (John 2026-10-02): these plain keys
+    // are only a fallback for a page with no `input_baseline`; what the engineer typed rides
+    // `manual_inputs`. Folding it in here with pick() made a cleared value stick, because
+    // `ex` is the previous derive's echo of whatever was sent.
+    rows: ex.rows,
+    feeds: ex.feeds,
     finned_height: ex.finned_height,
     finned_length: ex.finned_length,
-    // Editable spec fields (Phase 2): an unlocked return conn / coating edit overrides the
-    // extracted value so the engine recomputes (conn -> slots, coating -> R-080/081/035c notes).
-    suction_conn_size: pick("return_conn_size", ex.return_conn_size),
+    suction_conn_size: ex.return_conn_size,
+    manual_inputs: Object.fromEntries(
+      MANUAL_INPUT_KEYS.filter((k) => engineInputs[k] !== undefined && engineInputs[k] !== "")
+        .map((k) => [k, engineInputs[k]]),
+    ),
+    input_baseline: templateDrawing.input_baseline,
+    // Editable spec field: a coating edit overrides the extracted value (R-080/081/035c notes).
     coating: pick("coating", ex.coating),
     product_type: productLine,
     unit_size: unitSize,
@@ -3092,14 +3126,20 @@ function mergeManualFills(prev, fills, productLine, unitSize) {
   const base = prev || {};
   const f = fills || {};
   const engineInputs = { ...(base.engineInputs || {}) };
+  const specs = new Map((base.specOverrides || []).map((o) => [o.field_key, o]));
   for (const [key, value] of Object.entries(f.engineInputs || {})) {
-    if (value === null || value === undefined || value === "") delete engineInputs[key];
-    else engineInputs[key] = value;
+    if (value === null || value === undefined || value === "") {
+      delete engineInputs[key];
+      // A Spec-data correction of the same input goes with it: left behind, every later
+      // derive would log that correction while the drawing used the submittal's value.
+      specs.delete(key);
+    } else {
+      engineInputs[key] = value;
+    }
   }
   const params = new Map((base.paramOverrides || []).map((o) => [o.key, o]));
   for (const o of f.paramOverrides || []) params.set(o.key, o);
   for (const key of f.releaseKeys || []) params.delete(key);
-  const specs = new Map((base.specOverrides || []).map((o) => [o.field_key, o]));
   for (const o of f.specOverrides || []) specs.set(o.field_key, o);
   return {
     engineInputs,
@@ -3147,12 +3187,15 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     pickedValue(productLine, templateDrawing.product_type),
     pickedValue(unitSize, templateDrawing.unit_size),
   );
+  // Clearing the coil's LAST fill empties the store too. Writing only non-empty stores
+  // left the cleared value on the page: it re-rendered in the input, rode every later
+  // derive and checklist fill, and no refill was ever scheduled.
   const committed = !manualFillsEmpty(merged);
-  if (targetPage && committed) targetPage.manualFills = merged;
-  const storeChanged =
-    JSON.stringify(prevStore || null) !== JSON.stringify(committed ? merged : prevStore || null);
+  const nextStore = committed ? merged : null;
+  if (targetPage && (committed || prevStore)) targetPage.manualFills = nextStore;
+  const storeChanged = JSON.stringify(prevStore || null) !== JSON.stringify(nextStore);
   const revertStore = () => {
-    if (targetPage && targetPage.manualFills === merged) targetPage.manualFills = prevStore;
+    if (targetPage && targetPage.manualFills === nextStore) targetPage.manualFills = prevStore;
   };
   // Latest-wins, PER PAGE and INTERACTIVE ONLY (plan-review R1 BLOCKER-1 / R2 MAJOR-1). A
   // session-wide counter would discard N-1 of the headless re-apply fan-out's N coils; a
@@ -3202,6 +3245,13 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     }
     if (isStale()) return null;
     persistDerivedToPage(targetPage, updated);
+    // The coil list carries each coil's missing-input count, and the fill that just landed
+    // may have changed it; it used to re-render only when the review surfaces came back.
+    if (!opts.headless && state.ui) {
+      renderProjectTree(state.ui);
+      // ...and the submittal-data screen paints the coil's still-missing inputs red.
+      renderDirectCoilScreenMirror(state.ui);
+    }
     if (opts.headless) {
       return updated;  // background re-apply: store only, caller re-renders the active coil once
     }
@@ -3224,7 +3274,20 @@ async function deriveCoilDrawing(templateDrawing, productLine, unitSize, fills, 
     // can now evaluate. Update the active coil's fit inputs (preserving the rest
     // of the pair list) and re-run; fall back to just this coil if no PDF pages.
     const active = state.pdfCoilPages[state.activePdfCoilPageIndex];
-    const fitInput = fitInputFromSpec(spec, active?.fit_inputs);
+    // Geometry from the RESPONSE: the request's plain keys echo the previous derive, so
+    // after a cleared input they still hold the value the drawing no longer uses.
+    const drawn = updated.extracted || {};
+    const fitInput = fitInputFromSpec(
+      {
+        ...spec,
+        rows: drawn.rows,
+        feeds: drawn.feeds,
+        finned_height: drawn.finned_height,
+        finned_length: drawn.finned_length,
+        suction_conn_size: drawn.return_conn_size,
+      },
+      active?.fit_inputs,
+    );
     if (active) {
       active.fit_inputs = fitInput;
       refreshMechanicalFit();
@@ -3307,9 +3370,13 @@ function renderManualFillPanel(templateDrawing) {
             value="${escapeHtml(String(storedValue ?? ""))}"
             placeholder="${escapeHtml(read ? `read: ${read}` : "")}" />`;
       }
+      // Red only while the input is outstanding: the hand and the water connection sizes
+      // are standing correction levers on every coil, and painting them CRITICAL when
+      // nothing is missing buries the inputs that are.
+      const outstanding = it.critical && it.unresolved !== false;
       return `
-        <label class="manual-fill-row${it.critical ? " is-critical" : ""}">
-          <span class="manual-fill-key">${escapeHtml(it.label)}${it.critical ? ` <span class="manual-fill-critical">CRITICAL</span>` : ""}</span>
+        <label class="manual-fill-row${outstanding ? " is-critical" : ""}">
+          <span class="manual-fill-key">${escapeHtml(it.label)}${outstanding ? ` <span class="manual-fill-critical">CRITICAL</span>` : ""}</span>
           ${control}
           <span class="manual-fill-reason">${escapeHtml(it.reason)}</span>
         </label>`;
@@ -3432,7 +3499,7 @@ function syncManualParamActions() {
 
 const _MANUAL_NUMERIC_INPUTS = new Set([
   "header_count", "qty_conn_per_header", "rows", "feeds", "circuits",
-  "inlet_conn_size", "outlet_conn_size",
+  "inlet_conn_size", "outlet_conn_size", "return_conn_size", "finned_height", "finned_length",
 ]);
 
 async function submitManualFills(templateDrawing) {
@@ -3560,6 +3627,8 @@ const SPEC_EDIT_FIELDS = [
   { key: "rows", label: "Rows", numeric: true },
   { key: "feeds", label: "Feeds", numeric: true },
   { key: "return_conn_size", label: "Return conn.", numeric: true },
+  { key: "finned_height", label: "Finned height", numeric: true },
+  { key: "finned_length", label: "Finned length", numeric: true },
   { key: "coating", label: "Coating", numeric: false },
 ];
 
@@ -3940,8 +4009,15 @@ function renderParameterRow(parameter) {
   const criticalBadge = criticalEmpty
     ? `<span class="dc-dimension-critical">CRITICAL — needed to draw · type a value, then a reason</span>`
     : "";
+  // The input whose absence blanked this row (backend `needs_inputs`: a verified
+  // dependency that is actually missing). One click takes the engineer to where it is
+  // typed, so a red row says what to supply instead of only that something is wrong.
+  const needsChips = hasValue ? "" : (parameter.needs_inputs || [])
+    .map((key) => `<button type="button" class="dc-needs-input" data-needs-input="${escapeHtml(key)}">Needs: ${escapeHtml(fillInputLabel(key))}</button>`)
+    .join("");
   const badges = [
     criticalBadge,
+    needsChips,
     checklistAdoptHtml(parameter, chk, hasValue),
     chkView.badge,
     mismatchBadge,
@@ -3980,6 +4056,24 @@ function renderParameterRow(parameter) {
       ${badges}
     </label>
   `;
+}
+
+// The label the fill panel shows for an input key (one source: the backend plan).
+function fillInputLabel(key) {
+  const items = activeTemplateDrawing()?.manual_fill_plan?.items || [];
+  const item = items.find((it) => it.key === key);
+  return item?.label || String(key).replace(/_/g, " ");
+}
+
+// Where an input is typed: the product/size pickers, else its fill-panel control.
+function focusFillInput(key) {
+  const selector = key === "product_type" ? "#coil-product-line"
+    : key === "unit_size" ? "#coil-unit-size"
+    : `[data-manual-fill="${CSS.escape(key)}"]`;
+  const control = document.querySelector(selector);
+  if (!control) return;
+  control.scrollIntoView({ block: "center", behavior: "smooth" });
+  control.focus({ preventScroll: true });
 }
 
 // The checklist comparison row describing the SAME dimension as this panel row, or null.
@@ -4336,6 +4430,12 @@ function renderChecklistAdoptBar(parameters) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
     const td = activeTemplateDrawing();
+    const needs = target.closest("[data-needs-input]");
+    if (needs) {
+      event.preventDefault();
+      focusFillInput(needs.dataset.needsInput);
+      return;
+    }
     const adoptAll = target.closest("[data-adopt-all]");
     if (adoptAll) {
       event.preventDefault();

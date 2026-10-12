@@ -325,7 +325,9 @@ def test_the_fill_store_is_cumulative_and_committed_at_call_time():
     derive = _APP_JS.split("async function deriveCoilDrawing(")[1].split("\nasync function ")[0]
     assert "mergeManualFills(" in derive
     assert "page.manualFills = {" not in _APP_JS, "the store is merged, never replaced"
-    assert "targetPage.manualFills = merged" in derive
+    # Committed at call time: the merged store (or, once its last fill is cleared, nothing).
+    assert "const nextStore = committed ? merged : null;" in derive
+    assert "targetPage.manualFills = nextStore" in derive
 
 
 def test_latest_wins_is_per_page_and_never_drops_a_headless_derive():

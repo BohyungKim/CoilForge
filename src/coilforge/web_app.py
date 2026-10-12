@@ -1892,7 +1892,15 @@ def _known_drawing_param_key(key: str) -> bool:
 # (hand/header_type/product/unit_size) are deliberately NOT here — they change which
 # template is chosen and stay with the existing pickers/classification path.
 _KNOWN_SPEC_FIELD_KEYS: frozenset[str] = frozenset(
-    {"circuits", "rows", "feeds", "return_conn_size", "coating"}
+    {"circuits", "rows", "feeds", "return_conn_size", "coating", "finned_height", "finned_length"}
+)
+
+# The submittal inputs the engineer may type in place of a missing or misread value
+# (`manual_inputs`, John 2026-10-02). Counts must be whole numbers: a float feeds prints
+# "6.0 Feed" on the drawing and a fractional rows fails the engine's int schema.
+_MANUAL_INPUT_INT_KEYS: frozenset[str] = frozenset({"rows", "feeds"})
+_MANUAL_INPUT_FLOAT_KEYS: frozenset[str] = frozenset(
+    {"finned_height", "finned_length", "return_conn_size"}
 )
 
 
@@ -1914,10 +1922,36 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
         clean.pop("candidate", None)
         for key in (
             "application", "header_count", "qty_conn_per_header",
-            "inlet_conn_size", "outlet_conn_size", "coil_category",
+            "inlet_conn_size", "outlet_conn_size", "coil_category", "manual_inputs",
         ):
             clean.pop(key, None)
         return clean, errors
+
+    # Typed submittal inputs: {rows, feeds, finned_height, finned_length, return_conn_size}.
+    # A bad value is dropped with a surfaced error -- never stored, never a 500 (a string
+    # FH would raise in the slot layer).
+    if "manual_inputs" in clean:
+        raw_inputs = clean.pop("manual_inputs")
+        manual_inputs: dict[str, Any] = {}
+        if not isinstance(raw_inputs, dict):
+            if raw_inputs is not None:
+                errors.append("manual_inputs must be an object")
+            raw_inputs = {}
+        for key, raw in raw_inputs.items():
+            if raw in (None, ""):
+                continue
+            if key not in _MANUAL_INPUT_INT_KEYS | _MANUAL_INPUT_FLOAT_KEYS:
+                errors.append(f"unknown manual input: {key!r}")
+                continue
+            coerced = _coerce_float(raw)
+            if coerced is None or coerced <= 0:
+                errors.append(f"{key}: must be a positive number (got {raw!r})")
+            elif key in _MANUAL_INPUT_INT_KEYS and coerced != int(coerced):
+                errors.append(f"{key}: must be a whole number (got {raw!r})")
+            else:
+                manual_inputs[key] = int(coerced) if key in _MANUAL_INPUT_INT_KEYS else coerced
+        if manual_inputs:
+            clean["manual_inputs"] = manual_inputs
 
     # Source candidate for the Direct Coil review-surface refresh (TR-9). The workflow
     # validates it and checks its tag against the coil being derived; here we only reject

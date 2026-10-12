@@ -310,6 +310,18 @@ button:disabled,
    defined in BOTH the light and dark blocks are referenced here (--sidebar-muted,
    --sidebar-active-em, --status-ready). An undefined token silently falls back to
    white/inherited, which is the dark-mode white-card bug -- see the CLAUDE.md guard. */
+.tree-missing {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  color: var(--danger-text);
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-left: 4px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
 .tree-row {
   align-items: center;
   display: grid;
@@ -956,6 +968,19 @@ body.is-init-stage .primary-intake-panel {
 .checklist-adopt-bar .dc-dimension-note {
   color: var(--text-secondary);
   font-size: 11px;
+}
+
+.dc-needs-input {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  color: var(--danger-text);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 700;
+  justify-self: start;
+  grid-column: 1 / -1;
+  padding: 1px 8px;
 }
 
 .dc-dimension-reason {

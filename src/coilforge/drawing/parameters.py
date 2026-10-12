@@ -86,6 +86,11 @@ class DrawingParameter(BaseModel):
     manual_override: bool = False
     # Set only on a manual override row: who supplied the value (see the override model).
     source: Literal["engineer", "checklist"] | None = None
+    # On a blank row: the fill keys whose absence blanked it (John 2026-10-02) -- only an
+    # input that is BOTH a verified dependency of this dimension AND actually missing.
+    # Not computed from `key`: it depends on the coil. Empty means "nothing to name",
+    # which is also what a construction site that forgets it says.
+    needs_inputs: list[str] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

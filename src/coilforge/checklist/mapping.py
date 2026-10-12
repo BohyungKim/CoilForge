@@ -233,6 +233,7 @@ def _label_by_coil_key(category: str, spec: dict[str, Any]) -> dict[str, str]:
         "product_label": "UNIT", "unit_size": "SIZE", "application": "APPLICATION",
         "coating": "COATING", "rows": "ROWS", "feeds": "FEEDS/CIRCUITS",
         "circuits": "FEEDS/CIRCUITS", "coil_hand": "HANDING",
+        "finned_height": "FH", "finned_length": "FL",
     }
     if category == "DX":
         return {**common, "suction_conn_size": conn[0], "qty_conn_per_header": conn[1]}

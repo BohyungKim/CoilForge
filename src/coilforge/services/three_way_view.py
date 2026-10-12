@@ -32,7 +32,9 @@ from typing import Any
 from coilforge.checklist.compare import _match
 
 # The engine-relevant spec fields the engineer can edit (mirrors web_app._KNOWN_SPEC_FIELD_KEYS).
-_SPEC_FIELDS: tuple[str, ...] = ("circuits", "rows", "feeds", "return_conn_size", "coating")
+_SPEC_FIELDS: tuple[str, ...] = (
+    "circuits", "rows", "feeds", "return_conn_size", "coating", "finned_height", "finned_length",
+)
 
 
 def _verdict(left: Any, right: Any) -> str:
@@ -47,6 +49,7 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
         return {"fields": [], "note": None}
 
     extracted = result.get("extracted") or {}
+    baseline = result.get("input_baseline") or {}
     params = ((result.get("drawing_parameter_set") or {}).get("parameters")) or {}
 
     # Engineer overrides + their event-sourced machine proposal (the "before").
@@ -77,7 +80,10 @@ def build_three_way_view(result: dict[str, Any]) -> dict[str, Any]:
     # --- Spec fields: submittal(raw extracted) / coilforge(logic) / engineer -----------
     for key in _SPEC_FIELDS:
         ov = spec_overrides.get(key)
-        submittal = extracted.get(key)
+        # What the SUBMITTAL said: `extracted` echoes whatever the derive was sent, so once
+        # an input has been typed it holds the typed value; the baseline does not.
+        entry = baseline.get(key)
+        submittal = entry.get("value") if isinstance(entry, dict) else extracted.get(key)
         # coilforge-logic = the machine value: the pre-edit value when overridden, else the
         # extracted value (spec fields carry no separate normalized value today).
         coilforge = ov.get("previous_value") if ov else submittal

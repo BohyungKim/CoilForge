@@ -858,6 +858,56 @@ def _flag_header_count_conflict(
 _PER_HEADER_SLOT_RE = re.compile(r"^slot\.(?:HDx|HD|SL|I|S|O|R)\d+$")
 
 
+def _stated_qty_in_scope(result: dict[str, Any], stated_raw: Any) -> int | None:
+    """The submittal's stated connections-per-header when it may reach the engine, else None.
+
+    One definition of the scope `_apply_stated_qty_conn_per_header` documents -- an HGRH
+    on Terra V whose stated count DIFFERS from its circuit count, with the product line
+    and unit size resolved -- so the Tier-A re-run can carry the same reading without
+    widening it.
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return None
+    ex = result.get("extracted") or {}
+    if str(ex.get("coil_category") or "").strip().upper() != "HGRH":
+        return None
+    stated = _header_count_int(stated_raw)
+    circuits = _header_count_int(ex.get("circuits"))
+    if stated is None or circuits is None or stated == circuits:
+        return None
+    product = result.get("product_type")
+    if not (product and result.get("unit_size")):
+        return None
+    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
+
+    _family, variant = resolve_product_line(str(product))
+    return stated if variant == "TERRA_V" else None
+
+
+def _merge_rerun_slots(
+    result: dict[str, Any], slots: dict[str, Any], *, drop_declined: bool = True
+) -> None:
+    """Merge a re-run's slots into the result and re-populate the artwork from them.
+
+    ``slot_values`` is what the panel reads and the SVG is what John looks at; a re-run
+    that updates only the first leaves the two disagreeing with nothing flagged.
+    """
+    merged = result.setdefault("slot_values", {})
+    if drop_declined:
+        for key in [k for k in merged if _PER_HEADER_SLOT_RE.match(k) and k not in slots]:
+            del merged[key]
+    merged.update(slots)
+    template_id = result.get("template_id")
+    if template_id and result.get("svg"):
+        from coilforge.template_population.slot_population import populate_template_slots
+
+        repop = populate_template_slots(template_id, merged)
+        if repop.svg:
+            result["svg"] = repop.svg
+            result["populated_slots"] = list(repop.populated_slots)
+            result["missing_required_slots"] = list(repop.missing_required_slots)
+
+
 def _apply_stated_qty_conn_per_header(
     result: dict[str, Any], ctx: dict[str, Any] | None
 ) -> None:
@@ -891,24 +941,10 @@ def _apply_stated_qty_conn_per_header(
     No-op unless the submittal states a count that DIFFERS from the circuit count, so a
     coil where they agree (3095's own RHHGRC-1/-2/-3, qty = circuits = 2) is byte-identical.
     """
-    if not isinstance(result, dict) or "error" in result:
+    stated = _stated_qty_in_scope(result, (ctx or {}).get("qty_conn_per_header"))
+    if stated is None:
         return
     ex = result.get("extracted") or {}
-    if str(ex.get("coil_category") or "").strip().upper() != "HGRH":
-        return
-    stated = _header_count_int((ctx or {}).get("qty_conn_per_header"))
-    circuits = _header_count_int(ex.get("circuits"))
-    if stated is None or circuits is None or stated == circuits:
-        return
-    product = result.get("product_type")
-    unit_size = result.get("unit_size")
-    if not (product and unit_size):
-        return
-    from coilforge.submittal.coilmaster_drawing_extract import resolve_product_line
-
-    _family, variant = resolve_product_line(str(product))
-    if variant != "TERRA_V":
-        return
 
     from coilforge.services.direct_coil_drawing_pipeline import (
         UnknownCoilInputError,
@@ -919,11 +955,11 @@ def _apply_stated_qty_conn_per_header(
     try:
         slots, _resp = build_drawing_slots(
             coil_type="HGRH",
-            product_type=product,
-            unit_size=unit_size,
+            product_type=result.get("product_type"),
+            unit_size=result.get("unit_size"),
             rows=ex.get("rows"),
             feeds=ex.get("feeds"),
-            circuits=circuits,
+            circuits=_header_count_int(ex.get("circuits")),
             suction_conn_size=_coerce_float(ex.get("return_conn_size")),
             qty_conn_per_header=stated,
             finned_height=ex.get("finned_height"),
@@ -933,26 +969,8 @@ def _apply_stated_qty_conn_per_header(
     except (UnknownCoilInputError, ValueError):
         return
 
-    merged = result.setdefault("slot_values", {})
-    stale = [
-        key
-        for key in merged
-        if _PER_HEADER_SLOT_RE.match(key) and key not in slots
-    ]
-    for key in stale:
-        del merged[key]
-    merged.update(slots)
+    _merge_rerun_slots(result, slots)
     result["stated_qty_conn_per_header_applied"] = stated
-
-    template_id = result.get("template_id")
-    if template_id and result.get("svg"):
-        from coilforge.template_population.slot_population import populate_template_slots
-
-        repop = populate_template_slots(template_id, merged)
-        if repop.svg:
-            result["svg"] = repop.svg
-            result["populated_slots"] = list(repop.populated_slots)
-            result["missing_required_slots"] = list(repop.missing_required_slots)
 
 
 def _water_conn_for(spec_or_ctx: dict[str, Any] | None) -> dict[str, Any]:
@@ -1207,6 +1225,14 @@ def _rerun_slots_with_manual_inputs(
     letting ``_apply_hgrh_pairing_cd`` run afterwards: that helper merges its FULL
     recomputed slot set, and it knows nothing about the three Tier-A inputs, so a
     second pass would silently undo the fill it was supposed to complement.
+
+    Carries the submittal's stated connections-per-header for the same reason, whenever
+    the engineer did not type one (a typed value always wins): `application` changes no
+    slot, yet supplying it used to drop the stated count and move a Terra V HGRH's CD.
+
+    Re-populates the SVG (John 2026-10-02). Until then the fill moved ``slot_values`` and
+    the panel while the artwork kept the pre-fill numbers -- on every shared-bucket coil,
+    with nothing flagged.
     """
     from coilforge.services.direct_coil_drawing_pipeline import (
         UnknownCoilInputError,
@@ -1228,6 +1254,13 @@ def _rerun_slots_with_manual_inputs(
         if str(coil_category).strip().upper() == "DX"
         else None
     )
+    # From `spec`, not `ctx`: ctx's qty falls back to the lever itself (see the ctx builder).
+    qty = spec.get("qty_conn_per_header")
+    stated = (
+        _stated_qty_in_scope(result, spec.get("stated_qty_conn_per_header"))
+        if qty is None
+        else None
+    )
     try:
         slots, response = build_drawing_slots(
             coil_type=coil_category,
@@ -1237,7 +1270,7 @@ def _rerun_slots_with_manual_inputs(
             feeds=ex.get("feeds"),
             circuits=spec.get("circuits") or 1,
             suction_conn_size=_coerce_float(conn),
-            qty_conn_per_header=spec.get("qty_conn_per_header"),
+            qty_conn_per_header=qty if qty is not None else stated,
             application=spec.get("application"),
             header_count=spec.get("header_count"),
             with_hgrh=True if partner_conn is not None else None,
@@ -1251,9 +1284,14 @@ def _rerun_slots_with_manual_inputs(
         )
     except (UnknownCoilInputError, ValueError):
         return None
-    # setdefault: a gated/omitted result may lack the slot_values key. update() is
-    # additive/overwrite so a base input the re-run didn't produce can never drop a slot.
-    result.setdefault("slot_values", {}).update(slots)
+    # A per-header slot this run declined is removed -- unless the connection size is a
+    # string the frozen path parsed and `_coerce_float` could not (`0.625" OD`): there the
+    # frozen R is the better-informed value and this run declined it for want of a parse.
+    _merge_rerun_slots(
+        result, slots, drop_declined=conn is None or _coerce_float(conn) is not None
+    )
+    if stated is not None:
+        result["stated_qty_conn_per_header_applied"] = stated
     return response
 
 
@@ -1611,6 +1649,126 @@ _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
     "inlet_conn_size", "outlet_conn_size",
 )
 
+# Submittal inputs the engineer may type in place of a missing or misread value (John
+# 2026-10-02). Each travels as TWO values, like the water connections above: what the
+# submittal said (`input_baseline`, stamped by analyze and round-tripped by the browser)
+# and what the engineer typed (`manual_inputs`). Folding the typed value into the plain
+# spec keys does not work: the frozen path echoes ctx into `extracted`, the browser builds
+# the next request from that echo, and a cleared value would then stay on the drawing
+# while the checklist reverted -- with every later audit row recording typed -> typed.
+_MANUAL_INPUT_KEYS: tuple[str, ...] = (
+    "rows", "feeds", "finned_height", "finned_length", "return_conn_size",
+)
+
+
+def _input_baseline(template_drawing: dict[str, Any], candidate: Any) -> dict[str, Any]:
+    """What the submittal said for each `_MANUAL_INPUT_KEYS` input: ``{value, stated}``.
+
+    ``value`` is the analyze-time ``extracted`` value -- what the frozen path actually
+    drew from -- so a baseline-driven derive reproduces analyze. ``stated`` is False when
+    nothing was read. A water coil's submittal states "Circuits", not feeds, and its feeds
+    are taken from that count (`_template_header_context_from_candidate`; the same source
+    John approved for the CCSI push, 2026-10-01) -- so they count as stated whenever the
+    circuits were, and as missing only when neither was (John 2026-10-06: a badge on every
+    water coil would hide the ones that really are missing).
+    """
+    ex = template_drawing.get("extracted") or {}
+    baseline = {
+        key: {"value": ex.get(key), "stated": ex.get(key) not in (None, "")}
+        for key in _MANUAL_INPUT_KEYS
+    }
+    if str(ex.get("coil_category") or "").upper() in ("CWC", "HWC") and all(
+        _candidate_field_value(candidate, "geometry", key) in (None, "")
+        for key in ("number_of_feeds", "circuits")
+    ):
+        baseline["feeds"]["stated"] = False
+    return baseline
+
+
+def _resolve_manual_inputs(
+    spec: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """``(spec with effective values, baseline, typed)`` for one /derive request.
+
+    Effective = typed ?? baseline. With a baseline present the browser's plain keys are
+    IGNORED: they are the previous derive's echo, so after a clear they still hold the
+    value the engineer just removed. A request without a usable baseline (an older page,
+    a deep link, a direct API caller) builds one from its plain keys, which reproduces
+    today's behaviour exactly.
+    """
+    raw_typed = spec.get("manual_inputs")
+    typed = {
+        key: value
+        for key, value in (raw_typed.items() if isinstance(raw_typed, dict) else ())
+        if key in _MANUAL_INPUT_KEYS and value is not None
+    }
+    raw_baseline = spec.get("input_baseline")
+    baseline: dict[str, Any]
+    if isinstance(raw_baseline, dict) and all(
+        isinstance(raw_baseline.get(key), dict) for key in _MANUAL_INPUT_KEYS
+    ):
+        baseline = raw_baseline
+    else:
+        plain = {
+            "rows": spec.get("rows"),
+            "feeds": spec.get("feeds"),
+            "finned_height": spec.get("finned_height"),
+            "finned_length": spec.get("finned_length"),
+            "return_conn_size": spec.get("suction_conn_size") or spec.get("return_conn_size"),
+        }
+        baseline = {
+            key: {"value": value, "stated": value not in (None, "")}
+            for key, value in plain.items()
+        }
+    effective = {
+        key: typed[key] if key in typed else baseline[key].get("value")
+        for key in _MANUAL_INPUT_KEYS
+    }
+    resolved = dict(spec)
+    for key in ("rows", "feeds", "finned_height", "finned_length"):
+        resolved[key] = effective[key]
+    # Both spellings: the ctx builder and the Tier-A re-run each read the plain key.
+    resolved["suction_conn_size"] = effective["return_conn_size"]
+    resolved["return_conn_size"] = effective["return_conn_size"]
+    return resolved, baseline, typed
+
+
+def _panel_with_typed_inputs(spec: dict[str, Any], typed: dict[str, Any]) -> Any:
+    """The spec panel as the drawing must print it, or the original when nothing changes.
+
+    The title block's connection size and "N Feed" text are built from ``panel``, not from
+    the geometry keys (`pdf_to_template_drawing._panel_slots`), so a typed connection or
+    feeds that reached only ctx moved the dimensions while the old text stayed printed.
+    A water coil whose inlet/outlet was typed takes its connection text in analyze's
+    order (`_candidate_connection_size`: inlet before outlet) -- replacing a printed
+    value only when that value came from the extracted inlet/outlet.
+    """
+    panel = spec.get("panel")
+    changes: dict[str, Any] = {}
+    if "return_conn_size" in typed:
+        changes["conn_size"] = typed["return_conn_size"]
+    if "feeds" in typed:
+        changes["feeds"] = typed["feeds"]
+    category = str(spec.get("coil_category") or "").strip().upper()
+    typed_water = {
+        side: spec.get(f"{side}_conn_size")
+        for side in ("inlet", "outlet")
+        if spec.get(f"{side}_conn_size") is not None
+    }
+    if category in ("CWC", "HWC") and typed_water:
+        water = _water_conn_for(spec)
+        extracted = spec.get("water_conn_extracted") or {}
+        printed = (panel or {}).get("conn_size")
+        from_water = printed in (None, "") or printed in (
+            extracted.get("inlet"), extracted.get("outlet")
+        )
+        conn = water["inlet"] if water["inlet"] is not None else water["outlet"]
+        if from_water and conn is not None:
+            changes["conn_size"] = conn
+    if not changes:
+        return panel
+    return {**(panel if isinstance(panel, dict) else {}), **changes}
+
 
 def manual_overrides_from_fills(spec: dict[str, Any]) -> list[ManualOverride]:
     """Build the ``ManualOverride`` audit trail for one /derive fill. Every human
@@ -1626,6 +1784,21 @@ def manual_overrides_from_fills(spec: dict[str, Any]) -> list[ManualOverride]:
                 ManualOverride(
                     target_field=key,
                     override_value=spec.get(key),
+                    override_reason=reason,
+                    reviewed_by=reviewed_by,
+                    review_status="unreviewed",
+                    downstream_effects=["rule_engine_recompute"],
+                )
+            )
+    baseline = spec.get("input_baseline") if isinstance(spec.get("input_baseline"), dict) else {}
+    typed = spec.get("manual_inputs") if isinstance(spec.get("manual_inputs"), dict) else {}
+    for key in _MANUAL_INPUT_KEYS:
+        if typed.get(key) is not None:
+            overrides.append(
+                ManualOverride(
+                    target_field=key,
+                    previous_value=(baseline.get(key) or {}).get("value"),
+                    override_value=typed[key],
                     override_reason=reason,
                     reviewed_by=reviewed_by,
                     review_status="unreviewed",
@@ -1670,6 +1843,14 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     )
     from coilforge.submittal.pdf_to_template_drawing import pdf_text_to_template_drawing
 
+    # Every reader below sees the EFFECTIVE value of the typed submittal inputs (typed ??
+    # what the submittal said); see `_resolve_manual_inputs` for why the browser's plain
+    # keys cannot be trusted for these.
+    spec, input_baseline, manual_inputs = _resolve_manual_inputs(spec)
+    spec["input_baseline"] = input_baseline
+    spec["manual_inputs"] = manual_inputs
+    ctx_panel = _panel_with_typed_inputs(spec, manual_inputs)
+
     ctx = {
         "coil_category": spec.get("coil_category"),
         "coil_hand": spec.get("coil_hand"),
@@ -1696,9 +1877,18 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         "coating": spec.get("coating"),
         # Carry the submittal spec-panel values back through the re-derive so the
         # right-side panel stays populated once dimensions are logic-derived.
-        "panel": spec.get("panel"),
+        "panel": ctx_panel,
     }
     result = pdf_text_to_template_drawing("", cover_text="", header_context=ctx)
+    # The frozen path hands ctx's panel straight back, and the browser resends it as the
+    # next request's panel. `result["panel"]` is only that round-trip carrier: carrying
+    # the typed values in it would keep them printed after the engineer cleared them.
+    if ctx_panel is not spec.get("panel"):
+        result["panel"] = spec.get("panel") or {}
+    result["input_baseline"] = input_baseline
+    result["manual_input_keys"] = sorted(
+        {*manual_inputs, *(k for k in ("inlet_conn_size", "outlet_conn_size") if spec.get(k) is not None)}
+    )
     # Round-trip of the extracted water connection sizes (submittal data driving the
     # checklist's CD/S/R; not a manual-fill trigger). The frozen result never carries
     # them, so the caller copies them across.
@@ -1727,10 +1917,9 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
         # documents).
         _apply_water_connection_slots(result, _water_conn_for(spec))
         # Same submittal-stated qty as analyze. Confined to this `else` branch ON
-        # PURPOSE: when the engineer DID supply a Tier-A input, `_rerun_slots_with_
-        # manual_inputs` already passed `spec['qty_conn_per_header']`, and re-running
-        # from `ctx` would overwrite what the human typed with the submittal reading
-        # (ctx prefers `stated_...`, see the ctx builder) -- a manual fill must win.
+        # PURPOSE: the Tier-A re-run carries the stated qty itself (a typed one winning),
+        # and re-running from `ctx` afterwards would overwrite what the human typed with
+        # the submittal reading (ctx prefers `stated_...`, see the ctx builder).
         _apply_stated_qty_conn_per_header(result, ctx)
 
     # 1c seam-A: capture engine provenance (rule_id + confidence per field) from the
@@ -1775,16 +1964,37 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     # Auto-surface fill plan — built AFTER the gates so a gate-omitted coil surfaces a
     # "drawing withheld" note instead of fill inputs (filling cannot un-gate it).
     result["manual_fill_plan"] = build_manual_fill_plan(
-        result, fill_response, parameter_set
+        result, fill_response, parameter_set,
+        typed={
+            **{k: spec[k] for k in _MANUAL_ENGINE_INPUT_KEYS if spec.get(k) is not None},
+            **manual_inputs,
+        },
     ).model_dump()
     # Audit trail (session store on the result). Kept review-required; never confirmed.
     result["manual_overrides"] = [mo.model_dump() for mo in manual_overrides_from_fills(spec)]
     # Phase 2: echo the sanitized spec-field overrides so the capture ledger records them
     # as (before -> after) corrections at stage 'spec_field'. The engine-relevant fields
     # (circuits/rows/feeds/return_conn_size/coating) are already threaded into ctx above, so
-    # the drawing itself recomputes; this is the parallel capture channel.
-    if spec.get("spec_overrides"):
-        result["spec_overrides"] = spec["spec_overrides"]
+    # the drawing itself recomputes; this is the parallel capture channel. A typed input
+    # with no explicit Spec-data row of its own is recorded too, against what the SUBMITTAL
+    # said -- the fill panel never asks for a reason, and without this row nothing in the
+    # ledger would show the drawing was built from a value a human typed.
+    spec_overrides = list(spec.get("spec_overrides") or [])
+    explicit = {ov.get("field_key") for ov in spec_overrides if isinstance(ov, dict)}
+    for key, value in manual_inputs.items():
+        if key not in explicit:
+            spec_overrides.append(
+                {
+                    "field_key": key,
+                    "previous_value": input_baseline[key].get("value"),
+                    "new_value": value,
+                    "override_reason": str(
+                        spec.get("override_reason") or "manual fill (human-in-the-loop)"
+                    ),
+                }
+            )
+    if spec_overrides:
+        result["spec_overrides"] = spec_overrides
     # Phase 2b: attach the per-coil three-way review view (submittal / CoilForge / engineer).
     # Review aid only; the override column reads the event-sourced machine proposal so a
     # corrected field still shows what the engine originally proposed.
@@ -2500,6 +2710,9 @@ def _run_candidate_to_drawing_payload(
         water_conn = (ctx or notes_ctx).get("water_conn_extracted")
         if water_conn:
             template_drawing["water_conn_extracted"] = water_conn
+        # What the submittal said for the inputs the engineer may type over; round-tripped
+        # by the browser so a /derive can tell a typed value from the submittal's.
+        template_drawing["input_baseline"] = _input_baseline(template_drawing, selected_candidate)
 
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)

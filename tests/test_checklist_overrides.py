@@ -203,3 +203,39 @@ def test_override_with_no_row_on_this_sheet_is_warned_not_dropped():
     joined = " | ".join(fill.warnings)
     assert "ZD" in joined and "no checklist dimension row" in joined
     assert "header_count" in joined
+
+
+# --- typed FH / FL (John 2026-10-02) ----------------------------------------
+def test_fh_fl_overrides_reach_the_cells_marked_review_required():
+    """A typed FH/FL used to land in `ignored_keys`: the drawing used it, the filed .xlsx
+    kept the submittal's value, and CH / OAL disagreed between the two."""
+    overrides = normalize_coil_overrides(
+        _payload("CDXC-1", {"finned_height": 40.0, "finned_length": 50.0})
+    )
+    assert overrides["CDXC-1"].ignored_keys == ()
+    sheet = build_checklist_fill([_dx_coil()], overrides).sheets[0]
+    for label, value, was in (("FH", 40.0, 45.0), ("FL", 50.0, 54.0)):
+        cell = _cell(sheet, label)
+        assert cell.value == value, label
+        assert cell.status == "review_required", label
+        assert cell.override is not None and cell.override.previous_value == was, label
+
+
+def test_drawing_and_checklist_agree_on_r_after_a_typed_conn():
+    """One store key, `return_conn_size`, now feeds both: the DX sheet's SUCTION CONN SZ
+    and the drawing's R (= the connection size on a single-circuit DX)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from coilforge.workflows.submittal_to_drawing import derive_coil_template_drawing
+
+    drawing = derive_coil_template_drawing(
+        {
+            "coil_category": "DX", "coil_hand": "LH", "tag": "CDXC-1", "circuits": 1,
+            "rows": 5, "feeds": 9, "finned_height": 45.0, "finned_length": 54.0,
+            "product_type": "NOVA", "unit_size": "C24",
+            "manual_inputs": {"return_conn_size": 1.375},
+        }
+    )
+    overrides = normalize_coil_overrides(_payload("CDXC-1", {"return_conn_size": 1.375}))
+    sheet = build_checklist_fill([_dx_coil(circuits=1, qty_conn_per_header=1)], overrides).sheets[0]
+    assert drawing["slot_values"]["slot.R2"] == 1.375
+    assert _cell(sheet, "SUCTION CONN SZ").value == 1.375

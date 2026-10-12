@@ -1,0 +1,1192 @@
+{
+ "analyze_dx1": {
+  "export_allowed": false,
+  "panel_rows": {},
+  "slot_values": {
+   "slot.BF": 0.63,
+   "slot.CD": 5.5,
+   "slot.CH": 13.25,
+   "slot.CIRCUITING": "2 Feed / 24 Pass",
+   "slot.CL": 18.0,
+   "slot.COATING_NOTE": null,
+   "slot.FH": 12.0,
+   "slot.FL": 15.0,
+   "slot.HD2": 3.5,
+   "slot.HDx1": 4.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 3.0,
+   "slot.MODEL_NUMBER": "DX-F-S-04-13-12.00x15.00-L",
+   "slot.O2": 2.0,
+   "slot.OAL": 20.25,
+   "slot.R2": 0.63,
+   "slot.RB": 1.75,
+   "slot.RETURN_CONN_SIZE": "0.625",
+   "slot.RF": 1.5,
+   "slot.S1": 2.75,
+   "slot.SL2": 8.0,
+   "slot.TAG": "CDXC-1",
+   "slot.TF": 0.63
+  },
+  "svg_sha256": "8a67812cb57f939e0cf1fea43fc60e474ac9e258c400b1d96e3861a1b62d1501",
+  "template_id": "coilmaster_dx_lh_header1"
+ },
+ "analyze_dx1_then_no_fill_derive": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "CD": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "CH": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "HD": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "HDx1": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "HF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "I": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "O": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "R": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "RF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "S": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "SL": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "TF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.CIRCUITING": "2 Feed",
+   "slot.COATING_NOTE": null,
+   "slot.FH": 12.0,
+   "slot.FL": 15.0,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.RETURN_CONN_SIZE": "0.625",
+   "slot.ROWS": 4,
+   "slot.TAG": "CDXC-1"
+  },
+  "svg_sha256": "aae60b949a2b2ce88aa4408aa6d44da591f680b61dcc9b509e9bcf37c4763def",
+  "template_id": "coilmaster_dx_lh_header1"
+ },
+ "cwc_terra_h": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.5,
+    "default",
+    null
+   ],
+   "CD": [
+    9.875,
+    "default",
+    null
+   ],
+   "CH": [
+    20.125,
+    "default",
+    null
+   ],
+   "HD": [
+    4.0,
+    "default",
+    null
+   ],
+   "HDx1": [
+    4.0,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    3.25,
+    "default",
+    null
+   ],
+   "O": [
+    16.875,
+    "default",
+    null
+   ],
+   "R": [
+    2.0,
+    "default",
+    null
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    4.0,
+    "default",
+    null
+   ],
+   "SL": [
+    10.0,
+    "default",
+    null
+   ],
+   "TF": [
+    1.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.5,
+   "slot.CD": 9.875,
+   "slot.CH": 20.125,
+   "slot.CIRCUITING": "10 Feed",
+   "slot.CL": 39.0,
+   "slot.COATING_NOTE": null,
+   "slot.FH": 18.0,
+   "slot.FL": 36.0,
+   "slot.HD2": 4,
+   "slot.HDx1": 4,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 3.25,
+   "slot.O2": 16.875,
+   "slot.OAL": 42.25,
+   "slot.R2": 2.0,
+   "slot.RB": 2.25,
+   "slot.RETURN_CONN_SIZE": 2.0,
+   "slot.RF": 1.5,
+   "slot.ROWS": 6,
+   "slot.S1": 4.0,
+   "slot.SL2": 10,
+   "slot.SUPPLY_CONN_SIZE": "2.0\"",
+   "slot.TAG": "CCWC-1",
+   "slot.TF": 1.625
+  },
+  "svg_sha256": "f32381807efbf444446d741b55bda3c94ade6322c6697f2443c641aa97cfd823",
+  "template_id": "coilmaster_terra_cwc_rh"
+ },
+ "dx_no_product": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "CD": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "CH": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "HD": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "HDx1": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "HF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "I": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "O": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "R": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "RF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "S": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "SL": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "TF": [
+    null,
+    "blocked",
+    "Pick a product line + unit size to derive this dimension."
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.COATING_NOTE": null,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.TAG": "CDXC-1"
+  },
+  "svg_sha256": "01e3dd1706d52b5799e5eda5c6185a22769a60454356f2ecd7f38cf742d73269",
+  "template_id": "coilmaster_dx_lh_header1"
+ },
+ "dx_nova_1hd": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.625,
+    "default",
+    null
+   ],
+   "CD": [
+    5.5,
+    "default",
+    null
+   ],
+   "CH": [
+    21.25,
+    "default",
+    null
+   ],
+   "HD": [
+    3.5,
+    "default",
+    null
+   ],
+   "HDx1": [
+    4.5,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    3.0,
+    "default",
+    null
+   ],
+   "O": [
+    2.0,
+    "default",
+    null
+   ],
+   "R": [
+    1.125,
+    "default",
+    null
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    2.75,
+    "default",
+    null
+   ],
+   "SL": [
+    8.0,
+    "default",
+    null
+   ],
+   "TF": [
+    0.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.625,
+   "slot.CD": 5.5,
+   "slot.CH": 21.25,
+   "slot.CIRCUITING": "6 Feed",
+   "slot.CL": 43.0,
+   "slot.COATING_NOTE": null,
+   "slot.DIST_EXT": 6,
+   "slot.DIST_ORIENTATION": "DOWN",
+   "slot.FH": 20.0,
+   "slot.FL": 40.0,
+   "slot.HD2": 3.5,
+   "slot.HDx1": 4.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 3,
+   "slot.NOTES": "Copper Straps Required. Distributor 6\" Extension Downwards",
+   "slot.O2": 2,
+   "slot.OAL": 45.0,
+   "slot.R2": 1.125,
+   "slot.RB": 1.5,
+   "slot.RETURN_CONN_SIZE": "1.125\"",
+   "slot.RF": 1.5,
+   "slot.ROWS": 4,
+   "slot.S1": 2.75,
+   "slot.SL2": 8,
+   "slot.TAG": "CDXC-1",
+   "slot.TF": 0.625
+  },
+  "svg_sha256": "c7125a878625af0efc4e45987b8f8e90561290f064fab9e4fc5c5a4c08711a89",
+  "template_id": "coilmaster_dx_lh_header1"
+ },
+ "dx_terra_h_paired_with_hgrh": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.5,
+    "default",
+    null
+   ],
+   "CD": [
+    5.5,
+    "default",
+    null
+   ],
+   "CH": [
+    26.125,
+    "default",
+    null
+   ],
+   "HD": [
+    3.5,
+    "default",
+    null
+   ],
+   "HD2": [
+    3.5,
+    "default",
+    null
+   ],
+   "HDx1": [
+    4.5,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    3.0,
+    "default",
+    null
+   ],
+   "I2": [
+    3.0,
+    "default",
+    null
+   ],
+   "O": [
+    3.25,
+    "default",
+    null
+   ],
+   "O2": [
+    3.25,
+    "default",
+    null
+   ],
+   "R": [
+    1.125,
+    "default",
+    null
+   ],
+   "R2": [
+    3.75,
+    "default",
+    null
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    1.875,
+    "default",
+    null
+   ],
+   "S2": [
+    3.625,
+    "default",
+    null
+   ],
+   "SL": [
+    10.0,
+    "default",
+    null
+   ],
+   "TF": [
+    1.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ],
+   "ZD2": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.5,
+   "slot.CD": 5.5,
+   "slot.CH": 26.125,
+   "slot.CIRCUITING": "8 Feed / 2 circuits",
+   "slot.CL": 39.0,
+   "slot.COATING_NOTE": null,
+   "slot.DIST_EXT": 6,
+   "slot.DIST_ORIENTATION": "DOWN",
+   "slot.FH": 24.0,
+   "slot.FL": 36.0,
+   "slot.HD2": 3.5,
+   "slot.HD4": 3.5,
+   "slot.HDx1": 4.5,
+   "slot.HDx3": 4.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 3,
+   "slot.I3": 3,
+   "slot.NOTES": "Copper Straps Required. Distributor 6\" Extension Downwards",
+   "slot.O2": 3.25,
+   "slot.O4": 3.25,
+   "slot.OAL": 41.0,
+   "slot.R2": 1.125,
+   "slot.R4": 3.75,
+   "slot.RB": 1.5,
+   "slot.RETURN_CONN_SIZE": "1.125\"",
+   "slot.RF": 1.5,
+   "slot.ROWS": 4,
+   "slot.S1": 1.875,
+   "slot.S3": 3.625,
+   "slot.SL2": 10,
+   "slot.SL4": 10,
+   "slot.TAG": "CDXC-1",
+   "slot.TF": 1.625
+  },
+  "svg_sha256": "378e4e478c5a0be82aa9c2180ff7c01adbcf9ecad071372aaef2265d19924e08",
+  "template_id": "coilmaster_dx_rh_header2"
+ },
+ "dx_ventum_plus": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    1.0,
+    "default",
+    null
+   ],
+   "CD": [
+    5.5,
+    "default",
+    null
+   ],
+   "CH": [
+    26.0,
+    "default",
+    null
+   ],
+   "HD": [
+    3.5,
+    "default",
+    null
+   ],
+   "HDx1": [
+    4.5,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    12.0,
+    "default",
+    null
+   ],
+   "O": [
+    2.0,
+    "default",
+    null
+   ],
+   "R": [
+    1.125,
+    "default",
+    null
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    2.75,
+    "default",
+    null
+   ],
+   "SL": [
+    10.0,
+    "default",
+    null
+   ],
+   "TF": [
+    1.0,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 1,
+   "slot.CD": 5.5,
+   "slot.CH": 26.0,
+   "slot.CIRCUITING": "6 Feed",
+   "slot.CL": 43.0,
+   "slot.COATING_NOTE": null,
+   "slot.DIST_EXT": 6,
+   "slot.DIST_ORIENTATION": "UP",
+   "slot.FH": 24.0,
+   "slot.FL": 40.0,
+   "slot.HD2": 3.5,
+   "slot.HDx1": 4.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 12,
+   "slot.NOTES": "Copper Straps Required. Distributor 6\" Extension Upwards",
+   "slot.O2": 2,
+   "slot.OAL": 45.0,
+   "slot.R2": 1.125,
+   "slot.RB": 1.5,
+   "slot.RETURN_CONN_SIZE": "1.125\"",
+   "slot.RF": 1.5,
+   "slot.ROWS": 4,
+   "slot.S1": 2.75,
+   "slot.SL2": 10,
+   "slot.TAG": "CDXC-1",
+   "slot.TF": 1
+  },
+  "svg_sha256": "ef8e83d3362f4171311c1a2517d18894e9e66f549773a241bd7b9c7ae671acc0",
+  "template_id": "coilmaster_vplus_dx_lh_header1"
+ },
+ "hgrh_nova": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.625,
+    "default",
+    null
+   ],
+   "CD": [
+    3.75,
+    "default",
+    null
+   ],
+   "CH": [
+    21.25,
+    "default",
+    null
+   ],
+   "HD": [
+    3.5,
+    "default",
+    null
+   ],
+   "HDx1": [
+    3.5,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    2.0,
+    "default",
+    null
+   ],
+   "O": [
+    2.0,
+    "default",
+    null
+   ],
+   "R": [
+    0.875,
+    "default",
+    null
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    1.125,
+    "default",
+    null
+   ],
+   "SL": [
+    8.0,
+    "default",
+    null
+   ],
+   "TF": [
+    0.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.625,
+   "slot.CD": 3.75,
+   "slot.CH": 21.25,
+   "slot.CIRCUITING": "4 Feed",
+   "slot.CL": 43.0,
+   "slot.COATING_NOTE": null,
+   "slot.FH": 20.0,
+   "slot.FL": 40.0,
+   "slot.HD2": 3.5,
+   "slot.HDx1": 3.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 2,
+   "slot.NOTES": "Copper Straps Required.",
+   "slot.O2": 2,
+   "slot.OAL": 45.0,
+   "slot.R2": 0.875,
+   "slot.RB": 1.5,
+   "slot.RETURN_CONN_SIZE": 0.875,
+   "slot.RF": 1.5,
+   "slot.ROWS": 2,
+   "slot.S1": 1.125,
+   "slot.SL1": 5.3125,
+   "slot.SL2": 8,
+   "slot.SUPPLY_CONN_SIZE": "0.875\"",
+   "slot.TAG": "RHHGRC-1",
+   "slot.TF": 0.625
+  },
+  "svg_sha256": "8e66c603bb5e89d6d0826255db7aa4354c001d7ac7b28a3b90f241c6a78ea232",
+  "template_id": "coilmaster_hgrh_lh_header1"
+ },
+ "hgrh_nova_no_conn": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.625,
+    "default",
+    null
+   ],
+   "CD": [
+    3.75,
+    "default",
+    null
+   ],
+   "CH": [
+    21.25,
+    "default",
+    null
+   ],
+   "HD": [
+    3.5,
+    "default",
+    null
+   ],
+   "HDx1": [
+    3.5,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    2.0,
+    "default",
+    null
+   ],
+   "O": [
+    2.0,
+    "default",
+    null
+   ],
+   "R": [
+    null,
+    "blocked",
+    "Needs the return connection size \u2014 not found in the submittal extract."
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    1.875,
+    "default",
+    null
+   ],
+   "SL": [
+    8.0,
+    "default",
+    null
+   ],
+   "TF": [
+    0.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.625,
+   "slot.CD": 3.75,
+   "slot.CH": 21.25,
+   "slot.CIRCUITING": "4 Feed",
+   "slot.CL": 43.0,
+   "slot.COATING_NOTE": null,
+   "slot.FH": 20.0,
+   "slot.FL": 40.0,
+   "slot.HD2": 3.5,
+   "slot.HDx1": 3.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 2,
+   "slot.NOTES": "Copper Straps Required.",
+   "slot.O2": 2,
+   "slot.OAL": 45.0,
+   "slot.RB": 1.5,
+   "slot.RF": 1.5,
+   "slot.ROWS": 2,
+   "slot.S1": 1.875,
+   "slot.SL2": 8,
+   "slot.TAG": "RHHGRC-1",
+   "slot.TF": 0.625
+  },
+  "svg_sha256": "af6effc6ec41af280a37d1113129c16cf8c13e6350e34258dc22f2f13151210a",
+  "template_id": "coilmaster_hgrh_lh_header1"
+ },
+ "hgrh_terra_v_stated_qty": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.625,
+    "default",
+    null
+   ],
+   "CD": [
+    3.75,
+    "default",
+    null
+   ],
+   "CH": [
+    25.25,
+    "default",
+    null
+   ],
+   "HD": [
+    3.5,
+    "default",
+    null
+   ],
+   "HD2": [
+    3.5,
+    "default",
+    null
+   ],
+   "HD3": [
+    3.5,
+    "default",
+    null
+   ],
+   "HD4": [
+    3.5,
+    "default",
+    null
+   ],
+   "HDx1": [
+    3.5,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    2.0,
+    "default",
+    null
+   ],
+   "I2": [
+    2.0,
+    "default",
+    null
+   ],
+   "I3": [
+    2.0,
+    "default",
+    null
+   ],
+   "I4": [
+    2.0,
+    "default",
+    null
+   ],
+   "O": [
+    2.75,
+    "default",
+    null
+   ],
+   "O2": [
+    2.75,
+    "default",
+    null
+   ],
+   "O3": [
+    2.75,
+    "default",
+    null
+   ],
+   "O4": [
+    2.75,
+    "default",
+    null
+   ],
+   "R": [
+    0.5,
+    "default",
+    null
+   ],
+   "R2": [
+    2.5,
+    "default",
+    null
+   ],
+   "R3": [
+    null,
+    "blocked",
+    "Engine did not derive this dimension; review required."
+   ],
+   "R4": [
+    null,
+    "blocked",
+    "Engine did not derive this dimension; review required."
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    0.25,
+    "default",
+    null
+   ],
+   "S2": [
+    0.25,
+    "default",
+    null
+   ],
+   "S3": [
+    0.25,
+    "default",
+    null
+   ],
+   "S4": [
+    0.25,
+    "default",
+    null
+   ],
+   "SL": [
+    12.0,
+    "default",
+    null
+   ],
+   "TF": [
+    0.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ],
+   "ZD2": [
+    4.5,
+    "default",
+    null
+   ],
+   "ZD3": [
+    4.5,
+    "default",
+    null
+   ],
+   "ZD4": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.625,
+   "slot.CD": 3.75,
+   "slot.CH": 25.25,
+   "slot.CIRCUITING": "4 Feed / 4 circuits",
+   "slot.CL": 18,
+   "slot.COATING_NOTE": null,
+   "slot.FH": 24,
+   "slot.FL": 15,
+   "slot.HD2": 3.5,
+   "slot.HD4": 3.5,
+   "slot.HD6": 3.5,
+   "slot.HD8": 3.5,
+   "slot.HDx1": 3.5,
+   "slot.HDx3": 3.5,
+   "slot.HDx5": 3.5,
+   "slot.HDx7": 3.5,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 2,
+   "slot.I3": 2,
+   "slot.I5": 2,
+   "slot.I7": 2,
+   "slot.NOTES": "Copper Straps Required.",
+   "slot.O2": 2.75,
+   "slot.O4": 2.75,
+   "slot.O6": 2.75,
+   "slot.O8": 2.75,
+   "slot.OAL": 20.0,
+   "slot.R2": 0.5,
+   "slot.R4": 2.5,
+   "slot.RB": 1.5,
+   "slot.RETURN_CONN_SIZE": 0.5,
+   "slot.RF": 1.5,
+   "slot.ROWS": 2,
+   "slot.S1": 0.25,
+   "slot.S3": 0.25,
+   "slot.S5": 0.25,
+   "slot.S7": 0.25,
+   "slot.SL1": 6.0,
+   "slot.SL2": 12,
+   "slot.SL3": 6.0,
+   "slot.SL4": 12,
+   "slot.SL5": 6.0,
+   "slot.SL6": 12,
+   "slot.SL7": 6.0,
+   "slot.SL8": 12,
+   "slot.SUPPLY_CONN_SIZE": "0.5\"",
+   "slot.TAG": "RHHGRC-1",
+   "slot.TF": 0.625
+  },
+  "svg_sha256": "c4cfaa51767ac0df21dfedec89dad818c4f757a549a28ff40884eb4ced23b397",
+  "template_id": "coilmaster_hgrh_rh_header4"
+ },
+ "hwc_nova_extracted_conn": {
+  "export_allowed": false,
+  "panel_rows": {
+   "BF": [
+    0.625,
+    "default",
+    null
+   ],
+   "CD": [
+    6.0,
+    "default",
+    null
+   ],
+   "CH": [
+    31.25,
+    "default",
+    null
+   ],
+   "HD": [
+    4.0,
+    "default",
+    null
+   ],
+   "HDx1": [
+    4.0,
+    "default",
+    null
+   ],
+   "HF": [
+    1.5,
+    "default",
+    null
+   ],
+   "I": [
+    2.3125,
+    "default",
+    null
+   ],
+   "O": [
+    2.3125,
+    "default",
+    null
+   ],
+   "R": [
+    1.5,
+    "default",
+    null
+   ],
+   "RF": [
+    1.5,
+    "default",
+    null
+   ],
+   "S": [
+    1.5,
+    "default",
+    null
+   ],
+   "SL": [
+    8.0,
+    "default",
+    null
+   ],
+   "TF": [
+    0.625,
+    "default",
+    null
+   ],
+   "ZD": [
+    4.5,
+    "default",
+    null
+   ]
+  },
+  "slot_values": {
+   "slot.BF": 0.625,
+   "slot.CD": 6.0,
+   "slot.CH": 31.25,
+   "slot.CIRCUITING": "3 Feed",
+   "slot.CL": 63.0,
+   "slot.COATING_NOTE": null,
+   "slot.FH": 30.0,
+   "slot.FL": 60.0,
+   "slot.HD2": 4,
+   "slot.HDx1": 4,
+   "slot.HEADER_MATERIAL": "Type L Copper",
+   "slot.HF": 1.5,
+   "slot.I1": 2.3125,
+   "slot.O2": 2.3125,
+   "slot.OAL": 66.25,
+   "slot.R2": 1.5,
+   "slot.RB": 2.25,
+   "slot.RETURN_CONN_SIZE": 1.5,
+   "slot.RF": 1.5,
+   "slot.ROWS": 1,
+   "slot.S1": 1.5,
+   "slot.SL2": 8,
+   "slot.SUPPLY_CONN_SIZE": "1.5\"",
+   "slot.TAG": "HHWC-1",
+   "slot.TF": 0.625
+  },
+  "svg_sha256": "05e7d38335e5d9f9be1a151f67e75cdd717e624929f0a1d4181c98fde87be997",
+  "template_id": "coilmaster_hwc_lh"
+ }
+}
