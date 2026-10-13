@@ -1240,8 +1240,11 @@
   - [ ] 실사용 중 어긋나는 값이 보이면 프로젝트 번호·코일 태그·필드만 적어 오면 된다
   - ⚠️ **엔지니어 도장이 찍힌 서명본을 CoilForge에 올리면 숫자가 깨질 수 있다**(2814 도장본: 2300 CFM → "2", 58 °F → "5"; intake의 degraded 판정에 안 걸림). Oxygen8 원본을 올리는 편이 안전하다.
   **B. 돌아와서 Claude가 할 것(순서대로):**
-  - [ ] **오더 게이트 재실행** — 현재 `outputs/ccsi_order_gate/`는 매핑 완성(4b6ecea) **이전** 맵 + 새 submittal 선택(71a4874) 기준이다. `python scripts/ccsi_report_crosscheck.py --workers 2` → `python scripts/ccsi_order_gate.py`(캐시 재사용 ~10분, 선택이 바뀌면 1.3–3시간). **분리 실행 + 종료 코드 기록**(`cmd /c "… & echo EXIT=%ERRORLEVEL% > file"`) — 16:20 실행 1회가 traceback 없이 죽었다. 결과로 아래 "필수 게이트" 항목을 닫는다.
-  - [ ] 재실행 후 볼 판정: DX `EnteringDryBulb`·HGRH `RowsDeep` supported→demote_candidate(새 프로젝트 21개 유입 때 생김, 원인 미조사), 물코일 `TubeMaterial` demote_candidate(기본값 0.018 vs 오더 0.020 — 2298 PHWC-2 등)
+  - [x] **오더 게이트 재실행 (2026-10-11, 병합 HEAD `3b91608`)** — crosscheck EXIT=0(126 프로젝트, DX 184 · HGRH 115 · CWC 7 · HWC 22 코일) → gate calibration PASS. **판정 변화 0건**: 이전 `gate.json`은 "매핑 완성 이전"이 아니라 이미 `24ff94b`(4b6ecea 이후) 기준이었다 — 위 전제가 틀렸던 것. 이전 결과는 `*.pre_rerun_20261011.json`.
+  - [x] **재실행 후 판정 3건 — John 결정 "셋 다 A" 반영 (2026-10-12)** — 셋 다 CoilForge는 submittal 원문과 일치하고 오더만 다르다. `order_gate.RULED_ORDER_CHANGES` 9행(프로젝트·태그·필드 + **두 값 모두** 고정, 값이 바뀌면 다시 판정)에 원인 `ruled_order_change`(결함 아님)를 붙였다. 게이트 재실행: DX `EnteringDryBulb`·HGRH `RowsDeep` → supported, 물코일 `TubeMaterial` → insufficient(기본값은 일치해도 증거로 세지 않는 규칙이라 supported가 될 수 없다). 나머지 판정 변화 0, demote 후보 28 → 24(남은 24는 이번 결정 범위 밖. 그중 5개 — DX `FinMaterial`·`TubeMaterial`, HGRH `FinMaterial`, HWC `Altitude`·`NumberOfFeeds` — 는 `gate.pre_pick` 이후 새로 생겼고 원인 미조사). 이전 결과는 `*.pre_ruling_20261012.*`에 있다.
+    - DX `EnteringDryBulb`: 오더 match 131 / unexplained 2 = 3239 CDXC-3·4뿐. submittal p33·p42 `DB (F): 74.0`, 오더 REV1(재선정) 75.59.
+    - HGRH `RowsDeep`: match 78 / unexplained 3 = 2447·2541·2897 RHHGRC-1. 세 submittal 모두 `Rows: 2`, 오더 1(2897은 REV0부터 1).
+    - 물코일 `TubeMaterial` 기본값 0.018: HWC match 12 / 반례 2(2298 PHWC-2, 2811 HHWC-1), CWC match 2 / 반례 2(2678·2811 CCWC-1), 반례는 전부 오더 0.020.
   - [ ] `CLAUDE.md` CCSI coil-data 문단 갱신(아래 "앞으로"의 [문서] 항목) — 게이트 결과가 나온 뒤 한 번에
   - [ ] DX 화면 미러 System Type(아래 "앞으로" 항목)
   - [ ] `pytest.ini` 처리 결정(누가 만든 파일인지 불명, 내용은 `testpaths = tests` 한 줄 — 커밋할지 지울지 John 판단)
@@ -1399,8 +1402,7 @@
   stated qty를 버려 CD가 바뀜(SVG가 안 바뀌어 안 보였을 뿐), 입력값을 `extracted`에 섞으면 **지워도 도면에 남음**(→ `input_baseline`/`manual_inputs` 분리),
   타이틀 블록 문구는 `panel`에서 나와 치수만 바뀜. 강조 3건: 빈 행 `needs_inputs` 칩, 코일 목록 `N missing`, Direct Coil 화면 빨강.
   **John 결정:** HGRH + connection size 없음 → S 공란+사유(CD/2 모양 숫자 대신) · Rows·Feeds critical · 물코일 feeds는 circuits가 적혀 있으면 읽힘(A).
-  plan-review 2라운드 + invariant-guard 2회 위반 0, **2278 green**, 실제 2857·2870 헤드리스 확인. 남은 것: TR-16 눈확인, `claude/ambient-supplier` 병합
-  (메인 트리의 미커밋 roadmap 수정과 같은 파일이라 병합 전에 그쪽을 먼저 커밋/정리).
+  plan-review 2라운드 + invariant-guard 2회 위반 0, **2278 green**, 실제 2857·2870 헤드리스 확인. 남은 것: TR-16 눈확인. `claude/ambient-supplier` 병합은 `3b91608`(2026-10-11)로 끝났다.
 ## ⬜ 앞으로
 - [ ] **[수동 입력 → 도면 트랙] John 결정 대기 — connection size가 없을 때 S를 다른 근거로 그리는 곳 2곳** — HGRH와 같은 종류(근거 없는 숫자)인데 이번에 손대지 않았다:
   Terra V DX는 `CD − Rn` 대신 even spacing으로 떨어지고(`direct_coil_drawing_pipeline.py` Terra V 분기 → DX 분기: conn 없이 1.875/3.625, conn 1.125면 4.1875/1.5625),

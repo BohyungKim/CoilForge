@@ -40,6 +40,7 @@ CAUSES: dict[str, bool] = {
     "notation": False,                 # computed field, per-coil vs all-coils
     "rounding": False,                 # printed precision only (77.9 vs 77.89, 1050 vs 1048)
     "air_basis": False,                # order rated on Standard air; CoilForge pushes Actual (John 2026-10-01)
+    "ruled_order_change": False,       # John ruled this exact disagreement an order-side change (RULED_ORDER_CHANGES)
     "default_counterexample": True,    # a D2 default the order contradicts
     "quantity_semantics": True,        # pushed airflow / GPM off by the coil quantity
     "changed_at_order_cf_differs": True,  # changed at order, and CoilForge matched neither side
@@ -69,6 +70,23 @@ _RULE_SOURCES: dict[str, str] = {
     "CCSI_DEFAULT_PROFILE": "default_profile",
     "CCSI_SOURCE_MISSING": "submittal_silent",
     "CCSI_NO_SOURCE": "no_source",
+}
+# (project, TAG, ccsi_id) -> (CoilForge value, order value) John ruled an order-side change: CoilForge
+# matches the submittal, the order differs (John 2026-10-12, "셋 다 A"). The ruling covers that exact
+# disagreement only — if either value moves, the row is judged afresh, never silently kept explained.
+RULED_ORDER_CHANGES: dict[tuple[str, str, str], tuple[str, str]] = {
+    # Q1 DX EnteringDryBulb: submittal p33/p42 `DB (F): 74.0`; the REV1 order was re-selected
+    ("3239", "CDXC-3", "EnteringDryBulb"): ("74", "75.59"),
+    ("3239", "CDXC-4", "EnteringDryBulb"): ("74", "75.59"),
+    # Q2 HGRH RowsDeep: every submittal prints `Rows: 2`; the order (2897 from REV0) says 1
+    ("2447", "RHHGRC-1", "RowsDeep"): ("2", "1"),
+    ("2541", "RHHGRC-1", "RowsDeep"): ("2", "1"),
+    ("2897", "RHHGRC-1", "RowsDeep"): ("2", "1"),
+    # Q3 water TubeMaterial: the 0.018 default stays; these orders chose 0.020
+    ("2298", "PHWC-2", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
+    ("2811", "HHWC-1", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
+    ("2678", "CCWC-1", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
+    ("2811", "CCWC-1", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
 }
 PROMOTE_MIN_PROJECTS = 3
 ROUNDING_REL = 0.002
@@ -186,9 +204,17 @@ def _within_rounding(a: Any, b: Any) -> bool:
 
 
 # ------------------------------------------------------------------ causes
-def mismatch_cause(row: Mapping[str, Any], coil: Mapping[str, Any], info: FieldInfo | None) -> str:
+def _is_ruled(row: Mapping[str, Any], coil: Mapping[str, Any], project: str) -> bool:
+    ruled = RULED_ORDER_CHANGES.get((project, str(coil.get("tag") or "").upper(), row["ccsi_id"]))
+    return bool(ruled) and same_value(row.get("coilforge"), ruled[0]) and same_value(row.get("ccsi"), ruled[1])
+
+
+def mismatch_cause(row: Mapping[str, Any], coil: Mapping[str, Any], info: FieldInfo | None, *,
+                   project: str = "") -> str:
     """Why a ``mismatch`` row disagrees (first rule that applies)."""
     ccsi_id = row["ccsi_id"]
+    if _is_ruled(row, coil, project):
+        return "ruled_order_change"
     flags = field_flags(coil.get("report_flags") or [], coil.get("coil_type") or "").get(ccsi_id, [])
     if any(f.startswith(_REPORT_UNPARSED_PREFIXES) or f == "parse_inconsistent" for f in flags):
         return "report_unparsed"
@@ -232,7 +258,8 @@ def annotate(results: Iterable[Mapping[str, Any]], calibration_keys: frozenset[t
                 if row.get("ccsi_id") == "Tag":
                     continue  # the pairing key; single_of_type pairing makes a mismatch expected
                 info = field_info(coil["coil_type"], row["ccsi_id"])
-                cause = mismatch_cause(row, coil, info) if row.get("verdict") == "mismatch" else None
+                cause = (mismatch_cause(row, coil, info, project=str(project.get("project")))
+                         if row.get("verdict") == "mismatch" else None)
                 out.append({
                     "project": str(project.get("project")), "tag": coil.get("tag"), "coil_type": coil["coil_type"],
                     "tier": tier, "coil_reselect": reselect, "ccsi_id": row["ccsi_id"], "role": row.get("role"),

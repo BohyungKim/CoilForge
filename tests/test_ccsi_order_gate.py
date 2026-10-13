@@ -323,3 +323,37 @@ def test_a_standard_air_order_is_an_air_basis_difference_not_a_defect() -> None:
     # unrelated fields are untouched by a Standard basis
     edb = row("EnteringDryBulb", "80", "75")
     assert og.mismatch_cause(edb, {"coil_type": "DX", "rows": [basis, edb]}, None) == "unexplained"
+
+
+def test_a_ruled_order_change_is_explained_only_for_that_exact_disagreement() -> None:
+    """John 2026-10-12 ("셋 다 A"): CoilForge matches the submittal and the order changed — stop re-asking.
+
+    The ruling is keyed to project + tag + field AND both values, so a moved CoilForge value, a new
+    order value, or the same values on another coil is judged afresh.
+    """
+    def row(cf, rep, code="CCSI_OK"):
+        return {"ccsi_id": "RowsDeep", "verdict": "mismatch", "reason_code": code,
+                "coilforge": cf, "ccsi": rep, "role": "input"}
+
+    hgrh = {"coil_type": "HGRH", "tag": "RHHGRC-1", "rows": []}
+    assert og.mismatch_cause(row("2", "1"), hgrh, None, project="2447") == "ruled_order_change"
+    assert og.CAUSES["ruled_order_change"] is False
+    assert og.mismatch_cause(row("2", "1"), hgrh, None, project="9999") == "unexplained"
+    assert og.mismatch_cause(row("3", "1"), hgrh, None, project="2447") == "unexplained"
+    assert og.mismatch_cause(row("2", "4"), hgrh, None, project="2447") == "unexplained"
+    # a ruled default counterexample stops counting against the default
+    tube = {"ccsi_id": "TubeMaterial", "verdict": "mismatch", "reason_code": "CCSI_DEFAULT_PROFILE",
+            "coilforge": "Copper 0.018 Plain", "ccsi": "Copper 0.020 Plain", "role": "input"}
+    hwc = {"coil_type": "HWC", "tag": "HHWC-1", "rows": [tube]}
+    assert og.mismatch_cause(tube, hwc, None, project="2811") == "ruled_order_change"
+    assert og.mismatch_cause(tube, hwc, None, project="2812") == "default_counterexample"
+
+
+def test_annotate_threads_the_project_into_the_ruling() -> None:
+    coil = _coil(_report(EnteringDryBulb="75.59"), {**SOURCES, "tag": "CDXC-3",
+                                                     "entering_dry_bulb_f": {"value": 74, "status": "review_required"}},
+                 tag="CDXC-3")
+    rows = _by_id(og.annotate([_project("3239", coil)], CAL_KEYS))
+    assert rows["EnteringDryBulb"]["verdict"] == "mismatch"
+    assert rows["EnteringDryBulb"]["cause"] == "ruled_order_change"
+    assert rows["EnteringDryBulb"]["counts_as_defect"] is False
