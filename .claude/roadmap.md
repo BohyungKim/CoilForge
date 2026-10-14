@@ -1,6 +1,6 @@
 # 🗺️ CoilForge 로드맵
 > 목표: 코일 입력(Direct Coil 폼 / submittal / 스캔 PDF) → 검토용 도면 + 붙여넣기용 필드셋 + 검증·호환 리포트
-> 마지막 갱신: 2026-10-02 (**[복귀 지점 기록]** — 코드는 전부 푸시(HEAD `71a4874`, 2193 green). John이 실사용으로 검증한 뒤 돌아온다: "▶️ 지금" 맨 위 **🔁 다음 세션 복귀 지점**에 볼 것(A)·돌아와서 할 것(B)·확정된 사실(C)을 모았다. 이번 세션: 통합 테스트 4트랙 통과, 물코일 DVL/ZD 수정, CCSI 풍량 기준 Actual, 게이트 원인 `air_basis`, 크로스체크 submittal 선택을 커버 내용 기반으로 수정(2982 CDXC-2 Left의 원인). 이전 갱신 2026-10-01 (**[CCSI coil-data 트랙] 매핑 완성 + [성능 검증 트랙] 자기일관성 검사** — 성능 검증 세션(`claude/performance-consistency`, 전부 푸시·`claude/ambient-supplier`에 ff 병합). submittal 성능 값 자기일관성 검사를 push payload에 실었고(경고만, 아무것도 막지 않음), John 승인 4건으로 DX·HGRH·물코일 매핑을 닫았다: System Type(서킷 수 없으면 Coil Style `Standard` → Single-Circuit), tube·fin 재질 승격 + 대체 2건(fin 0.0075 → 0.008, Sine → Corrugated), D7은 FPI만 보류, 물코일 feeds·fin·tube 소스. userscript **v3.1.4**(Send to CCSI가 Drawing Notes 전달, 대체 안내 줄). John 라이브 확인(2755 RHHGRC-1): System Type `Single-Circuit` + Drawing Notes 전달 ✅. **2185 green.** 남은 것: DX·물코일 v3.1.4 Run all 눈확인(TR-15), 메인 세션 새 배치 후 수치 재집계). 이전 갱신 2026-09-30 (**[CCSI coil-data 트랙]** 3세션 병행. v3.1 원버튼 Run all은 2803에서 submittal과 정확히 일치했다(32.37 MBH / 52.14 °F). 과거 오더 교차검증 게이트와 어댑터 보정 PASS, 리포트 보조 파서, 코팅 규칙(드롭다운·노트·도면·AA 인식), 전체 오더 배치는 러너 세션이 진행 중이다. 통합 테스트는 한 번에 몰아서 한다. 전부 미커밋). 이전 갱신 2026-09-24 (**[물코일·체크리스트 정렬 트랙] 7b562f1…eafd8a0** — 물코일 O를 **datum 문제**로 재정의(아트워크 속성 `TEMPLATE_O_DATUM`, Terra CWC/HWC = CH − I, 체크리스트는 헤더 끝 기준으로 비교, KD-024..027 은퇴) · **Terra HWC 템플릿 시딩**(37 버킷, Terra 물코일 게이트 해제, John 눈검증 완료) · **J-1b** IN/OUT CONN SZ 코일별 채택 · **KD-001 재판정: Terra V HGRH CD = 체크리스트 else-branch**(KD-001/002/003/028/029 은퇴) · **물코일 FEEDS 게이트 제거**(John A) · **Excel 템플릿 접근 해소**(OneDrive 바로가기 경로 → 바이트 복사 fallback + 고아 EXCEL.EXE 누수 수정) · RP-003 갱신 + **RP-004(Dave 요청서)** 작성. 전부 푸시, 1798 green. 다음: Dave에게 RP-004 전달. 이전 갱신 2026-09-23 (**[CCSI 트랙] 38bc5fb** — 물코일 CCSI "Drain and Vent Location" = `Hdr Side In Airflow Dir.`(전 제품군 CWC/HWC, 미러 기본값 + CCSI fill 시 옵션-텍스트 선택, select id 미캡처라 `selector_verified:false`). 곁가지로 **userscript `resolve()`가 `{strategy:"css"}`를 처리 못 해 8월 캡처한 `#DrawingNotes`가 한 번도 해석되지 않았고 Tampermonkey 경로의 Notes 푸시가 무동작이었음**을 모의 CCSI 폼에서 재현·수정. R-066 `ConnEnd`는 별개 어휘로 유지(John). 🔴 같은 날 **Coil Checklist 템플릿(OneDrive/SharePoint)을 Excel이 열지 못함** — 파일은 읽히나 Excel "cannot access"(12:59 수정 이후) → Excel 테스트 11개 skip, 실사용 자동채움도 실패 가능. 이전 갱신 2026-09-23 (**[HITL 막힘 해제 트랙]** — John: "CWC/HWC 데이터를 못 가져오면 도면 파라미터가 하나도 안 채워져 완전히 막힌다". 막힘의 실체는 데이터 부재가 아니라 **레버가 사라지는 3개 상태**였다: ①Terra 물코일 게이트(`_omit_drawing`→`template_found=False`)가 fill plan을 비우고 product 피커까지 숨김 ②도면 경로 예외가 맨 `{"error"}`로 떨어져 "Template not registered" 막다른 길 ③거부된 `/derive` 스텁이 정상 페이지를 덮어써 재분석 전까지 벽돌. 레버를 도면과 분리해 전부 복구 + **critical 등급**(CD·CH·HD/HDx·S·I, 입력 레버 product/size/hand/conn — `DrawingParameter.criticality` computed field) 굵은 빨강·인라인 편집·reason 커밋 시 자동 derive + Tier-A/피커 값 확정 즉시 재생성 + **체크리스트 채택**(입력 먼저→엔진 재계산, 빈 행에만 시트 결과, 새 verdict `adopted`) + 물코일 inlet/outlet 레버(사람이 친 값만 R-071 트리거). 브라우저 fill store를 **누적 merge**로 바꿔 자동 derive가 앞선 채움을 지우던 구조 결함도 해소. plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 1740 green, headless Chrome 실페이지 스모크 통과. 이전 갱신 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
+> 마지막 갱신: 2026-10-14 (**[헤더 수 이중 검증 트랙] `737926d`** — 2950 RHHGRC-1(`Face Split` + `Qty Conn./Header 2`)이 intake 기본값 `Header 1`로 1헤더 아트에 그려져 출하된 사고에 대응했다. Layer 1 원문 신호 합의 + Layer 2 그린 아트 대조 게이트를 넣었다(근거가 없거나 불일치면 도면 보류 → Circuits 입력). 코퍼스 오라클 233코일에서 도면이 바뀐 것은 2950뿐이고, 근거가 0인 7코일이 보류됐다(John A안 수용). 2325 green, push 완료). 이전 갱신 2026-10-14 (**[추정값 엄격 확정 트랙]** — 과거 오더로 추정값을 확정하는 기준을 "오더 프로젝트 5개 이상 + 반례 전부 설명"으로 엄격하게 잡았다. 평가기 `94ef319`, John 결정표 v2 "모두 A"를 반영해 31개 필드를 `confirmed`로 표시하고 오더 변경 판정 25행을 넣었다(`e2a79c4`, 2300 green, push 값 변화 0). DX System Type은 필드 단위 라벨과 경로 단위 검증이 맞지 않아 보류했다. 후속 결정 3건 대기). 이전 갱신 2026-10-12 (오더 게이트 판정 3건 `f50a9f0`). 이전 갱신 2026-10-02 (**[복귀 지점 기록]** — 코드는 전부 푸시(HEAD `71a4874`, 2193 green). John이 실사용으로 검증한 뒤 돌아온다: "▶️ 지금" 맨 위 **🔁 다음 세션 복귀 지점**에 볼 것(A)·돌아와서 할 것(B)·확정된 사실(C)을 모았다. 이번 세션: 통합 테스트 4트랙 통과, 물코일 DVL/ZD 수정, CCSI 풍량 기준 Actual, 게이트 원인 `air_basis`, 크로스체크 submittal 선택을 커버 내용 기반으로 수정(2982 CDXC-2 Left의 원인). 이전 갱신 2026-10-01 (**[CCSI coil-data 트랙] 매핑 완성 + [성능 검증 트랙] 자기일관성 검사** — 성능 검증 세션(`claude/performance-consistency`, 전부 푸시·`claude/ambient-supplier`에 ff 병합). submittal 성능 값 자기일관성 검사를 push payload에 실었고(경고만, 아무것도 막지 않음), John 승인 4건으로 DX·HGRH·물코일 매핑을 닫았다: System Type(서킷 수 없으면 Coil Style `Standard` → Single-Circuit), tube·fin 재질 승격 + 대체 2건(fin 0.0075 → 0.008, Sine → Corrugated), D7은 FPI만 보류, 물코일 feeds·fin·tube 소스. userscript **v3.1.4**(Send to CCSI가 Drawing Notes 전달, 대체 안내 줄). John 라이브 확인(2755 RHHGRC-1): System Type `Single-Circuit` + Drawing Notes 전달 ✅. **2185 green.** 남은 것: DX·물코일 v3.1.4 Run all 눈확인(TR-15), 메인 세션 새 배치 후 수치 재집계). 이전 갱신 2026-09-30 (**[CCSI coil-data 트랙]** 3세션 병행. v3.1 원버튼 Run all은 2803에서 submittal과 정확히 일치했다(32.37 MBH / 52.14 °F). 과거 오더 교차검증 게이트와 어댑터 보정 PASS, 리포트 보조 파서, 코팅 규칙(드롭다운·노트·도면·AA 인식), 전체 오더 배치는 러너 세션이 진행 중이다. 통합 테스트는 한 번에 몰아서 한다. 전부 미커밋). 이전 갱신 2026-09-24 (**[물코일·체크리스트 정렬 트랙] 7b562f1…eafd8a0** — 물코일 O를 **datum 문제**로 재정의(아트워크 속성 `TEMPLATE_O_DATUM`, Terra CWC/HWC = CH − I, 체크리스트는 헤더 끝 기준으로 비교, KD-024..027 은퇴) · **Terra HWC 템플릿 시딩**(37 버킷, Terra 물코일 게이트 해제, John 눈검증 완료) · **J-1b** IN/OUT CONN SZ 코일별 채택 · **KD-001 재판정: Terra V HGRH CD = 체크리스트 else-branch**(KD-001/002/003/028/029 은퇴) · **물코일 FEEDS 게이트 제거**(John A) · **Excel 템플릿 접근 해소**(OneDrive 바로가기 경로 → 바이트 복사 fallback + 고아 EXCEL.EXE 누수 수정) · RP-003 갱신 + **RP-004(Dave 요청서)** 작성. 전부 푸시, 1798 green. 다음: Dave에게 RP-004 전달. 이전 갱신 2026-09-23 (**[CCSI 트랙] 38bc5fb** — 물코일 CCSI "Drain and Vent Location" = `Hdr Side In Airflow Dir.`(전 제품군 CWC/HWC, 미러 기본값 + CCSI fill 시 옵션-텍스트 선택, select id 미캡처라 `selector_verified:false`). 곁가지로 **userscript `resolve()`가 `{strategy:"css"}`를 처리 못 해 8월 캡처한 `#DrawingNotes`가 한 번도 해석되지 않았고 Tampermonkey 경로의 Notes 푸시가 무동작이었음**을 모의 CCSI 폼에서 재현·수정. R-066 `ConnEnd`는 별개 어휘로 유지(John). 🔴 같은 날 **Coil Checklist 템플릿(OneDrive/SharePoint)을 Excel이 열지 못함** — 파일은 읽히나 Excel "cannot access"(12:59 수정 이후) → Excel 테스트 11개 skip, 실사용 자동채움도 실패 가능. 이전 갱신 2026-09-23 (**[HITL 막힘 해제 트랙]** — John: "CWC/HWC 데이터를 못 가져오면 도면 파라미터가 하나도 안 채워져 완전히 막힌다". 막힘의 실체는 데이터 부재가 아니라 **레버가 사라지는 3개 상태**였다: ①Terra 물코일 게이트(`_omit_drawing`→`template_found=False`)가 fill plan을 비우고 product 피커까지 숨김 ②도면 경로 예외가 맨 `{"error"}`로 떨어져 "Template not registered" 막다른 길 ③거부된 `/derive` 스텁이 정상 페이지를 덮어써 재분석 전까지 벽돌. 레버를 도면과 분리해 전부 복구 + **critical 등급**(CD·CH·HD/HDx·S·I, 입력 레버 product/size/hand/conn — `DrawingParameter.criticality` computed field) 굵은 빨강·인라인 편집·reason 커밋 시 자동 derive + Tier-A/피커 값 확정 즉시 재생성 + **체크리스트 채택**(입력 먼저→엔진 재계산, 빈 행에만 시트 결과, 새 verdict `adopted`) + 물코일 inlet/outlet 레버(사람이 친 값만 R-071 트리거). 브라우저 fill store를 **누적 merge**로 바꿔 자동 derive가 앞선 채움을 지우던 구조 결함도 해소. plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 1740 green, headless Chrome 실페이지 스모크 통과. 이전 갱신 2026-09-22 (**[체크리스트 리프레시 트랙] ee7ef30** — John이 Coil Checklist 6개 탭을 전면 손봄 → 셀 단위 back-crack → 🆕 22건 반영: Terra V SIZE 숫자화·케이싱 47/58/74/74/76·드레인팬 28/29/32(R-074/077)·Terra V FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 밴드 24/42/45/48, R-078)·DX H05/H10 DIST EXT 17(R-033b)·HGRH Terra V I1=2 + supply SL 공식 전 라인(R-046/R-044a, KD-006..009 은퇴)·물코일 I/O/S/R 행 분리 + CD 접속경 항(R-071) + RB 가족별(R-006/v/p) + single-feed 특례 폐기(R-064-*) + HWC Terra DP tri-state(R-014h) + V/D ConnEnd/LAS(R-066/066a, R-067 은퇴). **의도적 미채택 3건**(John 결정 대기): Terra V HGRH CD(KD-001 유지), CWC S=IN/2+3(도면 S=conn 유지), 물코일 O=CH−x(도면 O=I 유지, KD-024..027). Terra H/V 물코일 도면은 새 템플릿까지 **vacant**(`_TERRA_WATER_WITHHELD_FAMILIES`). 시트 버그 3건 RP-003. plan-review 2라운드. 이전 갱신 2026-08-31 (**[Terra V HGRH 트랙] d60bad1·27d1ef9·2f67dac·9bfef68** — 3095 Harrison이 드러낸
 > 멀티헤더 결함 4건. 도면이 **시드 코일의 as-built을 인쇄**(`-0.25 S1`; slot_map에 없어 치환 대상조차 아님),
 > 9abe5a7의 Terra V 가드가 **실제 PDF 경로에서 死**(R-052의 `qty or circuits` 무언 대체), 그 결과 **S 음수 발산**,
 > 패널 I2/O2 비대칭 미설명. 조사 중 결론이 한 번 뒤집혔다 — 참조를 **그 입력으로 재구성**하면 우리 공식이
@@ -547,6 +547,38 @@
 > 커밋은 hunk 격리 필요. 이전: **2단계 Case Retrieval Phase 2.0 구축·커밋·푸시(66087fd)**: Gower kNN 엔진 + corpus 게이지 + `/api/capture/similar` + CLI, gated n≥50 + **rule_id→3자뷰 배선**. 코퍼스 46/50·**교정 0**(실 submittal 12개 배치 분석=feature-only). ▶️ 지금 = 2단계 원장 채우기 — 실사용으로 **교정** 축적이 진짜 관건(개수보다 이게 핵심). 미결: TR-1/TR-2 John 브라우저 눈확인)
 
 ## ✅ 완료
+- [x] **[헤더 수 이중 검증 트랙] 2950 RHHGRC-1 사고 대응 (`737926d`, John 2026-10-14)** 🆕 이번 세션
+  - **사고:**
+    - 2950 RHHGRC-1(Ventum+ RH)의 submittal은 `Coil Style: Face Split`(숫자 없음), `Qty Conn. / Header 2`였다. CCSI 오더도 `CIRCUITS: (02+02)`였다.
+    - 그런데 도면은 `vplus_hgrh_rh_header1`로 그려졌다.
+  - **원인:**
+    - 헤더 수 근거가 circuits 하나뿐이었다.
+    - intake 기본값 `HEADER_TYPE "Header 1"`이 표시 없이 그 값을 대신했다.
+    - 그린 결과를 원문과 대조하는 곳이 없었다(4a3c403 배너는 경고뿐).
+    - 체크리스트는 2, 도면은 1로 서로 다르게 읽었다.
+  - **Layer 1** `submittal/header_count.py`:
+    - 회로 수 신호 = Circuits 칸, Coil Style 숫자, 실제로 읽힌 Header Type. 기본값 줄은 제외한다.
+    - 회로 수 신호가 없으면 `Qty Conn./Header`가 답한다(Q1=A, 코퍼스 52/52 일치).
+    - `Standard`는 신호가 아니다.
+    - 스캔 C1/C2는 `absent`만 막는다.
+  - **Layer 2** `_gate_header_count`:
+    - 그린 아트의 헤더 수가 Layer 1 값과 다르거나, 원문이 헤더 수를 세우지 못하면(`absent`/`conflict`) 도면을 보류한다(Q2).
+    - 보류된 코일에는 critical Circuits 입력이 뜬다. 1–4 정수만 받고, 입력값은 `overridden`으로 그린다.
+  - **같은 값을 쓰는 곳:** 도면, DX/HGRH 체크리스트, Direct Coil paste `header_type`, strap 가격(보류되면 review_required).
+  - **보류 사유가 보이는 곳:** `project_gate`, `not_inserted_reason`, 화면 문구.
+  - **오라클(90 프로젝트, 233코일, before `e2a79c4`):**
+    - 도면 변화는 2950 RHHGRC-1 header1→2 하나뿐이다.
+    - 근거가 0인 7코일이 보류됐다. John이 A안으로 수용했다.
+      - 커버 파싱 실패로 생긴 `Coil 1` 후보 4개: 2077, 2703, 2808, 3183
+      - 상세 블록이 없는 2873 CDXC-2, 2974 CDXC-8
+      - 2664 CDXC-1
+    - paste `header_type`이 멀티헤더 60코일에서 정정됐다(기존 값은 기본값 Header 1).
+    - 체크리스트 circuits, 물코일, HGBP는 무변화다.
+  - **검증:**
+    - 2325 green(신규 25), 핀 고정 derive 8건 무변화.
+    - invariant-guard: BLOCKER 0 / MAJOR 0.
+    - 라이브 2950: 2헤더 아트 + 검증 줄 확인, John 눈확인.
+    - plan-review 2라운드.
 - [x] **[CCSI coil-data 트랙] DX·HGRH·물코일 매핑 완성 + 화면 System Type (4b6ecea·24ff94b, John 승인·라이브 확인 2026-10-01)** — John: "dx 하고 hgrh 그리고 water coil 케이스의 매핑도 완벽하게 매핑". 승인 4건을 오더 리포트(order tier DX 127 / HGRH 72 / CWC 6 / HWC 16)로 측정해 반영. ①**System Type**: 서킷 수가 옵션을 고르고(DX 3 → 3-Circuit Intertwined, HGRH 2 → Dual-Circuit Face-Split), 서킷이 1개인 submittal은 수를 안 찍고 Coil Style이 `Standard`라 수가 없을 때만 `style_path`로 Single-Circuit. 다른 배열을 말하는 style은 unmapped, DX 4서킷은 매핑하지 않음(오더 4/2로 갈림). DX 116/127 · HGRH 71/72. ②**DX·HGRH tube·fin 재질 승격** + 대체 2건(`substitutions`): fin `aluminum 0.0075` → `0.008`(키에 재질 포함 — 근거 오더가 전부 Aluminum), `Sine` → `Corrugated`. reason과 userscript 패널이 submittal 원문을 밝힌다. ③**D7은 FPI만 보류**(`GEOMETRY_RESELECT_IDS = {FinsPerInch}`): rows는 보내고 fin은 대체. 게이트가 그 폼의 `FinMaterial` 항목이 읽는 키를 따라가서 물코일 0.0075 fin도 FPI 보류(5건 중 3건 변경). ④**물코일**: feeds ← `geometry.circuits`(CWC 6/6 · HWC 14/16), fin ← `geometry.fin_thickness_in` + 맵의 `material: Aluminum`(submittal이 다른 재질을 말하면 unmapped), tube 기본값 `Copper 0.018 Plain`, Altitude·CWC CoilQuantity 승격. **곁가지 2건:** Send to CCSI(DOM 브리지)가 Drawing Notes를 안 실어 보내던 것 수정(userscript **v3.1.4**), HGRH 화면 미러의 System Type 칸이 출처 없이 `unmapped`로 남던 것을 push 결과(`RefrigerationSystemType`)를 읽게 수정 — 규칙은 맵 한 곳. invariant-guard BLOCKER 0 / MAJOR 1 수정(맵의 `Aluminum`이 submittal의 `Copper`를 덮던 구멍). 2185 green. 매핑으로 못 닫는 것: 오더 시점에 바뀐 feeds(DX 14 · HGRH 7), Standard-air 오더의 ACFM/Altitude, HWC LeavingDryBulb(CCSI가 푼다), fin surface를 생략한 물코일. 상세: `docs/ccsi/mapping_findings.md` "Decided 2026-10-01 — complete the mapping".
 - [x] **[성능 검증 트랙] submittal 성능 값 자기일관성 검사 + push 경로 통합 (0422bc8 … 20f982e, 2026-10-01, 병행 세션)** — 오더 대조는 과거 프로젝트에만 통하고, 새 submittal을 push하는 순간에는 대조할 정답이 없다. 그 공백을 submittal 값끼리의 수지로 메운다. `coil_utilities/performance_consistency.py`(순수): 공기 현열 수지 `k = 용량×1000 ÷ (CFM×ΔT)`를 Standard(F 1.085)·Actual(밀도 보정) 양쪽과 대조, DX·CWC는 현열 용량으로, 물코일은 수측 수지를 코퍼스 실측 밴드(물 488–503 / PG40 457–467 / PG50 443–453, 여유 ±3%)로, 면풍속 1%. 판정 `consistent` / `inconsistent` / `cannot_evaluate` — **`consistent`는 "모순 없음"이지 "정답"이 아니다**(DX 전열 과대 읽기는 못 잡는다). John 결정 8건 확정: tol ±0.02, F 1.085, 풍량 기준 Actual, Actual 밀도식 채택, k≈1.00 군집은 inconsistent 유지, 수측 여유 ±3%, 면풍속 1%, **inconsistent = 경고만(Run all을 막지 않음)**. `build_coil_data_payload`가 리포트를 `performance_consistency` 키로 싣고(검사 실패는 `error`로 보고, payload는 깨지지 않음), userscript v3.1.3부터 노란 경고 줄로 표시. 코퍼스 리포트 `scripts/performance_consistency_report.py`(읽기 전용, 리포 밖 출력). 문서: `docs/validation/performance_consistency.md`.
 - [x] **[제출물 파싱 트랙] 2954 Aki Kurose — 커버 Casing 행 중복 코일 + Changeover 코일 제목 미인식 (2026-09-24, John 리포트)** — Oxygen8 v1.0.0.10 Ventum+ 제출물이 코일마다 `1 CCWC-1 CWC Cooling Casing` 부속 행을 같은 태그·Qty로 인쇄해 유령 코일이 되고, 그 행이 `_detail_lines_by_cover_row`의 순서 소비(`pop(0)`)로 다음 코일의 상세 블록까지 훔쳤다. 상세 페이지 제목 `Changeover Coil - Cooling Performance`는 `_detail_section_format`이 몰라 블록 0개 → FH/FL/Rows/FPI/Conn 전부 미추출 → CD/CH/S/R 공란. 수정: `_NON_COIL_ITEM_TOKENS`에 `casing`(전용 사유 문구 "not a second coil"), 제목 토큰을 `cooling_chilled_water`로, `Heating Performance`는 `Heating DX` 선례대로 stop. 실 PDF: 코일 2개, CCWC-1 FH27/FL72/IN·OUT 1.25 → CD 7.625/CH 29/S1 3.625/R2 1.25, CCWC-2 → CD 7.0/CH 27.5. 회귀 4건. plan-review R1 APPROVED. 범위 밖: CCWC-1(RH)은 `vplus_cwc_rh` 미시드로 공유 템플릿 폴백(문서화된 동작).
@@ -1110,6 +1142,7 @@
   🆕 이번 세션
 
 ## 🧪 TR (Test Required — 사람 눈확인 부채, 자동 green과 별개로 추적)
+- [ ] **[TR-17] 헤더 수 보류 코일의 패키지·입력 흐름 브라우저 확인 (John)** — 2950의 2헤더 그림은 확인했다. 아직 라이브로 보지 못한 것은 다음과 같다. ①보류된 코일(예: 2873 CDXC-2)의 빨간 보류 줄과 critical Circuits 입력 ②Circuits에 1을 입력하면 1헤더로 그려지고 `overridden` 호박색 줄이 나오는지 ③Build quote package에서 보류된 코일이 `not_inserted_reason`(헤더 수 사유)으로 빠지고 strap 가격이 review_required인지. `run_server.bat`을 재시작하고 PDF를 다시 분석한 뒤 확인한다.
 - [ ] **[TR-15] v3.1.4 매핑 완성분 라이브 Run all (John, CCSI 로그인 필요)** — ✅ 확인된 것(John 2026-10-01, 2755 RHHGRC-1): 화면·CCSI System Type `Single-Circuit`, Send to CCSI로 Drawing Notes 전달. **아직 안 본 것:** ①DX System Type(2755 CDXC는 `Dual-Circuit Intertwined` 예상) ②대체 안내 줄 — fin 0.0075 또는 Sine인 프로젝트 필요(2755에는 없다) + 그때 FPI가 보류되는지 ③물코일 Run all: feeds·`Aluminum 0.008`·tube 기본값 `Copper 0.018 Plain`(오더 22건 중 3건은 다른 tube — John 검토가 유일한 방어선) ④성능 경고 줄이 버튼을 막지 않는지. Save는 John만 누른다.
 - [x] **[TR-14] CCSI 물코일 fill 라이브 확인 + Drain and Vent Location select id 캡처 — ✅ 완료 (2026-10-01 통합 테스트, 3545daf)** — 라이브 캡처 `#DrainAndVentLocation`(캡션이 `<label>`이 아니라 형제 요소라 labelText는 아무것도 못 찾았다) → 3사본 `selector_verified:true`, 3154 HHWC-2에서 `✓ filled` · Drawing Notes 전달 확인. 전달 경로는 Tampermonkey가 아니라 **북마클릿**. 원 항목: — Tampermonkey 2.2.3 설치 확인 → 물코일 1개 Send to CCSI → 패널 DVL 행의 ⚠ 대상이 실제 드롭다운인지 확인 → Fill → `Hdr Side In Airflow Dir.` 선택 + **Drawing Notes가 이제 실제로 채워지는지**(38bc5fb 이전엔 무동작). 그때 select `#id`를 캡처해 `selectors` 1순위 css + `selector_verified:true`로 플립(소커밋, Phase F 절차).
 - [x] **[환경] Coil Checklist 템플릿 Excel 접근 불가 — 해소 (2026-09-24, John 승인)** — **원인: Excel COM이 `OneDrive …\Oxygen8 SharePoint Shortcuts\…` 경로를 못 연다**(파일은 안 열려 있음). `excel_writer._copy_template`에 바이트 복사 fallback(원본은 읽기만) + 복사 실패 시 격리 Excel 인스턴스 Quit(고아 EXCEL.EXE 누수 수정). Excel writer 테스트 **11/11 통과**(전날 10 skip). 원문: — `OneDrive - Oxygen8\…\Production\Coil Checklist Template.xlsx`를 Excel COM이 "cannot access"(파일 자체는 읽힘, 12:59 수정). SharePoint 공동편집 잠금/동기화 확인 후 `python -m pytest tests/test_checklist_excel_writer.py -q`로 재확인(현재 11 skip).
@@ -1229,14 +1262,15 @@
   자동검증은 완료(1513 green · invariant clean · 실 제출물 12개 대조 · 다중피드 byte-identical); 남은 건 실 렌더.
 
 ## ▶️ 지금
-- [ ] **🔁 다음 세션 복귀 지점 (2026-10-02 기록) — John이 실사용으로 검증한 뒤 돌아온다** —
-  코드는 전부 커밋·푸시됨(`claude/ambient-supplier` = origin, HEAD `71a4874`, 2193 green). 미커밋은 의도적으로 뺀 `.agents/`·`.codex/`·`pytest.ini`(소유 불명)뿐.
+- [ ] **🔁 다음 세션 복귀 지점 (2026-10-02 기록, 2026-10-14 갱신) — John이 실사용으로 검증한 뒤 돌아온다** —
+  코드는 전부 커밋·푸시됨(`claude/ambient-supplier` = origin, HEAD `737926d`, 2325 green). 추정값 후속 1A·2A·3A는 반영했고 2326 green이다(커밋 여부는 John 확인 대기). **다음 할 일 = 아래 B의 첫 미완 항목(후속의 후속 결정 2건: 3197 판정 · FinSurface 반례 4건).** 미커밋은 의도적으로 뺀 `.agents/`·`.codex/`·`pytest.ini`(소유 불명)뿐.
   **A. John이 실사용에서 볼 것** (먼저 `run_server.bat` 재시작 → `CCSI autofill` 북마크 삭제 후 다시 드래그 — 지금 북마크·서버는 옛 버전, 최신은 userscript **v3.1.4**):
   - [ ] TR-15의 "아직 안 본 것" 4건(DX System Type · fin 0.0075/Sine 대체 안내 + FPI 보류 · 물코일 Run all의 feeds/`Aluminum 0.008`/tube 기본값 · 성능 경고 줄이 버튼을 막지 않는지)
   - [ ] Run all 결과에서 **Air flow basis = `Actual`**이 들어가고 Altitude가 잠기지 않고 채워지는지(Standard면 CCSI가 0으로 잠근다)
   - [ ] 물코일: `Drain and Vent Location` `✓ filled`, ZD는 `skipped`(경고 아님)
   - [ ] Build quote package → 확인 오버레이(문서 3개 ✓/⚠, move 해제 시 draft 비활성). 통합 테스트는 "Not now" 경로만 봤다 — **실제 PO 폴더 이동은 아직 라이브 미확인**
   - [ ] **CCSI 푸시 결정표 10건** — https://claude.ai/artifact/WR3TgjxVipeKZwQ19KSdy6 (2026-10-02, 126개 프로젝트 배치 기준). 항목마다 고르고 "결정 복사" → Claude Code에 붙여 넣기. 가장 큰 것은 **Q1**: fin이 대체된 코일은 FPI를 안 보내는데 Run all이 그대로 진행돼 폼에 남은 FPI로 레이팅한다(DX 오더 36/139). 나머지는 DX 톤수 대조 경고 · 마지막 코일 상세 블록 누락 · 캐필러리 3/16 조건 · Coil Style 문구 System Type · DX 화면 System Type · HGRH Separate Subcooling · 물코일 tube 기본값 · Fin surface 없을 때 Flat · Max Fluid PD 20.
+    → **2026-10-14 현황:** 오더로 판정할 수 있던 Q4·Q5·Q8·Q9 성격의 항목은 결정표 v2(https://claude.ai/artifact/1jWxZwQs9AhBQYkmLyo1KG)에서 처리됐다. 캐필러리 3/16은 날짜로 갈리는 오더 쪽 관행 변경으로 판정됐다(E1). 아직 열린 것은 **Q1 · Q2 · Q3 · Q6 · Q7 · Q10**이다. 오더 리포트에 인쇄되지 않거나, 정책·UX 결정이거나, 다른 코퍼스가 필요한 항목들이다.
   - [ ] 실사용 중 어긋나는 값이 보이면 프로젝트 번호·코일 태그·필드만 적어 오면 된다
   - ⚠️ **엔지니어 도장이 찍힌 서명본을 CoilForge에 올리면 숫자가 깨질 수 있다**(2814 도장본: 2300 CFM → "2", 58 °F → "5"; intake의 degraded 판정에 안 걸림). Oxygen8 원본을 올리는 편이 안전하다.
   **B. 돌아와서 Claude가 할 것(순서대로):**
@@ -1245,6 +1279,38 @@
     - DX `EnteringDryBulb`: 오더 match 131 / unexplained 2 = 3239 CDXC-3·4뿐. submittal p33·p42 `DB (F): 74.0`, 오더 REV1(재선정) 75.59.
     - HGRH `RowsDeep`: match 78 / unexplained 3 = 2447·2541·2897 RHHGRC-1. 세 submittal 모두 `Rows: 2`, 오더 1(2897은 REV0부터 1).
     - 물코일 `TubeMaterial` 기본값 0.018: HWC match 12 / 반례 2(2298 PHWC-2, 2811 HHWC-1), CWC match 2 / 반례 2(2678·2811 CCWC-1), 반례는 전부 오더 0.020.
+  - [x] **새 강등 후보 5건 조사 → 추정값 엄격 확정 트랙으로 흡수 (2026-10-12~14, 플랜 `~/.claude/plans/bright-whistling-pie.md`)** — 5건(DX `FinMaterial`·`TubeMaterial`, HGRH `FinMaterial`, HWC `Altitude`·`NumberOfFeeds`)은 아래 P2에서 원인을 확인했고, P4에서 판정을 반영했다.
+    - [x] P0 기준선: `outputs/ccsi_order_gate/gate.pre_estimates_20261012.json`.
+    - [x] P1 확정 평가기 `order_gate.evaluate_estimates`(`94ef319`). 기본값 일치도 증거로 센다(`proposals()`는 의도적으로 세지 않음). 코일이 아니라 **프로젝트**를 5개 이상 세고, 추정마다 `evidence_basis`를 붙인다: independent(harvest로 정한 D2)와 in_sample(같은 오더에서 처음 읽은 값을 다시 센 것이라 새 시험이 아님).
+    - [x] P2 원인 조사(읽기 전용): 22행 중 추출 오류 0건.
+    - [x] P3 결정표 v2: https://claude.ai/artifact/1jWxZwQs9AhBQYkmLyo1KG. John 2026-10-13 "모두 A"(A1·A2·E1·E2·E3·E4·C1).
+    - [x] P4 판정 반영(`e2a79c4`).
+      - 31개 필드를 `confirmed`로 표시했다(DX 9 · HGRH 11 · HWC 11). 테스트의 `JOHN_CONFIRMED`와 등식으로 고정된다. 라벨만 바뀌어서 push는 `validated`와 같다.
+      - `RULED_ORDER_CHANGES`에 25행을 넣었다(E1 캐필러리 5 · E2 물 ConnectionMaterial 3 · E3 turbulator 1 · E4 FinSurface 1 · C1 재선정 15). C1 카드에는 "14건"이라 적혀 있었지만 목록에는 15행이 있었다.
+      - 강등 후보는 24에서 15로 줄었고, 추정 판정 변화는 0이었다.
+  - [x] **(끼어든 긴급 건) 2950 헤더 수 사고 — 이중 검증 `737926d` (2026-10-14)** — 아래 ✅ 완료 맨 위 항목 참고. 후속은 ⬜ 앞으로의 [헤더 수 트랙] 항목들.
+  - [x] **추정값 확정 후속 — John 답변 "1A · 2A · 3A" 반영 (2026-10-14, 아래 원래 질문 보존)**
+    - ③ 적용: 2843 7행을 `RULED_ORDER_CHANGES`에 넣었다(테스트 `RULED_2026_10_14`로 등식 고정).
+      - 게이트를 다시 돌렸다(백업 `gate.pre_followup_20261014.json`). calibration PASS, tiers와 추정 판정은 그대로다.
+      - DX FinSurface 결함은 7에서 4로, NumberOfFeeds는 13에서 9로 줄었다.
+    - ② 적용(2개만): DX `DXDistCapillarySize`와 HWC `ConnectionMaterial`을 `confirmed`로 올렸다. 두 필드 모두 필드 단위 결함이 0이다.
+      - **(b) Sine→Corrugated는 보류.** `mapping_status`는 필드 단위인데 DX FinSurface 필드에 설명 안 된 Flat 반례 4건(3014·3025·3093·3233)이 남아 있다. ①을 보류한 것과 같은 규칙이다.
+      - 질문에 이 사실을 적지 않았으므로 John에게 다시 보고한다.
+    - ① 조사: 3197 CDXC-1/2의 submittal(p6/p20)은 2회로를 네 가지 방식으로 말한다: `Interlaced 2 Circuits`, `Qty Conn./Header 2`, `Qty of Valves 2`, `5 tons x 2`. Suction은 0.875이고 Total Feeds는 9다.
+      - REV1 오더(2026-09-11)는 Single-Circuit, Return 1 1/8", Capacity 125.37(submittal 123.49)이다.
+      - 같은 프로젝트의 HGRH/HWC도 FinSurface·HWC 유량(9.53→4.14)·LFT(123.6→100)·접속경이 오더에서 바뀌었다. 프로젝트 전체 재선정으로 보인다(Likely).
+      - 9 feeds는 2회로로 고르게 나뉘지 않는다. 그래서 application team이 단일 회로로 바꿨을 가능성이 있다(Assumption).
+      - CoilForge는 submittal을 맞게 읽는다. **3197을 오더 쪽 변경으로 판정할지는 John 몫이다.** 판정하면 DX `RefrigerationSystemType` 확정이 가능해진다.
+      - 🟡 헤더 수 게이트 관점에서 3197 CDXC는 2헤더로 그려지지만 실제 주문은 1회로다. submittal이 source of truth이므로 도면은 맞다. 하지만 오더가 바뀐 경우 도면과 실물이 어긋날 수 있다는 실례다.
+  - [ ] **추정값 확정 후속의 후속 — John 결정 2건 대기 (2026-10-14)**: ①′ 3197 CDXC-1/2 RefrigerationSystemType 2행(+ 같은 프로젝트의 나머지 오더 차이)을 오더 쪽 재선정으로 판정할지 → 판정하면 DX `RefrigerationSystemType` confirmed. ②′ DX FinSurface 반례 4건(3014·3025·3093·3233)을 조사할지, 아니면 FinSurface 확정을 계속 보류할지.
+  - [x] **(원래 질문) 추정값 확정 후속 — John 결정 3건 대기 (2026-10-14)**
+    ① **DX `RefrigerationSystemType`(A2 승인분) 보류 중.**
+      - `mapping_status`는 필드에 하나만 붙지만, 검증은 그 필드의 경로 하나씩 했다.
+      - style_map 경로는 통과했다. circuits 경로에는 설명 안 된 반례 2건이 남아 있다(3197 CDXC-1/2, Dual-Circuit Intertwined → Single-Circuit).
+      - A = 3197을 먼저 조사하고 그동안 `validated` 유지(추천), B = 지금 확정.
+    ② **판정 덕분에 새로 확정 후보가 된 3개:** DX `DXDistCapillarySize` 1/4(78개 프로젝트, independent), DX Sine→Corrugated 대체(7개, in_sample), HWC `ConnectionMaterial` Steel(7개, independent). E1·E2·E4의 A는 "값 유지"였지 "확정"이 아니었다. A = 모두 확정(추천), B = 보류.
+    ③ **2843에서 함께 바뀐 행 7건이 아직 설명 안 된 결함으로 남아 있다.** CDXC-1/2/3 FinSurface Flat→Corrugated, NumberOfFeeds 12→16·18→24. C1에서 이미 프로젝트 전체 재선정으로 확인한 프로젝트다. A = 오더 쪽 변경으로 판정(추천), B = 그대로 둠. 3014·3025·3093·3233의 DX FinSurface 결함은 별개로 열려 있다.
+    (덤) `src/coilforge/web_app.py:470` 주석 "Only ``validated`` entries are ``pushable``"은 예전부터 틀렸다(`confirmed`도 push된다). 범위 밖이라 고치지 않았다.
   - [ ] `CLAUDE.md` CCSI coil-data 문단 갱신(아래 "앞으로"의 [문서] 항목) — 게이트 결과가 나온 뒤 한 번에
   - [ ] DX 화면 미러 System Type(아래 "앞으로" 항목)
   - [ ] `pytest.ini` 처리 결정(누가 만든 파일인지 불명, 내용은 `testpaths = tests` 한 줄 — 커밋할지 지울지 John 판단)
@@ -1404,13 +1470,18 @@
   **John 결정:** HGRH + connection size 없음 → S 공란+사유(CD/2 모양 숫자 대신) · Rows·Feeds critical · 물코일 feeds는 circuits가 적혀 있으면 읽힘(A).
   plan-review 2라운드 + invariant-guard 2회 위반 0, **2278 green**, 실제 2857·2870 헤드리스 확인. 남은 것: TR-16 눈확인. `claude/ambient-supplier` 병합은 `3b91608`(2026-10-11)로 끝났다.
 ## ⬜ 앞으로
+- [ ] **[헤더 수 트랙] 2950 RHHGRC-1 체크리스트 I3/O2 "TBD" 불일치 1건 (미조사)** — 2헤더로 채우면 I3는 CoilForge 2 vs 시트 TBD, O2는 TBD/O4 2 vs CoilForge 공란이 된다. RP-004의 "HGRH I3/I5/I7 항상 TBD · Ventum+ HGRH O TBD"와 같은 시트 공백일 가능성이 높다(Likely). 확인 뒤 KD나 RP-004로 정리한다.
+- [ ] **[헤더 수 트랙] 남겨 둔 것** — ①derive에 `header_count_reading`이 왕복되지 않으면 `unverified`로 두고 막지 않는다. 옛 페이지와 직접 API 호출에만 해당하는 fail-open 창이다. ②`Qty of Valves`는 실측하지 않아 신호에서 뺐다. ③스캔 CoilMaster 도면의 `C1:/C2:` 회로 수로 헤더를 정하는 변경은 John이 보류했다(`DX2_TEXT`는 1헤더로 그려지고 `as_built_disagrees` 경고만 붙는다). ④Ventum+ HGRH LH Header 2와 Header 3/4 전용 템플릿은 아직 시드가 없다(공유 아트로 폴백, 헤더 수는 맞음). ⑤2950 `CondenserReturnConnectionSize` 0.625 vs 오더 `2 x 1/2"`.
+- [ ] **[추정값 엄격 확정 트랙] P5 조건부 값 — John이 채택할 때만** — 반례가 속성 하나로 깨끗이 갈리면 조건부 값을 제안만 한다. 채택되면 `resolve_coil_data`를 고치고 126개를 재추출해야 한다. 현재 채택된 것은 없다.
+- [ ] **[추정값 엄격 확정 트랙] P6 도면 as-built 측정 — 별도 승인** — 2619 TF/BF 0.88, 단일피드 HGRH SL1, conn 없는 Terra V DX S. 스케치만 하고 착수는 John 승인 후.
+- [ ] **[CCSI coil-data 트랙] CWC 추정값은 오더로 확정할 수 없다** — 오더 프로젝트가 3–4개라 기준(5개)에 닿지 않는다. 오더가 더 쌓이면 게이트를 다시 돌린다.
 - [ ] **[수동 입력 → 도면 트랙] John 결정 대기 — connection size가 없을 때 S를 다른 근거로 그리는 곳 2곳** — HGRH와 같은 종류(근거 없는 숫자)인데 이번에 손대지 않았다:
   Terra V DX는 `CD − Rn` 대신 even spacing으로 떨어지고(`direct_coil_drawing_pipeline.py` Terra V 분기 → DX 분기: conn 없이 1.875/3.625, conn 1.125면 4.1875/1.5625),
   텍스트 워크플로 경로는 모든 코일 타입에 `CD/(circuits+1)`을 낸다(`drawing_param_resolver.py` 텍스트 워크플로 S). 공란+사유로 바꿀지 결정 필요.
 - [ ] **[수동 입력 → 도면 트랙] 남겨 둔 것(후속)** — circuits·hand 입력은 아직 `pick` 경로라 원장 기록 없음·kill switch 밖 / 새로고침하면 입력 사라짐(메모리 store만) +
   태그만으로 재적용 / 입력 후 이미 만든 quote package PDF 무효화·`reviewedCoils` 초기화 / 입력값이 Direct Coil 화면 값·paste-ready 52필드·CCSI push에는 안 실림(의도로 고정된 동작).
 - [ ] **[CCSI coil-data 트랙] DX 화면 미러의 System Type이 push와 다른 계산을 쓴다 (2026-10-01 발견, 미착수)** — HGRH 칸은 push 결과를 읽게 고쳤지만(24ff94b) DX 칸은 여전히 `directCoilSystemTypeField`(헤더당 연결 수)로 계산한다. 4서킷이면 화면은 `4-Circuit Intertwined`를 보여 주는데 CCSI로는 아무것도 안 간다(John: DX 4서킷 매핑하지 않음). 그 칸은 `drawingTemplateState`의 등록 판정에도 쓰이므로, 바꾸기 전에 영향 범위부터 확인한다.
-- [ ] **[제출물 파싱 트랙] 마지막 코일의 상세 블록 누락 + 추출 지연 (성능 검증 세션 트랙 B, 미착수)** — 2873 CDXC-2 · 2974 CDXC-8은 상세 블록이 없어 코일 데이터 대부분이 `CCSI_SOURCE_MISSING`이다. 2755는 추출에 12분이 걸린다(2026-10-01 실측 743초). 원인 미조사.
+- [ ] **[제출물 파싱 트랙] 마지막 코일의 상세 블록 누락 + 추출 지연 (성능 검증 세션 트랙 B, 미착수)** — 2873 CDXC-2 · 2974 CDXC-8은 상세 블록이 없어 코일 데이터 대부분이 `CCSI_SOURCE_MISSING`이다(2026-10-14부터 헤더 수 근거도 없어 도면이 보류된다 — `737926d`). 2755는 추출에 12분이 걸린다(2026-10-01 실측 743초). 원인 미조사.
 - [ ] **[문서] 프로젝트 `CLAUDE.md`의 CCSI coil-data 문단이 낡았다** — "every entry is `captured` today, so nothing is pushable"는 2026-09-29 승격 이후 사실이 아니다. 대체 규칙·D7 축소·물코일 소스·화면 System Type도 반영해야 한다.
 - [ ] **[CCSI coil-data 트랙] 🟡 Standard airflow(SCFM) 반영 — 의심 영역, 보류 (John 2026-10-01)** —
   CCSI 풍량 기준은 **ACFM(Actual)로 적용 완료**(4개 맵 `ACFM` = `Actual` default·validated, Altitude보다 먼저 push).
