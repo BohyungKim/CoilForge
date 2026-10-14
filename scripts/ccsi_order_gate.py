@@ -140,6 +140,35 @@ def _focus_section(gate: dict[str, Any]) -> list[str]:
     return lines
 
 
+_ESTIMATE_ORDER = ("confirmed_contradicted", "not_confirmed_unexplained", "conditional_candidate", "superseded_candidate",
+                   "confirm_candidate", "insufficient_projects", "untestable_not_printed")
+
+
+def _estimates_section(gate: dict[str, Any]) -> list[str]:
+    """Assumed values (defaults, substitutions, style maps) under John's strict confirmation rule."""
+    estimates = gate.get("estimates")
+    if not estimates:
+        return []
+    lines = ["", f"## Estimates — strict confirmation (orders exported before {og.PUSH_START.isoformat()})", "",
+             f"Confirmed = >= {og.CONFIRM_MIN_PROJECTS} order projects match and every counterexample is explained "
+             "(John's ruling, a Standard-air order, a REV0 that used the estimate, printed precision). "
+             "`in_sample` = the value was read off these same orders, so this is a stricter re-count, not an "
+             "independent test. Proposals only.", "",
+             "| verdict | estimate | value | basis | order projects (coils) | explained | unexplained (project tag CF→order, REV0) | splits | quote holdout | excluded |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
+    for key, e in sorted(estimates.items(), key=lambda kv: (_ESTIMATE_ORDER.index(kv[1]["verdict"]), kv[0])):
+        unexplained = "; ".join(f"{u['project']} {u['tag']} {u['coilforge']}→{u['order']}"
+                                + (f" (REV0 {u['rev0']})" if u["rev0"] not in (None, "") else "") for u in e["unexplained"])
+        splits = "; ".join(f"{group}: " + (", ".join(f"{s['attribute']} {s['bad']} vs {s['good']}"
+                                                      + (" (ambiguous)" if s["ambiguous"] else "") for s in found) or "none")
+                           for group, found in e["splits"].items())
+        holdout = "" if e["holdout"] is None else f"{e['holdout']['match']} match / {e['holdout']['differ']} differ"
+        lines.append(f"| {e['verdict']} | `{key}` | {_cell(e['value'])} | {e['evidence_basis']} | "
+                     f"{e['order_projects']} ({e['order_coils']}) | {_cell(e['explained'] or '')} | {_cell(unexplained)} | "
+                     f"{_cell(splits)} | {holdout} | {_cell(e['excluded'] or '')} |")
+    return lines
+
+
 def render(gate: dict[str, Any]) -> str:
     cal = gate["calibration"]
     lines = ["# CCSI coil-data mappings vs past orders — decision tables", "",
@@ -176,6 +205,7 @@ def render(gate: dict[str, Any]) -> str:
         for r in p["defects"]:
             lines.append(f"| {r['project']} | {r['tag']} | `{r['ccsi_id']}` | {r['cause']} | {_cell(r['coilforge'])} | "
                          f"{_cell(r['ccsi'])} | {_cell(r['rev0'])} | {_cell(r['truth_file'])} |")
+    lines += _estimates_section(gate)
     lines += ["", "## Decision tables (order tier; counts = coils by verdict or cause)", ""]
     for name, per_type in gate["decision_tables"].items():
         lines.append(f"**{name}**")
@@ -208,7 +238,7 @@ def main() -> int:
     results = data.get("projects", [])
     rows = og.annotate(results, calibration_keys)
     tiers: dict[str, dict[str, Any]] = {}
-    for tier in ("order", "quote_only", "calibration"):
+    for tier in ("order", "order_after_push", "quote_only", "calibration"):
         mine = [r for r in rows if r["tier"] == tier]
         tiers[tier] = {"projects": len({r["project"] for r in mine}), "coils": len({(r["project"], r["tag"]) for r in mine})}
     per_tier_results = {
@@ -224,6 +254,7 @@ def main() -> int:
         "degraded_pages_outside_coils": {p["project"]: p["degraded_pages_outside_coils"]
                                          for p in results if p.get("degraded_pages_outside_coils")},
         "proposals": og.proposals(rows, calibration), "decision_tables": og.decision_tables(rows),
+        "estimates": og.evaluate_estimates(rows, og.estimate_register()),
         "field_counts_by_tier": {tier: runner.aggregate(res) for tier, res in per_tier_results.items()},
         "review_aid_only": True,
     }
@@ -232,6 +263,7 @@ def main() -> int:
     (OUT_DIR / "summary.md").write_text(render(gate), encoding="utf-8")
     counts = Counter(p["proposal"] for p in gate["proposals"].values())
     print(f"calibration {calibration['status']} · tiers {tiers} · proposals {dict(counts)}")
+    print(f"estimates {dict(Counter(e['verdict'] for e in gate['estimates'].values()))}")
     if gate["stale_sources"]:
         print(f"WARNING stale cross-check: {gate['stale_sources']}")
     print(f"wrote {OUT_DIR / 'summary.md'}")

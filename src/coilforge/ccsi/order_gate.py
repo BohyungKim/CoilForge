@@ -18,13 +18,20 @@ ordered projects support, contradict, or cannot test. Four rules carry it:
   defect, and a calibrated adapter. Nothing here edits a map.
 * **Adapter calibration.** The report -> CCSI-id adapter is itself a mapping; it is checked
   field by field against the harvests before its verdicts carry weight.
+* **Estimate confirmation** (John 2026-10-12) is a separate question from promotion: is a value
+  CoilForge fills by assumption (a D2 default, a substitution, a style mapping) what the orders
+  actually used? There a matching default IS evidence — but only from orders exported before
+  CoilForge began pushing (``PUSH_START``), confirmed only on >=5 order projects with every
+  counterexample explained, and labelled ``in_sample`` when the value was itself read off orders.
 
 Pure: dicts in, dicts out.
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Callable, Iterable, Mapping
 
 from coilforge.ccsi.coil_data_map import GEOMETRY_RESELECT_IDS, PUSHABLE_STATUSES, load_coil_data_map
@@ -240,10 +247,35 @@ def mismatch_cause(row: Mapping[str, Any], coil: Mapping[str, Any], info: FieldI
     return "unexplained"
 
 
+# The first coil-data push into CCSI (c44ca77, Step E). An order exported on or after it may echo
+# what CoilForge pushed, so it is not independent evidence for anything CoilForge fills.
+PUSH_START = date(2026, 9, 30)
+# CCSI's export stamp in the report file name: `..._REV1_6_28_2026,11_24_38_PM.pdf` / `..._REV0_2026-06-05_...`
+_STAMP_MDY = re.compile(r"_(\d{1,2})_(\d{1,2})_(\d{4}),")
+_STAMP_ISO = re.compile(r"_(\d{4})-(\d{2})-(\d{2})")
+
+
+def report_date(truth_file: Any) -> date | None:
+    """The CCSI export date stamped in a report's file name (None = no readable stamp)."""
+    name = str(truth_file or "")
+    try:
+        if m := _STAMP_MDY.search(name):
+            return date(int(m[3]), int(m[1]), int(m[2]))
+        if m := _STAMP_ISO.search(name):
+            return date(int(m[1]), int(m[2]), int(m[3]))
+    except ValueError:
+        return None
+    return None
+
+
 def coil_tier(project: Mapping[str, Any], tag: str, calibration_keys: frozenset[tuple[str, str]]) -> str:
     if (str(project.get("project")), str(tag).upper()) in calibration_keys:
         return "calibration"
-    return "order" if project.get("report_kind") == "order" else "quote_only"
+    if project.get("report_kind") != "order":
+        return "quote_only"
+    # Fail closed: an order with no readable export date may postdate the push.
+    when = report_date(project.get("truth_file"))
+    return "order" if when is not None and when < PUSH_START else "order_after_push"
 
 
 def annotate(results: Iterable[Mapping[str, Any]], calibration_keys: frozenset[tuple[str, str]], *,
@@ -251,6 +283,7 @@ def annotate(results: Iterable[Mapping[str, Any]], calibration_keys: frozenset[t
     """One flat row per compared field with tier, cause and defect flag (Tag excluded)."""
     out: list[dict[str, Any]] = []
     for project in results:
+        when = report_date(project.get("truth_file"))
         for coil in project.get("coils", []):
             tier = coil_tier(project, coil.get("tag") or "", calibration_keys)
             reselect = any(r.get("reason_code") == "CCSI_GEOMETRY_RESELECT" for r in coil.get("rows", []))
@@ -267,6 +300,8 @@ def annotate(results: Iterable[Mapping[str, Any]], calibration_keys: frozenset[t
                     "cause": cause, "counts_as_defect": bool(cause and CAUSES[cause]),
                     "coilforge": row.get("coilforge"), "ccsi": row.get("ccsi"), "rev0": row.get("rev0"),
                     "truth_file": project.get("truth_file"),
+                    "source_key": row.get("source_key"), "reason": row.get("reason"),
+                    "report_date": when.isoformat() if when else None,
                 })
     return out
 
@@ -426,3 +461,265 @@ def decision_tables(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                                    for i in sorted(GEOMETRY_RESELECT_IDS)}
         tables["D4"][coil_type] = {i: tally(r for r in mine if r["ccsi_id"] == i) for i in PERFORMANCE_IDS}
     return tables
+
+
+# ------------------------------------------------------------------ estimate confirmation
+# John 2026-10-12: an estimate is confirmed only when >=5 order projects match it and every
+# counterexample is explained; a counterexample group that one push-time attribute separates cleanly
+# (>=3 projects each side) becomes a conditional proposal for John, anything else is not confirmed.
+CONFIRM_MIN_PROJECTS = 5
+SPLIT_MIN_PROJECTS = 3
+# coil_data_map.resolve_coil_data's reason on a substituted value; a test pins the coupling.
+SUBSTITUTED_MARK = "sent in its place"
+# Push-time attributes a condition may use (CoilForge's column — the order's is unknown at push time).
+# Capacity, temperatures and GPM are left out on purpose: with only a handful of counterexamples a
+# continuous rating value separates almost anything, which a prototype run showed.
+SPLIT_CATEGORY_IDS: tuple[str, ...] = (
+    "RowsDeep", "FinsPerInch", "NumberOfFeeds", "CoilQuantity", "CoilHand", "Refrigerant",
+    "RefrigerationSystemType", "FinMaterial", "FinSurface", "TubeMaterial", "FluidType",
+)
+SPLIT_THRESHOLD_IDS: tuple[str, ...] = ("FinnedHeight", "FinnedLength", "TotalAirFlow")
+_NO_EVIDENCE_CAUSES = frozenset({"report_unparsed", "reselect_predicted"})
+# John's class-level rulings: a Standard-air order (2026-10-01) and an exact (project, tag, values) ruling.
+_EXPLAINING_CAUSES = frozenset({"ruled_order_change", "air_basis"})
+
+
+@dataclass(frozen=True)
+class Estimate:
+    """One value CoilForge fills by assumption, and which cross-check rows carry it."""
+
+    key: str
+    coil_type: str
+    ccsi_id: str
+    kind: str            # default | substitution | style_map | extra
+    value: str           # what is assumed (the comparison target only for kind "extra")
+    derived_from: str    # harvest | order+quote — how the value was chosen in the first place
+    decided: str | None  # the date John approved it, when there is one
+    select: Callable[[Mapping[str, Any]], bool]
+
+    @property
+    def evidence_basis(self) -> str:
+        # Re-counting the orders a value was read off is a stricter re-count, not a new test.
+        return "independent" if self.derived_from == "harvest" else "in_sample"
+
+
+def _decided(evidence: str | None) -> str | None:
+    found = re.search(r"\d{4}-\d{2}-\d{2}", evidence or "")
+    return found.group(0) if found else None
+
+
+def _option(row: Mapping[str, Any], text: str) -> bool:
+    return isinstance(row.get("coilforge"), str) and option_key(row["coilforge"]) == option_key(text)
+
+
+# Not in the maps: the 2026-10-02 decision table's Q5 (style text with no style_map entry) and Q9
+# (a water submittal silent on fin surface). Both were read off orders, so both are in-sample.
+EXTRA_ESTIMATES: tuple[Estimate, ...] = (
+    Estimate("DX:RefrigerationSystemType=Intertwined (x2)", "DX", "RefrigerationSystemType", "extra",
+             "Dual-Circuit Intertwined", "order+quote", None,
+             lambda r: r.get("reason_code") == "CCSI_OPTION_UNMAPPED" and _option(r, "Intertwined (x2)")),
+    Estimate("HGRH:RefrigerationSystemType=Face Split", "HGRH", "RefrigerationSystemType", "extra",
+             "Dual-Circuit Face-Split", "order+quote", None,
+             lambda r: r.get("reason_code") == "CCSI_OPTION_UNMAPPED" and _option(r, "Face Split")),
+    *(Estimate(f"{t}:FinSurface=silent", t, "FinSurface", "extra", "Flat", "order+quote", None,
+               lambda r: r.get("reason_code") == "CCSI_SOURCE_MISSING") for t in ("CWC", "HWC")),
+)
+
+
+def estimate_register(*, load: Callable[[str], Any] = load_coil_data_map) -> list[Estimate]:
+    """Every assumed value in the four maps (defaults, substitutions, style maps) plus EXTRA_ESTIMATES.
+
+    ACFM is left out: Actual is John's 2026-10-01 policy, and the only explanation a Standard order
+    could get is ``air_basis`` — confirming the policy through its own exemption would be circular.
+    """
+    out: list[Estimate] = []
+    for coil_type in ("DX", "HGRH", "CWC", "HWC"):
+        for ccsi_id, entry in load(coil_type).fields.items():
+            if ccsi_id == "ACFM":
+                continue
+            decided = _decided(entry.evidence)
+            base = f"{coil_type}:{ccsi_id}"
+            if entry.default is not None:
+                harvest = (entry.evidence or "").startswith("D2 default profile")
+                out.append(Estimate(f"{base}=default", coil_type, ccsi_id, "default", entry.default,
+                                    "harvest" if harvest else "order+quote", decided,
+                                    lambda r: r.get("reason_code") == "CCSI_DEFAULT_PROFILE"))
+            if entry.substitutions:
+                text = ", ".join(f"{k} -> {v}" for k, v in entry.substitutions.items())
+                out.append(Estimate(f"{base}=substitution", coil_type, ccsi_id, "substitution", text,
+                                    "order+quote", decided, lambda r: SUBSTITUTED_MARK in str(r.get("reason") or "")))
+            if entry.style_map:
+                text = ", ".join(f"{k} -> {v}" for k, v in entry.style_map.items())
+                out.append(Estimate(f"{base}=style_map", coil_type, ccsi_id, "style_map", text, "order+quote", decided,
+                                    lambda r, path=entry.style_path: (r.get("source_key") == path
+                                                                      and r.get("reason_code") == "CCSI_OK")))
+    return out + list(EXTRA_ESTIMATES)
+
+
+def _attr_value(value: Any) -> Any:
+    number = _number(value)
+    if number is not None:
+        return number
+    return None if _blank(value) else option_key(value)
+
+
+def coil_attributes(rows: Iterable[Mapping[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Push-time attributes per (project, tag): CoilForge's column, the tag prefix, the export date."""
+    out: dict[tuple[str, str], dict[str, Any]] = defaultdict(dict)
+    for r in rows:
+        attrs = out[(r["project"], str(r["tag"]))]
+        if r["ccsi_id"] in SPLIT_CATEGORY_IDS or r["ccsi_id"] in SPLIT_THRESHOLD_IDS:
+            attrs[r["ccsi_id"]] = _attr_value(r["coilforge"])
+        prefix = re.match(r"[A-Za-z]+", str(r["tag"] or ""))
+        attrs["tag_prefix"] = prefix.group(0).upper() if prefix else None
+        attrs["coil_reselect"] = bool(r.get("coil_reselect"))
+        when = r.get("report_date")
+        attrs["report_date"] = date.fromisoformat(when).toordinal() if when else None
+    return dict(out)
+
+
+def _bound(op: str, value: Any, name: str) -> str:
+    return f"{op} {date.fromordinal(int(value)).isoformat() if name == 'report_date' else value}"
+
+
+def pure_splits(bad: Iterable[tuple[str, str]], good: Iterable[tuple[str, str]],
+                attrs: Mapping[tuple[str, str], Mapping[str, Any]], *, skip: str = "") -> list[dict[str, Any]]:
+    """Single push-time attributes that separate the counterexample coils from the matching ones."""
+    bad, good = list(bad), list(good)
+    out: list[dict[str, Any]] = []
+    for name in (*SPLIT_CATEGORY_IDS, "tag_prefix", "coil_reselect", *SPLIT_THRESHOLD_IDS, "report_date"):
+        if name == skip:
+            continue
+        bad_vals = [attrs.get(c, {}).get(name) for c in bad]
+        if any(v is None for v in bad_vals):
+            continue  # a counterexample with the attribute unknown rules the attribute out
+        known_good = [c for c in good if attrs.get(c, {}).get(name) is not None]
+        if len({p for p, _ in bad}) < SPLIT_MIN_PROJECTS or len({p for p, _ in known_good}) < SPLIT_MIN_PROJECTS:
+            continue
+        good_vals = [attrs[c][name] for c in known_good]
+        if name in SPLIT_THRESHOLD_IDS or name == "report_date":
+            lows = [v for v in bad_vals if isinstance(v, (int, float))]
+            highs = [v for v in good_vals if isinstance(v, (int, float))]
+            if len(lows) != len(bad_vals) or len(highs) != len(good_vals):
+                continue  # a value that is not a number cannot sit on either side of a threshold
+            if max(lows) < min(highs):
+                out.append({"attribute": name, "kind": "threshold",
+                            "bad": _bound("<=", max(lows), name), "good": _bound(">=", min(highs), name)})
+            elif min(lows) > max(highs):
+                out.append({"attribute": name, "kind": "threshold",
+                            "bad": _bound(">=", min(lows), name), "good": _bound("<=", max(highs), name)})
+        elif not set(map(str, bad_vals)) & set(map(str, good_vals)):
+            out.append({"attribute": name, "kind": "category",
+                        "bad": sorted(set(map(str, bad_vals))), "good": sorted(set(map(str, good_vals)))})
+    for split in out:
+        split["ambiguous"] = len(out) > 1
+    return out
+
+
+def _near_zero(value: Any) -> bool:
+    number = _number(value)
+    return number is not None and abs(number) < 0.015
+
+
+def _same(a: Any, b: Any) -> bool:
+    """same_value, except around zero: its 0.01 absolute tolerance would call a 0.001 fouling factor 0."""
+    if _near_zero(a) or _near_zero(b):
+        return _number(a) == _number(b)
+    return same_value(a, b)
+
+
+def _explanation(row: Mapping[str, Any], target: Any) -> str | None:
+    """Why an order disagreeing with the estimate is not a counterexample to it (None = it is)."""
+    if row.get("cause") in _EXPLAINING_CAUSES:
+        return row["cause"]
+    if not _blank(row.get("rev0")) and _same(row["rev0"], target):
+        return "changed_at_order"  # the quote used the estimate; the order changed it
+    # mismatch_cause returns default_counterexample before its rounding check, so recompute here — but
+    # never around zero, where "0.015 apart" would wave through a real fouling factor.
+    if not (_near_zero(target) or _near_zero(row.get("ccsi"))) and _within_rounding(target, row.get("ccsi")):
+        return "rounding"
+    return None
+
+
+def _group_key(value: Any) -> str:
+    number = _number(value)
+    return str(number) if number is not None else option_key(value)
+
+
+def evaluate_estimates(rows: Iterable[Mapping[str, Any]], register: Iterable[Estimate], *,
+                       field_info: FieldInfoLookup = map_field_info) -> dict[str, dict[str, Any]]:
+    """Per estimate: strict confirmation against orders exported before PUSH_START (proposals only)."""
+    rows = list(rows)
+    attrs = coil_attributes(rows)
+    by_field: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for r in rows:
+        by_field[(r["coil_type"], r["ccsi_id"])].append(r)
+    out: dict[str, dict[str, Any]] = {}
+    for est in register:
+        mine = [r for r in by_field.get((est.coil_type, est.ccsi_id), []) if est.select(r)]
+        printed = [r for r in mine if r["verdict"] != "absent_on_form" and not _blank(r["ccsi"])]
+
+        def target(r: Mapping[str, Any], est: Estimate = est) -> Any:
+            # The value actually pushed ("Aluminum 0.008", not the map's "0.008"); an extra estimate
+            # was never pushed, so its own value is the claim under test.
+            return est.value if est.kind == "extra" else r["coilforge"]
+
+        matches: list[Mapping[str, Any]] = []
+        unexplained: list[Mapping[str, Any]] = []
+        explained: Counter = Counter()
+        excluded: Counter = Counter()
+        for r in printed:
+            if r["tier"] != "order":
+                continue
+            if r.get("cause") in _NO_EVIDENCE_CAUSES:
+                excluded[r["cause"]] += 1
+            elif _same(r["ccsi"], target(r)):
+                matches.append(r)
+            elif r.get("cause") == "map_options_incomplete":
+                unexplained.append(r)  # an order value the map cannot even express blocks, never hides
+            elif why := _explanation(r, target(r)):
+                explained[why] += 1
+            else:
+                unexplained.append(r)
+        excluded["order_after_push"] = sum(r["tier"] == "order_after_push" for r in mine)
+        excluded["not_printed"] = len(mine) - len(printed)
+        match_projects = {r["project"] for r in matches}
+
+        groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+        for r in unexplained:
+            groups[_group_key(r["ccsi"])].append(r)
+        good = sorted({(r["project"], str(r["tag"])) for r in matches})
+        splits = {value: pure_splits({(r["project"], str(r["tag"])) for r in group}, good, attrs, skip=est.ccsi_id)
+                  for value, group in groups.items()}
+        if not printed:
+            verdict = "untestable_not_printed"
+        elif not unexplained:
+            verdict = "confirm_candidate" if len(match_projects) >= CONFIRM_MIN_PROJECTS else "insufficient_projects"
+        elif all(splits.values()):
+            dated = all(all(s["attribute"] == "report_date" for s in found) for found in splits.values())
+            verdict = "superseded_candidate" if dated else "conditional_candidate"
+        else:
+            verdict = "not_confirmed_unexplained"
+        info = field_info(est.coil_type, est.ccsi_id)
+        # After the push only a disagreement is evidence (an engineer changed the value); agreement may be an echo.
+        contradicted = [r for r in printed if r["tier"] == "order_after_push" and not _same(r["ccsi"], target(r))]
+        if info is not None and info.mapping_status == "confirmed" and contradicted:
+            verdict = "confirmed_contradicted"
+        holdout = None
+        if est.evidence_basis == "independent":
+            quotes = [r for r in printed if r["tier"] == "quote_only"
+                      and (r.get("report_date") or "9999") < PUSH_START.isoformat()]
+            same = [_same(r["ccsi"], target(r)) for r in quotes]
+            holdout = {"match": sum(same), "differ": len(same) - sum(same)}
+        out[est.key] = {
+            "coil_type": est.coil_type, "ccsi_id": est.ccsi_id, "kind": est.kind, "value": est.value,
+            "derived_from": est.derived_from, "decided": est.decided, "evidence_basis": est.evidence_basis,
+            "verdict": verdict, "order_projects": len(match_projects), "order_coils": len(matches),
+            "explained": dict(explained), "excluded": {k: v for k, v in excluded.items() if v},
+            "unexplained": [{"project": r["project"], "tag": r["tag"], "coilforge": r["coilforge"],
+                             "order": r["ccsi"], "rev0": r["rev0"], "report_date": r.get("report_date"),
+                             "cause": r.get("cause")} for r in unexplained],
+            "splits": splits, "holdout": holdout,
+            "contradicted": [{"project": r["project"], "tag": r["tag"], "order": r["ccsi"]} for r in contradicted],
+        }
+    return out

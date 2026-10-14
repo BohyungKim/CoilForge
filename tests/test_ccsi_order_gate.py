@@ -39,9 +39,10 @@ def _coil(report=None, sources=None, flags=(), tag="CDXC-1"):
     return {"project": "", "tag": tag, "coil_type": "DX", "rows": rows, "report_flags": list(flags)}
 
 
-def _project(number, coil, kind="order"):
+def _project(number, coil, kind="order", stamp="7_7_2026,_0_48_52_AM"):
+    # A real CCSI export stamp (before PUSH_START): an undated order is fail-closed to order_after_push.
     coil["project"] = number
-    return {"project": number, "report_kind": kind, "truth_file": f"{number}_REV1.pdf", "coils": [coil]}
+    return {"project": number, "report_kind": kind, "truth_file": f"{number}_REV1_{stamp}.pdf", "coils": [coil]}
 
 
 def _by_id(rows):
@@ -357,3 +358,198 @@ def test_annotate_threads_the_project_into_the_ruling() -> None:
     assert rows["EnteringDryBulb"]["verdict"] == "mismatch"
     assert rows["EnteringDryBulb"]["cause"] == "ruled_order_change"
     assert rows["EnteringDryBulb"]["counts_as_defect"] is False
+
+
+# ------------------------------------------------------------------ estimate confirmation (John 2026-10-12)
+def test_report_date_reads_both_ccsi_export_stamps_and_nothing_else() -> None:
+    from datetime import date
+    assert og.report_date("2298_-_Rouge_Gateway_REV1_6_28_2026,11_24_38_PM.pdf") == date(2026, 6, 28)
+    assert og.report_date("2600_-_Medical_Centre_REV1_9_9_2026,__47_30_PM.pdf") == date(2026, 9, 9)
+    assert og.report_date("2623_-_CC_Fire_Station_8_REV0_2026-06-05_3_01_04_p.m..pdf") == date(2026, 6, 5)
+    assert og.report_date("3300_REV1.pdf") is None
+    assert og.report_date(None) is None
+
+
+def test_an_order_exported_after_the_push_or_undated_is_not_independent_evidence() -> None:
+    projects = [_project("3300", _coil()), _project("3301", _coil(), stamp="9_30_2026,1_00_00_PM"),
+                _project("3302", _coil()), _project("3237", _coil(), stamp="10_1_2026,1_00_00_PM")]
+    projects[2]["truth_file"] = "3302_REV1.pdf"
+    tiers = {r["project"]: r["tier"] for r in og.annotate(projects, CAL_KEYS)}
+    assert tiers == {"3300": "order", "3301": "order_after_push", "3302": "order_after_push", "3237": "calibration"}
+
+
+def _est(rows, register, info=None):
+    return og.evaluate_estimates(rows, register, field_info=lambda _t, _i: info or _info())
+
+
+def _default(project, ccsi, *, tag="CDXC-1", field="TubeDiameter", cf="3/8 1.00 x 0.866", tier="order", rev0=None,
+             cause=None, date="2026-07-07", verdict=None):
+    verdict = verdict or ("match" if og.same_value(cf, ccsi) else "mismatch")
+    cause = cause if cause is not None else ("default_counterexample" if verdict == "mismatch" else None)
+    return dict(_row(project, verdict, field=field, tier=tier, cause=cause, code="CCSI_DEFAULT_PROFILE"),
+                tag=tag, coilforge=cf, ccsi=ccsi, rev0=rev0, report_date=date, source_key=None, reason="default")
+
+
+_TUBE = og.Estimate("DX:TubeDiameter=default", "DX", "TubeDiameter", "default", "3/8 1.00 x 0.866", "harvest",
+                    "2026-09-29", lambda r: r.get("reason_code") == "CCSI_DEFAULT_PROFILE")
+_HALF = "1/2 1.25 x 1.0825"
+_EIGHTH = "3/8 1.00 x 0.866"
+
+
+def test_a_default_match_counts_here_but_never_in_proposals() -> None:
+    rows = [_default(p, _EIGHTH) for p in "12345"]
+    assert _est(rows, [_TUBE])[_TUBE.key]["verdict"] == "confirm_candidate"
+    assert _proposal([dict(r, ccsi_id="FinnedHeight") for r in rows], _info())["proposal"] == "insufficient"
+
+
+def test_projects_not_coils_meet_the_threshold() -> None:
+    four = [_default(p, _EIGHTH, tag=t) for p in "1234" for t in ("CDXC-1", "CDXC-2", "CDXC-3")]
+    out = _est(four, [_TUBE])[_TUBE.key]
+    assert (out["verdict"], out["order_projects"], out["order_coils"]) == ("insufficient_projects", 4, 12)
+    assert _est(four + [_default("5", _EIGHTH)], [_TUBE])[_TUBE.key]["verdict"] == "confirm_candidate"
+
+
+def test_one_unexplained_counterexample_blocks_confirmation() -> None:
+    rows = [_default(p, _EIGHTH) for p in "12345"] + [_default("6", _HALF)]
+    out = _est(rows, [_TUBE])[_TUBE.key]
+    assert out["verdict"] == "not_confirmed_unexplained"
+    assert out["unexplained"][0]["project"] == "6" and list(out["splits"].values()) == [[]]
+
+
+def test_explained_counterexamples_and_excluded_rows() -> None:
+    good = [_default(p, _EIGHTH) for p in "12345"]
+    explained = [_default("6", _HALF, cause="ruled_order_change"), _default("7", _HALF, cause="air_basis"),
+                 _default("8", _HALF, rev0=_EIGHTH)]
+    excluded = [_default("9", _HALF, cause="report_unparsed"), _default("10", _HALF, cause="reselect_predicted"),
+                _default("11", _HALF, tier="order_after_push"), _default("12", None, verdict="absent_on_form")]
+    out = _est(good + explained + excluded, [_TUBE])[_TUBE.key]
+    assert out["verdict"] == "confirm_candidate"
+    assert out["explained"] == {"ruled_order_change": 1, "air_basis": 1, "changed_at_order": 1}
+    assert out["excluded"] == {"report_unparsed": 1, "reselect_predicted": 1, "order_after_push": 1, "not_printed": 1}
+
+
+def test_a_value_the_map_cannot_express_blocks_instead_of_hiding() -> None:
+    rows = [_default(p, _EIGHTH) for p in "12345"] + [_default("6", _HALF, cause="map_options_incomplete")]
+    assert _est(rows, [_TUBE])[_TUBE.key]["verdict"] == "not_confirmed_unexplained"
+
+
+def test_rounding_explains_printed_precision_but_never_around_zero() -> None:
+    fouling = og.Estimate("DX:AirSideFoulingFactor=default", "DX", "AirSideFoulingFactor", "default", "0",
+                          "harvest", None, lambda r: True)
+    good = [_default(p, "0", field="AirSideFoulingFactor", cf="0") for p in "12345"]
+    near_zero = _default("6", "0.001", field="AirSideFoulingFactor", cf="0")
+    assert _est(good + [near_zero], [fouling])[fouling.key]["verdict"] == "not_confirmed_unexplained"
+    vapor = og.Estimate("HGRH:VaporTemperature=default", "HGRH", "VaporTemperature", "default", "140",
+                        "order+quote", None, lambda r: True)
+    good = [dict(_default(p, "140", field="VaporTemperature", cf="140"), coil_type="HGRH") for p in "12345"]
+    printed = dict(_default("6", "140.2", field="VaporTemperature", cf="140"), coil_type="HGRH")
+    out = _est(good + [printed], [vapor])[vapor.key]
+    assert out["verdict"] == "confirm_candidate" and out["explained"] == {"rounding": 1}
+
+
+def test_a_substitution_is_judged_on_the_value_actually_pushed() -> None:
+    # The map says "0.008"; the push and the order say "Aluminum 0.008" — never a false counterexample.
+    sub = og.Estimate("DX:FinMaterial=substitution", "DX", "FinMaterial", "substitution", "aluminum 0.0075 -> 0.008",
+                      "order+quote", "2026-10-01", lambda r: og.SUBSTITUTED_MARK in str(r.get("reason") or ""))
+    reason = "0.0075 is not a CCSI option — 0.008 sent in its place, as on the ordered selections"
+    rows = [dict(_row(p, field="FinMaterial", ccsi="Aluminum 0.008"), report_date="2026-07-07",
+                 source_key="fin_material", reason=reason) for p in "12345"]
+    out = _est(rows, [sub])[sub.key]
+    assert out["verdict"] == "confirm_candidate"
+    assert out["evidence_basis"] == "in_sample" and out["holdout"] is None
+
+
+def test_an_extra_estimate_is_judged_against_its_own_value() -> None:
+    q9 = next(e for e in og.EXTRA_ESTIMATES if e.key == "HWC:FinSurface=silent")
+    rows = [dict(_row(p, "submittal_missing", field="FinSurface", ccsi="Flat", code="CCSI_SOURCE_MISSING"),
+                 coil_type="HWC", coilforge=None, report_date="2026-07-07") for p in "1234"]
+    rows.append(dict(rows[0], project="5", ccsi="Corrugated"))
+    out = _est(rows, [q9])[q9.key]
+    assert out["verdict"] == "not_confirmed_unexplained" and out["order_projects"] == 4
+
+
+def _capillary_rows(groups):
+    rows = []
+    for project, ccsi, rows_deep, when in groups:
+        rows.append(_default(project, ccsi, field="DXDistCapillarySize", cf="1/4 x 0.025", date=when))
+        rows.append(dict(_row(project, field="RowsDeep", ccsi=rows_deep), report_date=when))
+    return rows
+
+
+_CAP = og.Estimate("DX:DXDistCapillarySize=default", "DX", "DXDistCapillarySize", "default", "1/4 x 0.025",
+                   "harvest", None, lambda r: r.get("reason_code") == "CCSI_DEFAULT_PROFILE")
+
+
+def test_a_clean_split_is_proposed_and_a_date_only_split_is_superseded() -> None:
+    early = [(p, "3/16 x 0.025", "6", "2026-06-03") for p in "123"]
+    late = [(p, "1/4 x 0.025", "4", "2026-06-10") for p in "456"]
+    out = _est(_capillary_rows(early + late), [_CAP])[_CAP.key]
+    assert out["verdict"] == "conditional_candidate"  # rows-deep also separates them
+    found = {s["attribute"]: s for s in next(iter(out["splits"].values()))}
+    assert set(found) == {"RowsDeep", "report_date"} and all(s["ambiguous"] for s in found.values())
+    assert (found["report_date"]["bad"], found["report_date"]["good"]) == ("<= 2026-06-03", ">= 2026-06-10")
+    # same rows-deep on both sides: only the export date separates them — an order-side practice change
+    same = [(p, c, "4", d) for p, c, _r, d in early + late]
+    assert _est(_capillary_rows(same), [_CAP])[_CAP.key]["verdict"] == "superseded_candidate"
+    # fewer than three projects on the counterexample side never proposes a condition
+    two = [g for g in same if g[0] != "3"]
+    assert _est(_capillary_rows(two), [_CAP])[_CAP.key]["verdict"] == "not_confirmed_unexplained"
+
+
+def test_rating_values_never_split() -> None:
+    attrs = {(p, "C"): {"Capacity": v} for p, v in (("1", 10), ("2", 11), ("3", 12), ("4", 50), ("5", 51), ("6", 52))}
+    assert og.pure_splits([("1", "C"), ("2", "C"), ("3", "C")], [("4", "C"), ("5", "C"), ("6", "C")], attrs) == []
+    assert "Capacity" not in og.SPLIT_CATEGORY_IDS + og.SPLIT_THRESHOLD_IDS
+
+
+def test_after_the_push_only_a_disagreement_counts_against_a_confirmed_value() -> None:
+    rows = [_default(p, _EIGHTH) for p in "12345"]
+    echo = _default("6", _EIGHTH, tier="order_after_push", date="2026-10-05")
+    changed = _default("7", _HALF, tier="order_after_push", date="2026-10-05")
+    confirmed = _info(status="confirmed")
+    assert _est(rows + [echo], [_TUBE], confirmed)[_TUBE.key]["verdict"] == "confirm_candidate"
+    out = _est(rows + [echo, changed], [_TUBE], confirmed)[_TUBE.key]
+    assert out["verdict"] == "confirmed_contradicted"
+    assert out["contradicted"] == [{"project": "7", "tag": "CDXC-1", "order": _HALF}]
+    assert _est(rows + [changed], [_TUBE])[_TUBE.key]["verdict"] == "confirm_candidate"  # validated: not watched yet
+
+
+def test_holdout_is_shown_only_for_harvest_derived_estimates_and_only_before_the_push() -> None:
+    rows = [_default(p, _EIGHTH) for p in "12345"]
+    rows += [_default("8", _EIGHTH, tier="quote_only"), _default("9", _HALF, tier="quote_only"),
+             _default("10", _HALF, tier="quote_only", date="2026-10-02")]
+    assert _est(rows, [_TUBE])[_TUBE.key]["holdout"] == {"match": 1, "differ": 1}
+    in_sample = og.Estimate(_TUBE.key, "DX", "TubeDiameter", "default", "x", "order+quote", None, _TUBE.select)
+    assert _est(rows, [in_sample])[_TUBE.key]["holdout"] is None
+
+
+def test_the_register_derives_from_the_maps_and_leaves_acfm_out() -> None:
+    register = {e.key: e for e in og.estimate_register()}
+    assert not any(e.ccsi_id == "ACFM" for e in register.values())
+    assert register["HGRH:VaporTemperature=default"].evidence_basis == "in_sample"
+    assert register["DX:TubeDiameter=default"].evidence_basis == "independent"
+    assert register["DX:FinMaterial=substitution"].evidence_basis == "in_sample"
+    assert register["DX:RefrigerationSystemType=style_map"].kind == "style_map"
+    assert {e.key for e in og.EXTRA_ESTIMATES} <= set(register)
+
+
+def test_the_substitution_mark_is_what_resolve_coil_data_writes() -> None:
+    from coilforge.ccsi.coil_data_map import resolve_coil_data
+    entries = {e.ccsi_id: e for e in resolve_coil_data({"fin_material": {"value": "0.0075", "unit": "Aluminum"}},
+                                                        coil_type="DX")}
+    assert og.SUBSTITUTED_MARK in entries["FinMaterial"].reason, entries["FinMaterial"].reason
+
+
+def test_the_summary_renders_an_estimates_section_when_present() -> None:
+    spec = importlib.util.spec_from_file_location("ccsi_order_gate", ROOT / "scripts/ccsi_order_gate.py")
+    assert spec is not None and spec.loader is not None
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    rows = og.annotate([_project("3300", _coil())], CAL_KEYS)
+    cal = og.calibrate([])
+    gate = {"input": "x.json", "code_version": "test", "stale_sources": [], "calibration": cal,
+            "tiers": {"order": {"projects": 1, "coils": 1}}, "runner_skips": {}, "cloud_only": {},
+            "proposals": og.proposals(rows, cal), "decision_tables": og.decision_tables(rows),
+            "estimates": og.evaluate_estimates(rows, og.estimate_register())}
+    text = script.render(gate)
+    assert "## Estimates — strict confirmation" in text and "`DX:TubeDiameter=default`" in text
