@@ -118,7 +118,11 @@ def test_the_submittal_stated_connections_reach_the_context():
     )
     ctx = _template_header_context_from_candidate(candidate)
     assert str(ctx["qty_conn_per_header"]) in ("2", "2.0")
-    # No Coil Style stated at all -> circuits falls to 1 -> the conflict is real.
-    assert ctx["circuits"] == 1
+    # No Coil Style stated at all. Until 2026-10-14 circuits fell to the intake default 1
+    # and this banner was the only trace of it; John's Q1 = A (2950) makes the stated
+    # connections the header count when nothing else states one, so the coil now draws
+    # two headers and there is no contradiction left to flag.
+    assert ctx["circuits"] == 2
+    assert ctx["header_count_reading"]["status"] == "single_source"
     result = _flag_header_count_conflict(_result(ctx["circuits"]), ctx)
-    assert result["header_count_conflict"] is True
+    assert "header_count_conflict" not in result

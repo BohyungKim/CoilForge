@@ -1898,7 +1898,10 @@ _KNOWN_SPEC_FIELD_KEYS: frozenset[str] = frozenset(
 # The submittal inputs the engineer may type in place of a missing or misread value
 # (`manual_inputs`, John 2026-10-02). Counts must be whole numbers: a float feeds prints
 # "6.0 Feed" on the drawing and a fractional rows fails the engine's int schema.
-_MANUAL_INPUT_INT_KEYS: frozenset[str] = frozenset({"rows", "feeds"})
+_MANUAL_INPUT_INT_KEYS: frozenset[str] = frozenset({"rows", "feeds", "circuits"})
+# Circuits is the header count (John 2026-10-14, 2950) and selects the template; the
+# catalog seeds Header 1-4 only, so anything else could only ever be withheld.
+_MANUAL_INPUT_RANGES: dict[str, tuple[int, int]] = {"circuits": (1, 4)}
 _MANUAL_INPUT_FLOAT_KEYS: frozenset[str] = frozenset(
     {"finned_height", "finned_length", "return_conn_size"}
 )
@@ -1927,7 +1930,9 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
             clean.pop(key, None)
         return clean, errors
 
-    # Typed submittal inputs: {rows, feeds, finned_height, finned_length, return_conn_size}.
+    # Typed submittal inputs: {rows, feeds, finned_height, finned_length, return_conn_size,
+    # circuits}. With the kill switch off they are stripped above, so a coil the header-count
+    # gate withholds has no lever at all -- fail-closed, by design.
     # A bad value is dropped with a surfaced error -- never stored, never a 500 (a string
     # FH would raise in the slot layer).
     if "manual_inputs" in clean:
@@ -1948,6 +1953,11 @@ def _sanitize_derive_spec(spec: dict[str, Any]) -> tuple[dict[str, Any], list[st
                 errors.append(f"{key}: must be a positive number (got {raw!r})")
             elif key in _MANUAL_INPUT_INT_KEYS and coerced != int(coerced):
                 errors.append(f"{key}: must be a whole number (got {raw!r})")
+            elif key in _MANUAL_INPUT_RANGES and not (
+                _MANUAL_INPUT_RANGES[key][0] <= coerced <= _MANUAL_INPUT_RANGES[key][1]
+            ):
+                low, high = _MANUAL_INPUT_RANGES[key]
+                errors.append(f"{key}: must be {low}-{high} (got {raw!r})")
             else:
                 manual_inputs[key] = int(coerced) if key in _MANUAL_INPUT_INT_KEYS else coerced
         if manual_inputs:

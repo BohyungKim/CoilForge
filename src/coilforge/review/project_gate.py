@@ -75,6 +75,10 @@ def _drawing_status(workflow: dict[str, Any]) -> str | None:
         return None
     if td.get("error"):
         return f"Drawing error: {td['error']}"
+    # Withheld for its header count (2026-10-14): the bucket exists, so "no template
+    # seeded" would send the engineer to the catalog instead of the Circuits value.
+    if td.get("header_count_blocked"):
+        return str(td.get("not_registered_reason") or "Drawing withheld: header count unverified.")
     if td.get("template_found") is False:
         return "No template bucket seeded for this coil (category / hand / header)."
     if td.get("generation_allowed") is False:

@@ -360,6 +360,34 @@ degrade to `CANNOT_EVALUATE` (drain_pan reads the same size through the same loo
 leaving it live keeps a verdict standing on a distrusted value) and the note states BOTH
 sizes without choosing.
 
+**Header-count double validation (John 2026-10-14, project 2950)** (`submittal/header_count.py`,
+`submittal_to_drawing._gate_header_count`) — 2950 RHHGRC-1 printed `Coil Style: Face Split` (no count)
+and `Qty Conn. / Header 2`; nothing read the count, the intake's default `HEADER_TYPE "Header 1"`
+answered with no marker, and a 2-header coil drew and shipped on 1-header art. **Layer 1** judges every
+statement together.
+- Circuit-count signals: the Circuits cell, the Coil Style count, a genuinely read Header Type.
+  - The default line is excluded by `source_location` `pdf-intake-default`.
+  - `Standard` is NOT a signal.
+  - Two circuit signals that differ are a `conflict`.
+- `Qty Conn./Header` answers only when no circuit signal exists (`single_source`). John Q1 = A, on 52/52 corpus agreement.
+  - It never contradicts a circuit count: Terra V draws 4 circuits on 2 connections.
+  - The old banner stays one-way.
+- A scanned CoilMaster drawing's `C1:/C2:` only keeps the coil from reading `absent` (`as_built_only`).
+  - It never sets the value: John held back the scanned-track change.
+  - It is attributed per coil (tag match, or a single-coil document).
+
+**Layer 2** compares the catalog `header_type` of the template actually drawn with that value. It withholds the drawing via `_omit_drawing` on a mismatch, or when the source establishes no count (`absent`/`conflict`).
+- The withheld drawing is never repaired. The critical Circuits fill item is the lever.
+- It is honestly near-tautological on analyze, because Layer 1 picked the circuits. What it pins is the END state: dedicated-family swaps, derive re-selection, and unestablished counts.
+- Circuits joined `_MANUAL_INPUT_KEYS`:
+  - `input_baseline.circuits.value` is the Layer 1 value (None when unestablished), so a typed "1" is ledgered against nothing, not dropped as 1→1.
+  - The plain `circuits` key is the echo and never releases a coil.
+  - Typed circuits pass `_sanitize_derive_spec` (int 1–4), are drawn as typed, and are marked `overridden`.
+- A derive without the round-tripped `header_count_reading` keeps today's drawing as `unverified`.
+- The baseline is now accepted **per key**.
+
+The same value feeds the drawing, the DX/HGRH checklist `circuits` (water keeps its raw value), the Direct Coil paste `header_type` (`_candidate_with_header_count`), and the copper-strap price. A withheld coil prices as unknown, never `or 1`. The reason reaches `project_gate`, the assembler's `not_inserted_reason` and the picker text.
+
 **Known-divergence registry / adjudication** (`review/divergence.py`, `review/adjudicate.py`,
 `rules/known_divergences.yaml`, `scripts/promote_divergences.py`) — John rules ONCE on a
 checklist-vs-engine disagreement so the same known gap stops re-asking. A ruling **only

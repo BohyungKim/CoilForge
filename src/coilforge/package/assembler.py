@@ -429,7 +429,12 @@ def assemble_multi_coil_package(
             if will_insert:
                 not_inserted_reason = None
             elif not coil.get("our_svg"):
-                not_inserted_reason = "no CoilForge drawing generated — review this coil first"
+                # A withheld drawing says WHY (e.g. its header count is unverified) --
+                # "review this coil" alone sends the engineer looking for the wrong thing.
+                not_inserted_reason = (
+                    coil.get("withheld_reason")
+                    or "no CoilForge drawing generated — review this coil first"
+                )
             else:
                 not_inserted_reason = f"no source drawing page found for tag {coil['tag']}"
             summary.append(

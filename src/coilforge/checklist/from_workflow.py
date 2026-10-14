@@ -63,6 +63,7 @@ def coil_inputs_from_candidates(
     second element is the fallback/override pair, for logging.
     """
     from coilforge.submittal.coilmaster_drawing_extract import detect_product_and_size
+    from coilforge.submittal.header_count import header_count_reading
     from coilforge.submittal.model_code import drain_pan_option_for_unit_size
     from coilforge.submittal.pdf_intake import coil_category_of_tag, drain_pan_partner_tag
 
@@ -118,10 +119,17 @@ def coil_inputs_from_candidates(
                 "feeds": _g(geom, "number_of_feeds"),
                 # circuits count for the drawing distributor math = the CoilMaster
                 # prose circuit count if present, else QTY CONN/HEADER (the count the
-                # checklist's own S/R/CD formulas key on — John 2026-07-01).
+                # checklist's own S/R/CD formulas key on — John 2026-07-01). DX/HGRH read
+                # it through the same Layer 1 header-count reading the drawing uses
+                # (2026-10-14), so the sheet and the drawing cannot disagree on it; water
+                # coils keep the raw value, which their FEEDS/CIRCUITS and N/A cells read.
                 "circuits": (
-                    _g(geom, "circuits", "number_of_circuits", "num_circuits")
-                    or _g(conn, "qty_connections_per_header")
+                    header_count_reading(cand, coil_category=category)["value"]
+                    if category in ("DX", "HGRH")
+                    else (
+                        _g(geom, "circuits", "number_of_circuits", "num_circuits")
+                        or _g(conn, "qty_connections_per_header")
+                    )
                 ),
                 # DX suction line is the return/suction connection; water coils use in/out.
                 "suction_conn_size": _g(conn, "suction_connection_size",

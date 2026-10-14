@@ -2253,6 +2253,22 @@ h4 {
   padding: 8px 10px;
 }
 
+/* Header-count verification line (2026-10-14). Quiet on agreement, amber when it needs a look. */
+.header-count-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.header-count-note.is-review {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-left: 4px solid var(--status-review);
+  border-radius: 6px;
+  color: var(--warn-text);
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
 /* OCR-blocked alert (token/quota exhausted, missing/expired key, rate-limit, truncated).
    Reuses the danger tokens (defined light + dark) so it tracks the theme. */
 /* PO Release board case-prefill banner (?case= deep link): expected coils

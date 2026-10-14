@@ -171,6 +171,7 @@ def run_quote_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
                 "coil_type": c.get("coil_type"),
                 "our_svg": c.get("our_svg"),
                 "header_count": c.get("header_count"),
+                "withheld_reason": c.get("withheld_reason"),
             }
             for c in reviewed
         ]
@@ -188,8 +189,15 @@ def run_quote_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
                     "coil_type": extracted.get("coil_category"),
                     "our_svg": template_drawing.get("svg"),
                     # No silent ``or 1`` default: an unknown count must flag review,
-                    # never be priced as a single header (R-090 / never-invent).
-                    "header_count": extracted.get("circuits"),
+                    # never be priced as a single header (R-090 / never-invent). A coil
+                    # withheld for its header count carries the frozen path's default 1
+                    # in `circuits`, so it is priced as unknown instead (2026-10-14).
+                    "header_count": (
+                        None
+                        if template_drawing.get("header_count_blocked")
+                        else extracted.get("circuits")
+                    ),
+                    "withheld_reason": template_drawing.get("not_registered_reason"),
                 }
             )
 
@@ -207,6 +215,7 @@ def run_quote_package_workflow(request: dict[str, Any]) -> dict[str, Any]:
                 "tag": coil.get("tag"),
                 "coil_type": category,
                 "our_svg": coil.get("our_svg"),
+                "withheld_reason": coil.get("withheld_reason"),
                 "price_note": price.get("note"),
                 "price_total": price.get("total"),
                 "price_status": price.get("status"),

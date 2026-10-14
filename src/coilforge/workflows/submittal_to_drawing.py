@@ -382,6 +382,7 @@ def _run_pdf_to_drawing_workflow_uncached(
             title_block=title_block,
             pdf_text=pdf_text,
             hgrh_partner_conn=_hgrh_partner_conn_for(candidate, candidates),
+            single_candidate=len(candidates) == 1,
         )
         for candidate in candidates
     ]
@@ -849,6 +850,155 @@ def _flag_header_count_conflict(
         "selects the template and adds a whole header column, so confirm it; set "
         "Circuits in the spec panel to redraw with the right header count."
     )
+    return result
+
+
+def _attach_as_built_header_signal(
+    ctx: dict[str, Any], pdf_text: str | None, *, single_candidate: bool
+) -> None:
+    """Add a scanned CoilMaster drawing's own circuit count to this coil's reading.
+
+    Only a drawing that was actually read (a model number) counts, and only for the coil
+    it belongs to: its ``Tag:`` must name this coil, or the document must hold just this
+    one coil. `extract_coilmaster_drawing` scans the WHOLE text and returns the first
+    drawing's values, so handing them to every coil would give one coil's circuits to its
+    siblings -- attribution is per coil here, as for the drain-pan option.
+
+    The signal only keeps a scanned drawing from reading as ``absent``; it never sets the
+    value (John 2026-10-14 held back any change on the scanned track).
+    """
+    reading = ctx.get("header_count_reading")
+    if not pdf_text or not isinstance(reading, dict) or reading.get("status") != "absent":
+        return
+    from coilforge.submittal.coilmaster_drawing_extract import extract_coilmaster_drawing
+    from coilforge.submittal.header_count import as_built_signal, read_header_count
+    from coilforge.submittal.pdf_intake import coil_tag_aliases
+
+    drawn = extract_coilmaster_drawing(pdf_text)
+    if not drawn.get("model_number"):
+        return
+    drawing_tag = str(drawn.get("tag") or "").strip().upper()
+    own_tags = {alias.upper() for alias in coil_tag_aliases(str(ctx.get("tag") or ""))}
+    if not single_candidate and drawing_tag not in own_tags:
+        return
+    signal = as_built_signal(drawn.get("circuits"))
+    if signal is None:
+        return
+    ctx["header_count_reading"] = read_header_count(
+        [*reading.get("signals", []), signal], coil_category=ctx.get("coil_category")
+    )
+
+
+def _drawn_header_count(template_id: Any) -> int | None:
+    """The header count of the artwork a template id names (``None`` for HGBP / unknown)."""
+    from coilforge.template_population.catalog import get_template_entry
+
+    entry = get_template_entry(str(template_id)) if template_id else None
+    return _header_count_from_type(getattr(entry, "header_type", None)) if entry else None
+
+
+def _gate_header_count(
+    result: dict[str, Any],
+    reading: dict[str, Any] | None,
+    *,
+    typed_circuits: Any = None,
+) -> dict[str, Any]:
+    """Layer 2: withhold a DX/HGRH drawing whose artwork does not carry the header count
+    the submittal establishes (John 2026-10-14, project 2950).
+
+    Layer 1 (`submittal.header_count`) already chose the circuits the template was
+    selected with, so on analyze a disagreement here is rare by construction. What this
+    asserts independently is the END state: whatever selected the art (a dedicated-family
+    swap, a future bucket, a /derive re-selection), the header count printed on it is the
+    one the source states -- and a coil whose source states none, or contradicts itself,
+    is not drawn on a guessed count. Withheld, not repaired: the engineer types Circuits
+    (``typed_circuits``), which is a human decision and is drawn as typed, marked
+    ``overridden`` when it differs from the source.
+
+    ``reading`` is None on a /derive that did not round-trip it (an older page, a direct
+    API caller): today's behaviour is kept and the result says ``unverified``.
+    """
+    if not isinstance(result, dict):
+        return result
+    extracted = result.get("extracted") or {}
+    category = str(extracted.get("coil_category") or "").upper()
+    if category not in ("DX", "HGRH"):
+        return result
+    from coilforge.submittal.header_count import UNESTABLISHED_STATUSES, describe_signals
+
+    reading = reading if isinstance(reading, dict) else {}
+    status = reading.get("status") or "unverified"
+    source_value = reading.get("value")
+    signals = list(reading.get("signals") or [])
+    typed = _header_count_int(typed_circuits)
+    drawn = _drawn_header_count(result.get("template_id"))
+    verification: dict[str, Any] = {
+        "status": status,
+        # What Layer 1 said, kept when `status` moves on to the Layer 2 verdict.
+        "reading_status": status,
+        "submittal": source_value,
+        "drawn": drawn,
+        "signals": signals,
+        "qty_disagrees": bool(reading.get("qty_disagrees")),
+    }
+    result["header_count_reading"] = reading or None
+    result["header_count_verification"] = verification
+    # An earlier gate already withheld the art (or the frozen path raised): nothing was
+    # drawn to compare, and its reason must not be overwritten.
+    if "error" in result or not result.get("svg") or not result.get("template_id"):
+        verification["checked"] = False
+        return result
+    # HGBP art is header-agnostic; record the reading, block nothing.
+    if extracted.get("special_feature") or drawn is None:
+        verification["checked"] = False
+        return result
+    verification["checked"] = True
+    evidence = describe_signals(signals) or "nothing"
+
+    def withhold(reason: str, verdict: str) -> dict[str, Any]:
+        verification["status"] = verdict
+        result["header_count_blocked"] = True
+        _omit_drawing(result, reason)
+        return result
+
+    if typed is not None:
+        if drawn != typed:
+            return withhold(
+                f"Header count withheld: Circuits was entered as {typed}, but the drawing "
+                f"selected Header {drawn} artwork. Submittal: {evidence}.",
+                "mismatch",
+            )
+        verification["status"] = "verified" if typed == source_value else "overridden"
+        verification["typed"] = typed
+        return result
+    if status in UNESTABLISHED_STATUSES:
+        what = (
+            "states conflicting header counts"
+            if status == "conflict"
+            else "states no header count (no circuit count, no Qty Conn./Header)"
+        )
+        return withhold(
+            f"Header count withheld: the submittal {what} — {evidence}. This drew as "
+            f"Header {drawn} only by default. Enter Circuits to draw it.",
+            status,
+        )
+    if status == "as_built_only":
+        as_built = next((s["value"] for s in signals if s.get("name") == "as_built_drawing"), None)
+        if as_built is not None and as_built != drawn:
+            verification["as_built_disagrees"] = True
+        return result
+    if status == "unverified" or source_value is None:
+        return result
+    if drawn != source_value:
+        unseeded = (
+            " No artwork is seeded beyond Header 4." if source_value > 4 else ""
+        )
+        return withhold(
+            f"Header count withheld: the submittal states {source_value} header(s) "
+            f"({evidence}), but the selected artwork is Header {drawn}.{unseeded}",
+            "mismatch",
+        )
+    verification["status"] = "verified"
     return result
 
 
@@ -1656,12 +1806,16 @@ _MANUAL_ENGINE_INPUT_KEYS: tuple[str, ...] = (
 # spec keys does not work: the frozen path echoes ctx into `extracted`, the browser builds
 # the next request from that echo, and a cleared value would then stay on the drawing
 # while the checklist reverted -- with every later audit row recording typed -> typed.
+# `circuits` joined 2026-10-14 (2950): it is the header count, and the header-count gate
+# must tell an engineer's typed Circuits from the frozen path's echoed default.
 _MANUAL_INPUT_KEYS: tuple[str, ...] = (
-    "rows", "feeds", "finned_height", "finned_length", "return_conn_size",
+    "rows", "feeds", "finned_height", "finned_length", "return_conn_size", "circuits",
 )
 
 
-def _input_baseline(template_drawing: dict[str, Any], candidate: Any) -> dict[str, Any]:
+def _input_baseline(
+    template_drawing: dict[str, Any], candidate: Any, header_reading: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """What the submittal said for each `_MANUAL_INPUT_KEYS` input: ``{value, stated}``.
 
     ``value`` is the analyze-time ``extracted`` value -- what the frozen path actually
@@ -1682,6 +1836,18 @@ def _input_baseline(template_drawing: dict[str, Any], candidate: Any) -> dict[st
         for key in ("number_of_feeds", "circuits")
     ):
         baseline["feeds"]["stated"] = False
+    # A DX/HGRH coil's circuits is the header count, and `extracted` holds the frozen
+    # path's `or 1` even when the submittal stated nothing. The baseline is what Layer 1
+    # read instead -- None when the source establishes no count -- so an engineer's
+    # "1" on such a coil is recorded as 1 against nothing, not dropped as 1 -> 1.
+    reading = header_reading if isinstance(header_reading, dict) else {}
+    status = reading.get("status")
+    if status in ("agreed", "single_source", "conflict", "absent"):
+        established = status in ("agreed", "single_source")
+        baseline["circuits"] = {
+            "value": reading.get("value") if established else None,
+            "stated": established,
+        }
     return baseline
 
 
@@ -1703,29 +1869,33 @@ def _resolve_manual_inputs(
         if key in _MANUAL_INPUT_KEYS and value is not None
     }
     raw_baseline = spec.get("input_baseline")
-    baseline: dict[str, Any]
-    if isinstance(raw_baseline, dict) and all(
-        isinstance(raw_baseline.get(key), dict) for key in _MANUAL_INPUT_KEYS
-    ):
-        baseline = raw_baseline
-    else:
-        plain = {
-            "rows": spec.get("rows"),
-            "feeds": spec.get("feeds"),
-            "finned_height": spec.get("finned_height"),
-            "finned_length": spec.get("finned_length"),
-            "return_conn_size": spec.get("suction_conn_size") or spec.get("return_conn_size"),
-        }
-        baseline = {
-            key: {"value": value, "stated": value not in (None, "")}
-            for key, value in plain.items()
-        }
+    raw_baseline = raw_baseline if isinstance(raw_baseline, dict) else {}
+    plain = {
+        "rows": spec.get("rows"),
+        "feeds": spec.get("feeds"),
+        "finned_height": spec.get("finned_height"),
+        "finned_length": spec.get("finned_length"),
+        "return_conn_size": spec.get("suction_conn_size") or spec.get("return_conn_size"),
+        "circuits": spec.get("circuits"),
+    }
+    # Per key, not all-or-nothing: a page analyzed before `circuits` joined the keys has no
+    # circuits entry, and discarding its whole baseline for that would bring back the
+    # cleared-value-sticks defect for rows/feeds. A missing key falls back to the plain
+    # value, which reproduces today's behaviour for that key alone.
+    baseline: dict[str, Any] = {
+        key: (
+            raw_baseline[key]
+            if isinstance(raw_baseline.get(key), dict)
+            else {"value": plain[key], "stated": plain[key] not in (None, "")}
+        )
+        for key in _MANUAL_INPUT_KEYS
+    }
     effective = {
         key: typed[key] if key in typed else baseline[key].get("value")
         for key in _MANUAL_INPUT_KEYS
     }
     resolved = dict(spec)
-    for key in ("rows", "feeds", "finned_height", "finned_length"):
+    for key in ("rows", "feeds", "finned_height", "finned_length", "circuits"):
         resolved[key] = effective[key]
     # Both spellings: the ctx builder and the Tier-A re-run each read the plain key.
     resolved["suction_conn_size"] = effective["return_conn_size"]
@@ -1954,6 +2124,12 @@ def derive_coil_template_drawing(spec: dict[str, Any]) -> dict[str, Any]:
     _flag_distributor_orientation_review(result)
     _flag_defaulted_coil_hand(result, ctx)
     _flag_header_count_conflict(result, ctx)
+    # Layer 2, against the reading analyze stamped and the browser round-tripped (the
+    # gate re-stamps it, so a second derive still has it). Only a TYPED Circuits is a
+    # human decision; the plain `circuits` key is the previous response's echo.
+    _gate_header_count(
+        result, spec.get("header_count_reading"), typed_circuits=manual_inputs.get("circuits")
+    )
 
     # Print the coil's actual coating on the drawing. Wired into BOTH paths (analyze does
     # the same below) -- an analyze-only post-process is exactly the TR-9 / 228d731 defect.
@@ -2079,6 +2255,57 @@ def _header_count_from_type(header_type: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _header_count_reading_for(candidate, category: str | None) -> dict[str, Any]:
+    """Layer 1 over one Pydantic candidate (see `submittal.header_count`)."""
+    from coilforge.submittal.header_count import header_count_reading
+
+    return header_count_reading(candidate.model_dump(), coil_category=category)
+
+
+def _candidate_with_header_count(candidate):
+    """The candidate with its ``header_type`` set from Layer 1, for the Direct Coil surfaces.
+
+    The paste-ready fields mark the second-header fields (I2/S2/O2/R2/HD2/ZD2) not
+    applicable from the candidate's ``header_type`` -- and intake stamps that with its
+    default ``Header 1`` on every coil, so even a coil that stated "Interlaced 2 Circuits"
+    and drew two headers handed CCSI a one-header field set. The drawing and these fields
+    now read the same count. Unchanged when the source establishes none, or for water.
+    """
+    from coilforge.contracts.evidence import SourceEvidence
+    from coilforge.contracts.field_value import FieldValue
+    from coilforge.submittal.header_count import describe_signals
+
+    category = _coil_category_from_type(_candidate_attr_value(candidate, "coil_type"))
+    reading = _header_count_reading_for(candidate, category)
+    value = reading["value"]
+    current = _header_count_from_type(_candidate_attr_value(candidate, "header_type"))
+    if value is None or value == current:
+        return candidate
+    signals = reading["signals"]
+    evidence = SourceEvidence(
+        evidence_id=f"EV-HEADER-COUNT-{value}",
+        source_type="submittal_pdf_candidate",
+        source_id=str(_candidate_attr_value(candidate, "tag") or candidate.candidate_id),
+        source_location=f"header-count reading ({reading['status']}): {describe_signals(signals)}",
+        source_page=next((s.get("page") for s in signals if s.get("page")), None),
+        source_key="HEADER_TYPE",
+        source_value=f"Header {value}",
+        normalized_value=f"Header {value}",
+    )
+    return candidate.model_copy(
+        update={
+            "header_type": FieldValue(
+                value=f"Header {value}",
+                source_evidence=[evidence],
+                confidence="inferred",
+                status="review_required",
+                review_required=True,
+                notes=[f"Header count from the submittal: {describe_signals(signals)}."],
+            )
+        }
+    )
+
+
 def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
     """Build the authoritative classification + engine inputs for the template
     drawing from an already-resolved submittal candidate.
@@ -2098,8 +2325,14 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
     hand_raw = _candidate_field_value(candidate, "connections", "coil_hand")
     header_type = _candidate_attr_value(candidate, "header_type")
     category = _coil_category_from_type(coil_type)
+    # Layer 1 of the header-count check (John 2026-10-14, 2950): every statement the
+    # submittal makes about the header count, judged together. Its value leads; the old
+    # chain only answers where the source establishes nothing, so those coils draw exactly
+    # what they drew before -- and `_gate_header_count` withholds them.
+    header_reading = _header_count_reading_for(candidate, category)
     circuit_count = (
-        _candidate_field_value(candidate, "geometry", "circuits")
+        header_reading["value"]
+        or _candidate_field_value(candidate, "geometry", "circuits")
         or _header_count_from_type(header_type)
         or 1
     )
@@ -2149,6 +2382,9 @@ def _template_header_context_from_candidate(candidate) -> dict[str, Any]:
         "qty_conn_per_header": _candidate_field_value(
             candidate, "connections", "qty_connections_per_header"
         ),
+        # Read by `_gate_header_count` (Layer 2) and stamped for the /derive round trip.
+        # Inert on the frozen path, which reads ctx by named key.
+        "header_count_reading": header_reading,
     }
     if category in ("CWC", "HWC"):
         # The submittal's own inlet/outlet sizes: they drive the Coil Checklist's CD/S/R
@@ -2632,6 +2868,7 @@ def _run_candidate_to_drawing_payload(
     title_block: dict[str, Any] | None,
     pdf_text: str | None = None,
     hgrh_partner_conn: Any = None,
+    single_candidate: bool = True,
 ) -> dict[str, Any]:
     direct_result = _run_candidate_to_direct_draft_workflow(
         selected_candidate,
@@ -2693,6 +2930,7 @@ def _run_candidate_to_drawing_payload(
         )
 
         ctx = _template_header_context_from_candidate(selected_candidate)
+        _attach_as_built_header_signal(ctx, pdf_text, single_candidate=single_candidate)
         template_drawing = pdf_text_to_template_drawing(
             pdf_text or "",
             cover_text=pdf_text or "",
@@ -2712,7 +2950,9 @@ def _run_candidate_to_drawing_payload(
             template_drawing["water_conn_extracted"] = water_conn
         # What the submittal said for the inputs the engineer may type over; round-tripped
         # by the browser so a /derive can tell a typed value from the submittal's.
-        template_drawing["input_baseline"] = _input_baseline(template_drawing, selected_candidate)
+        template_drawing["input_baseline"] = _input_baseline(
+            template_drawing, selected_candidate, (ctx or notes_ctx).get("header_count_reading")
+        )
 
     if isinstance(template_drawing, dict):
         _gate_unregistered_product_line(template_drawing)
@@ -2723,6 +2963,9 @@ def _run_candidate_to_drawing_payload(
         _flag_distributor_orientation_review(template_drawing)
         _flag_defaulted_coil_hand(template_drawing, ctx)
         _flag_header_count_conflict(template_drawing, ctx)
+        # Layer 2: the artwork actually drawn must carry the header count the submittal
+        # establishes. Last gate on purpose -- it judges the template the earlier ones left.
+        _gate_header_count(template_drawing, ctx.get("header_count_reading"))
         # DX-with-reheat casing-depth correction (R-072 with-HGRH branch). Runs on the
         # RAW populated SVG, before _clean_template_svg / schematic / panel below, so
         # every downstream artifact shows the corrected CD. No-op unless DX + partner.
@@ -2869,7 +3112,9 @@ def _run_candidate_to_direct_draft_workflow(
     engine_notes: str | None = None,
 ) -> dict[str, Any]:
     canonical_result = map_submittal_candidate_to_canonical_result(
-        selected_candidate, engine_dims=engine_dims, engine_notes=engine_notes
+        _candidate_with_header_count(selected_candidate),
+        engine_dims=engine_dims,
+        engine_notes=engine_notes,
     )
     draft = map_canonical_to_direct_coil_draft(canonical_result.record)
     readiness = build_direct_coil_readiness_report(draft)

@@ -2946,8 +2946,11 @@ function templateDrawingPicker(templateDrawing) {
   const derivedHint = templateDrawing.product_size_auto_detected
     ? "Auto-detected product line + unit size from the model code — review and override if needed:"
     : "Dimensions logic-derived for the selected product line + unit size:";
+  // A header-count withhold is answered by Circuits, not by the product line.
   const withheld = templateDrawing.not_registered_reason
-    ? ` Drawing withheld — ${templateDrawing.not_registered_reason} Changing the product line re-evaluates it.`
+    ? templateDrawing.header_count_blocked
+      ? ` Drawing withheld — ${templateDrawing.not_registered_reason}`
+      : ` Drawing withheld — ${templateDrawing.not_registered_reason} Changing the product line re-evaluates it.`
     : "";
   const critical = curProduct && curSize ? "" : " is-critical";
   return `
@@ -3001,7 +3004,7 @@ function siblingCoilsForPairing() {
 }
 
 // Submittal inputs the engineer may type over (mirrors submittal_to_drawing._MANUAL_INPUT_KEYS).
-const MANUAL_INPUT_KEYS = ["rows", "feeds", "finned_height", "finned_length", "return_conn_size"];
+const MANUAL_INPUT_KEYS = ["rows", "feeds", "finned_height", "finned_length", "return_conn_size", "circuits"];
 
 // Build the /api/coil-drawing/derive request body from a coil's extracted geometry
 // plus the engineer's product/size pick and any human-in-the-loop manual fills. Manual
@@ -3022,7 +3025,10 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
     // template — i.e. it mirrors the whole drawing. Hardcoding ex.hand here meant the
     // fill panel could offer the choice but the value never reached the backend.
     coil_hand: pick("coil_hand", ex.hand),
-    circuits: pick("circuits", ex.circuits),
+    // Circuits is the header count and travels as two values like rows/feeds (2026-10-14):
+    // a typed one rides `manual_inputs`; this plain key is only the echo, which the
+    // header-count gate must never read as the engineer's decision.
+    circuits: ex.circuits,
     special_feature: ex.special_feature,
     tag: ex.tag,
     // The submittal's geometry travels as TWO values (John 2026-10-02): these plain keys
@@ -3059,6 +3065,9 @@ function deriveSpecFromTemplate(templateDrawing, productLine, unitSize, fills, c
     // analyze and round-tripped so the header-count conflict banner survives a re-derive
     // done for any unrelated reason. Cross-check input only — never an engine input.
     stated_qty_conn_per_header: templateDrawing.qty_conn_per_header_stated,
+    // Layer 1 of the header-count check, stamped by analyze (and re-stamped by every
+    // derive). Without it a derive cannot re-check and reports `unverified`.
+    header_count_reading: templateDrawing.header_count_reading,
     // A DX paired with a reheat HGRH takes the engine's with-HGRH casing-depth branch
     // (CD 8.125, not 7.5 — and CD feeds the distributor spacing S). Analyze resolves the
     // partner across the sibling coils; /derive handles ONE coil and cannot see them, so
@@ -3873,10 +3882,47 @@ function hgbpProductLineBanner(templateDrawing) {
 // answers it. See submittal_to_drawing._flag_header_count_conflict.
 function headerCountConflictBanner(templateDrawing) {
   const warning = templateDrawing && templateDrawing.header_count_review;
-  if (!warning || !templateDrawing.header_count_conflict) {
-    return "";
+  const conflict = warning && templateDrawing.header_count_conflict
+    ? `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`
+    : "";
+  return conflict + headerCountVerificationLine(templateDrawing);
+}
+
+// Header-count double validation (2026-10-14, project 2950): what the submittal states
+// about the header count, and whether the artwork drawn carries it. Withheld = red (the
+// drawing is gone, and the Circuits lever is in the fill panel); overridden / unverified /
+// as-built disagreement = amber; verified = a quiet note -- agreement is evidence, not
+// approval, so it earns no green. See submittal_to_drawing._gate_header_count.
+const HEADER_SIGNAL_LABELS = {
+  circuits_cell: "Circuits",
+  coil_style: "Coil Style",
+  header_type_read: "Header Type",
+  qty_conn_per_header: "Qty Conn./Header",
+  as_built_drawing: "as-built drawing",
+};
+function headerCountVerificationLine(templateDrawing) {
+  const v = templateDrawing && templateDrawing.header_count_verification;
+  if (!v) return "";
+  const sources = (v.signals || [])
+    .map((s) => `${HEADER_SIGNAL_LABELS[s.name] || s.name}${s.page ? ` p${s.page}` : ""}`)
+    .join(", ") || "nothing stated";
+  if (templateDrawing.header_count_blocked) {
+    return `<div class="drawing-orientation-warning">⛔ ${escapeHtml(templateDrawing.not_registered_reason || "Header count unverified — drawing withheld.")}</div>`;
   }
-  return `<div class="drawing-orientation-warning">⚠ ${escapeHtml(warning)}</div>`;
+  const amber = (text) => `<div class="header-count-note is-review">⚠ ${escapeHtml(text)}</div>`;
+  if (v.status === "overridden") {
+    return amber(`Header count ${v.typed}: entered by hand — the submittal states ${v.submittal ?? "none"} (${sources}).`);
+  }
+  if (v.status === "unverified") {
+    return amber("Header count not re-checked on this derive (no submittal reading was sent back) — re-analyze the PDF to verify.");
+  }
+  if (v.as_built_disagrees) {
+    return amber(`Header count: drawn as Header ${v.drawn}, but the scanned drawing shows ${(v.signals || []).find((s) => s.name === "as_built_drawing")?.value} circuits — review.`);
+  }
+  if (v.status === "verified") {
+    return `<div class="header-count-note">Header count: ${escapeHtml(String(v.drawn))} — matches the submittal (${escapeHtml(sources)})</div>`;
+  }
+  return "";
 }
 
 // Loud marker when one or more dimensions were manually overridden (Phase 1 reflection):
@@ -5619,7 +5665,10 @@ async function buildQuotePackage() {
         tag: page.tag,
         coil_type: ex.coil_category || td.coil_category || null,
         our_svg: td.svg || null,
-        header_count: ex.circuits ?? td.circuits ?? null,
+        // A coil withheld for its header count still carries the frozen path's default 1
+        // in `circuits`; it must price as unknown, never as one header (R-090).
+        header_count: td.header_count_blocked ? null : ex.circuits ?? td.circuits ?? null,
+        withheld_reason: td.not_registered_reason || null,
       };
     })
     .filter((coil) => coil.tag);

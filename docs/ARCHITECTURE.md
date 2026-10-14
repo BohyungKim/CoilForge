@@ -48,11 +48,11 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/rules` | 3 |
 | `src/coilforge/schemas` | 2 |
 | `src/coilforge/services` | 9 |
-| `src/coilforge/submittal` | 11 |
+| `src/coilforge/submittal` | 12 |
 | `src/coilforge/template_population` | 4 |
 | `src/coilforge/validation` | 2 |
 | `src/coilforge/workflows` | 3 |
-| `tests` | 156 |
+| `tests` | 157 |
 | `tests/fixtures/po_logic/PO Release Engineering Workflow/pdf_extractor` | 2 |
 | `web` | 1 |
 | `web/ccsi` | 2 |
@@ -188,6 +188,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `src/coilforge/services/three_way_view.py` | Three-way review view (Phase 2b): for one coil, put the three sources of a field's |
 | `src/coilforge/submittal/__init__.py` | Submittal candidate contract models |
 | `src/coilforge/submittal/coilmaster_drawing_extract.py` | Extract coil data from CoilMaster drawing PDF text + the submittal cover page |
+| `src/coilforge/submittal/header_count.py` | How many headers the submittal says a DX / HGRH coil has -- and how sure that is |
 | `src/coilforge/submittal/model_code.py` | Read the drain-pan option out of an Oxygen8 unit model code. Pure, no I/O |
 | `src/coilforge/submittal/pdf_to_template_drawing.py` | PDF -> coil type -> template link -> logic-derived, populated drawing |
 | `src/coilforge/template_population/__init__.py` | Template-first drawing population helpers |
@@ -210,8 +211,7 @@ One page. If you read only this, you should be able to find any behaviour in the
 | `tests/test_blocked_state_unblock.py` | Un-blocking a coil whose Drawing Parameters are empty (John 2026-09-22) |
 | `tests/test_capture_ledger.py` | Capture ledger (1a): every coil selection's (inputs -> proposal -> correction) |
 | `tests/test_capture_observe.py` | Capture-ledger observability (1d): run_dedup view, /api/capture/health, the |
-| `tests/test_capture_retrieve.py` | Case retrieval (Stage 2.0): masked-Gower nearest-neighbor over the ledger |
 
-_343 source files, 251 with a header comment. 101 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
+_345 source files, 253 with a header comment. 103 documented files not shown (cap 150). 92 file(s) have no header comment and appear only in the counts above — add a module docstring or leading comment and they will show up here._
 
 <!-- FILEMAP:END -->

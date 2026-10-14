@@ -1031,6 +1031,29 @@ def build_manual_fill_plan(
             )
         )
 
+    # The header count, when the submittal does not establish one (John 2026-10-14, 2950):
+    # `_gate_header_count` withholds the drawing, and this is the lever that answers it.
+    # Offered here rather than through the engine's `missing_inputs`, which never names
+    # circuits for a coil with no product line -- the coil would be withheld with nothing
+    # to type into. "Absent" is still `_absent_inputs`' call (baseline `stated` False).
+    if coil_category in ("DX", "HGRH") and "circuits" in absent and "circuits" not in seen:
+        seen.add("circuits")
+        verification = td.get("header_count_verification") or {}
+        from coilforge.submittal.header_count import describe_signals
+
+        evidence = describe_signals(verification.get("signals") or []) or "nothing"
+        items.append(
+            ManualFillItem(
+                key="circuits", kind="engine_input", label="Circuits (header count)",
+                reason=(
+                    "The submittal does not establish the header count "
+                    f"({verification.get('status') or 'unread'}: {evidence}). It selects "
+                    "the drawing template, so the drawing is withheld until it is entered."
+                ),
+                unit="", critical=True,
+            )
+        )
+
     # The engine reports missing inputs in PAIRS (`add_missing(["suction_conn_size",
     # "circuits"])`), so a token for an input this coil HAS is not offered.
     for inp in missing_inputs:

@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Any
 
-MANUAL_INPUT_KEYS = ("rows", "feeds", "finned_height", "finned_length", "return_conn_size")
+MANUAL_INPUT_KEYS = (
+    "rows", "feeds", "finned_height", "finned_length", "return_conn_size", "circuits",
+)
 
 
 def spec_from_template_drawing(
@@ -28,7 +30,8 @@ def spec_from_template_drawing(
     spec = {
         "coil_category": pick("coil_category", ex.get("coil_category")),
         "coil_hand": pick("coil_hand", ex.get("hand")),
-        "circuits": pick("circuits", ex.get("circuits")),
+        # The echo only (2026-10-14): a typed Circuits rides `manual_inputs`.
+        "circuits": ex.get("circuits"),
         "special_feature": ex.get("special_feature"),
         "tag": ex.get("tag"),
         "rows": ex.get("rows"),
@@ -50,6 +53,7 @@ def spec_from_template_drawing(
         "outlet_conn_size": fills.get("outlet_conn_size"),
         "water_conn_extracted": td.get("water_conn_extracted"),
         "stated_qty_conn_per_header": td.get("qty_conn_per_header_stated"),
+        "header_count_reading": td.get("header_count_reading"),
         "panel": td.get("panel"),
     }
     spec.update(extra)
