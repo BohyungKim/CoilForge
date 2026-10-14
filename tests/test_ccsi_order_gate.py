@@ -360,6 +360,45 @@ def test_annotate_threads_the_project_into_the_ruling() -> None:
     assert rows["EnteringDryBulb"]["counts_as_defect"] is False
 
 
+# John 2026-10-13 (estimate decisions v2 "모두 A"): E1-E4 + C1, pinned by equality so a ruling cannot be
+# added, dropped or re-valued without this list moving with it.
+RULED_2026_10_13 = {
+    **{(p, t, "DXDistCapillarySize"): ("1/4 x 0.025", "3/16 x 0.025")
+       for p, t in [("2862", "CDXC-1"), ("2862", "CDXC-2"), ("2914", "CDXC-1"), ("2914", "CDXC-2"), ("2978", "CDXC-1")]},
+    **{("2814", t, "ConnectionMaterial"): ("Steel", "Copper") for t in ("CCWC-1", "PHWC-1", "HHWC-1")},
+    ("3031", "CCWC-2", "TubeTurbulators"): ("No", "Yes"),
+    ("2915", "CDXC-2", "FinSurface"): ("Corrugated", "Flat"),
+    **{("2843", t, "FinMaterial"): ("Aluminum 0.010", "Aluminum 0.008") for t in ("CDXC-1", "CDXC-2", "CDXC-3")},
+    ("3002", "CDXC-1", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.014 Plain"),
+    ("3006", "CDXC-1", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.014 Plain"),
+    **{("3095", t, "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.016 Rifled") for t in ("CDXC-1", "CDXC-2", "CDXC-3")},
+    ("2972", "RHHGRC-1", "FinMaterial"): ("Aluminum 0.008", "Aluminum 0.010"),
+    **{(p, "RHHGRC-1", "FinMaterial"): ("Aluminum 0.008", "Aluminum 0.006") for p in ("3084", "3117", "3155")},
+    ("2811", "HHWC-1", "Altitude"): ("823", "832"),
+    ("3032", "PHWC-1", "Altitude"): ("1056", "1061"),
+    ("2600", "PHWC-1", "NumberOfFeeds"): ("3", "2"),
+}
+
+
+def test_the_2026_10_13_rulings_are_pinned_and_explain_only_their_own_disagreement() -> None:
+    # C1's card said "14건" but its evidence lists 15 rows (2843 x3, 3002, 3006, 3095 x3, 2972, 3084, 3117,
+    # 3155, 2811, 3032, 2600) -- the count was the table's miscount; the ruling names every row.
+    assert len(RULED_2026_10_13) == 25  # E1 5 + E2 3 + E3 1 + E4 1 + C1 15
+    assert {k: og.RULED_ORDER_CHANGES.get(k) for k in RULED_2026_10_13} == RULED_2026_10_13
+    assert len(og.RULED_ORDER_CHANGES) == 9 + 25  # the 2026-10-12 rulings + these
+    # a default counterexample (E1) and an extracted-value mismatch (C1) are both explained
+    cap = {"ccsi_id": "DXDistCapillarySize", "verdict": "mismatch", "reason_code": "CCSI_DEFAULT_PROFILE",
+           "coilforge": "1/4 x 0.025", "ccsi": "3/16 x 0.025", "role": "input"}
+    dx = {"coil_type": "DX", "tag": "CDXC-1", "rows": [cap]}
+    assert og.mismatch_cause(cap, dx, None, project="2862") == "ruled_order_change"
+    assert og.mismatch_cause(cap, dx, None, project="2830") == "default_counterexample"
+    fin = {"ccsi_id": "FinMaterial", "verdict": "mismatch", "reason_code": "CCSI_OK",
+           "coilforge": "Aluminum 0.008", "ccsi": "Aluminum 0.006", "role": "input"}
+    hgrh = {"coil_type": "HGRH", "tag": "RHHGRC-1", "rows": [fin]}
+    assert og.mismatch_cause(fin, hgrh, None, project="3084") == "ruled_order_change"
+    assert og.mismatch_cause(fin, hgrh, None, project="3049") == "unexplained"  # the near-identical one stays live
+
+
 # ------------------------------------------------------------------ estimate confirmation (John 2026-10-12)
 def test_report_date_reads_both_ccsi_export_stamps_and_nothing_else() -> None:
     from datetime import date

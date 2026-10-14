@@ -94,6 +94,39 @@ RULED_ORDER_CHANGES: dict[tuple[str, str, str], tuple[str, str]] = {
     ("2811", "HHWC-1", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
     ("2678", "CCWC-1", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
     ("2811", "CCWC-1", "TubeMaterial"): ("Copper 0.018 Plain", "Copper 0.020 Plain"),
+    # John 2026-10-13 (estimate decisions v2 "모두 A"). E1: 3/16 capillary was the order practice before
+    # 2026-06-05 (every 3/16 order is a 6/3-6/4 export, every 1/4 order 6/10 or later); the 1/4 default stays.
+    ("2862", "CDXC-1", "DXDistCapillarySize"): ("1/4 x 0.025", "3/16 x 0.025"),
+    ("2862", "CDXC-2", "DXDistCapillarySize"): ("1/4 x 0.025", "3/16 x 0.025"),
+    ("2914", "CDXC-1", "DXDistCapillarySize"): ("1/4 x 0.025", "3/16 x 0.025"),
+    ("2914", "CDXC-2", "DXDistCapillarySize"): ("1/4 x 0.025", "3/16 x 0.025"),
+    ("2978", "CDXC-1", "DXDistCapillarySize"): ("1/4 x 0.025", "3/16 x 0.025"),
+    # E2: 2814 chose Copper water connections from REV0 (26/29 water orders are Steel); the Steel default stays
+    ("2814", "CCWC-1", "ConnectionMaterial"): ("Steel", "Copper"),
+    ("2814", "PHWC-1", "ConnectionMaterial"): ("Steel", "Copper"),
+    ("2814", "HHWC-1", "ConnectionMaterial"): ("Steel", "Copper"),
+    # E3: a coil-specific turbulator choice (low-flow laminar coil; 28/29 water orders are No)
+    ("3031", "CCWC-2", "TubeTurbulators"): ("No", "Yes"),
+    # E4: 2915 re-selected (FPI 12 -> 11); Sine -> Corrugated stays (16/17 Sine orders are Corrugated)
+    ("2915", "CDXC-2", "FinSurface"): ("Corrugated", "Flat"),
+    # C1: values read correctly off the submittal (22 rows checked against the page, 0 extraction errors);
+    # CCSI's selection differed. 2843 is a whole-project re-selection (model -12 -> -16), 3002/3006/2972 differ
+    # from REV0, 3095's submittal prints Smooth, 2811/3032 are CCSI-side altitude entries, 2600 re-selected.
+    ("2843", "CDXC-1", "FinMaterial"): ("Aluminum 0.010", "Aluminum 0.008"),
+    ("2843", "CDXC-2", "FinMaterial"): ("Aluminum 0.010", "Aluminum 0.008"),
+    ("2843", "CDXC-3", "FinMaterial"): ("Aluminum 0.010", "Aluminum 0.008"),
+    ("3002", "CDXC-1", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.014 Plain"),
+    ("3006", "CDXC-1", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.014 Plain"),
+    ("3095", "CDXC-1", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.016 Rifled"),
+    ("3095", "CDXC-2", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.016 Rifled"),
+    ("3095", "CDXC-3", "TubeMaterial"): ("Copper 0.016 Plain", "Copper 0.016 Rifled"),
+    ("2972", "RHHGRC-1", "FinMaterial"): ("Aluminum 0.008", "Aluminum 0.010"),
+    ("3084", "RHHGRC-1", "FinMaterial"): ("Aluminum 0.008", "Aluminum 0.006"),
+    ("3117", "RHHGRC-1", "FinMaterial"): ("Aluminum 0.008", "Aluminum 0.006"),
+    ("3155", "RHHGRC-1", "FinMaterial"): ("Aluminum 0.008", "Aluminum 0.006"),
+    ("2811", "HHWC-1", "Altitude"): ("823", "832"),
+    ("3032", "PHWC-1", "Altitude"): ("1056", "1061"),
+    ("2600", "PHWC-1", "NumberOfFeeds"): ("3", "2"),
 }
 PROMOTE_MIN_PROJECTS = 3
 ROUNDING_REL = 0.002

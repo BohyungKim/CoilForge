@@ -145,7 +145,7 @@ def test_every_map_file_honours_the_contract(coil_type) -> None:
         elif entry.role == "input":
             assert entry.no_source_reason or entry.default, f"{coil_type}/{ccsi_id}: input without source needs a reason"
         if entry.default is not None:
-            assert entry.role == "input" and entry.mapping_status == "validated" and entry.evidence, ccsi_id
+            assert entry.role == "input" and _approved(coil_type, ccsi_id, entry) and entry.evidence, ccsi_id
             if entry.options:
                 assert entry.default in entry.options, f"{coil_type}/{ccsi_id}: default must be a CCSI option"
         if entry.type == "select":
@@ -166,7 +166,7 @@ def test_every_map_file_honours_the_contract(coil_type) -> None:
                     assert len(stated.split()) >= 2, f"{ccsi_id}: {stated!r} must be '<material> <gauge>'"
                 assert any(replacement.casefold() in option.casefold() for option in entry.options or []), (
                     f"{coil_type}/{ccsi_id}: {replacement!r} is not on the CCSI list")
-            assert entry.mapping_status == "validated" and entry.evidence, f"{ccsi_id}: a substitution is John's call"
+            assert _approved(coil_type, ccsi_id, entry) and entry.evidence, f"{ccsi_id}: a substitution is John's call"
         if entry.material is not None:
             assert entry.transform == "option_material_gauge" and entry.evidence, ccsi_id
             assert any(option.casefold().startswith(entry.material.casefold()) for option in entry.options or []), ccsi_id
@@ -175,7 +175,7 @@ def test_every_map_file_honours_the_contract(coil_type) -> None:
             f"{coil_type}/{ccsi_id}: promotion is John's call — only his approved list may leave 'captured'"
         )
         if promoted:
-            assert entry.mapping_status == "validated" and entry.evidence, ccsi_id
+            assert _approved(coil_type, ccsi_id, entry) and entry.evidence, ccsi_id
             assert entry.role == "input", f"{ccsi_id}: only an input can be promoted to pushable"
 
 
@@ -234,6 +234,53 @@ for _type, _ids in _MAPPING_2026_10_01.items():
 _D3_CONNECTION_SIZES = {"DX": {"DXReturnConnectionSize"},
                         "HGRH": {"CondenserSupplyConnectionSize", "CondenserReturnConnectionSize"},
                         "CWC": {"ConnectionSize"}, "HWC": {"ConnectionSize"}}
+
+
+# John 2026-10-13 (estimate decisions v2, "모두 A"): strict confirmation against ordered CCSI reports exported
+# before the 2026-09-30 push (>= 5 projects, every counterexample explained). A1 = harvest-set defaults, so the
+# orders are an independent test; A2 = values first read off those same orders, so it is a strict re-count.
+# DX RefrigerationSystemType (A2) is held out: its circuits path still has 2 open counterexamples (3197).
+# `confirmed` changes no push -- it is pushable exactly like `validated` and stays review_required.
+_A1_DEFAULTS = {"TubeDiameter", "HeaderMaterial", "HeaderWallSchedule", "ConnectionMaterial", "RefrigerantConnectionType",
+                "CasingStyle", "CasingMaterial", "AirSideFoulingFactor"}
+JOHN_CONFIRMED = {
+    "DX": _A1_DEFAULTS | {"FinMaterial"},
+    "HGRH": _A1_DEFAULTS | {"FinMaterial", "RefrigerationSystemType", "VaporTemperature"},
+    "CWC": set(),
+    "HWC": {"TubeDiameter", "TubeTurbulators", "CasingMaterial", "HeaderMaterial", "HeaderWallSchedule", "DrainAndVent",
+            "ConnectionType", "CasingStyle", "TubeSideFoulingFactor", "AirSideFoulingFactor", "TubeMaterial"},
+}
+
+
+def _approved(coil_type: str, ccsi_id: str, entry) -> bool:
+    """validated, or confirmed when -- and only when -- John's confirmed list names it."""
+    if entry.mapping_status == "confirmed":
+        return ccsi_id in JOHN_CONFIRMED.get(coil_type, set())
+    return entry.mapping_status == "validated"
+
+
+def test_confirmed_is_exactly_johns_list_and_a_subset_of_the_approved() -> None:
+    for coil_type in ALL_MAP_TYPES:
+        confirmed = {k for k, v in load_coil_data_map(coil_type).fields.items() if v.mapping_status == "confirmed"}
+        assert confirmed == JOHN_CONFIRMED[coil_type], coil_type
+        assert confirmed <= JOHN_APPROVED_VALIDATED[coil_type], coil_type
+        for ccsi_id in confirmed:
+            assert "CONFIRMED John 2026-10-13" in (load_coil_data_map(coil_type).fields[ccsi_id].evidence or ""), ccsi_id
+    assert sum(map(len, JOHN_CONFIRMED.values())) == 31
+
+
+def test_confirming_changes_no_push(monkeypatch) -> None:
+    """A confirmed entry resolves exactly as it did when validated (same value, same pushability)."""
+    base = load_coil_data_map("HWC")
+    as_validated = base.model_copy(update={"fields": {
+        k: (v.model_copy(update={"mapping_status": "validated"}) if v.mapping_status == "confirmed" else v)
+        for k, v in base.fields.items()}})
+    sources = {"tag": "HHWC-1"}
+    live = {(e.ccsi_id, e.value, e.pushable) for e in resolve_coil_data(sources, coil_type="HWC")}
+    monkeypatch.setattr(cdm, "load_coil_data_map", lambda coil_type="HWC": as_validated)
+    before = {(e.ccsi_id, e.value, e.pushable) for e in resolve_coil_data(sources, coil_type="HWC")}
+    assert live == before
+    assert ("TubeMaterial", "Copper 0.018 Plain", True) in live
 
 
 def test_selects_carry_their_captured_options() -> None:
