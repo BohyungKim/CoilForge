@@ -250,6 +250,12 @@ JOHN_CONFIRMED = {
     "HWC": {"TubeDiameter", "TubeTurbulators", "CasingMaterial", "HeaderMaterial", "HeaderWallSchedule", "DrainAndVent",
             "ConnectionType", "CasingStyle", "TubeSideFoulingFactor", "AirSideFoulingFactor", "TubeMaterial"},
 }
+# John 2026-10-14 (estimate follow-up ② A): two defaults whose last counterexamples were ruled on 2026-10-13
+# (E1 capillary, E2 water connection material). DX FinSurface's Sine -> Corrugated substitution was also a
+# candidate but is held: mapping_status is per field and the field still has 4 unexplained Flat counterexamples.
+JOHN_CONFIRMED_2026_10_14 = {"DX": {"DXDistCapillarySize"}, "HWC": {"ConnectionMaterial"}}
+for _type, _ids in JOHN_CONFIRMED_2026_10_14.items():
+    JOHN_CONFIRMED[_type] = JOHN_CONFIRMED[_type] | _ids
 
 
 def _approved(coil_type: str, ccsi_id: str, entry) -> bool:
@@ -265,8 +271,9 @@ def test_confirmed_is_exactly_johns_list_and_a_subset_of_the_approved() -> None:
         assert confirmed == JOHN_CONFIRMED[coil_type], coil_type
         assert confirmed <= JOHN_APPROVED_VALIDATED[coil_type], coil_type
         for ccsi_id in confirmed:
-            assert "CONFIRMED John 2026-10-13" in (load_coil_data_map(coil_type).fields[ccsi_id].evidence or ""), ccsi_id
-    assert sum(map(len, JOHN_CONFIRMED.values())) == 31
+            ruling = "2026-10-14" if ccsi_id in JOHN_CONFIRMED_2026_10_14.get(coil_type, set()) else "2026-10-13"
+            assert f"CONFIRMED John {ruling}" in (load_coil_data_map(coil_type).fields[ccsi_id].evidence or ""), ccsi_id
+    assert sum(map(len, JOHN_CONFIRMED.values())) == 31 + 2
 
 
 def test_confirming_changes_no_push(monkeypatch) -> None:

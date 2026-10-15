@@ -385,7 +385,7 @@ def test_the_2026_10_13_rulings_are_pinned_and_explain_only_their_own_disagreeme
     # 3155, 2811, 3032, 2600) -- the count was the table's miscount; the ruling names every row.
     assert len(RULED_2026_10_13) == 25  # E1 5 + E2 3 + E3 1 + E4 1 + C1 15
     assert {k: og.RULED_ORDER_CHANGES.get(k) for k in RULED_2026_10_13} == RULED_2026_10_13
-    assert len(og.RULED_ORDER_CHANGES) == 9 + 25  # the 2026-10-12 rulings + these
+    assert len(og.RULED_ORDER_CHANGES) == 9 + 25 + len(RULED_2026_10_14)  # 2026-10-12 + these + 10-14
     # a default counterexample (E1) and an extracted-value mismatch (C1) are both explained
     cap = {"ccsi_id": "DXDistCapillarySize", "verdict": "mismatch", "reason_code": "CCSI_DEFAULT_PROFILE",
            "coilforge": "1/4 x 0.025", "ccsi": "3/16 x 0.025", "role": "input"}
@@ -397,6 +397,24 @@ def test_the_2026_10_13_rulings_are_pinned_and_explain_only_their_own_disagreeme
     hgrh = {"coil_type": "HGRH", "tag": "RHHGRC-1", "rows": [fin]}
     assert og.mismatch_cause(fin, hgrh, None, project="3084") == "ruled_order_change"
     assert og.mismatch_cause(fin, hgrh, None, project="3049") == "unexplained"  # the near-identical one stays live
+
+
+# John 2026-10-14 (estimate follow-up ③ A): the rest of 2843's whole-project re-selection.
+RULED_2026_10_14 = {
+    **{("2843", t, "FinSurface"): ("Flat", "Corrugated") for t in ("CDXC-1", "CDXC-2", "CDXC-3")},
+    **{("2843", t, "NumberOfFeeds"): ("12", "16") for t in ("CDXC-1", "CDXC-2", "CDXC-3")},
+    ("2843", "CDXC-4", "NumberOfFeeds"): ("18", "24"),
+}
+
+
+def test_the_2026_10_14_rulings_are_pinned_and_leave_other_projects_live() -> None:
+    assert len(RULED_2026_10_14) == 7
+    assert {k: og.RULED_ORDER_CHANGES.get(k) for k in RULED_2026_10_14} == RULED_2026_10_14
+    surf = {"ccsi_id": "FinSurface", "verdict": "mismatch", "reason_code": "CCSI_OK",
+            "coilforge": "Flat", "ccsi": "Corrugated", "role": "input"}
+    dx = {"coil_type": "DX", "tag": "CDXC-1", "rows": [surf]}
+    assert og.mismatch_cause(surf, dx, None, project="2843") == "ruled_order_change"
+    assert og.mismatch_cause(surf, dx, None, project="3014") == "unexplained"  # 3014/3025/3093/3233 stay open
 
 
 # ------------------------------------------------------------------ estimate confirmation (John 2026-10-12)

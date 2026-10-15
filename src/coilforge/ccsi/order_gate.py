@@ -127,6 +127,15 @@ RULED_ORDER_CHANGES: dict[tuple[str, str, str], tuple[str, str]] = {
     ("2811", "HHWC-1", "Altitude"): ("823", "832"),
     ("3032", "PHWC-1", "Altitude"): ("1056", "1061"),
     ("2600", "PHWC-1", "NumberOfFeeds"): ("3", "2"),
+    # John 2026-10-14 (estimate follow-up ③ A): the rest of 2843's whole-project re-selection (C1). The submittal
+    # prints Flat and 12 / 18 feeds; the REV3 order carries Corrugated and 16 / 24.
+    ("2843", "CDXC-1", "FinSurface"): ("Flat", "Corrugated"),
+    ("2843", "CDXC-2", "FinSurface"): ("Flat", "Corrugated"),
+    ("2843", "CDXC-3", "FinSurface"): ("Flat", "Corrugated"),
+    ("2843", "CDXC-1", "NumberOfFeeds"): ("12", "16"),
+    ("2843", "CDXC-2", "NumberOfFeeds"): ("12", "16"),
+    ("2843", "CDXC-3", "NumberOfFeeds"): ("12", "16"),
+    ("2843", "CDXC-4", "NumberOfFeeds"): ("18", "24"),
 }
 PROMOTE_MIN_PROJECTS = 3
 ROUNDING_REL = 0.002
