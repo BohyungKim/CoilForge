@@ -515,13 +515,28 @@ def _correction_rows(
         return []
 
 
+def _provenance_source(prov: dict[str, Any]) -> tuple[str, str | None]:
+    """1c': (source, fidelity) for one ``engine_provenance`` block.
+
+    Read at the BLOCK level, never per firing. ``engine_provenance`` is a single key on a
+    result, so one coil carries one block — copying the block's labels onto every row it
+    produces makes "two sources mixed inside one (run, coil)" unrepresentable rather than
+    merely unlikely. Defaults to 'live' because the 1c seam (the Tier-A fill) predates the
+    field and was its only writer."""
+    source = prov.get("source") or "live"
+    fidelity = prov.get("fidelity")
+    return str(source), (str(fidelity) if fidelity else None)
+
+
 def _rule_firing_rows(run_id: str, coil_uid: str, view: _CoilView) -> list[tuple]:
-    """1c: per-field (rule_id, confidence) from the seam-A engine response the derive echoed
-    onto the result under ``engine_provenance``. Empty unless it is present (only the
-    Tier-A-fill derive attaches it — PDF-analyze discards its response in the frozen path)."""
+    """1c: per-field (rule_id, confidence) from the engine response echoed onto the result
+    under ``engine_provenance`` — either the seam-A response a Tier-A fill really returned
+    (``source='live'``) or the caller-side provenance-only re-run of the same call
+    (``source='recomputed'``, 1c'). Empty unless the block is present."""
     prov = view.td.get("engine_provenance") if isinstance(view.td, dict) else None
     if not prov:
         return []
+    source, fidelity = _provenance_source(prov)
     rows: list[tuple] = []
     for f in prov.get("firings") or []:
         if not isinstance(f, dict):
@@ -530,6 +545,7 @@ def _rule_firing_rows(run_id: str, coil_uid: str, view: _CoilView) -> list[tuple
             (
                 run_id, coil_uid, f.get("field_key"), f.get("rule_id"),
                 f.get("confidence"), _flag(f.get("review_required")), f.get("blocked_reason"),
+                source, fidelity,
             )
         )
     return rows
@@ -537,13 +553,20 @@ def _rule_firing_rows(run_id: str, coil_uid: str, view: _CoilView) -> list[tuple
 
 def _engine_call_rows(run_id: str, coil_uid: str, view: _CoilView) -> list[tuple]:
     """1c: one per-invocation count summary (values/suggestions/blocked). product_line /
-    terra_variant / unit_size are NOT duplicated here — they join from the coil table."""
+    terra_variant / unit_size are NOT duplicated here — they join from the coil table.
+    ``drift_keys`` (1c') lands only here, not on rule_firing: a drift is a property of the
+    call, not of any one rule that call happened to fire."""
     prov = view.td.get("engine_provenance") if isinstance(view.td, dict) else None
     if not prov:
         return []
+    source, fidelity = _provenance_source(prov)
     call = prov.get("call") or {}
+    drift = prov.get("drift_keys")
     return [
-        (run_id, coil_uid, call.get("n_values"), call.get("n_suggestions"), call.get("n_blocked"))
+        (
+            run_id, coil_uid, call.get("n_values"), call.get("n_suggestions"),
+            call.get("n_blocked"), source, fidelity, _json(drift) if drift else None,
+        )
     ]
 
 
@@ -721,14 +744,15 @@ def capture_milestone(
                 if rule_firing_rows:
                     conn.executemany(
                         "INSERT INTO rule_firing (run_id, coil_uid, field_key, rule_id,"
-                        " confidence, review_required, blocked_reason)"
-                        " VALUES (" + ",".join("?" * 7) + ")",
+                        " confidence, review_required, blocked_reason, source, fidelity)"
+                        " VALUES (" + ",".join("?" * 9) + ")",
                         rule_firing_rows,
                     )
                 if engine_call_rows:
                     conn.executemany(
                         "INSERT INTO engine_call (run_id, coil_uid, n_values, n_suggestions,"
-                        " n_blocked) VALUES (?, ?, ?, ?, ?)",
+                        " n_blocked, source, fidelity, drift_keys_json)"
+                        " VALUES (" + ",".join("?" * 8) + ")",
                         engine_call_rows,
                     )
         finally:

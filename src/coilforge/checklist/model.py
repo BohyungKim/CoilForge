@@ -60,6 +60,11 @@ class DimCompare:
     # AFTER reading the formula's own result back, so the cross-check survives (compare.py
     # reports it as verdict ``overridden``, never as a match).
     override: OverrideNote | None = None
+    # Water return "O" only: which end each side measures the stubout from --
+    # "header_side" or "opposite" (O = CH - x). compare.py puts both on the header side
+    # before matching, so one physical position is never read as two numbers.
+    coilforge_datum: str | None = None
+    sheet_datum: str | None = None
 
 
 @dataclass(frozen=True)

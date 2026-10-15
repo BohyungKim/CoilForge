@@ -1,9 +1,11 @@
 """Structural reference for "Coil Checklist Template.xlsx" (pure data, no I/O).
 
 Transcribed by Phase-0 introspection of the live workbook on 2026-06-30 via Excel
-COM (sheets: HWC, CWC, DX, HGRH, "Install | Drain Pan Width", Units). Nothing here
-opens Excel — the writer/mapping import these constants so they can be unit-tested
-without the workbook present.
+COM (sheets: HWC, CWC, DX, HGRH, "Install | Drain Pan Width", Units) and re-read
+against the 2026-09-22 template refresh (openpyxl, read-only): Terra V SIZE tokens
+became numeric and the water sheets split their "I/O" row into I / O / S / R (+ two
+text rows). Nothing here opens Excel — the writer/mapping import these constants so
+they can be unit-tested without the workbook present.
 
 Key facts that shape the writer:
 - Checkboxes are **native Excel boolean cell-checkboxes** (not form/ActiveX
@@ -41,6 +43,9 @@ UNIT_BY_PRODUCT = {
     "VENTUM H": "VENTUM H",
     "VENTUM_PLUS": "VENTUM+",
     "VENTUM+": "VENTUM+",
+    # The workbook has no OMNIA unit (John 2026-08-25): fill as VENTUM+ and let the
+    # TF/BF difference (0.625 vs the sheet's 1.0) surface as a known divergence.
+    "OMNIA": "VENTUM+",
     "TERRA H": "TERRA H",
     "TERRA_H": "TERRA H",
     "TERRA H C": "TERRA H",
@@ -54,8 +59,10 @@ SIZE_OPTIONS = {
     "NOVA": ("A16", "A18", "B20", "B22", "C20", "C22", "C24", "C26",
              "C30", "C32", "C40", "C48", "C58", "C70"),
     "TERRA H": (6, 9, 12, 15, 18, 24, 32, 40, 48),
-    "TERRA V": ("TV006", "TV009", "TV012", "TV015", "TV018", "TV024", "TV032",
-                "TV040", "TV048", "TV060", "TV072", "TV084", "TV100"),
+    # Numeric since the 2026-09-22 template (Units!A56:A68 were 'TV006'… strings before).
+    # The Terra V CASING XLOOKUP and the FIT formulas compare `C4=6` numerically, so a
+    # string token would fail data validation AND silently disable every Terra V formula.
+    "TERRA V": (6, 9, 12, 15, 18, 24, 32, 40, 48, 60, 72, 84, 100),
     "VENTUM H": ("H05", "H10", "H15", "H20", "H25", "H30"),
     "VENTUM+": ("V20", "V25", "V30", "V40", "V50", "V60", "V80", "V100",
                 "V120", "V150"),
@@ -135,19 +142,24 @@ SHEET_LABELS = {
                  "SL1", "SL2", "SL3", "SL4", "SL5", "SL6", "SL7", "SL8",
                  "OAL", "CH"),
     },
+    # Water sheets (2026-09-22 template): the old single "I/O" row became separate
+    # "I", "O", "S", "R" rows plus "SUPPLY V/D ANGLE" (=LAS) and "VENT & DRAIN"
+    # (=ConnEnd). The two text rows have no drawing slot, so they are not compare dims.
     "HWC": {
         "header": _COMMON_HEADER,
         "connections": ("IN CONN SZ", "OUT CONN SZ"),
         "handing": "HANDING",
         "checkboxes": ("COLLARED HOLES", "STACKING FLANGES"),
-        "dims": ("CD", "HF", "RF", "TF", "BF", "RB", "I/O", "HD", "SL", "OAL", "CH"),
+        "dims": ("CD", "HF", "RF", "TF", "BF", "RB", "I", "O", "S", "R", "HD", "SL",
+                 "OAL", "CH"),
     },
     "CWC": {
         "header": _COMMON_HEADER,
         "connections": ("IN CONN SZ", "OUT CONN SZ"),
         "handing": "HANDING",
         "checkboxes": ("COLLARED HOLES", "STACKING FLANGES"),
-        "dims": ("CD", "HF", "RF", "TF", "BF", "RB", "I/O", "HD", "SL", "OAL", "CH"),
+        "dims": ("CD", "HF", "RF", "TF", "BF", "RB", "I", "O", "S", "R", "HD", "SL",
+                 "OAL", "CH"),
     },
 }
 

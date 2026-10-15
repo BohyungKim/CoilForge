@@ -108,17 +108,24 @@ _BLANK_REASON_AFTER_PRODUCT: dict[str, str] = {
     "R": "Needs the return connection size — not found in the submittal extract.",
 }
 
-# Per-(coil category, key) override. The generic R message names the connection size, which
-# is right for DX/HGRH but was a MISDIAGNOSIS on water coils (John 2026-07-28): a water
-# coil's connection size IS extracted (Inlet/Outlet Conn. Size), and water R mirrors the
-# supply spacing S rather than the connection size at all. Sending the engineer to hunt for
-# a value that is already present is worse than saying nothing.
+# Per-(coil category, key) override. The generic R message names the RETURN connection,
+# which is right for DX/HGRH; a water coil's R is the OUTLET connection size (Coil
+# Checklist CWC!C28 / HWC!C32, John 2026-09-23), so the message names that field.
 _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
     (category, "R"): (
-        "Water-coil R mirrors the supply spacing S, and S is the connection size — "
-        "no connection size was read from the submittal."
+        "Water-coil R is the outlet connection size (Coil Checklist) — no outlet or "
+        "connection size was read from the submittal."
     )
     for category in ("CWC", "HWC")
+}
+
+# Per-(coil category, key BASE) reason for a missing input, so every header index (S2, S3)
+# carries it -- the full-key map above only ever matches `S` itself.
+_BLANK_REASON_BY_CATEGORY_BASE: dict[tuple[str, str], str] = {
+    ("HGRH", "S"): (
+        "HGRH supply S is placed from the connection size and CD — left blank because one "
+        "of them is missing (it is not estimated from the DX spacing)."
+    ),
 }
 
 # Per-(coil category, terra variant, key BASE) reason for a value the engine could have
@@ -129,14 +136,14 @@ _BLANK_REASON_BY_CATEGORY: dict[tuple[str, str], str] = {
 # then paints it red with no explanation. Keyed on the base letter so every header
 # index (I2/I3/I4) inherits the same reason.
 _WITHHELD_REASON_BY_VARIANT: dict[tuple[str, str, str], str] = {
-    ("HGRH", "TERRA_V", "I"): (
-        "Terra V HGRH Supply I/O is SOP-confirmed for Supply 1 only (R-046); Supply 2+ "
-        "is a software default, not derivable — fill it in if the drawing needs it."
-    ),
-    ("HGRH", "TERRA_V", "S"): (
-        "Terra V HGRH supply spacing is S = CD − Rn (SOP), and Rn only runs to the "
-        "connections-per-header count — this header has no Rn to subtract."
-    ),
+    # Terra water artwork dimensions O from the opposite end (O = CH - I, 2026-09-23);
+    # `apply_water_o_datum` blanks O rather than print I on that dimension line.
+    (category, variant, "O"): (
+        f"On the Terra {category} drawing O is measured from the opposite end (O = CH − I), "
+        "so it needs CH (finned height + flanges) and I — left blank rather than printing I."
+    )
+    for category in ("CWC", "HWC")
+    for variant in ("TERRA_H", "TERRA_H_C", "TERRA_V")
 }
 
 _KEY_BASE_RE = re.compile(r"^([A-Za-z]+)")
@@ -148,8 +155,20 @@ def _key_base(key: str) -> str:
     return m.group(1) if m else (key or "")
 
 
+# NOTE (2026-09-09): the two Terra V HGRH supply-S withholding causes that used to live
+# here are gone. Both rested on S = CD - Rn, which the slot layer no longer uses for
+# HGRH -- the SOP scopes Terra V's spacing special to DX (R-023) and gives HGRH the
+# general RHHGRC formula, which is defined for every supply header and may legitimately
+# be negative. Terra V HGRH supply S is therefore never blank on SOP grounds.
+
+
 def _blank_reason(
-    key: str, *, coil_category: str, terra_variant: str | None, product_chosen: bool
+    key: str,
+    *,
+    coil_category: str,
+    terra_variant: str | None,
+    product_chosen: bool,
+    slot_values: dict[str, Any] | None = None,
 ) -> str:
     """The message a blank drawing-parameter row shows in place of a number.
 
@@ -159,16 +178,59 @@ def _blank_reason(
     """
     if not product_chosen:
         return "Pick a product line + unit size to derive this dimension."
-    withheld = _WITHHELD_REASON_BY_VARIANT.get(
-        (coil_category, (terra_variant or "").upper(), _key_base(key))
-    )
+    variant = (terra_variant or "").upper()
+    base = _key_base(key)
+    withheld = _WITHHELD_REASON_BY_VARIANT.get((coil_category, variant, base))
     if withheld:
         return withheld
-    return _BLANK_REASON_BY_CATEGORY.get(
-        (coil_category, key)
-    ) or _BLANK_REASON_AFTER_PRODUCT.get(
-        key, "Engine did not derive this dimension; review required."
+    return (
+        _BLANK_REASON_BY_CATEGORY.get((coil_category, key))
+        or _BLANK_REASON_BY_CATEGORY_BASE.get((coil_category, base))
+        or _BLANK_REASON_AFTER_PRODUCT.get(
+            key, "Engine did not derive this dimension; review required."
+        )
     )
+
+# Which inputs a blank dimension depends on (John 2026-10-02: "name the input that
+# unblocks it"). Every entry is a dependency read off the code that computes the slot,
+# and `test_dim_needs_table_matches_the_slot_layer` re-proves each one by running the
+# slot layer with and without that input. A dimension with no verified dependency (I, HD,
+# HDx, SL) has no entry -- it names nothing rather than guess.
+_NEEDS_BY_BASE: dict[str, tuple[str, ...]] = {
+    "CD": ("rows",),                    # R-070 rows base (header_prepopulate_engine)
+    "CH": ("finned_height",),           # CH = FH + TF + BF (build_drawing_slots)
+}
+_NEEDS_BY_CATEGORY_BASE: dict[tuple[str, str], tuple[str, ...]] = {
+    ("DX", "S"): ("rows",),                         # k*CD/(n+1): needs CD
+    ("HGRH", "S"): ("return_conn_size", "rows"),    # RHHGRC formula: conn and CD
+    ("DX", "R"): ("return_conn_size",),
+    ("HGRH", "R"): ("return_conn_size",),
+    ("CWC", "S"): ("inlet_conn_size",),
+    ("HWC", "S"): ("inlet_conn_size",),
+    ("CWC", "R"): ("outlet_conn_size",),
+    ("HWC", "R"): ("outlet_conn_size",),
+}
+
+
+def _needs_inputs(
+    key: str,
+    *,
+    coil_category: str,
+    terra_variant: str | None,
+    product_chosen: bool,
+    absent: set[str],
+) -> list[str]:
+    """The missing inputs that blank this dimension: its verified dependencies that are
+    actually absent on this coil. Never names an input the coil has."""
+    if not product_chosen:
+        candidates: tuple[str, ...] = ("product_type", "unit_size")
+    else:
+        base = _key_base(key)
+        candidates = _NEEDS_BY_CATEGORY_BASE.get((coil_category, base)) or _NEEDS_BY_BASE.get(base, ())
+        if (coil_category, (terra_variant or "").upper(), base) in _WITHHELD_REASON_BY_VARIANT:
+            candidates = ("finned_height",)   # Terra water O = CH - I
+    return [inp for inp in candidates if inp in absent]
+
 
 # ZD (zone depth) is a fixed constant per owner rule (John 2026-06-22), applied to
 # every header assembly (ZD, ZD2, ZD3, ...). It is NOT an engine slot or selection
@@ -514,6 +576,13 @@ def parameter_set_from_template_drawing(
     # argument that call site forgot would make the baseline's blocked_reason silently
     # disagree with the live panel.
     _, terra_variant = resolve_product_line(td.get("product_type"))
+    absent = _absent_inputs(td, dict.fromkeys(td.get("manual_input_keys") or ()))
+
+    def needs(key: str) -> list[str]:
+        return _needs_inputs(
+            key, coil_category=coil_category, terra_variant=terra_variant,
+            product_chosen=product_chosen, absent=absent,
+        )
 
     parameters: dict[str, DrawingParameter] = {}
     review_required: list[str] = []
@@ -546,11 +615,12 @@ def parameter_set_from_template_drawing(
                 coil_category=coil_category,
                 terra_variant=terra_variant,
                 product_chosen=product_chosen,
+                slot_values=slot_values,
             )
             parameters[key] = DrawingParameter(
                 key=key, label=key, value=None, unit="in",
                 mode="blocked", status="review_required", review_required=True,
-                blocked_reason=reason,
+                blocked_reason=reason, needs_inputs=needs(key),
             )
             review_required.append(key)
             continue
@@ -575,7 +645,9 @@ def parameter_set_from_template_drawing(
                     coil_category=coil_category,
                     terra_variant=terra_variant,
                     product_chosen=product_chosen,
+                    slot_values=slot_values,
                 ),
+                needs_inputs=needs(key),
             )
         else:
             parameters[key] = DrawingParameter(
@@ -607,6 +679,7 @@ def parameter_set_from_template_drawing(
             review_required=True,
             blocked_reason=None,
             manual_override=True,
+            source=override.source,
         )
         if override.key not in review_required:
             review_required.append(override.key)
@@ -636,12 +709,113 @@ _ENGINE_INPUT_META: dict[str, tuple[str, str]] = {
     "rows": ("Rows deep", ""),
     "feeds": ("Number of feeds", ""),
     "circuits": ("Circuits", ""),
-    "suction_conn_size": ("Suction/return connection size", "in"),
-    "conn_size": ("Connection size", "in"),
+    # The engine asks for `suction_conn_size` (DX) or `conn_size` (HGRH); both are offered
+    # under the one key the derive spec, the Spec-data row and the checklist already read.
+    # Offered under the engine's own names the value never reached the drawing (2026-10-02).
+    "return_conn_size": ("Connection size", "in"),
+    "finned_height": ("Finned height (FH)", "in"),
+    "finned_length": ("Finned length (FL)", "in"),
     "qty_conn_per_header": ("Connections per header", ""),
     "application": ("Application (casing class)", ""),
     "header_count": ("Header count (1HD–4HD)", ""),
+    "inlet_conn_size": ("Inlet connection size", "in"),
+    "outlet_conn_size": ("Outlet connection size", "in"),
 }
+
+# Coil categories the classification lever may SUPPLY (never re-classify: J-0a, John).
+COIL_CATEGORY_CHOICES: tuple[str, ...] = ("DX", "HGRH", "CWC", "HWC")
+
+# Criticality (John 2026-09-22): the rows without which a drawing cannot be trusted at
+# all get a stronger highlight than an ordinary blank. Two separate tables because they
+# describe different things — panel DIMENSIONS (by key base, so every header index
+# HDx1 / S2 / I3 inherits it) and the fill-panel INPUT levers that feed them.
+# Deliberately NOT the registry's `required` flag ({CD, BF, TF, CH}): that is the preview
+# gate, with different members and a different meaning; reusing it would change gating.
+CRITICAL_PARAM_BASES: frozenset[str] = frozenset({"CD", "CH", "HD", "HDx", "S", "I"})
+CRITICAL_FILL_KEYS: frozenset[str] = frozenset(
+    {
+        "product_type", "unit_size", "coil_hand", "coil_category",
+        "return_conn_size", "inlet_conn_size", "outlet_conn_size",
+        # John 2026-10-02: the submittal's own geometry. Rows sets CD, FH sets CH, FL the
+        # coil length; feeds blocks no drawn dimension but is critical data all the same.
+        "rows", "feeds", "finned_height", "finned_length",
+    }
+)
+
+
+def criticality_for_param_key(key: str) -> Literal["critical", "standard"]:
+    """Panel key -> ``"critical"`` | ``"standard"`` (``"S2"`` -> ``S`` -> critical)."""
+    return "critical" if _key_base(key) in CRITICAL_PARAM_BASES else "standard"
+
+
+# Engine missing-input token -> the fill key the derive spec reads for it.
+_MISSING_INPUT_ALIAS: dict[str, str] = {
+    "suction_conn_size": "return_conn_size",
+    "conn_size": "return_conn_size",
+}
+
+# Fill key -> Direct Coil draft field (the `direct_coil_paste_ready` keys the mirror renders).
+# A water coil's mirror has ONE "Connection Size" row (the return-connection alias), so its
+# inlet and outlet both point at it.
+_MIRROR_FIELD_BY_INPUT: dict[str, str] = {
+    "finned_height": "finned_height",
+    "finned_length": "finned_length",
+    "rows": "rows_deep",
+    "feeds": "number_of_feeds",
+    "return_conn_size": "return_connection_size",
+    "inlet_conn_size": "return_connection_size",
+    "outlet_conn_size": "return_connection_size",
+    "coil_hand": "coil_hand",
+}
+
+# The submittal's own geometry the engineer may type when it is missing (John 2026-10-02),
+# offered whenever the submittal did not state it -- including before the engine has run,
+# when it reports nothing at all.
+CRITICAL_SUBMITTAL_INPUTS: tuple[str, ...] = (
+    "finned_height", "finned_length", "rows", "feeds", "return_conn_size",
+)
+
+
+def _absent_inputs(td: dict[str, Any], typed: dict[str, Any] | None = None) -> set[str]:
+    """The ONE definition of "this input is missing" for one coil.
+
+    An input is absent when the submittal did not state it AND the engineer has not typed
+    it. "Stated" comes from ``input_baseline`` when the coil carries one (a value analyze
+    DERIVED, like a water coil's feeds, is present but not stated), else from whether
+    ``extracted`` holds a value. Water coils have no single return connection -- their
+    inlet/outlet stand in for it.
+    """
+    typed = typed or {}
+    extracted = td.get("extracted") or {}
+    baseline = td.get("input_baseline") or {}
+    category = str(extracted.get("coil_category") or "").strip().upper()
+    absent: set[str] = set()
+    for key in (*CRITICAL_SUBMITTAL_INPUTS, "circuits"):
+        entry = baseline.get(key)
+        stated = (
+            bool(entry.get("stated"))
+            if isinstance(entry, dict)
+            else extracted.get(key) not in (None, "")
+        )
+        if not stated and key not in typed:
+            absent.add(key)
+    if category in ("CWC", "HWC"):
+        absent.discard("return_conn_size")
+        extracted_conn = td.get("water_conn_extracted") or {}
+        for side in ("inlet", "outlet"):
+            key = f"{side}_conn_size"
+            if extracted_conn.get(side) in (None, "") and key not in typed:
+                absent.add(key)
+    for key in ("product_type", "unit_size"):
+        if not td.get(key):
+            absent.add(key)
+    return absent
+
+
+_WATER_CONN_REASON = (
+    "Coil Checklist: CD = max(rows base, connection term) (R-071), CWC S = IN/2 + 3, "
+    "HWC S = IN, R = OUT. Uses the submittal's sizes; type here only to correct them."
+)
 
 
 class ManualFillItem(BaseModel):
@@ -661,23 +835,45 @@ class ManualFillItem(BaseModel):
     allowed: list[Any] = Field(default_factory=list)
     current_value: Any = None
     unit: str = "in"
+    # Stronger highlight in the fill panel (CRITICAL_FILL_KEYS / critical dimensions).
+    critical: bool = False
+    # False for a lever that is offered for CORRECTION while nothing is missing: a hand
+    # that was read, a water connection that was extracted or typed, an engine input the
+    # engineer already supplied. `critical` says how much it matters, this says whether it
+    # is outstanding -- only the two together earn the red highlight.
+    unresolved: bool = True
+    # The Direct Coil draft field showing this input on the submittal-data screen, so that
+    # screen can paint a missing critical value red from this plan instead of keeping a
+    # second list of "critical fields" of its own (John 2026-10-02).
+    mirror_field: str | None = None
 
 
 class ManualFillPlan(BaseModel):
     """The auto-surfaced 'fill these to complete the drawing' list for one coil.
-    ``withheld_reason`` is set (and ``items`` empty) when the drawing is gate-omitted
-    — filling cannot un-gate it, so no fill inputs are offered."""
+
+    ``withheld_reason`` is a BANNER, not an empty plan (John 2026-09-22): a gate withholds
+    the drawing ARTWORK, while product line / unit size / hand are exactly the inputs that
+    decide which gate applies — and Tier-B overrides still reach ``slot_values`` and the
+    Coil Checklist without an SVG. Returning no items there (the pre-2026-09-23 behaviour)
+    left a withheld Terra water coil with no lever at all, including the one that would
+    undo a wrong product pick."""
 
     model_config = ConfigDict(extra="forbid")
 
     items: list[ManualFillItem] = Field(default_factory=list)
     withheld_reason: str | None = None
+    # The outstanding critical INPUTS (not dimension rows), for the per-coil count in the
+    # coil list (John 2026-10-02): critical AND unresolved, so the standing correction
+    # levers (a read hand, extracted water connections) never inflate it.
+    critical_missing: list[str] = Field(default_factory=list)
 
 
 def build_manual_fill_plan(
     template_drawing: dict[str, Any],
     response: Any = None,
     param_set: DrawingParameterSet | None = None,
+    *,
+    typed: dict[str, Any] | None = None,
 ) -> ManualFillPlan:
     """Assemble the human-in-the-loop fill plan for one coil's drawing.
 
@@ -686,32 +882,52 @@ def build_manual_fill_plan(
       state, not an error — so surfaced unconditionally, with ``allowed``);
     - engine-input items from ``response.missing_inputs`` (or, when no engine
       response is available, parsed from ``template_drawing['review_items']``),
-      filtered to the known-fillable un-gate levers;
+      filtered to the known-fillable un-gate levers the drawing does not already have;
+    - the engine inputs the engineer typed on this request (``typed``, key -> value),
+      kept as resolved items so a value that satisfied the engine stays editable;
     - drawing-param items for panel params the engine left blocked (``mode=='blocked'``);
     - a ``withheld_reason`` instead of fill inputs when the drawing is gate-omitted.
 
     Never invents a value — every item names WHAT to supply and WHY, review-aid only.
     """
     td = template_drawing or {}
+    extracted = td.get("extracted") or {}
+    coil_category = str(extracted.get("coil_category") or "").strip().upper()
 
-    # Gate-omit: the drawing is withheld regardless of fills (unseeded Ventum+ DX,
-    # unsupported HGBP line). Do NOT present its dims as fillable — filling cannot
-    # un-gate it.
+    # Gate-omit: the drawing ARTWORK is withheld (Terra water re-seed, unseeded Ventum+
+    # DX, unsupported HGBP line). That is surfaced as a banner, but the levers are still
+    # built below — see ManualFillPlan.
     withheld = td.get("not_registered_reason")
-    if withheld:
-        return ManualFillPlan(items=[], withheld_reason=str(withheld))
+    withheld_reason = str(withheld) if withheld else None
 
     items: list[ManualFillItem] = []
     seen: set[str] = set()
 
-    # Coil hand picker — offered whenever a drawing exists, NOT only when the hand was
-    # assumed. Gating it on `coil_hand_defaulted` made the lever vanish the moment the
-    # engineer supplied a hand, so a mis-click (RH -> LH) could not be undone: the fill
-    # that set it also removed the only control for changing it (John 2026-07-29).
-    # It is a legitimate standing correction either way — a MISREAD hand is as damaging
-    # as a missing one, because the hand selects the LH vs RH template and therefore
-    # mirrors the entire drawing.
-    if td.get("svg"):
+    # Coil category — SUPPLY only, when classification failed outright. It selects the
+    # template, the rule set and the checklist sheet; re-classifying a category that WAS
+    # read is John's open decision J-0a and deliberately not offered.
+    if not coil_category:
+        items.append(
+            ManualFillItem(
+                key="coil_category", kind="template_input", label="Coil type",
+                reason=(
+                    "Coil type could not be classified from the submittal — it selects "
+                    "the template, the engine rules and the checklist sheet."
+                ),
+                allowed=list(COIL_CATEGORY_CHOICES), current_value=None, unit="",
+                critical=True,
+            )
+        )
+        seen.add("coil_category")
+
+    # Coil hand picker — offered whenever the coil is classified, NOT only when the hand
+    # was assumed, and NOT only when artwork exists. Gating it on `coil_hand_defaulted`
+    # made the lever vanish the moment the engineer supplied a hand, so a mis-click
+    # (RH -> LH) could not be undone (John 2026-07-29); gating it on `svg` removed it from
+    # every withheld/errored coil, which is exactly where it is needed (2026-09-23). The
+    # hand is a classification input, not a property of the artwork: it selects the LH
+    # vs RH template and therefore mirrors the entire drawing.
+    if coil_category:
         items.append(
             ManualFillItem(
                 key="coil_hand", kind="template_input", label="Coil hand",
@@ -730,6 +946,8 @@ def build_manual_fill_plan(
                     (td.get("extracted") or {}).get("hand"),
                 ),
                 unit="",
+                critical=True,
+                unresolved=bool(td.get("coil_hand_defaulted")),
             )
         )
         seen.add("coil_hand")
@@ -753,6 +971,7 @@ def build_manual_fill_plan(
                     key="product_type", kind="engine_input", label="Product line",
                     reason="Pick a product line to derive dimensions.",
                     allowed=sorted(opts.keys()), current_value=product_type,
+                    critical=True,
                 )
             )
             seen.add("product_type")
@@ -771,30 +990,124 @@ def build_manual_fill_plan(
                 ManualFillItem(
                     key="unit_size", kind="engine_input", label="Unit size",
                     reason=reason, allowed=sizes, current_value=unit_size,
+                    critical=True,
                 )
             )
             seen.add("unit_size")
 
-    # Engine inputs the engineer can supply to un-gate cascades. Prefer the live
-    # response's missing_inputs; fall back to parsing the review_items strings.
+    # Engine inputs the engineer can supply to un-gate cascades. A live response is
+    # authoritative even when it lists NOTHING: falling back to the review_items strings
+    # there re-asked for every input the engineer had just supplied (they are the
+    # analyze-time list and no re-run refreshes them).
+    typed = typed or {}
     missing_inputs: list[str] = []
-    if response is not None and getattr(response, "missing_inputs", None):
-        missing_inputs = list(response.missing_inputs)
+    if response is not None:
+        missing_inputs = list(getattr(response, "missing_inputs", None) or [])
     else:
         for raw in td.get("review_items") or []:
             text = str(raw)
             if text.startswith("missing_input:"):
                 missing_inputs.append(text.split(":", 1)[1].strip())
-    for inp in missing_inputs:
-        if inp in seen or inp not in _ENGINE_INPUT_META:
+    absent = _absent_inputs(td, typed)
+
+    # The submittal's own geometry, whenever it was not stated -- whether or not the engine
+    # has run to say so.
+    for key in CRITICAL_SUBMITTAL_INPUTS:
+        if key not in absent or key in seen:
             continue
-        seen.add(inp)
-        label, unit = _ENGINE_INPUT_META[inp]
+        seen.add(key)
+        label, unit = _ENGINE_INPUT_META[key]
+        assumed = extracted.get(key)
         items.append(
             ManualFillItem(
-                key=inp, kind="engine_input", label=label,
+                key=key, kind="engine_input", label=label,
+                reason=(
+                    f"Not stated in the submittal — the drawing assumes {assumed}. Type the "
+                    "real value from the source to replace it."
+                    if assumed not in (None, "")
+                    else "Not stated in the submittal — type it from the source document."
+                ),
+                current_value=assumed, unit=unit, critical=True,
+            )
+        )
+
+    # The header count, when the submittal does not establish one (John 2026-10-14, 2950):
+    # `_gate_header_count` withholds the drawing, and this is the lever that answers it.
+    # Offered here rather than through the engine's `missing_inputs`, which never names
+    # circuits for a coil with no product line -- the coil would be withheld with nothing
+    # to type into. "Absent" is still `_absent_inputs`' call (baseline `stated` False).
+    if coil_category in ("DX", "HGRH") and "circuits" in absent and "circuits" not in seen:
+        seen.add("circuits")
+        verification = td.get("header_count_verification") or {}
+        from coilforge.submittal.header_count import describe_signals
+
+        evidence = describe_signals(verification.get("signals") or []) or "nothing"
+        items.append(
+            ManualFillItem(
+                key="circuits", kind="engine_input", label="Circuits (header count)",
+                reason=(
+                    "The submittal does not establish the header count "
+                    f"({verification.get('status') or 'unread'}: {evidence}). It selects "
+                    "the drawing template, so the drawing is withheld until it is entered."
+                ),
+                unit="", critical=True,
+            )
+        )
+
+    # The engine reports missing inputs in PAIRS (`add_missing(["suction_conn_size",
+    # "circuits"])`), so a token for an input this coil HAS is not offered.
+    for inp in missing_inputs:
+        key = _MISSING_INPUT_ALIAS.get(inp, inp)
+        if key in seen or key not in _ENGINE_INPUT_META:
+            continue
+        if key in (*CRITICAL_SUBMITTAL_INPUTS, "circuits") and key not in absent:
+            continue
+        seen.add(key)
+        label, unit = _ENGINE_INPUT_META[key]
+        items.append(
+            ManualFillItem(
+                key=key, kind="engine_input", label=label,
                 reason="Required by the rule engine to derive dimensions — supply to un-gate.",
                 unit=unit or "in",
+                critical=key in CRITICAL_FILL_KEYS,
+            )
+        )
+
+    # Water inlet/outlet connection sizes. R-071 never lists them in `missing_inputs`
+    # ("with either absent the base stands alone"), so the loop above can never surface
+    # them — offered explicitly for every water coil. `current_value` shows what intake
+    # extracted (`water_conn_extracted`, which already drives CD/S/R since 2026-09-23);
+    # the lever is a CORRECTION: it fires only when the engineer types a value, and only
+    # that typed value is written to the manual-override audit trail.
+    if coil_category in ("CWC", "HWC"):
+        extracted_conn = td.get("water_conn_extracted") or {}
+        for key, side in (("inlet_conn_size", "inlet"), ("outlet_conn_size", "outlet")):
+            if key in seen:
+                continue
+            seen.add(key)
+            label, unit = _ENGINE_INPUT_META[key]
+            items.append(
+                ManualFillItem(
+                    key=key, kind="engine_input", label=label, reason=_WATER_CONN_REASON,
+                    current_value=extracted_conn.get(side), unit=unit, critical=True,
+                    unresolved=key in absent,
+                )
+            )
+
+    # What the engineer typed and the engine no longer asks for. Without these the lever
+    # disappears the moment it works, and a typo has no control left to correct it (the
+    # coil-hand lesson above).
+    for key, value in typed.items():
+        if key in seen or key not in _ENGINE_INPUT_META:
+            continue
+        seen.add(key)
+        label, unit = _ENGINE_INPUT_META[key]
+        items.append(
+            ManualFillItem(
+                key=key, kind="engine_input", label=label,
+                reason="Supplied by the engineer — edit to correct it.",
+                current_value=value, unit=unit or "in",
+                critical=key in CRITICAL_FILL_KEYS, unresolved=False,
             )
         )
 
@@ -812,7 +1125,16 @@ def build_manual_fill_plan(
                             or "Engine did not derive this dimension; supply directly."
                         ),
                         unit=parameter.unit or "in",
+                        critical=criticality_for_param_key(key) == "critical",
                     )
                 )
 
-    return ManualFillPlan(items=items)
+    for item in items:
+        item.mirror_field = _MIRROR_FIELD_BY_INPUT.get(item.key)
+    return ManualFillPlan(
+        items=items,
+        withheld_reason=withheld_reason,
+        critical_missing=[
+            i.key for i in items if i.critical and i.unresolved and i.kind != "drawing_param"
+        ],
+    )

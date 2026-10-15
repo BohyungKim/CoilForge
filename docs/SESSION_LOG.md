@@ -5,6 +5,222 @@
 
 <!-- CHECKPOINTS (newest first) -->
 
+## 2026-09-23 (Toronto) · base f008979..38bc5fb · claude/ambient-supplier
+### ✅ 구현/결정된 것
+- **빈 도면 파라미터에서 "완전히 막히던" 3개 상태 해제** — 막힘의 실체는 데이터 부재가 아니라 레버 소멸: Terra 물코일 게이트(`_omit_drawing`)가 fill plan·product 피커를 지움 / 도면 경로 예외가 맨 `{"error"}` / 거부된 `/derive` 스텁이 페이지를 덮어씀. 셋 다 복구(`_error_shell_template_drawing`, withheld=배너, hand 레버는 분류 기준, 오류 payload 비저장). (근거: 1d56078, `tests/test_blocked_state_unblock.py` 25)
+- **critical 등급 + 자동 재생성** — `DrawingParameter.criticality`(computed, CD·CH·HD/HDx·S·I; O/R standard = John 결정). 빈 critical 행 굵은 빨강·인라인 편집·reason 커밋 시 derive, Tier-A/피커는 값 확정 즉시. 브라우저 fill store를 누적 merge로(자동 derive가 앞선 채움을 지우던 구조 결함). (근거: 1d56078, `tests/test_param_criticality.py` 7)
+- **체크리스트 채택** — 입력 먼저→엔진 재계산, 빈 행에만 시트 결과, compare verdict `adopted`(John 결정), KD 판정 제외, 물코일 inlet/outlet은 사람이 친 값만 R-071 트리거. (근거: 1d56078 + 38bc5fb 아이콘, `tests/test_checklist_adopt.py` 15)
+- **CCSI 물코일 Drain and Vent Location = `Hdr Side In Airflow Dir.`** (전 제품군, 미러 기본값 + fill 시 옵션-텍스트 선택). R-066 `ConnEnd`는 별개 어휘로 유지(John 결정). (근거: 38bc5fb, `tests/test_ccsi_drain_vent_location.py` 10)
+- **발견·수정: userscript가 `{strategy:"css"}` 셀렉터를 못 읽어 8월 캡처한 `#DrawingNotes`가 한 번도 해석되지 않음** → Tampermonkey 경로 Notes 푸시 무동작이었음을 커밋본으로 재현("selector not found")·수정. (근거: 38bc5fb, 헤드리스 모의 CCSI 폼)
+- plan-review 2라운드(R1 BLOCKER 3 전건 반영), invariant-guard 위반 0, 전체 1740 green(HITL 커밋 시점), 인덱스 export 검증으로 다른 세션 hunk 격리 커밋.
+- TR-13 눈확인 스크린샷 11장 아티팩트: https://claude.ai/artifact/UrK6YxyJ1vvEn9t61BaUsz (대화 중 공유, git 밖)
+
+### ⏭️ 다음 스텝
+- [ ] **Terra H/V CWC 새 SVG 템플릿 시딩** — John이 착수 지시(2026-09-23). 실 참조 PDF(Terra H/V × CWC × LH/RH) 필요, 템플릿 편집은 DO-NOT-TOUCH라 버킷별 John 승인, 시더는 커밋본과 발산(스크래치 재생성 diff 먼저). 체크리스트 결정 ②(CWC S 콜아웃)·③(물코일 O 콜아웃)이 리댁션할 슬롯을 정하므로 가능하면 먼저.
+- [ ] **🔴 Coil Checklist 템플릿 Excel 접근 불가** — OneDrive/SharePoint 파일을 Excel COM이 "cannot access"(12:59 수정 이후). 잠금/동기화 확인 후 `pytest tests/test_checklist_excel_writer.py`(현재 11 skip). 실사용 자동채움도 영향.
+- [ ] **TR-14** CCSI 로그인 상태 물코일 fill → DVL 드롭다운 + Drawing Notes 실제 채움 확인, select `#id` 캡처 후 `selector_verified:true` 플립.
+- [ ] **TR-13 잔여** — 켜진 자동채움에서 재채움 후 `adopted` 표시, 실 Terra 물코일 제출물로 확인(로컬 submittals/에 없음).
+- [ ] **John 결정** J-1b(체크리스트 IN/OUT CONN SZ 채택 = 코일별 R-071 opt-in), 체크리스트 리프레시 ①②③, J-0a/J-3a는 보류 유지.
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: 38bc5fb94bc62e2ce828d1f90ce8df0de7ec44ac · 미커밋(다른 세션 소유, 건드리지 말 것): src/coilforge/capture/db.py, capture/observe.py, tests/test_capture_ledger.py, web/app.js·style.css·ccsi/ccsi_autofill.user.js 일부 hunk, web/index.html
+- 핵심 경로: `services/drawing_param_resolver.py::build_manual_fill_plan`, `workflows/submittal_to_drawing.py::_error_shell_template_drawing`, `web/app.js::{mergeManualFills,deriveCoilDrawing,checklistAdoptionPlan,ccsiDrainVentLocation}`, `web/ccsi/ccsi_autofill.user.js::{resolve,fillOne,optionByText}`
+- 관련: 플랜 `~/.claude/plans/when-tender-curry.md`(DVL 현재 + HITL 이전), 로드맵 TR-13/TR-14/환경 항목
+
+## 2026-09-23 (Toronto) · base a0a88b8..f008979 · claude/ambient-supplier
+> 체크리스트 리프레시 세션. 같은 트리의 `capture/*`·`web/*` 미커밋 편집은 **다른 세션**의 것.
+
+### ✅ 구현/결정된 것
+- 2026-09-22 Coil Checklist 6탭 리프레시를 셀 단위 back-crack → CoilForge 반영 (`ee7ef30`): Terra V SIZE 숫자·케이싱
+  47/58/74/74/76·드레인팬 28/29/32·FIT 자체 행(폭 vs OAL ≥9.75/8.75, 높이 FH 캡 24/42/45/48)·DX H05/H10 DIST EXT 17·
+  HGRH Terra V I1=2 + supply SL `6+D/2−S` 전 라인·물코일 I/O/S/R 행·CD 접속경 항·RB 가족별·single-feed 특례 폐기·
+  HWC Terra DP tri-state(R-014h)·V/D ConnEnd/LAS (근거: `coil_header_rules.yaml`, 1694 green, 라이브 Excel 채움에서
+  Terra V CASING·INSTALL FIT 산출 확인)
+- John 판정: 체크리스트 5건 승 / Terra H/V 물코일 도면 vacant(`_TERRA_WATER_WITHHELD_FAMILIES`) / Terra V O4+=2는
+  시트 버그(KD-005/022/023)
+- 의도적 미채택 3건 KD amber: Terra V HGRH CD(KD-001), CWC S=IN/2+3, 물 O=CH−x(KD-024..027); KD-004·006..009 은퇴,
+  KD-028/029 추가 — 시트 미러는 순환 match를 만들어 금지(plan-review 2R)
+- 시트 버그 3건 `docs/rule_proposals/RP-003`; 로드맵 갱신 (`f008979`)
+
+### ⏭️ 다음 스텝
+- [ ] `run_server.bat` 재시작 → 2755·3095 재분석 눈검증 (재시작 없으면 옛 코드가 돈다)
+- [ ] John 결정 3건: KD-001 재판정 / CWC S 콜아웃 / 물 O 콜아웃 (결정 전 코드 불변)
+- [ ] Terra H/V CWC/HWC 새 SVG 시드 후 `_TERRA_WATER_WITHHELD_FAMILIES` 비우기
+- [ ] RP-003 시트 버그 Oxygen8 전달; `/wiki-lint`로 R-046/R-067/R-077 drift 정리
+- [ ] invariant-guard 검토 미실행(세션 한도 429) — `ee7ef30` 대상 1회
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: f0089796fbf951b16a13b07bef3ca0a1f43581d6 · 미커밋: `capture/db.py`,
+  `capture/observe.py`, `tests/test_capture_ledger.py`, `web/{app.js,index.html,style.css,ccsi/…}` (다른 세션)
+- 핵심 경로: `checklist/mapping.py`, `services/header_prepopulate_engine.py`, `compatibility/mechanical_fit.py`,
+  `rules/known_divergences.yaml` · plan: `~/.claude/plans/coil-checklist-logic-hsa-cheerful-engelbart.md` ·
+  메모리 `checklist_template_refresh_2026_09_22.md` · 롤백 `git revert f008979 ee7ef30`
+
+## 2026-09-22 (Toronto) · base d9dc812..a0a88b8 · claude/ambient-supplier
+> 이번 세션의 커밋은 `a0a88b8` 하나. 트리에 함께 있는 체크리스트 리프레시(6탭) 작업은
+> **다른 세션**의 것이며 커밋하지 않았다.
+
+### ✅ 구현/결정된 것
+- **"Move to DirectCoil"이 10번 중 1번만 성공하던 원인 2건 수정** (커밋 `a0a88b8`).
+  둘 다 화면에는 똑같이 `Filing failed:` 한 줄로만 보여서 구분이 안 됐다. 프런트에 그 헤드라인을
+  만드는 경로가 **하나뿐**(`app.js:5108`, `requestJson`이 던진 예외)이라는 걸 먼저 확정하고,
+  conflict(200)·부분성공은 각각 다르게 렌더된다는 사실로 범위를 HTTP 예외로 좁혔다.
+- **결함 ① 프로젝트 번호가 줄 나머지를 달고 왔다.** 라벨 정규식이 `[^
+]+`로 줄 끝까지 캡처하고
+  `_clean_project_context_value`는 공백 2칸이나 8개 stop-word에서만 자른다. Oxygen8은 **모든 페이지
+  푸터**에 `Version 1.0.0.9 Project #2727 / Rev`를 찍고, 이게 커버의 `Project Number: 2727`과 **같은
+  패턴**에 걸린다. `_first_label_value`가 문서 전체의 첫 매치 하나만 취했으므로 어느 줄이 먼저 파싱되느냐가
+  답을 결정했고, PO 조회는 접두어 매칭이라 `2727 / Rev #3`은 1369개 폴더 중 무엇과도 안 맞았다.
+  `_project_number_token`으로 **번호 토큰만** 남기니 푸터와 커버가 같은 답을 내어 순서 의존성이 사라진다.
+  대리점 9자리 번호는 **자르지 않고 거부**(`(?!\d)`)하고, `finditer`로 모든 매치를 훑어 우리 번호를 찾는다.
+- **결함 ② 체크리스트 대상 경로가 MAX_PATH를 넘었다.** Downloads 이름이 submittal stem 전체라
+  3219 SPCA Cincinnati는 **정확히 260자**(Win32 한도 259, 이 PC는 long path 꺼짐). `copyfile`이
+  `[Errno 2] No such file or directory`로 죽으면서 **멀쩡히 존재하는** DirectCoil 폴더를 가리켰다.
+  게다가 **commit 시점**에 터져서 PDF 2개가 이미 들어간 뒤였다 — all-or-nothing 약속이 conflict에는
+  지켜지고 I/O 실패에는 안 지켜지고 있었다. 이제 `plan_placements`가 길이를 먼저 보고 아무것도 안 쓴다.
+- **John 결정(2026-09-22): 시트는 `<번호> - Coil Checklist.xlsx`로 파일링.** 3219 기준 186자.
+  Downloads 원본은 긴 이름 그대로 두고 **이동**(복사 아님)은 유지.
+- **실패 메시지를 자가진단형으로.** 값을 따옴표로 감싸고(꼬리·끝공백이 안 보인다), 선행 숫자만으로
+  재검색해 근접 폴더를 이름으로 댄다. 후보를 **고르지는 않는다**(고르면 프로젝트를 지어내는 것).
+  `web_app`은 번호의 출처(PDF 라벨 / 파일명)를 덧붙인다 — 고칠 곳이 갈린다.
+- **기존 테스트가 파일링 이름을 하나도 고정하지 않고 있었다** — Downloads 이름이 우연히 새 이름과
+  같아서 전부 통과했다. 현실적인 긴 이름으로 된 테스트를 추가했다.
+- **측정으로 배제한 가설:** PO base 존재 ✓, `Accessory Order Forms` 최근 77/77 존재,
+  `Direct Coil` 철자 변형 0건, 중복 철자 0건, 번호 접두어 중복 21/1342(1.6%), Excel 좀비·stale lock 없음.
+- **테스트:** 신규 10건. 전체 **1694 passed, 0 failed**. 라이브: 3219 3개 문서 전부 파일링 확인(John).
+
+### ⏭️ 다음 스텝
+- [ ] **`.claude/roadmap.md` 항목 추가분이 워킹트리에 있으나 미커밋** — 이 파일에 다른 세션의
+  체크리스트 리프레시 편집이 함께 들어 있어 쓸어 담지 않았다. John이 그 세션 커밋과 함께 넣거나,
+  별도로 지시하면 커밋한다.
+- [ ] **`commit_placements`의 `write_bytes`가 `OSError` 미포장** — 잠긴 대상 PDF가 이름 없는 500이 된다.
+  같은 함수의 copyfile 분기만 409로 명명돼 있어 비대칭. (🟡, 이번 범위 밖)
+- [ ] **`plan_placements`의 `_sha256_file` 미포장** — OneDrive 미하이드레이트/잠금 시 500. (🟡)
+- [ ] **프런트 `fileDeliverable`에 타임아웃·중복클릭 가드 없음** — Excel COM이 길어지면 멈춘 것처럼
+  보이고 재클릭이 두 번째 finalize를 띄운다. (🟡)
+- [ ] 예전에 긴 이름으로 파일링된 프로젝트를 다시 돌리면 `already filed`로 인식되지 않고 짧은 이름으로
+  한 번 더 파일링된다(무해하나 중복 파일 1개).
+
+## 2026-09-02 (Toronto) · base dd99c8d..ebb3c35 · claude/ambient-supplier
+> 이번 세션의 커밋은 `ebb3c35` 하나. 범위 안의 나머지 5개(`8bac658`·`9bfef68`·`2f67dac`·`27d1ef9`·
+> `d60bad1`)는 다른 세션의 Terra V HGRH 트랙이며 로드맵 완료 섹션에 이미 기록돼 있다.
+
+### ✅ 구현/결정된 것
+- **3179 TWU 검증 → 커버 파서 결함 1건 수정으로 DX 결함 3건 동시 해소** (커밋 `ebb3c35`).
+  두 커버 파서가 `qty`에 대해 비대칭이었다: 텍스트 경로는 행 정규식이 `^(?P<qty>\d+)\s+…`로 수량을
+  **구조적으로 요구**하지만, 테이블 경로 `_extract_cover_rows_from_table`은 `qty`를 읽어놓고 **검사하지
+  않았다**(게이트가 `tag` 유무 + `coil_tag_rejection_reason` 둘뿐). pdfplumber가 여러 줄 Item 셀을 자기
+  행으로 쪼개면서 태그를 반복하고 Qty를 비우고 Item에 꼬리(`'Coil)'`)만 남긴 행이 **통째로 코일이 됐다** —
+  손이 기본값 LH로 채워진 가짜 도면이 견적 패키지에 삽입됨. 게이트는 **중복 태그 AND qty 없음**의 결합에만
+  건다(빈 Qty 단독으로 거부하면 그런 레이아웃의 코일을 통째로 잃는다). 침묵 삭제 금지 — 기존 `rejected`
+  채널로 `non_coil_rows_excluded`에 표시.
+- **캐스케이드는 가정하지 않고 검증으로 확인했다.** 계획서에 "Phase 1이 ②③을 고칠 것이라고 가정하지
+  않는다"고 명시하고 실문서 게이트로 확인한 결과, 유령 행이 DX 상세 블록 바인딩을 밀고 있었음:
+  CDXC-3(048)이 100 유닛 치수를 쓰던 것 → **CH 43.25 / FL 33 복구**, CDXC-4 치수 전무 → **54슬롯 복구**.
+  (근거: 두 실문서 게이트, 아래 anchors)
+- **정본 확정:** `Desktop\3179 - Oxygen8 Submittal - Havtech - 3179 - TWU - Rev0.pdf`
+  (sha256 `b76a4e38…`, `Final Working\…Rev0.pdf`와 **바이트 동일**). **정본에는 결함 3건이 원래 없었다** —
+  세 결함은 서명본(`Signed Final Submittal\Record Submittal…8-26-2026.pdf`, 235쪽)에서만 재현.
+- **오보 1건 철회:** "Right 코일 4개가 LH로 그려진다"는 보고는 **틀렸다.** 브라우저에 넣은 파일과 제가
+  헤드리스로 분석한 파일이 **서로 달랐다**(Downloads의 체크리스트 출력 파일명으로 특정). 두 문서 모두
+  자기 커버대로 정확히 해석한다. 교훈: 브라우저 실측과 헤드리스를 비교하기 전에 **입력 파일 동일성부터**.
+- **RHHGRC 체크리스트 불일치 14건은 CoilForge 결함이 아니다** — 전부 John이 2026-08-04에
+  `checklist_wrong`으로 판정한 KD-001~005(체크리스트 시트에 Terra V 분기 없음). `known_defect: 0`.
+- **테스트:** 신규 4건(wrap 거부 / wrap 사유 보고 / **첫 등장 qty 없음은 계속 코일** / 정상 8행 커버 무변화).
+  전체 **1612 passed, 0 failed**.
+
+### ⏭️ 다음 스텝
+- [ ] **[최우선] RHHGRC `X` 치수 — 7개 HGRH 템플릿의 얼어붙은 as-built 값.** 상세는 `.claude/roadmap.md`
+  "⬜ 앞으로" 최상단 항목에 전부 적어 뒀다(고정값 7건 목록·선택지 3개·필요한 승인 2건).
+  (왜 남음: ⓐ 처리 방식 선택 ⓑ **DO-NOT-TOUCH 편집 승인 범위**가 John 결정)
+- [ ] **서명본 vs 정본 핸딩 불일치 자동 검출 (제안만)** — 같은 3179의 두 제출서가 4개 코일의 handing을
+  Left↔Right로 다르게 기재한다. CoilForge는 문서 간 대조를 하지 않아 검출 불가. (왜 남음: 별건, 미승인)
+- [ ] **Phase 2 DX 블록 바인딩 조사 — 보류(닫지 않음).** 증상은 사라졌지만 바인딩 규칙 자체는 읽지 않았다.
+  유령 행 없이 같은 어긋남을 내는 문서가 나오면 재개. (왜 남음: 우선순위 낮아짐)
+- [ ] **다른 세션 미커밋 정리 (John)** — `.claude/roadmap.md`(내 항목 포함), `capture/{db,observe}.py`,
+  `tests/test_capture_ledger.py`, 미추적 `.agents/ .codex/ pytest.ini scripts/migrate_capture_ledger.py`,
+  `tests/test_template_hardcoded_dims.py`. (왜 남음: **내 커밋에 섞으면 안 되는 남의 작업**)
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `ebb3c351ac97efbd6160eb9c246430bfc5e259f8` (pushed)
+- **⚠️ 로드맵 항목은 커밋되지 않았다** — `.claude/roadmap.md`에 다른 세션의 미커밋 변경(+18줄)이 함께
+  있어, 그 파일을 커밋하면 남의 작업이 딸려간다. 내 항목은 워킹트리에만 있으며 이 로그가 백업이다.
+- 핵심 경로: `src/coilforge/submittal/pdf_intake.py::_extract_cover_rows_from_table` (게이트) ·
+  `tests/test_phase2e_pdf_coil_intake.py` (신규 4건) ·
+  `tests/test_template_hardcoded_dims.py::_KNOWN_OPEN` (X 7건이 **등식**으로 고정, untracked)
+- 롤백: `git revert ebb3c35`, 또는 `if qty is None and tag in seen_tags:` 블록 + `seen_tags` 두 줄 제거
+- 실문서(저장소 밖, gitignore 대상): 정본 `C:\Users\JohnKim\Desktop\3179 - Oxygen8 Submittal - Havtech -
+  3179 - TWU - Rev0.pdf` · 서명본 `…\02 - POs\3179 - Havtech - TWU\Signed Final Submittal\Record
+  Submittal - TWU Alumnae Hall Renovation Oxygen8 VRV CU - 8-26-2026.pdf`
+- 게이트 수치 — 정본: 8코일, CDXC-3 `CH 43.25/FL 33`, CDXC-4 54슬롯, 게이트 **미발동** ·
+  서명본: **9→8**, 유령 소멸(`wrapped continuation of the row above (tag repeated, no Qty)`),
+  CDXC-3·CDXC-4 복구
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ccs-ia-quatt-peaceful-parnas.md` · `.claude/roadmap.md` ⬜앞으로 최상단
+
+## 2026-08-31 (Toronto) · base c6c702c..71514a1 · claude/ambient-supplier
+> 참고: 로그의 직전 기준점은 7/23(`c6c702c`)이고 그 사이 83커밋이 쌓였으나 82개는 다른 세션/트랙
+> (Stage 4 Observatory, review-convergence, sl1-tagfilter, Omnia)으로 로드맵 완료 섹션에 이미 기록됨.
+> **이번 대화 세션의 실제 경계는 `c43d9d7..71514a1` — 커밋 1개.**
+> 로드맵 트랙: **견적 납품 워크플로 압축 4단계 "원클릭 납품 정리"** (코드 완료, 눈검증 대기).
+
+### ✅ 구현/결정된 것
+- **탐색 결과가 요청을 뒤집었다: 기능은 이미 90% 있었다.** `POST /api/deliverable/finalize` +
+  `#finalize-deliverable` 버튼이 이미 프로젝트 번호로 `02 - POs/<번호>/Accessory Order Forms/DirectCoil`을
+  찾아 세 파일을 넣고 있었음. 따라서 이번 작업은 신규 구현이 아니라 **기존 finalize 경로의 정책 4가지 변경**.
+  (근거: 탐색 2건, `deliverable/finalize.py` 기존 65-136행)
+- **Build 한 번 = 패키지 + 파일 정리** (커밋 `71514a1`) — `buildQuotePackage()` 끝에서
+  `fileDeliverable({skipDraft:true})` 호출. 두 번째 버튼은 **"Open Outlook draft"** 전용으로 라벨 변경.
+  (근거: web/app.js:4829, web/index.html:280)
+- **복사 → 이동.** 체크리스트는 서버가 경로를 아는 유일한 파일이라 진짜 move. PDF 2개는 **바이트로만**
+  도달하므로(브라우저는 경로를 안 줌) `~/Downloads/<이름>` + Chrome의 `<stem> (1)<ext>`를 재구성하되
+  **sha256이 방금 기록한 내용과 일치할 때만 삭제**(`retire_download`). 이름 일치만으로는 절대 안 지움 =
+  경로 추측이 안전해지는 이유. revised PDF는 브라우저가 비동기 저장하므로 5초 바운디드 폴링.
+  (근거: `deliverable/finalize.py::retire_download`, 신규 테스트 4건)
+- **충돌 = 같은 이름 AND 다른 내용, 그리고 전부 중단.** `plan_placements`가 세 목적지를 먼저 판정하고
+  `commit_placements`가 쓰므로 **반쯤 채워진 폴더**(완료된 것처럼 보여서 더 나쁨)가 도달 불가.
+  응답은 **HTTP 200 + `status:"conflict"`** — 충돌은 에러가 아니라 John의 결정 대기(폴더 부재는 계속 400/409).
+  `overwrite:true`가 답. (근거: web_app.py:1539-1567, 신규 테스트 3건)
+- **동일 내용 = `already_filed`, 충돌 아님.** 이 한 줄 정의가 버튼 두 개를 살림 — Build가 정리한 뒤
+  초안 버튼이 같은 세 파일 위로 다시 돌아도 통과하므로 **초안 전용 엔드포인트를 안 만들었다.**
+  대신 Outlook 첨부를 `files_written[1]` 인덱스가 아니라 **이름으로** 조회(리스트 구성이 달라지므로).
+- **폴더명은 접어서 매칭**(소문자화 + 공백/`_`/`-` 제거). `Direct Coil`은 **`DirectCoil`로 rename 후 재사용**
+  (안에 있던 파일 이력 보존, 빈 폴더를 옆에 안 만듦). `Accessory Order Forms`는 느슨히 찾되 **rename 안 함** —
+  AOF 부재 = 프로젝트 폴더 오인식 신호인데, 철자 변형이 그 에러를 유발하면 의미가 사라지므로.
+  두 철자 공존 시 추측하지 않고 raise. (근거: `_child_by_normalized`, `_rename_to_canonical`, 신규 테스트 5건)
+- **John이 확정한 정책 6건** (AskUserQuestion 2회): 이동 / 충돌 시 멈추고 묻기 / 변형 폴더는 rename 후 사용 /
+  AOF 없으면 에러 중단 / FULL CHECKLIST = 자동생성 `<제출서명> - Coil Checklist.xlsx` / Build는 정리까지만
+  (Outlook 초안은 별도 버튼).
+- **의도적으로 버린 커버리지:** `test_place_bytes_never_clobbers` — 동명 파일이 조용히 ` (2).pdf`가 되던 동작.
+  "멈추고 물어보기"가 이를 대체하므로 충돌/동일내용/덮어쓰기 3건으로 교체. `checklist/excel_writer.py`의
+  별도 `(2)` 폴백(Downloads 쓰기 경로)은 무접촉.
+- **테스트:** `tests/test_deliverable_finalize.py` 10→33건, 전체 **1608 passed, 0 failed** (커밋 직전 측정).
+- **문서:** `CLAUDE.md`에 4개 규칙 기록(252-279행) — 이 파일이 프로젝트 계약서라 drift 방지.
+
+### ⏭️ 다음 스텝
+- [ ] **[Phase Gate] John 브라우저 눈검증 1회** — `run_server.bat` 재시작(--reload 없음) → 제출서 분석 →
+  Quote PDF 드롭 → Build quote package. 합격: DirectCoil에 세 파일 존재 **AND** Downloads에서 셋 다 사라짐.
+  (왜 남음: 실제 OneDrive/SharePoint 폴더에 쓰는 동작이라 사람 확인이 Phase Gate 조건)
+- [ ] **충돌 케이스는 테스트용 사본 폴더에서 먼저** — Quote PDF를 다른 걸로 바꿔 같은 프로젝트에 Build →
+  프롬프트가 뜨고 기존 파일이 안 바뀌는지. (왜 남음: 실제 파일을 대체할 수 있는 유일한 경로)
+- [ ] **로드맵 미기재** — `.claude/roadmap.md`에 4단계 "원클릭 납품 정리" 항목이 없다. (왜 남음: 그 파일을
+  다른 세션이 수정 중이라 충돌 회피를 위해 손대지 않음. 그 세션 커밋 후 추가 필요)
+- [ ] **`DEFAULT_PO_BASE` 하드코딩 유지** — 설정화는 범위 밖으로 확정. (왜 남음: John이 필요하다고 하기 전엔 불필요)
+- [ ] **한계 1건(Confirmed):** 원본 Quote를 Downloads가 **아닌** 곳에서 골랐다면 그 원본은 안 지워지고
+  `not found — left in place`로 보고됨. CCSI export가 Downloads로 떨어지는 워크플로에선 무해.
+
+### 🔎 Resume anchors
+- branch: claude/ambient-supplier · HEAD: `71514a115add14d22d4b1fa4703b0248f9fae3ab` (pushed)
+- 미커밋(**이번 세션 아님 — 다른 세션 진행 중, 건드리지 말 것**): `.claude/roadmap.md`,
+  `capture/{db,observe}.py`, `services/{direct_coil_drawing_pipeline,drawing_param_resolver}.py`,
+  `workflows/submittal_to_drawing.py`, HGRH 템플릿 4쌍(slot_map.json + template.svg),
+  `tests/{test_capture_ledger,test_template_clean}.py`, 미추적 `.agents/ .codex/ pytest.ini`
+  `scripts/migrate_capture_ledger.py` + 테스트 3개
+- 핵심 경로: `src/coilforge/deliverable/finalize.py` (plan/commit_placements, retire_download,
+  _child_by_normalized) · `src/coilforge/web_app.py:1418-1650` · `web/app.js::fileDeliverable`
+  (4840-) · `web/index.html:280-285`
+- 롤백: `web/app.js:4829`의 `await fileDeliverable({ skipDraft: true });` 한 줄 삭제 → 이전 2버튼 흐름 복귀
+- 관련: plan `C:\Users\JohnKim\.claude\plans\ccs-ia-quatt-peaceful-parnas.md` · CLAUDE.md:252-279
+
 ## 2026-07-23 (Toronto) · base e30c36f..c6c702c · claude/ambient-supplier
 > 참고: 이 base 범위엔 중간에 다른 세션 커밋(af3b4fc Stage 3.0 등)이 섞여 있으나 그건 로드맵 완료 섹션에
 > 이미 기록됨. 아래는 **이번 대화 세션(2026-07-23)**에서 실제로 한 작업만.

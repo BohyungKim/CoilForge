@@ -37,7 +37,7 @@ def test_size_token_translation():
     assert _to_size("VENTUM H", "H05") == "H05"
     assert _to_size("VENTUM+", "V20") == "V20"
     assert _to_size("TERRA H", "009") == 9          # numeric dropdown
-    assert _to_size("TERRA V", "084") == "TV084"    # TV-prefixed dropdown
+    assert _to_size("TERRA V", "084") == 84         # numeric dropdown since the 2026-09-22 template (was "TV084")
     assert _to_size("NOVA", "ZZZ") is None          # not a valid option
 
 
@@ -51,7 +51,15 @@ def test_dim_slot_mapping():
     assert _dim_slot("HD2") == "slot.HD2"   # even -> return header
     assert _dim_slot("HD1") == "slot.HDx1"  # odd -> distributor
     assert _dim_slot("DIST EXTENTION") == "slot.DIST_EXT"
-    assert _dim_slot("I/O") == "slot.O2"
+    # Water sheets (2026-09-22 template): separate I / O / S / R rows, no "I/O" row.
+    assert _dim_slot("I") == "slot.I1"
+    assert _dim_slot("O") == "slot.O2"
+    assert _dim_slot("S") == "slot.S1"
+    assert _dim_slot("R") == "slot.R2"
+    assert _dim_slot("HD") == "slot.HD2"
+    assert _dim_slot("SL") == "slot.SL2"
+    assert _dim_slot("I/O") is None          # the pre-2026-09-22 label no longer exists
+    assert _dim_slot("VENT & DRAIN") is None  # text row, no drawing slot
     assert _dim_slot("DIST ORIENTATION") is None
 
 

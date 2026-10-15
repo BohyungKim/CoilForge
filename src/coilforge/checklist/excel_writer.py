@@ -23,6 +23,7 @@ callers on non-Windows get a clear RuntimeError only when they actually write.
 from __future__ import annotations
 
 import os
+import shutil
 from typing import Any
 
 from coilforge.checklist import template_map as T
@@ -86,9 +87,12 @@ def _win32():
 def _copy_template(win32, edit_app, template_path: str, dest: str) -> None:
     """SaveCopyAs the template to ``dest`` without touching the original.
 
-    Prefers opening it read-only in our isolated edit instance. If that fails
-    (e.g. exclusive lock held by the user's open copy), falls back to the running
-    Excel instance and SaveCopyAs from the already-open workbook — still read-only.
+    Prefers opening it read-only in our isolated edit instance. If Excel cannot open
+    it, copies the file's bytes to ``dest`` instead (John 2026-09-24): Excel COM
+    refuses the template's path through OneDrive's "SharePoint Shortcuts" folder
+    ("cannot access the file") while Python reads it fine — the original is only
+    read, never written. Last resort: the running Excel instance's already-open
+    workbook, SaveCopyAs — still read-only.
     """
     src_basename = os.path.basename(template_path).lower()
     try:
@@ -98,7 +102,12 @@ def _copy_template(win32, edit_app, template_path: str, dest: str) -> None:
         finally:
             src.Close(SaveChanges=False)
         return
-    except Exception:  # noqa: BLE001 — locked; reuse the user's open instance read-only
+    except Exception:  # noqa: BLE001 — Excel cannot open it; try a plain byte copy
+        pass
+    try:
+        shutil.copyfile(template_path, dest)
+        return
+    except OSError:  # locked for reading too; reuse the user's open instance read-only
         running = win32.GetActiveObject("Excel.Application")
         src = next(w for w in running.Workbooks if w.Name.lower() == src_basename)
         src.SaveCopyAs(dest)
@@ -274,8 +283,16 @@ def _write_checklist_unlocked(
     app.DisplayAlerts = False
     app.Visible = bool(visible)
 
-    # 1) Copy the template to Downloads (read-only; original untouched).
-    _copy_template(win32, app, template_path, dest)
+    # 1) Copy the template to Downloads (read-only; original untouched). If no copy can
+    #    be made, tear the isolated instance down before raising — the finally below only
+    #    covers step 2, so a failed copy used to leave an orphan headless EXCEL.EXE.
+    try:
+        _copy_template(win32, app, template_path, dest)
+    except Exception:
+        app.Quit()
+        if com_initialized:
+            pythoncom.CoUninitialize()
+        raise
 
     # 2) Edit the copy in the isolated instance.
     wb = app.Workbooks.Open(dest)

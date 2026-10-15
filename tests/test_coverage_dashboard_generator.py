@@ -39,11 +39,13 @@ def test_ventum_plus_gaps_split_dx_blocked_vs_nondx_fallback() -> None:
     # 20, not 22: hot gas bypass is a Nova / Ventum H option (John 2026-07-15), so the
     # two DX HGBP cells are NOT part of Ventum+'s bucket space -- see the test below.
     assert v["total"] == 20
-    assert v["seeded"] == 11  # DX 5 + HGRH 3 + HWC 2 + CWC 1
+    # DX 5 + HGRH 3. The Ventum+ water buckets were retired 2026-09-24 (John): Ventum+
+    # CWC/HWC draw on the shared art like every other non-Terra line.
+    assert v["seeded"] == 8
     # Un-seeded DX (LH-H4, RH-H3, RH-H4) -> not registered (R-032 UP).
     assert v["blocked"] == 3
-    # Un-seeded non-DX (HGRH LH-H2/LH-H3/RH-H3/LH-H4/RH-H4, CWC RH) -> shared fallback.
-    assert v["fallback"] == 6
+    # Un-seeded non-DX (HGRH LH-H2/LH-H3/RH-H3/LH-H4/RH-H4, CWC LH/RH, HWC LH/RH) -> shared.
+    assert v["fallback"] == 9
     assert v["seeded"] + v["blocked"] + v["fallback"] == v["total"]
 
 
@@ -76,7 +78,7 @@ def test_all_ventum_plus_blocked_cells_are_dx() -> None:
 def test_seeded_cells_carry_provenance() -> None:
     cells = gen.build_coverage_model()["ventum_plus"]["cells"]
     seeded = [c for c in cells if c.seeded]
-    assert len(seeded) == 11
+    assert len(seeded) == 8
     # Each seeded dedicated cell resolves to a real template + VPLUS provenance token.
     assert all(c.template_id and c.source_case_id for c in seeded)
 

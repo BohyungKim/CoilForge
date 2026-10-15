@@ -35,6 +35,12 @@ _MATERIAL_TITLE_SLOTS = {
     "slot.TUBE_MATERIAL", "slot.FIN_MATERIAL", "slot.CASING_MATERIAL",
     "slot.HEADER_MATERIAL", "slot.RETURN_CONN_SIZE", "slot.CIRCUITING",
     "slot.DISTRIBUTORS", "slot.COIL_TUBE_FACE", "slot.MODEL_NUMBER", "slot.TAG",
+    # The coil's own coating instruction ("HERESITE COATING REQUIRED"). Sourced from the
+    # submittal's manufacturing_options.coil_coating, not the rule engine, and filled by
+    # workflows.submittal_to_drawing._apply_coating_note_to_drawing on both the analyze and
+    # the derive path. Uncoated coils render it as empty rather than REVIEW REQUIRED --
+    # "no coating" is a known state, not a pending decision.
+    "slot.COATING_NOTE",
 }
 
 # Genuinely NOT derivable from the rule engine -> intentionally REVIEW REQUIRED.
@@ -46,10 +52,19 @@ _DOCUMENTED_REVIEW_SLOTS = {
     "slot.TUBE_MATERIAL_2", "slot.FIN_MATERIAL_2", "slot.FIN_MATERIAL_3",
     "slot.CASING_MATERIAL_2", "slot.CIRCUITING_2", "slot.CIRCUITING_3",
     "slot.DISTRIBUTORS_2", "slot.RETURN_CONN_SIZE_2",
-    # slot.X (tube-projection callout) was redacted from the HG_1_LH reference
-    # (2026-06-23) so the drawing no longer hardcodes it. Its engine rule is not
-    # yet defined, so it intentionally renders REVIEW REQUIRED (fail-closed, never
-    # invented) until John/engineering specify what derives X.
+    # slot.X is the drawing's X column. Its VALUE rule is unknown: the working reading
+    # (header-stack depth (h+1)*D + (h-1)*1.5) explains only 52% of the real drawings that
+    # carry a value, measured over 328 pages on 2026-09-05 -- see
+    # docs/wiki/concepts/x-header-stack-depth.md. The older "tube projection" label was wrong.
+    #
+    # It was redacted from the HG_1_LH reference (2026-06-23) so that ONE drawing no
+    # longer hardcodes it -- the other seven HGRH buckets still print their seed's value
+    # (pinned by tests/test_template_hardcoded_dims.py). No engine rule emits it yet:
+    # the arithmetic is settled (R-073 already emits the same term HIGH as casing_depth)
+    # but the 8 seeded references are all Nova/Ventum-H class, while the shared HGRH
+    # templates are also borrowed by Terra H/V, and no Terra reference exists to scope
+    # the family branch. So it intentionally renders REVIEW REQUIRED (fail-closed, never
+    # invented) until a Terra RHHGRC reference lets the rule be written.
     "slot.X",
 }
 

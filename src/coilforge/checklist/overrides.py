@@ -29,6 +29,17 @@ from typing import Any
 
 from coilforge.checklist.model import OverrideNote
 
+# A browser "adopt from Coil Checklist" fill carries a reason with this prefix (the ONE
+# shared signal, frontend + compare). An adopted value is a COPY of the sheet's own
+# formula result, so the compare must never score it as an independent `match` — it
+# reports verdict ``adopted`` instead (John 2026-09-22).
+ADOPTED_REASON_PREFIX = "adopted from Coil Checklist"
+
+
+def is_adopted_reason(reason: object) -> bool:
+    return str(reason or "").strip().lower().startswith(ADOPTED_REASON_PREFIX.lower())
+
+
 # Manual-fill engine-input key -> the coil-input dict key ``mapping._build_sheet`` reads.
 # Keys mirror ``drawing_param_resolver._ENGINE_INPUT_META`` plus the picker/spec-field
 # keys the frontend sends (``coil_hand``, ``coating``, ``product_type``, ``unit_size``).
@@ -36,6 +47,10 @@ _ENGINE_KEY_TO_COIL_KEY: dict[str, str] = {
     "rows": "rows",
     "feeds": "feeds",
     "circuits": "circuits",
+    # Typed FH / FL (John 2026-10-02): the sheet's FH/FL are input cells the CH and OAL
+    # formulas read, so a value the drawing uses must be the value the sheet is filled with.
+    "finned_height": "finned_height",
+    "finned_length": "finned_length",
     "qty_conn_per_header": "qty_conn_per_header",
     "suction_conn_size": "suction_conn_size",
     "conn_size": "conn_size",

@@ -23,8 +23,9 @@ wrong option silently produces a plausible width for the wrong pan — the failu
 that has no visible symptom.
 
 **Terra V is deliberately not parsed here.** Its widths are keyed by unit SIZE, not by a
-D-option (R-077 has no ``TERRA|D*`` arm that applies to it and its size rows are still
-TBD), so returning "D1" for a Terra V unit would hand a Terra H width to a vertical unit.
+D-option (R-077 carries ``TERRA_V|<size>`` rows from the Install sheet, filled 2026-09-22;
+the ``TERRA|D*`` rows are Terra H), so returning "D1" for a Terra V unit would hand a
+Terra H width to a vertical unit.
 Its codes do carry a two-digit token at index 7 — that is exactly why the guard has to be
 explicit rather than relying on the parse failing.
 
@@ -175,8 +176,9 @@ def drain_pan_option_from_model_code(text: str | None) -> tuple[str | None, str]
     if not upper.startswith("TR_C_"):
         # Terra V (TR_V_### / TV_?_###) or anything else that matched the V pattern.
         return None, (
-            "Terra V drain-pan width is keyed by unit size, not by a D1/D2/D3 option, so "
-            "the token at this position does not describe its pan — refusing to read it"
+            "Terra V drain-pan width is keyed by unit size (Install sheet Terra V rows), "
+            "not by a D1/D2/D3 option, so the token at this position does not describe "
+            "its pan — refusing to read it"
         )
 
     tokens = upper.split("_")
