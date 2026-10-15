@@ -404,17 +404,23 @@ RULED_2026_10_14 = {
     **{("2843", t, "FinSurface"): ("Flat", "Corrugated") for t in ("CDXC-1", "CDXC-2", "CDXC-3")},
     **{("2843", t, "NumberOfFeeds"): ("12", "16") for t in ("CDXC-1", "CDXC-2", "CDXC-3")},
     ("2843", "CDXC-4", "NumberOfFeeds"): ("18", "24"),
+    # follow-up ①′ A: 3197's order is a Single-Circuit re-selection of a 2-circuit submittal
+    **{("3197", t, "RefrigerationSystemType"): ("Dual-Circuit Intertwined", "Single-Circuit") for t in ("CDXC-1", "CDXC-2")},
+    # FinSurface A: 3233 re-selected the coil; 3014 / 3025 / 3093 are coil-specific order choices
+    ("3233", "CDXC-1", "FinSurface"): ("Corrugated", "Flat"),
+    **{(pr, t, "FinSurface"): ("Flat", "Corrugated") for pr, t in (("3014", "CDXC-1"), ("3025", "CDXC-2"), ("3093", "CDXC-1"))},
 }
 
 
 def test_the_2026_10_14_rulings_are_pinned_and_leave_other_projects_live() -> None:
-    assert len(RULED_2026_10_14) == 7
+    assert len(RULED_2026_10_14) == 7 + 2 + 4  # 2843 + 3197 + FinSurface
     assert {k: og.RULED_ORDER_CHANGES.get(k) for k in RULED_2026_10_14} == RULED_2026_10_14
     surf = {"ccsi_id": "FinSurface", "verdict": "mismatch", "reason_code": "CCSI_OK",
             "coilforge": "Flat", "ccsi": "Corrugated", "role": "input"}
     dx = {"coil_type": "DX", "tag": "CDXC-1", "rows": [surf]}
     assert og.mismatch_cause(surf, dx, None, project="2843") == "ruled_order_change"
-    assert og.mismatch_cause(surf, dx, None, project="3014") == "unexplained"  # 3014/3025/3093/3233 stay open
+    assert og.mismatch_cause(surf, dx, None, project="3014") == "ruled_order_change"
+    assert og.mismatch_cause(surf, dx, None, project="2541") == "unexplained"  # a project nobody ruled stays live
 
 
 # ------------------------------------------------------------------ estimate confirmation (John 2026-10-12)

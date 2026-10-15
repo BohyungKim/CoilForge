@@ -239,7 +239,7 @@ _D3_CONNECTION_SIZES = {"DX": {"DXReturnConnectionSize"},
 # John 2026-10-13 (estimate decisions v2, "모두 A"): strict confirmation against ordered CCSI reports exported
 # before the 2026-09-30 push (>= 5 projects, every counterexample explained). A1 = harvest-set defaults, so the
 # orders are an independent test; A2 = values first read off those same orders, so it is a strict re-count.
-# DX RefrigerationSystemType (A2) is held out: its circuits path still has 2 open counterexamples (3197).
+# DX RefrigerationSystemType (A2) was held out here (circuits path, 3197); it is confirmed 2026-10-14 below.
 # `confirmed` changes no push -- it is pushable exactly like `validated` and stays review_required.
 _A1_DEFAULTS = {"TubeDiameter", "HeaderMaterial", "HeaderWallSchedule", "ConnectionMaterial", "RefrigerantConnectionType",
                 "CasingStyle", "CasingMaterial", "AirSideFoulingFactor"}
@@ -252,8 +252,11 @@ JOHN_CONFIRMED = {
 }
 # John 2026-10-14 (estimate follow-up ② A): two defaults whose last counterexamples were ruled on 2026-10-13
 # (E1 capillary, E2 water connection material). DX FinSurface's Sine -> Corrugated substitution was also a
-# candidate but is held: mapping_status is per field and the field still has 4 unexplained Flat counterexamples.
-JOHN_CONFIRMED_2026_10_14 = {"DX": {"DXDistCapillarySize"}, "HWC": {"ConnectionMaterial"}}
+# candidate but was held at first: mapping_status is per field and the field had 4 unexplained Flat counterexamples.
+# DX RefrigerationSystemType joins after follow-up ①′ A ruled its last 2 counterexamples (3197) an order re-selection,
+# and DX FinSurface after John ruled its last 4 (3233 re-selection; 3014 / 3025 / 3093 coil-specific order choices).
+JOHN_CONFIRMED_2026_10_14 = {"DX": {"DXDistCapillarySize", "RefrigerationSystemType", "FinSurface"},
+                             "HWC": {"ConnectionMaterial"}}
 for _type, _ids in JOHN_CONFIRMED_2026_10_14.items():
     JOHN_CONFIRMED[_type] = JOHN_CONFIRMED[_type] | _ids
 
@@ -273,7 +276,7 @@ def test_confirmed_is_exactly_johns_list_and_a_subset_of_the_approved() -> None:
         for ccsi_id in confirmed:
             ruling = "2026-10-14" if ccsi_id in JOHN_CONFIRMED_2026_10_14.get(coil_type, set()) else "2026-10-13"
             assert f"CONFIRMED John {ruling}" in (load_coil_data_map(coil_type).fields[ccsi_id].evidence or ""), ccsi_id
-    assert sum(map(len, JOHN_CONFIRMED.values())) == 31 + 2
+    assert sum(map(len, JOHN_CONFIRMED.values())) == 31 + 4
 
 
 def test_confirming_changes_no_push(monkeypatch) -> None:

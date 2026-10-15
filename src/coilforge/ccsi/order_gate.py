@@ -136,6 +136,18 @@ RULED_ORDER_CHANGES: dict[tuple[str, str, str], tuple[str, str]] = {
     ("2843", "CDXC-2", "NumberOfFeeds"): ("12", "16"),
     ("2843", "CDXC-3", "NumberOfFeeds"): ("12", "16"),
     ("2843", "CDXC-4", "NumberOfFeeds"): ("18", "24"),
+    # John 2026-10-14 (follow-up ①′ A): 3197 is an order-side re-selection. The submittal states 2 circuits four
+    # ways (Interlaced 2 Circuits, Qty Conn./Header 2, Qty of Valves 2, 5 tons x 2); the REV1 order (2026-09-11)
+    # is Single-Circuit with a 1 1/8" return and a re-rated capacity, and the project's other coils moved too.
+    ("3197", "CDXC-1", "RefrigerationSystemType"): ("Dual-Circuit Intertwined", "Single-Circuit"),
+    ("3197", "CDXC-2", "RefrigerationSystemType"): ("Dual-Circuit Intertwined", "Single-Circuit"),
+    # John 2026-10-14 (FinSurface A): every value read correctly off the submittal. 3233 re-selected the coil
+    # (rows 4 -> 5, FPI 13 -> 12, feeds 4 -> 5); 3014 / 3025 / 3093 are coil-specific order choices like E3 --
+    # no date split (submittal Flat kept Flat on 58 projects, June-September) and 3025's other DX coils kept Flat.
+    ("3233", "CDXC-1", "FinSurface"): ("Corrugated", "Flat"),
+    ("3014", "CDXC-1", "FinSurface"): ("Flat", "Corrugated"),
+    ("3025", "CDXC-2", "FinSurface"): ("Flat", "Corrugated"),
+    ("3093", "CDXC-1", "FinSurface"): ("Flat", "Corrugated"),
 }
 PROMOTE_MIN_PROJECTS = 3
 ROUNDING_REL = 0.002
