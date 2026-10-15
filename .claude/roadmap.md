@@ -1263,7 +1263,7 @@
 
 ## ▶️ 지금
 - [ ] **🔁 다음 세션 복귀 지점 (2026-10-02 기록, 2026-10-14 갱신) — John이 실사용으로 검증한 뒤 돌아온다** —
-  코드는 전부 커밋·푸시됨(`claude/ambient-supplier` = origin, HEAD `737926d`, 2325 green). 추정값 후속 1A·2A·3A는 반영했고 2326 green이다(커밋 여부는 John 확인 대기). **다음 할 일 = 아래 B의 첫 미완 항목(후속의 후속 결정 2건: 3197 판정 · FinSurface 반례 4건).** 미커밋은 의도적으로 뺀 `.agents/`·`.codex/`·`pytest.ini`(소유 불명)뿐.
+  코드는 전부 커밋·푸시됨(`claude/ambient-supplier` = origin, HEAD `737926d`, 2325 green). 추정값 후속 판정은 `7d388ef` + 이번 커밋으로 모두 끝났다(확정 35개, 2326 green). **다음 할 일 = 아래 B의 첫 미완 항목(`CLAUDE.md` CCSI coil-data 문단 갱신).** 미커밋은 의도적으로 뺀 `.agents/`·`.codex/`·`pytest.ini`(소유 불명)뿐.
   **A. John이 실사용에서 볼 것** (먼저 `run_server.bat` 재시작 → `CCSI autofill` 북마크 삭제 후 다시 드래그 — 지금 북마크·서버는 옛 버전, 최신은 userscript **v3.1.4**):
   - [ ] TR-15의 "아직 안 본 것" 4건(DX System Type · fin 0.0075/Sine 대체 안내 + FPI 보류 · 물코일 Run all의 feeds/`Aluminum 0.008`/tube 기본값 · 성능 경고 줄이 버튼을 막지 않는지)
   - [ ] Run all 결과에서 **Air flow basis = `Actual`**이 들어가고 Altitude가 잠기지 않고 채워지는지(Standard면 CCSI가 0으로 잠근다)
@@ -1302,7 +1302,17 @@
       - 9 feeds는 2회로로 고르게 나뉘지 않는다. 그래서 application team이 단일 회로로 바꿨을 가능성이 있다(Assumption).
       - CoilForge는 submittal을 맞게 읽는다. **3197을 오더 쪽 변경으로 판정할지는 John 몫이다.** 판정하면 DX `RefrigerationSystemType` 확정이 가능해진다.
       - 🟡 헤더 수 게이트 관점에서 3197 CDXC는 2헤더로 그려지지만 실제 주문은 1회로다. submittal이 source of truth이므로 도면은 맞다. 하지만 오더가 바뀐 경우 도면과 실물이 어긋날 수 있다는 실례다.
-  - [ ] **추정값 확정 후속의 후속 — John 결정 2건 대기 (2026-10-14)**: ①′ 3197 CDXC-1/2 RefrigerationSystemType 2행(+ 같은 프로젝트의 나머지 오더 차이)을 오더 쪽 재선정으로 판정할지 → 판정하면 DX `RefrigerationSystemType` confirmed. ②′ DX FinSurface 반례 4건(3014·3025·3093·3233)을 조사할지, 아니면 FinSurface 확정을 계속 보류할지.
+  - [x] **추정값 확정 후속의 후속 — John "A" + FinSurface "A·A" (2026-10-14)**
+    - 3197 CDXC-1/2 `RefrigerationSystemType` 2행을 오더 쪽 재선정으로 판정했다. 그 결과 DX `RefrigerationSystemType`이 confirmed가 됐고, 게이트 판정은 demote_candidate에서 supported로 바뀌었다(결함 0).
+    - FinSurface 반례 4건을 읽기 전용으로 조사했다. 4건 모두 CoilForge가 submittal을 맞게 읽었다.
+      - 3233은 코일 재선정이다(rows 4→5, FPI 13→12, feeds 4→5).
+      - 3014·3025·3093은 코일별 주문 선택이다(E3와 같은 경우).
+        - 날짜로 갈리지 않는다: 원문 Flat이 그대로 유지된 경우가 58개 프로젝트이고 6월부터 9월까지 고르게 있다.
+        - 같은 3025 안에서 CDXC-1과 CDXC-3은 Flat을 유지했다.
+    - John 판정 A로 4행을 넣고 DX FinSurface를 confirmed로 올렸다. Sine 대체도 이 확정에 포함된다. 게이트 판정은 supported(결함 0)다.
+    - 결과: 확정 31 → 35, demote_candidate 15 → 13, calibration PASS, tiers와 추정 판정은 그대로, push 값 변화 0.
+    - 게이트 백업은 `gate.pre_{followup,3197,finsurface}_20261014.json`.
+    - 3197에서 아직 판정하지 않은 오더 차이가 남아 있다: DX `DXReturnConnectionSize`(computed, 7/8 vs 1 1/8), HGRH/HWC `FinSurface`, HWC `ConnectionSize`·`FluidFlowRate`·`LeavingFluidTemp`. 이번 판정 범위 밖이다.
   - [x] **(원래 질문) 추정값 확정 후속 — John 결정 3건 대기 (2026-10-14)**
     ① **DX `RefrigerationSystemType`(A2 승인분) 보류 중.**
       - `mapping_status`는 필드에 하나만 붙지만, 검증은 그 필드의 경로 하나씩 했다.
