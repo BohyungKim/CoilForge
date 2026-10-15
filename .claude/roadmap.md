@@ -1263,7 +1263,7 @@
 
 ## ▶️ 지금
 - [ ] **🔁 다음 세션 복귀 지점 (2026-10-02 기록, 2026-10-14 갱신) — John이 실사용으로 검증한 뒤 돌아온다** —
-  코드는 전부 커밋·푸시됨(`claude/ambient-supplier` = origin, HEAD `737926d`, 2325 green). 추정값 후속 판정은 `7d388ef` + 이번 커밋으로 모두 끝났다(확정 35개, 2326 green). **다음 할 일 = 아래 B의 첫 미완 항목(`CLAUDE.md` CCSI coil-data 문단 갱신).** 미커밋은 의도적으로 뺀 `.agents/`·`.codex/`·`pytest.ini`(소유 불명)뿐.
+  코드는 전부 커밋·푸시됨(`claude/ambient-supplier` = origin, HEAD `737926d`, 2325 green). 추정값 후속 판정은 `7d388ef` + 이번 커밋으로 모두 끝났다(확정 35개, 2326 green). **다음 할 일 = 아래 B의 첫 미완 항목(DX 화면 미러 System Type).** 미커밋은 의도적으로 뺀 `.agents/`·`.codex/`·`pytest.ini`(소유 불명)뿐.
   **A. John이 실사용에서 볼 것** (먼저 `run_server.bat` 재시작 → `CCSI autofill` 북마크 삭제 후 다시 드래그 — 지금 북마크·서버는 옛 버전, 최신은 userscript **v3.1.4**):
   - [ ] TR-15의 "아직 안 본 것" 4건(DX System Type · fin 0.0075/Sine 대체 안내 + FPI 보류 · 물코일 Run all의 feeds/`Aluminum 0.008`/tube 기본값 · 성능 경고 줄이 버튼을 막지 않는지)
   - [ ] Run all 결과에서 **Air flow basis = `Actual`**이 들어가고 Altitude가 잠기지 않고 채워지는지(Standard면 CCSI가 0으로 잠근다)
@@ -1321,7 +1321,7 @@
     ② **판정 덕분에 새로 확정 후보가 된 3개:** DX `DXDistCapillarySize` 1/4(78개 프로젝트, independent), DX Sine→Corrugated 대체(7개, in_sample), HWC `ConnectionMaterial` Steel(7개, independent). E1·E2·E4의 A는 "값 유지"였지 "확정"이 아니었다. A = 모두 확정(추천), B = 보류.
     ③ **2843에서 함께 바뀐 행 7건이 아직 설명 안 된 결함으로 남아 있다.** CDXC-1/2/3 FinSurface Flat→Corrugated, NumberOfFeeds 12→16·18→24. C1에서 이미 프로젝트 전체 재선정으로 확인한 프로젝트다. A = 오더 쪽 변경으로 판정(추천), B = 그대로 둠. 3014·3025·3093·3233의 DX FinSurface 결함은 별개로 열려 있다.
     (덤) `src/coilforge/web_app.py:470` 주석 "Only ``validated`` entries are ``pushable``"은 예전부터 틀렸다(`confirmed`도 push된다). 범위 밖이라 고치지 않았다.
-  - [ ] `CLAUDE.md` CCSI coil-data 문단 갱신(아래 "앞으로"의 [문서] 항목) — 게이트 결과가 나온 뒤 한 번에
+  - [x] `CLAUDE.md` CCSI coil-data 문단 갱신 (2026-10-14)
   - [ ] DX 화면 미러 System Type(아래 "앞으로" 항목)
   - [ ] `pytest.ini` 처리 결정(누가 만든 파일인지 불명, 내용은 `testpaths = tests` 한 줄 — 커밋할지 지울지 John 판단)
   **C. 이번 세션(10-01~02)에 확정된 사실 — 다시 조사하지 말 것:**
@@ -1492,7 +1492,7 @@
   태그만으로 재적용 / 입력 후 이미 만든 quote package PDF 무효화·`reviewedCoils` 초기화 / 입력값이 Direct Coil 화면 값·paste-ready 52필드·CCSI push에는 안 실림(의도로 고정된 동작).
 - [ ] **[CCSI coil-data 트랙] DX 화면 미러의 System Type이 push와 다른 계산을 쓴다 (2026-10-01 발견, 미착수)** — HGRH 칸은 push 결과를 읽게 고쳤지만(24ff94b) DX 칸은 여전히 `directCoilSystemTypeField`(헤더당 연결 수)로 계산한다. 4서킷이면 화면은 `4-Circuit Intertwined`를 보여 주는데 CCSI로는 아무것도 안 간다(John: DX 4서킷 매핑하지 않음). 그 칸은 `drawingTemplateState`의 등록 판정에도 쓰이므로, 바꾸기 전에 영향 범위부터 확인한다.
 - [ ] **[제출물 파싱 트랙] 마지막 코일의 상세 블록 누락 + 추출 지연 (성능 검증 세션 트랙 B, 미착수)** — 2873 CDXC-2 · 2974 CDXC-8은 상세 블록이 없어 코일 데이터 대부분이 `CCSI_SOURCE_MISSING`이다(2026-10-14부터 헤더 수 근거도 없어 도면이 보류된다 — `737926d`). 2755는 추출에 12분이 걸린다(2026-10-01 실측 743초). 원인 미조사.
-- [ ] **[문서] 프로젝트 `CLAUDE.md`의 CCSI coil-data 문단이 낡았다** — "every entry is `captured` today, so nothing is pushable"는 2026-09-29 승격 이후 사실이 아니다. 대체 규칙·D7 축소·물코일 소스·화면 System Type도 반영해야 한다.
+- [x] **[문서] 프로젝트 `CLAUDE.md`의 CCSI coil-data 문단이 낡았다 → 갱신 완료 (2026-10-14)** — 상태 3단계(captured/validated/confirmed, 확정 35), 필드 단위 확정, 오더 게이트와 `RULED_ORDER_CHANGES`, 대체와 D7(FPI만), System Type 경로, 물코일 소스를 반영했다. 원래 지적: — "every entry is `captured` today, so nothing is pushable"는 2026-09-29 승격 이후 사실이 아니다. 대체 규칙·D7 축소·물코일 소스·화면 System Type도 반영해야 한다.
 - [ ] **[CCSI coil-data 트랙] 🟡 Standard airflow(SCFM) 반영 — 의심 영역, 보류 (John 2026-10-01)** —
   CCSI 풍량 기준은 **ACFM(Actual)로 적용 완료**(4개 맵 `ACFM` = `Actual` default·validated, Altitude보다 먼저 push).
   근거는 John의 설명이다. "이상적으로는 SCFM으로 계산했어야 하지만, Direct Coil은 지금까지 전부 ACFM으로 계산해 왔다."

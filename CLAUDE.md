@@ -439,10 +439,38 @@ re-selecting. Nothing auto-saves: the userscript's "▶ Run all" (v3.1, behind J
 presses only `#calcBtn` and `#customDimensionsButton`, then stops before Save. A **separate** map: the dimension map stays
 dimension-only (`test_ccsi_field_map.py`). Each entry has a `role` (`input` pushable; `computed`/`locked`
 read back only), an exact captured option list (a value off it is `CCSI_OPTION_UNMAPPED`, never the
-nearest option), and a `mapping_status` — every entry is `captured` today, so **nothing is pushable**
-until past-project validation promotes it. CCSI access boundary: a user can open coils only in
+nearest option), and a `mapping_status` on a three-step ladder: `captured` (read back only) →
+`validated` (John-approved against past CCSI selections, pushable) → `confirmed` (validated AND the
+strict order check below passed). `PUSHABLE_STATUSES = {validated, confirmed}`; **`confirmed` changes no
+push** — same value, still review_required (pinned by `test_confirming_changes_no_push`). The status is
+**per field**, so a field with two source paths (System Type: `style_map` and `circuits`) is confirmed
+only when BOTH are clean. Counts 2026-10-14: DX 12 / HGRH 11 / HWC 12 confirmed (35), CWC 0 (its 3–4
+order projects never reach the bar). CCSI access boundary: a user can open coils only in
 projects they own, so colleagues' saved selections are not reachable from John's account. The
 submittal side of validation replays the capture ledger's draft stage (read-only) — no PDF re-parse.
+**Order gate** (`ccsi/order_gate.py`, `scripts/ccsi_report_crosscheck.py` → `scripts/ccsi_order_gate.py`,
+outputs in gitignored `outputs/ccsi_order_gate/`) — the CCSI report filed with each order is the source
+of truth for what was built. Every mismatch gets a cause; only `unexplained` ones count as defects.
+`confirmed` needs ≥5 order projects (`CONFIRM_MIN_PROJECTS`), only orders exported before CoilForge began
+pushing (`PUSH_START`), and every counterexample explained. An order-side change John has ruled on lives
+in `RULED_ORDER_CHANGES` keyed `(project, tag, field)` with **both** values pinned, so a changed value
+re-opens it. The CoilForge value stays the submittal's: a ruling explains an order, it never teaches
+CoilForge to predict re-selections (3014/3025/3093 FinSurface are per-coil order choices, 2843/3197 are
+whole-project re-selections). The gate only proposes; it never edits a map.
+**Substitutions and D7 (John 2026-10-01)** — a submittal value with no CCSI option is replaced by the
+map's `substitutions`: fin `aluminum 0.0075 → 0.008` on every form, `Sine → Corrugated` on DX/HGRH, and
+the reason names the submittal original. A substituted fin means CCSI re-optimises the coil, so
+`GEOMETRY_RESELECT_IDS = {FinsPerInch}` withholds **FPI only** (`CCSI_GEOMETRY_RESELECT`). Rows were
+withheld too until the orders showed rows stay (41/46) while FPI moves (16/45).
+**System Type** comes from `geometry.circuits` (DX `1/2/3` → Single / Dual-Circuit Intertwined /
+3-Circuit Intertwined; HGRH `1/2` → Single / Dual-Circuit Face-Split). When no count is printed, `Coil Style: Standard` gives Single-Circuit through
+`style_path`. A style naming a different arrangement (`Face Split` against a count mapped to
+Intertwined) is `CCSI_OPTION_UNMAPPED`, and DX 4 circuits is unmapped (orders split). The HGRH screen
+mirror reads the push result; the **DX screen mirror still computes its own** from connections-per-header
+(`directCoilSystemTypeField`, roadmap open item).
+**Water sources (John 2026-10-01):** feeds ← `geometry.circuits`; fin ← `geometry.fin_thickness_in`
+plus the map's `material: Aluminum`, which applies only when the submittal names no material (a stated
+`Copper` is unmapped, never overwritten); tube default `Copper 0.018 Plain`.
 **Tube/fin material (D1, 2026-09-30):** the intake's number/unit split stores `0.016 Copper` as value
 `0.016` + unit `Copper`, so a reader that takes only `value` sees a bare gauge — the material was never
 lost. `option_material_gauge` reads both plus the canonical `tube_surface` (the ledger keeps it only as
